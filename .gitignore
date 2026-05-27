@@ -3,9 +3,11 @@ node_modules/
 
 # Variáveis de ambiente — NUNCA versionar
 .env
+.env.*
+!.env.example
 
-# Sessão do WhatsApp — contém credenciais da conta
-# NUNCA versionar nem incluir em zips para compartilhar
+# Sessão do WhatsApp — contém chaves privadas da conta
+# NUNCA versionar, compartilhar em zip ou subir para repositório
 auth_info/
 
 # Dados gerados em runtime
@@ -13,14 +15,24 @@ src/data/tickets.json
 src/data/tickets_contador.json
 src/data/history.json
 src/data/sessions.json
+src/data/auth_sessions.json
 
 # Arquivos temporários de escrita atômica
 src/data/*.tmp
+
+# Logs
+src/logs/
+
+# Backups automáticos
+src/backups/
+
+# Uploads de perfil (dados de usuário, não código)
+src/uploads/profiles/
 
 # Sistema operacional
 .DS_Store
 Thumbs.db
 
-src/logs/
-src/data/auth_sessions.json
-src/backups/
+# Editor
+.vscode/
+.idea/

@@ -1,0 +1,22 @@
+# Dependências
+node_modules/
+
+# Variáveis de ambiente — NUNCA versionar
+.env
+
+# Sessão do WhatsApp — contém credenciais da conta
+# NUNCA versionar nem incluir em zips para compartilhar
+auth_info/
+
+# Dados gerados em runtime
+src/data/tickets.json
+src/data/tickets_contador.json
+src/data/history.json
+src/data/sessions.json
+
+# Arquivos temporários de escrita atômica
+src/data/*.tmp
+
+# Sistema operacional
+.DS_Store
+Thumbs.db

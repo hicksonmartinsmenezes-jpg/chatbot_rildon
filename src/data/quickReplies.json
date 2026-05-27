@@ -1,0 +1,12 @@
+[
+  {
+    "id": "1",
+    "shortcut": "/horario",
+    "message": "Nosso horário de atendimento é de segunda a sexta, das 08h às 18h."
+  },
+  {
+    "id": "2",
+    "shortcut": "/pix",
+    "message": "Nosso PIX é: financeiro@rildon.com"
+  }
+]

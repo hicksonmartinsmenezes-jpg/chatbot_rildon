@@ -1,0 +1,36 @@
+[
+  {
+    "id": "admin-master",
+    "nome": "Administrador",
+    "usuario": "admin",
+    "senha": "$2b$10$0JSDnBZYuljTWb5BH0B9DOT9YRrVkVSO383hhXGC2yg8t3XjSlX5u",
+    "perfil": "admin",
+    "ativo": true,
+    "numero": "79999446813",
+    "foto": "/uploads/profiles/admin-master-1779799296987.jpeg"
+  },
+  {
+    "id": "67c8c237-3dcc-4e76-91d7-672f8568e9b6",
+    "nome": "CLEIDE",
+    "usuario": "supervisor",
+    "senha": "$2b$10$WL3o14WdcisrEWqvFr7v2upldwV8KCQk6bR8gGK1.YcLrlJLREHF6",
+    "perfil": "supervisor",
+    "ativo": true
+  },
+  {
+    "id": "8bbf562d-42b4-4198-a4f0-2f77b19ff9df",
+    "nome": "Balcão",
+    "usuario": "atendente01",
+    "senha": "$2b$10$5Dt9K.B9mMQVAv8cPtP02e/xi2tM4ecJ1BvvlAOy5xCtHLNTEPLXe",
+    "perfil": "atendente",
+    "ativo": true
+  },
+  {
+    "id": "123ed2e9-532e-434b-b0a2-1868337a4f25",
+    "nome": "atendente02",
+    "usuario": "luana",
+    "senha": "$2b$10$KhMZ3auZGa8levpkd/Zxp.7He.5YXemZ7GrLOvPSPO0k7lqQSq0Wi",
+    "perfil": "atendente",
+    "ativo": true
+  }
+]

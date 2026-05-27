@@ -1,0 +1,46 @@
+
+services:
+
+  app:
+    build: .
+    container_name: chatbot_rildon_app
+
+    restart: always
+
+    ports:
+      - "3000:3000"
+
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: chatbot_rildon
+
+    depends_on:
+      - postgres
+
+    volumes:
+      - .:/app
+      - /app/node_modules
+
+  postgres:
+    image: postgres:16
+
+    container_name: chatbot_rildon_postgres
+
+    restart: always
+
+    ports:
+      - "5432:5432"
+
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: chatbot_rildon
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

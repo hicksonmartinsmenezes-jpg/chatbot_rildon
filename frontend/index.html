@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>Rildon Painel de Atendimento</title>
+  <meta name="description" content="Painel de atendimento WhatsApp - Rildon Eletropeças">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="supervisor.css">
+  <link rel="icon" href="android-chrome-512x512.png">
+</head>
+
+<body>
+  <!-- Login -->
+  <section id="login-screen" class="login-screen">
+    <div class="login-card">
+     <img src="android-chrome-512x512.png" class="logo-img" alt="Rildon Eletropeças">
+      <h2>Rildon Eletropeças</h2>
+      <p>Acesso ao painel administrativo</p>
+
+      <input type="text" id="login-user" autocomplete="username" aria-label="Usuário" placeholder="Usuário">
+      <input type="password" id="login-pass" autocomplete="current-password" aria-label="Senha" placeholder="Senha">
+
+      <button onclick="login()">Entrar</button>
+      <span id="login-error"></span>
+    </div>
+  </section>
+
+  <!-- Sidebar -->
+
+  <aside class="sidebar" id="sidebar">
+    <i class="fa-solid fa-bars burger" id="btn-menu"></i>
+
+    <a href="#" class="active" onclick="switchTab('dashboard', event)">
+      <i class="fa-solid fa-desktop"></i>
+      <span class="label">Dashboard</span>
+    </a>
+
+    <a href="#" onclick="switchTab('tickets', event)">
+      <i class="fa-regular fa-comment"></i>
+      <span class="label">Atendimentos</span>
+    </a>
+
+    <a href="#" onclick="switchTab('conversations', event)">
+      <i class="fa-brands fa-whatsapp"></i>
+      <span class="label">Conversas</span>
+    </a>
+
+    <a href="#" onclick="switchTab('history', event)">
+      <i class="fa-solid fa-clock-rotate-left"></i>
+      <span class="label">Histórico</span>
+    </a>
+
+    <a href="#" onclick="switchTab('leads', event)">
+      <i class="fa-solid fa-list"></i>
+      <span class="label">Gestão de Lead</span>
+    </a>
+
+    <a href="#" onclick="switchTab('channels', event)">
+      <i class="fa-solid fa-mobile-screen"></i>
+      <span class="label">Canais</span>
+    </a>
+
+    <a href="#" class="admin-only"  onclick="switchTab('chatbot', event)"
+>   <i class="fa-solid fa-robot"></i>
+      <span class="label">Chatbot</span>
+    </a>
+
+   <a
+  href="#"
+  class="admin-only"
+  onclick="switchTab('settings', event)"
+>
+  <i class="fa-solid fa-gear"></i>
+  <span class="label">Configurações</span>
+</a>
+
+<a
+  href="#"
+  class="admin-only"
+  onclick="switchTab('logs', event)"
+>
+  <i class="fa-solid fa-clipboard-list"></i>
+  <span class="label">Logs</span>
+</a>
+
+
+
+<a href="#" onclick="switchTab('metrics', event)">
+  <i class="fa-solid fa-chart-line"></i>
+  <span class="label">Métricas</span>
+</a>
+
+
+
+  </aside>
+
+  <!-- Main -->
+  <div class="main" id="dashboard">
+    <header class="topbar" id="dashboard-header">
+      <div class="top-actions">
+        <button class="icon-btn" title="Atualizar" onclick="refreshAll()">
+          <i class="fa-solid fa-arrows-rotate"></i>
+        </button>
+
+        <button class="icon-btn notification" title="Notificações">
+          <i class="fa-regular fa-bell"></i>
+          <span id="notification-dot"></span>
+        </button>
+
+       <div class="avatar-wrap" onclick="openProfileModal()">
+
+      <div
+        class="avatar"
+        id="top-user-avatar"
+      >
+        R
+      </div>
+
+      <div class="avatar-text">
+
+        <strong id="top-user-name">
+          Admin
+        </strong>
+        
+            <span id="status-badge" class="badge badge-off">● Offline</span>
+          </div>
+          <i class="fa-solid fa-chevron-down"></i>
+        </div>
+
+        <button class="logout-btn" onclick="logout()">
+          <i class="fa-solid fa-right-from-bracket"></i>
+          Sair
+        </button>
+
+        <div class="green-bar"></div>
+      </div>
+    </header>
+
+    <main class="content">
+      <!-- Tabs superiores -->
+      <section class="panel">
+        <div class="tabs">
+          <button class="tab active" onclick="switchTab('dashboard', event)">
+            <i class="fa-solid fa-desktop"></i> DASHBOARD
+          </button>
+
+          <button class="tab" onclick="switchTab('tickets', event)">
+            <i class="fa-solid fa-table-cells-large"></i> ATENDIMENTOS
+          </button>
+
+          <button class="tab" onclick="switchTab('conversations', event)">
+            <i class="fa-brands fa-whatsapp"></i> CONVERSAS
+          </button>
+
+          <button class="tab" onclick="switchTab('history', event)">
+            <i class="fa-solid fa-magnifying-glass"></i> HISTÓRICO
+          </button>
+
+          <button class="tab" onclick="switchTab('leads', event)">
+            <i class="fa-solid fa-user-group"></i> RESUMO POR USUÁRIOS
+          </button>
+
+          <button
+            class="tab admin-only"
+            onclick="switchTab('chatbot', event)"
+          >
+            <i class="fa-solid fa-robot"></i> CHATBOT
+          </button>
+        </div>
+      </section>
+
+      <!-- Dashboard -->
+      <section id="tab-dashboard">
+        <section class="panel">
+          <div class="filters">
+            <div class="field">
+              <label>Data Início</label>
+              <input type="date" id="date-start">
+            </div>
+
+            <div class="field">
+              <label>Data Fim</label>
+              <input type="date" id="date-end">
+            </div>
+
+            <div class="field select">
+              <label>Usuário</label>
+              <div class="placeholder">Todos</div>
+              <i class="fa-solid fa-chevron-down icon-right"></i>
+            </div>
+
+            <div class="field select">
+              <label>Departamento</label>
+              <div class="placeholder">Todos</div>
+              <i class="fa-solid fa-chevron-down icon-right"></i>
+            </div>
+
+            <div class="field select">
+              <label>Conexão</label>
+              <div class="placeholder">WhatsApp</div>
+              <i class="fa-solid fa-chevron-down icon-right"></i>
+            </div>
+
+            <button class="btn-refresh" onclick="refreshAll()">
+              <i class="fa-solid fa-arrows-rotate"></i> ATUALIZAR
+            </button>
+          </div>
+        </section>
+
+        <section style="margin-top: 30px;" class="cards">
+          <div class="metric-card">
+            <div class="badge bg-green"><i class="fa-solid fa-check-double"></i></div>
+            <div class="value" id="stat-total">0</div>
+            <div class="label">Total de atendimentos <i class="fa-solid fa-circle-info"></i></div>
+          </div>
+
+          <div class="metric-card">
+            <div class="badge bg-orange"><i class="fa-solid fa-phone-volume"></i></div>
+            <div class="value" id="stat-aberto">0</div>
+            <div class="label">Abertos <i class="fa-solid fa-circle-info"></i></div>
+          </div>
+
+          <div class="metric-card">
+            <div class="badge bg-indigo"><i class="fa-solid fa-comment"></i></div>
+            <div class="value" id="stat-andamento">0</div>
+            <div class="label">Em andamento <i class="fa-solid fa-circle-info"></i></div>
+          </div>
+
+          <div class="metric-card">
+            <div class="badge bg-purple"><i class="fa-solid fa-comment-dots"></i></div>
+            <div class="value" id="stat-pendentes">0</div>
+            <div class="label">Pendentes <i class="fa-solid fa-circle-info"></i></div>
+          </div>
+        </section>
+
+
+      </section>
+
+
+       
+
+      <!-- Tickets -->
+      <section id="tab-tickets" class="tab-content hidden">
+        <section class="panel">
+          <div class="section-title">
+            <div>
+              <h2>Atendimentos</h2>
+              <p>Gerencie tickets criados automaticamente pelo chatbot.</p>
+            </div>
+            <button class="btn-refresh" onclick="loadTickets()">
+              <i class="fa-solid fa-arrows-rotate"></i> Atualizar
+            </button>
+          </div>
+
+          <div class="toolbar">
+            <input type="text" id="search" aria-label="Buscar atendimentos" placeholder="🔍 Buscar por nome, CPF, número ou tipo..." oninput="loadTickets()">
+            <select id="filter-status" onchange="loadTickets()">
+              <option value="">Todos os status</option>
+              <option value="aberto">Aberto</option>
+              <option value="em_andamento">Em andamento</option>
+              <option value="resolvido">Resolvido</option>
+              <option value="cancelado">Cancelado</option>
+            </select>
+          </div>
+        </section>
+
+        <div id="tickets-container" class="ticket-grid"></div>
+      </section>
+
+      <!-- Conversas -->
+      <section id="tab-conversations" class="tab-content hidden">
+        <section class="panel conversations-top">
+          <div class="section-title">
+            <div>
+              <h2><i class="fa-brands fa-whatsapp"></i> Conversas</h2>
+              <p>Atenda clientes pelo painel com visual inspirado no WhatsApp.</p>
+            </div>
+            <button class="btn-refresh" onclick="loadConversations()">
+              <i class="fa-solid fa-arrows-rotate"></i> Atualizar
+            </button>
+          </div>
+        </section>
+
+        <div class="whatsapp-panel">
+          <aside class="chat-sidebar">
+            <div class="chat-sidebar-header">
+              <div>
+                <strong>Mensagens</strong>
+                <span id="chat-total">0 conversas</span>
+              </div>
+              <button onclick="loadConversations()" title="Atualizar">
+                <i class="fa-solid fa-rotate-right"></i>
+              </button>
+            </div>
+
+            <div class="chat-search">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input id="search-conversations" type="text" aria-label="Pesquisar conversa" placeholder="Pesquisar conversa..." oninput="loadConversations()">
+            </div>
+
+            <div class="chat-list" id="chat-list"></div>
+          </aside>
+
+          <section class="chat-window">
+            <div class="chat-window-header" id="chat-window-header">
+              <div class="chat-selected-empty">
+                <i class="fa-brands fa-whatsapp"></i>
+                <span>Selecione uma conversa</span>
+              </div>
+            </div>
+
+            <div class="chat-messages" id="chat-messages">
+              <div class="chat-start">
+                <i class="fa-brands fa-whatsapp"></i>
+                <h3>Nenhuma conversa selecionada</h3>
+                <p>Escolha um cliente na lista para visualizar o histórico.</p>
+              </div>
+            </div>
+
+            <div class="chat-input-area">
+             <textarea
+              id="conversation-message"
+              placeholder="Digite uma mensagem..."
+              onkeydown="handleConversationKeydown(event)"
+              oninput="notifyTyping()"
+            ></textarea>
+              <button onclick="sendConversationMessage()" title="Enviar">
+                <i class="fa-solid fa-paper-plane"></i>
+              </button>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <!-- Histórico -->
+      <section id="tab-history" class="tab-content hidden">
+        <section class="panel">
+          <div class="section-title">
+            <div>
+              <h2>Histórico de Conversas</h2>
+              <p>Veja mensagens recebidas e respostas enviadas pelo bot.</p>
+            </div>
+            <button class="btn-refresh" onclick="loadHistory()">
+              <i class="fa-solid fa-arrows-rotate"></i> Atualizar
+            </button>
+          </div>
+
+          <div class="toolbar">
+            <input type="text" id="search-history" aria-label="Buscar histórico" placeholder="🔍 Buscar por número..." oninput="loadHistory()">
+          </div>
+        </section>
+
+        <div id="history-container" class="ticket-grid"></div>
+      </section>
+
+      <!-- Páginas futuras -->
+      <section id="tab-leads" class="tab-content hidden">
+        <div class="panel placeholder-panel">
+          <i class="fa-solid fa-user-group"></i>
+          <h2>Resumo por usuários</h2>
+          <p>Área preparada para relatórios por cliente/atendente.</p>
+        </div>
+      </section>
+
+      <section id="tab-channels" class="tab-content hidden">
+        <div class="panel placeholder-panel">
+          <i class="fa-solid fa-mobile-screen"></i>
+          <h2>Canais</h2>
+          <p>Área preparada para WhatsApp, site, Instagram e outros canais.</p>
+        </div>
+      </section>
+
+
+      <!-- Chatbot -->
+<section id="tab-chatbot" class="tab-content hidden">
+
+  <section class="panel">
+    <div class="section-title">
+      <div>
+        <h2>
+          <i class="fa-solid fa-robot"></i>
+          Chatbot
+        </h2>
+
+        <p>
+          Configure o comportamento do bot, respostas rápidas e fluxos de atendimento.
+        </p>
+      </div>
+
+      <button class="btn-refresh" onclick="saveBotSettings()">
+        <i class="fa-solid fa-floppy-disk"></i>
+        Salvar
+      </button>
+    </div>
+
+    <div class="settings-tabs">
+      <button class="settings-tab active" onclick="switchBotPanel('bot-settings', event)">
+        <i class="fa-solid fa-sliders"></i>
+        Configurações do Bot
+      </button>
+
+      <button class="settings-tab" onclick="switchBotPanel('bot-quick-replies', event)">
+        <i class="fa-solid fa-bolt"></i>
+        Respostas Rápidas
+      </button>
+
+      <button class="settings-tab" onclick="switchBotPanel('bot-flows', event)">
+        <i class="fa-solid fa-diagram-project"></i>
+        Editor de Fluxos
+      </button>
+    </div>
+  </section>
+
+  <!-- CONFIGURAÇÕES DO BOT -->
+  <section id="bot-settings" class="bot-panel">
+    <div class="settings-grid">
+      <div class="settings-card">
+        <h3>Funcionamento</h3>
+
+        <label>Bot ativo</label>
+        <select id="bot-active">
+          <option value="true">Ativado</option>
+          <option value="false">Desativado</option>
+        </select>
+
+        <label>Mensagem de boas-vindas</label>
+        <textarea id="bot-welcome" placeholder="Olá! Seja bem-vindo(a). Como podemos ajudar?"></textarea>
+
+        <label>Mensagem fora do horário</label>
+        <textarea id="bot-after-hours" placeholder="No momento estamos fora do horário de atendimento."></textarea>
+      </div>
+
+      <div class="settings-card">
+        <h3>Tempo de atendimento</h3>
+
+        <label>Tempo para aviso de inatividade</label>
+        <input id="bot-warning-time" type="number" placeholder="3">
+
+        <label>Tempo para encerrar atendimento</label>
+        <input id="bot-close-time" type="number" placeholder="5">
+
+        <label>Mensagem de encerramento</label>
+        <textarea id="bot-close-message" placeholder="Atendimento encerrado por inatividade."></textarea>
+      </div>
+    </div>
+  </section>
+
+  <!-- RESPOSTAS RÁPIDAS -->
+  <section id="bot-quick-replies" class="bot-panel hidden">
+    <div class="settings-grid">
+      <div class="settings-card">
+        <h3>Nova resposta rápida</h3>
+
+        <label>Atalho</label>
+        <input id="quick-shortcut" type="text" placeholder="/pix">
+
+        <label>Mensagem</label>
+        <textarea id="quick-message" placeholder="Digite a resposta que será enviada..."></textarea>
+
+        <button class="btn-refresh" onclick="addQuickReply()">
+          <i class="fa-solid fa-plus"></i>
+          Adicionar resposta
+        </button>
+      </div>
+
+      <div class="settings-card">
+        <h3>Respostas cadastradas</h3>
+        <div id="quick-replies-list"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- EDITOR DE FLUXOS -->
+  <section id="bot-flows" class="bot-panel hidden">
+    <div class="flow-layout">
+      <aside class="flow-menu">
+        <button class="flow-item active">
+          <strong>Menu principal</strong>
+          <span>Mensagem inicial e opções</span>
+        </button>
+
+        <button class="flow-item">
+          <strong>Dúvidas frequentes</strong>
+          <span>Respostas automáticas</span>
+        </button>
+
+        <button class="flow-item">
+          <strong>Suporte técnico</strong>
+          <span>Fluxo de atendimento</span>
+        </button>
+
+        <button class="flow-item">
+          <strong>Vendas / Orçamento</strong>
+          <span>Fluxo comercial</span>
+        </button>
+
+        <button class="flow-item">
+          <strong>Financeiro</strong>
+          <span>Fluxo financeiro</span>
+        </button>
+      </aside>
+
+      <div class="flow-editor">
+        <div class="settings-card">
+          <h3>Editor do fluxo</h3>
+
+          <label>Título do fluxo</label>
+          <input id="flow-title" type="text" value="Menu principal">
+
+          <label>Mensagem exibida ao cliente</label>
+          <textarea id="flow-message">Olá! Seja bem-vindo(a).
+
+Como podemos ajudar você hoje?
+
+1 - Dúvidas frequentes
+2 - Nossos serviços
+3 - Horário de atendimento
+4 - Suporte técnico
+5 - Vendas / Orçamento
+6 - Financeiro
+7 - Falar com atendente</textarea>
+
+          <label>Opções do menu</label>
+          <textarea id="flow-options">1|faq
+2|servicos
+3|horario
+4|suporte
+5|vendas
+6|financeiro
+7|humano</textarea>
+
+          <button class="btn-refresh" onclick="saveFlow()">
+            <i class="fa-solid fa-floppy-disk"></i>
+            Salvar fluxo
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</section>
+
+<!-- Configurações -->
+      <!-- Configurações -->
+      <section id="tab-settings" class="tab-content hidden">
+        <section class="panel settings-hero">
+          <div class="section-title">
+            <div>
+              <h2><i class="fa-solid fa-gear"></i> Configurações</h2>
+              <p>Personalize empresa, atendimento, aparência, histórico, notificações e usuários.</p>
+            </div>
+
+            <div class="settings-actions">
+              <button class="btn-refresh" onclick="loadSettings()">
+                <i class="fa-solid fa-arrows-rotate"></i> Atualizar
+              </button>
+              <button class="btn-save-settings" onclick="saveSettings()">
+                <i class="fa-solid fa-floppy-disk"></i> Salvar alterações
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-grid">
+          <div class="settings-card">
+            <div class="settings-card-title">
+              <span class="settings-icon bg-purple">
+                <i class="fa-solid fa-users-gear"></i>
+              </span>
+              <div>
+                <h3>Usuários do painel</h3>
+                <p>Cadastre atendentes e defina permissões de acesso.</p>
+              </div>
+            </div>
+
+            <div class="settings-form">
+              <label>Nome</label>
+              <input id="user-name" type="text" placeholder="Ex: Maria Atendente">
+
+              <label>Usuário</label>
+              <input id="user-username" type="text" placeholder="Ex: maria">
+
+              <label>Senha</label>
+              <input id="user-password" type="password" placeholder="Senha de acesso">
+
+              <label>Perfil</label>
+              <select id="user-role">
+                <option value="atendente">Atendimento</option>
+                <option value="supervisor">Supervisor</option>
+                <option value="admin">Administrador</option>
+              </select>
+
+              <label>Setor</label>
+              <select id="user-sector">
+                <option value="geral">Geral</option>
+                <option value="vendas">Vendas</option>
+                <option value="financeiro">Financeiro</option>
+                <option value="suporte">Suporte</option>
+                <option value="garantia">Garantia</option>
+              </select>
+
+              <button class="btn-save-settings" onclick="createPanelUser()">
+                <i class="fa-solid fa-user-plus"></i>
+                Criar usuário
+              </button>
+
+              <hr>
+
+              <h3>Usuários cadastrados</h3>
+              <div id="users-list"></div>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-title">
+              <span class="settings-icon bg-blue"><i class="fa-solid fa-building"></i></span>
+              <div>
+                <h3>Dados da empresa</h3>
+                <p>Informações exibidas no painel e usadas como referência do atendimento.</p>
+              </div>
+            </div>
+
+            <div class="settings-form">
+              <label>Nome da empresa</label>
+              <input id="set-company-name" type="text" placeholder="Ex: Rildon Eletropeças">
+
+              <label>Telefone comercial</label>
+              <input id="set-company-phone" type="text" placeholder="Ex: (79) 99999-9999">
+
+              <label>Horário de atendimento</label>
+              <input id="set-company-hours" type="text" placeholder="Ex: Segunda a sexta, 08h às 18h">
+
+              <label>Logo / arquivo da marca</label>
+              <input id="set-company-logo" type="text" placeholder="Ex: android-chrome-512x512.png">
+
+              <label>Mensagem de boas-vindas</label>
+              <textarea id="set-company-welcome" placeholder="Mensagem inicial para clientes"></textarea>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-title">
+              <span class="settings-icon bg-green"><i class="fa-solid fa-headset"></i></span>
+              <div>
+                <h3>Atendimento humano</h3>
+                <p>Organize setores e mensagem de transferência.</p>
+              </div>
+            </div>
+
+            <div class="settings-form">
+              <label>Setores disponíveis</label>
+              <input id="set-human-sectors" type="text" placeholder="Suporte, Vendas, Financeiro">
+
+              <label>Status padrão do ticket</label>
+              <select id="set-default-status">
+                <option value="aberto">Aberto</option>
+                <option value="em_andamento">Em andamento</option>
+              </select>
+
+              <label>Mensagem ao transferir</label>
+              <textarea id="set-transfer-message" placeholder="Mensagem enviada quando o cliente pede atendente"></textarea>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-title">
+              <span class="settings-icon bg-indigo"><i class="fa-solid fa-palette"></i></span>
+              <div>
+                <h3>Aparência</h3>
+                <p>Mantenha o padrão visual do seu painel.</p>
+              </div>
+            </div>
+
+            <div class="settings-form">
+              <label>Nome do painel</label>
+              <input id="set-panel-name" type="text" placeholder="Rildon Painel de Atendimento">
+
+              <div class="settings-two-cols">
+                <div>
+                  <label>Cor principal</label>
+                  <input id="set-primary-color" type="color" value="#1d6cf5">
+                </div>
+                <div>
+                  <label>Cor de sucesso</label>
+                  <input id="set-success-color" type="color" value="#2ecc71">
+                </div>
+              </div>
+
+              <label>Tema</label>
+              <select id="set-theme">
+                <option value="dark">Escuro</option>
+                <option value="light">Claro</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-title">
+              <span class="settings-icon bg-orange"><i class="fa-solid fa-bell"></i></span>
+              <div>
+                <h3>Notificações</h3>
+                <p>Configure alertas de novos atendimentos.</p>
+              </div>
+            </div>
+
+            <div class="settings-form">
+              <div class="settings-switch-row">
+                <div>
+                  <strong>Som de novo atendimento</strong>
+                  <span>Reproduzir alerta sonoro ao receber ticket.</span>
+                </div>
+                <label class="switch">
+                  <input id="set-notification-sound" type="checkbox">
+                  <span></span>
+                </label>
+              </div>
+
+              <div class="settings-switch-row">
+                <div>
+                  <strong>Alerta visual</strong>
+                  <span>Mostrar badge vermelho no sino.</span>
+                </div>
+                <label class="switch">
+                  <input id="set-visual-alert" type="checkbox">
+                  <span></span>
+                </label>
+              </div>
+
+              <label>Texto do alerta</label>
+              <input id="set-toast-message" type="text" placeholder="Novo atendimento recebido!">
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-title">
+              <span class="settings-icon bg-red"><i class="fa-solid fa-clock-rotate-left"></i></span>
+              <div>
+                <h3>Histórico</h3>
+                <p>Preferências para armazenamento e exportação.</p>
+              </div>
+            </div>
+
+            <div class="settings-form">
+              <div class="settings-two-cols">
+                <div>
+                  <label>Manter por dias</label>
+                  <input id="set-history-days" type="number" min="1" placeholder="90">
+                </div>
+                <div>
+                  <label>Limite de conversas</label>
+                  <input id="set-history-limit" type="number" min="10" placeholder="100">
+                </div>
+              </div>
+
+              <label>Formato de exportação</label>
+              <select id="set-export-format">
+                <option value="json">JSON</option>
+                <option value="csv">CSV</option>
+              </select>
+
+              <button class="btn-reset-settings" onclick="resetSettings()">
+                <i class="fa-solid fa-rotate-left"></i> Restaurar padrão
+              </button>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <section id="tab-logs" class="tab-content hidden">
+
+  <section class="panel">
+    
+    <div class="section-title">
+      <div>
+        <h2>
+          
+          Logs do Sistema
+        </h2>
+
+        <p>
+          Auditoria de ações realizadas no painel.
+        </p>
+      </div>
+
+      <button class="btn-refresh" onclick="loadActivityLogs()">
+        <i class="fa-solid fa-arrows-rotate"></i>
+        Atualizar
+      </button>
+    </div>
+
+  </section>
+
+  <div id="logs-container" class="ticket-grid"></div>
+
+</section>
+
+
+<section id="tab-metrics" class="tab-content hidden">
+
+  <section class="metrics-header">
+    <div>
+      <h2>Métricas do Sistema</h2>
+      <p>Resumo analítico dos atendimentos, setores e desempenho.</p>
+    </div>
+
+    <button class="btn-refresh" onclick="loadDashboardCharts()">
+      <i class="fa-solid fa-arrows-rotate"></i>
+      Atualizar
+    </button>
+  </section>
+
+  <section class="metrics-cards">
+    <div class="metric-card">
+      <span>Total de atendimentos</span>
+      <strong id="metric-total">0</strong>
+    </div>
+
+    <div class="metric-card">
+      <span>Em andamento</span>
+      <strong id="metric-andamento">0</strong>
+    </div>
+
+    <div class="metric-card">
+      <span>Resolvidos</span>
+      <strong id="metric-resolvidos">0</strong>
+    </div>
+
+    <div class="metric-card">
+      <span>Cancelados</span>
+      <strong id="metric-cancelados">0</strong>
+    </div>
+  </section>
+
+  <section class="charts-grid professional">
+    <div class="chart-card">
+      <h3>Atendimentos por status</h3>
+     <canvas id="metric-chart-status"></canvas>
+    </div>
+
+    <div class="chart-card">
+      <h3>Atendimentos por setor</h3>
+      <canvas id="metric-chart-sector"></canvas>
+    </div>
+  </section>
+
+  <section class="charts-grid professional">
+  <div class="chart-card chart-wide">
+    <h3>Atendimentos por dia</h3>
+    <canvas id="metric-chart-day"></canvas>
+  </div>
+</section>
+</section>
+
+</section>
+
+
+
+
+
+
+
+    </main>
+  </div>
+
+  <!-- Modal rápido de resposta -->
+  <div id="chat-modal" class="chat-modal hidden">
+    <div class="chat-box">
+      <div class="chat-header">
+        <h3>Responder Cliente</h3>
+        <button onclick="fecharChat()">✕</button>
+      </div>
+
+      <div class="chat-user" id="chat-user"></div>
+      <textarea id="chat-message" placeholder="Digite sua mensagem..."></textarea>
+
+      <button class="send-btn" onclick="enviarMensagemManual()">
+        Enviar mensagem
+      </button>
+    </div>
+  </div>
+
+
+<div id="profile-modal" class="chat-modal hidden">
+  <div class="chat-box profile-box">
+    <div class="chat-header">
+      <h3>Meu Perfil</h3>
+      <button onclick="closeProfileModal()">✕</button>
+    </div>
+
+    <div class="profile-photo-area">
+      <img id="profile-photo-preview" src="android-chrome-512x512.png" alt="Foto do perfil">
+
+      <input
+        id="profile-photo"
+        type="file"
+        accept="image/*"
+        onchange="previewProfilePhoto(event)"
+      >
+    </div>
+
+    <label>Nome</label>
+    <input id="profile-name" type="text" placeholder="Seu nome">
+
+    <label>Número</label>
+    <input id="profile-phone" type="text" placeholder="(79) 99999-9999">
+
+    <button class="send-btn" onclick="saveProfile()">
+      Salvar perfil
+    </button>
+  </div>
+</div>
+
+
+
+  <!-- Toast -->
+  <div id="toast" class="toast">
+    <i class="fa-solid fa-bell"></i>
+    <span>Novo atendimento recebido!</span>
+  </div>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- JS modularizado -->
+  <script src="js/00-core.js"></script>
+  <script src="js/01-utils.js"></script>
+  <script src="js/02-auth.js"></script>
+  <script src="js/03-navigation.js"></script>
+  <script src="js/04-history.js"></script>
+  <script src="js/05-metrics.js"></script>
+  <script src="js/06-tickets.js"></script>
+  <script src="js/07-conversations.js"></script>
+  <script src="js/08-settings.js"></script>
+  <script src="js/09-users.js"></script>
+  <script src="js/10-logs.js"></script>
+  <script src="js/11-profile.js"></script>
+  <script src="js/12-socket.js"></script>
+  <script src="js/13-main.js"></script>
+
+
+</body>
+</html>

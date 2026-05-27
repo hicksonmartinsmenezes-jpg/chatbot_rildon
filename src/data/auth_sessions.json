@@ -1,0 +1,47 @@
+[
+  [
+    "95cfc7899e707685176bc1fbc08cca8095d1db3c685c18a1be9df2c0719ea5ea",
+    {
+      "expiresAt": 1779898492444,
+      "user": {
+        "id": "b939ff45-e80c-454d-b0c4-b8c12d8a65ee",
+        "nome": "Administrador",
+        "usuario": "admin",
+        "perfil": "admin",
+        "sector": "geral",
+        "numero": "",
+        "foto": ""
+      }
+    }
+  ],
+  [
+    "3aff2661375623907a55fc10e5e3d00d3c6017ee1a2724a639af325110ab65c0",
+    {
+      "expiresAt": 1779898482405,
+      "user": {
+        "id": "b939ff45-e80c-454d-b0c4-b8c12d8a65ee",
+        "nome": "Administrador",
+        "usuario": "admin",
+        "perfil": "admin",
+        "sector": "geral",
+        "numero": "",
+        "foto": ""
+      }
+    }
+  ],
+  [
+    "7ba20606f583cfb90480f41c40bbe978a33f907ed9f2ebfe7e27cb6ab1a3d020",
+    {
+      "expiresAt": 1779899683797,
+      "user": {
+        "id": "eb842df5-ba3e-4314-948b-0061c9580551",
+        "nome": "dev_teste",
+        "usuario": "atendente",
+        "perfil": "atendente",
+        "sector": "geral",
+        "numero": "",
+        "foto": ""
+      }
+    }
+  ]
+]

@@ -20,3 +20,6 @@ src/data/*.tmp
 # Sistema operacional
 .DS_Store
 Thumbs.db
+
+src/logs/
+src/data/auth_sessions.json

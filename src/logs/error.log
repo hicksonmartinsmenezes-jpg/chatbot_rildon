@@ -1,5 +1,0 @@
-[2026-05-26T16:11:04.446Z] [ERROR] Erro ao enviar mensagem de encerramento:
-[2026-05-27T12:47:08.759Z] [ERROR] Erro ao salvar histórico: coluna "message_id" da relação "history" não existe
-[2026-05-27T12:52:50.110Z] [ERROR] Erro ao salvar histórico: coluna "message_id" da relação "history" não existe
-[2026-05-27T12:52:53.559Z] [ERROR] Erro ao salvar histórico: coluna "message_id" da relação "history" não existe
-[2026-05-27T14:41:18.498Z] [ERROR] Erro ao salvar histórico: relation "history" does not exist

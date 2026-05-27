@@ -1268,13 +1268,10 @@ body {
 
 .chat-item-bottom span {
   color: #9ca3af;
-
   font-size: .84rem;
-
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-
   display: block;
 }
 
@@ -2280,4 +2277,15 @@ body.light-theme .settings-form label {
   transform:translateY(-1px);
 
   filter:brightness(1.05);
+}
+
+
+.chat-item-bottom span {
+  display: block;
+  color: #9ca3af;
+  font-size: .84rem;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

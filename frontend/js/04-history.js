@@ -17,8 +17,11 @@ async function loadHistory(render = true) {
     if (!res) return [];
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-    const raw = await res.json();
-    const history = Array.isArray(raw) ? raw : [];
+   const raw = await res.json();
+
+    const history = Array.isArray(raw)
+      ? raw
+      : raw.data || [];
 
     if (render && container) {
       if (!history.length) {

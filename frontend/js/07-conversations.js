@@ -15,8 +15,11 @@ async function loadConversations() {
 
     const res = await apiFetch(`${BASE}/api/history?${params}`);
     if (!res) return;
-    const raw = await res.json();
-    allHistory = Array.isArray(raw) ? raw : [];
+  const raw = await res.json();
+
+  allHistory = Array.isArray(raw)
+  ? raw
+  : raw.data || [];
 
     if (!list) return;
 

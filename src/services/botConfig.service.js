@@ -1,22 +1,14 @@
-const fs = require("fs");
-const path = require("path");
-const logger = require("../utils/logger");
-
-const SETTINGS_PATH = path.join(__dirname, "../data/settings.json");
+const { getSettings } = require("./settings.service");
 
 async function getBotConfig() {
-  let settings = {};
-
-  try {
-    settings = JSON.parse(fs.readFileSync(SETTINGS_PATH, "utf-8"));
-  } catch (error) {
-    logger.error("Erro ao ler settings.json:", error.message);
-  }
-
+  const settings = await getSettings();
   const bot = settings.bot || {};
 
   return {
-    ativo: bot.ativo ?? true,
+    ativo:
+      bot.ativo === false || bot.ativo === "false"
+        ? false
+        : true,
 
     mensagemBoasVindas:
       bot.mensagemBoasVindas ||
@@ -26,8 +18,8 @@ async function getBotConfig() {
       bot.mensagemForaHorario ||
       "No momento estamos fora do horário de atendimento.",
 
-    timeoutAviso: bot.timeoutAviso || 3,
-    timeoutEncerramento: bot.timeoutEncerramento || 5,
+    timeoutAviso: Number(bot.timeoutAviso || 3),
+    timeoutEncerramento: Number(bot.timeoutEncerramento || 5),
 
     mensagemEncerramento:
       bot.mensagemEncerramento ||

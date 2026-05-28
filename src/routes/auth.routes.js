@@ -2,113 +2,77 @@ const express = require("express");
 const crypto = require("crypto");
 
 const pool = require("../database/postgres");
-
 const upload = require("../middlewares/uploadProfile");
 const { addLog } = require("../services/activityLog.service");
 
 const {
   validateUser,
-  updateUserProfile,
-  getUsers,
-  saveUsers
+  updateUserProfile
 } = require("../services/user.service");
-
-const logger = require("../utils/logger");
 
 const router = express.Router();
 
 const SESSION_MS = 30 * 60 * 1000;
 
 async function salvarSessao(token, session) {
-  try {
-    await pool.query(
-      `
-      INSERT INTO auth_sessions (
-        token,
-        user_data,
-        expires_at,
-        created_at
-      )
-      VALUES ($1, $2, $3, NOW())
-      ON CONFLICT (token)
-      DO UPDATE SET
-        user_data = EXCLUDED.user_data,
-        expires_at = EXCLUDED.expires_at
-      `,
-      [
-        token,
-        JSON.stringify(session.user),
-        session.expiresAt
-      ]
-    );
-  } catch (err) {
-    logger.error(`Erro ao salvar sessão: ${err.message}`);
-  }
+  await pool.query(
+    `
+    INSERT INTO auth_sessions (token, user_data, expires_at, created_at)
+    VALUES ($1, $2, $3, NOW())
+    ON CONFLICT (token)
+    DO UPDATE SET
+      user_data = EXCLUDED.user_data,
+      expires_at = EXCLUDED.expires_at
+    `,
+    [token, JSON.stringify(session.user), session.expiresAt]
+  );
 }
 
 async function buscarSessao(token) {
-  try {
-    const result = await pool.query(
-      `
-      SELECT *
-      FROM auth_sessions
-      WHERE token = $1
-      LIMIT 1
-      `,
-      [token]
-    );
+  const result = await pool.query(
+    `
+    SELECT token, user_data, expires_at
+    FROM auth_sessions
+    WHERE token = $1
+    LIMIT 1
+    `,
+    [token]
+  );
 
-    const row = result.rows[0];
+  const row = result.rows[0];
 
-    if (!row) return null;
+  if (!row) return null;
 
-    if (Date.now() > Number(row.expires_at)) {
-      await removerSessao(token);
-      return null;
-    }
-
-    return {
-      user: row.user_data,
-      expiresAt: Number(row.expires_at)
-    };
-  } catch (err) {
-    logger.error(`Erro ao buscar sessão: ${err.message}`);
+  if (Date.now() > Number(row.expires_at)) {
+    await removerSessao(token);
     return null;
   }
+
+  return {
+    user: row.user_data,
+    expiresAt: Number(row.expires_at)
+  };
 }
 
 async function removerSessao(token) {
-  try {
-    await pool.query(
-      `DELETE FROM auth_sessions WHERE token = $1`,
-      [token]
-    );
-  } catch (err) {
-    logger.error(`Erro ao remover sessão: ${err.message}`);
-  }
+  await pool.query(
+    `DELETE FROM auth_sessions WHERE token = $1`,
+    [token]
+  );
 }
 
 async function limparSessoesExpiradas() {
-  try {
-    await pool.query(
-      `
-      DELETE FROM auth_sessions
-      WHERE expires_at < $1
-      `,
-      [Date.now()]
-    );
-  } catch (err) {
-    logger.error(`Erro ao limpar sessões: ${err.message}`);
-  }
+  await pool.query(
+    `DELETE FROM auth_sessions WHERE expires_at < $1`,
+    [Date.now()]
+  );
 }
 
 function safeCompare(a, b) {
   const bufferA = Buffer.from(String(a || ""));
   const bufferB = Buffer.from(String(b || ""));
 
-  if (bufferA.length !== bufferB.length) {
-    return false;
-  }
+  if (bufferA.length !== bufferB.length) return false;
 
   return crypto.timingSafeEqual(bufferA, bufferB);
 }
@@ -118,7 +82,6 @@ router.post("/auth/login", async (req, res) => {
     await limparSessoesExpiradas();
 
     const { usuario, senha } = req.body || {};
-
     const user = await validateUser(usuario, senha);
 
     if (!user) {
@@ -129,18 +92,12 @@ router.post("/auth/login", async (req, res) => {
 
     const token = crypto.randomBytes(32).toString("hex");
 
-    const session = {
-      expiresAt: Date.now() + SESSION_MS,
-      user
-    };
-
-    await salvarSessao(token, session);
-
-    await addLog(
+    await salvarSessao(token, {
       user,
-      "LOGIN",
-      `${user.nome} entrou no sistema`
-    );
+      expiresAt: Date.now() + SESSION_MS
+    });
+
+    await addLog(user, "LOGIN", `${user.nome} entrou no sistema`);
 
     return res.json({
       token,
@@ -148,6 +105,8 @@ router.post("/auth/login", async (req, res) => {
       expiresIn: SESSION_MS
     });
   } catch (error) {
+    console.error("Erro no login:", error);
+
     return res.status(500).json({
       error: "Erro ao fazer login."
     });
@@ -156,16 +115,10 @@ router.post("/auth/login", async (req, res) => {
 
 router.patch("/auth/me/profile", authSession, async (req, res) => {
   try {
-    const updatedUser = await updateUserProfile(
-      req.user.id,
-      req.body || {}
-    );
+    const updatedUser = await updateUserProfile(req.user.id, req.body || {});
 
     const auth = req.headers["authorization"] || "";
-
-    const token = auth.startsWith("Bearer ")
-      ? auth.slice(7)
-      : null;
+    const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
 
     if (token) {
       await salvarSessao(token, {
@@ -180,9 +133,7 @@ router.patch("/auth/me/profile", authSession, async (req, res) => {
       `${updatedUser.nome} atualizou o perfil`
     );
 
-    return res.json({
-      user: updatedUser
-    });
+    return res.json({ user: updatedUser });
   } catch (error) {
     return res.status(400).json({
       error: error.message
@@ -202,34 +153,16 @@ router.patch(
         });
       }
 
-      const users = await getUsers();
-
-      const index = users.findIndex(
-        u => u.id === req.user.id
-      );
-
-      if (index === -1) {
-        return res.status(404).json({
-          error: "Usuário não encontrado."
-        });
-      }
-
       const foto = `/uploads/profiles/${req.file.filename}`;
 
-      users[index].foto = foto;
-
-      await saveUsers(users);
-
-      const updatedUser = {
-        ...req.user,
+      const updatedUser = await updateUserProfile(req.user.id, {
+        nome: req.user.nome,
+        numero: req.user.numero || "",
         foto
-      };
+      });
 
       const auth = req.headers["authorization"] || "";
-
-      const token = auth.startsWith("Bearer ")
-        ? auth.slice(7)
-        : null;
+      const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
 
       if (token) {
         await salvarSessao(token, {
@@ -239,9 +172,9 @@ router.patch(
       }
 
       await addLog(
-        req.user,
+        updatedUser,
         "UPDATE_PHOTO",
-        `${req.user.nome} alterou a foto do perfil`
+        `${updatedUser.nome} alterou a foto do perfil`
       );
 
       return res.json({
@@ -258,29 +191,28 @@ router.patch(
 );
 
 router.post("/auth/logout", async (req, res) => {
-  const auth = req.headers["authorization"] || "";
+  try {
+    const auth = req.headers["authorization"] || "";
+    const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
 
-  const token = auth.startsWith("Bearer ")
-    ? auth.slice(7)
-    : null;
+    if (token) {
+      const session = await buscarSessao(token);
 
-  if (token) {
-    const session = await buscarSessao(token);
+      if (session?.user) {
+        await addLog(
+          session.user,
+          "LOGOUT",
+          `${session.user.nome} saiu do sistema`
+        );
+      }
 
-    if (session?.user) {
-      await addLog(
-        session.user,
-        "LOGOUT",
-        `${session.user.nome} saiu do sistema`
-      );
+      await removerSessao(token);
     }
 
-    await removerSessao(token);
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.json({ ok: true });
   }
-
-  return res.json({
-    ok: true
-  });
 });
 
 router.get("/auth/me", authSession, (req, res) => {
@@ -290,56 +222,54 @@ router.get("/auth/me", authSession, (req, res) => {
 });
 
 async function authSession(req, res, next) {
-  await limparSessoesExpiradas();
+  try {
+    await limparSessoesExpiradas();
 
-  const apiToken = process.env.API_TOKEN;
+    const apiToken = process.env.API_TOKEN;
+    const auth = req.headers["authorization"] || "";
+    const provided = auth.startsWith("Bearer ") ? auth.slice(7) : null;
 
-  const auth = req.headers["authorization"] || "";
+    if (!provided) {
+      return res.status(401).json({
+        error: "Token não fornecido."
+      });
+    }
 
-  const provided = auth.startsWith("Bearer ")
-    ? auth.slice(7)
-    : null;
+    const session = await buscarSessao(provided);
 
-  if (!provided) {
-    return res.status(401).json({
-      error: "Token não fornecido."
-    });
-  }
+    if (session) {
+      await salvarSessao(provided, {
+        user: session.user,
+        expiresAt: Date.now() + SESSION_MS
+      });
 
-  const session = await buscarSessao(provided);
-
-  if (session) {
-    await salvarSessao(provided, {
-      user: session.user,
-      expiresAt: Date.now() + SESSION_MS
-    });
-
-    req.user = session.user;
-
-    return next();
-  }
-
-  if (
-    apiToken &&
-    apiToken !== "troque-por-um-token-seguro-aqui"
-  ) {
-    const ok = safeCompare(provided, apiToken);
-
-    if (ok) {
-      req.user = {
-        id: "api",
-        nome: "Integração API",
-        usuario: "api",
-        perfil: "api"
-      };
-
+      req.user = session.user;
       return next();
     }
-  }
 
-  return res.status(401).json({
-    error: "Sessão inválida ou expirada. Faça login novamente."
-  });
+    if (apiToken && apiToken !== "troque-por-um-token-seguro-aqui") {
+      const ok = safeCompare(provided, apiToken);
+
+      if (ok) {
+        req.user = {
+          id: "api",
+          nome: "Integração API",
+          usuario: "api",
+          perfil: "api"
+        };
+
+        return next();
+      }
+    }
+
+    return res.status(401).json({
+      error: "Sessão inválida ou expirada. Faça login novamente."
+    });
+  } catch (error) {
+    return res.status(500).json({
+      error: "Erro ao validar sessão."
+    });
+  }
 }
 
 function requireRole(...roles) {
@@ -371,7 +301,9 @@ function requireAdmin(req, res, next) {
 }
 
 setInterval(async () => {
-  await limparSessoesExpiradas();
+  try {
+    await limparSessoesExpiradas();
+  } catch (_) {}
 }, 5 * 60 * 1000);
 
 module.exports = {

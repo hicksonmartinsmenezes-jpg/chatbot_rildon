@@ -97,6 +97,32 @@ CREATE TABLE IF NOT EXISTS sessions (
   updated_at TIMESTAMP    DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id VARCHAR(120),
+  user_name VARCHAR(120),
+  user_role VARCHAR(60),
+  action VARCHAR(120),
+  target VARCHAR(120),
+  details JSONB,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at
+ON audit_logs(created_at);
+
+
+CREATE TABLE IF NOT EXISTS auth_sessions (
+  token VARCHAR(255) PRIMARY KEY,
+  user_data JSONB NOT NULL,
+  expires_at BIGINT NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires
+ON auth_sessions(expires_at);
+
 -- ── Índices ───────────────────────────────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS idx_tickets_status      ON tickets(status);
 CREATE INDEX IF NOT EXISTS idx_tickets_user_id     ON tickets(user_id);

@@ -1,7 +1,7 @@
 const express = require("express");
-const crypto  = require("crypto");
-const fs      = require("fs");
-const path    = require("path");
+const crypto = require("crypto");
+
+const pool = require("../database/postgres");
 
 const upload = require("../middlewares/uploadProfile");
 const { addLog } = require("../services/activityLog.service");
@@ -17,69 +17,108 @@ const logger = require("../utils/logger");
 
 const router = express.Router();
 
-const sessionsFile = path.join(__dirname, "../data/auth_sessions.json");
-
-const sessions = new Map();
 const SESSION_MS = 30 * 60 * 1000;
 
-function saveSessions() {
+async function salvarSessao(token, session) {
   try {
-    const data = Array.from(sessions.entries());
-    fs.writeFileSync(sessionsFile, JSON.stringify(data, null, 2));
+    await pool.query(
+      `
+      INSERT INTO auth_sessions (
+        token,
+        user_data,
+        expires_at,
+        created_at
+      )
+      VALUES ($1, $2, $3, NOW())
+      ON CONFLICT (token)
+      DO UPDATE SET
+        user_data = EXCLUDED.user_data,
+        expires_at = EXCLUDED.expires_at
+      `,
+      [
+        token,
+        JSON.stringify(session.user),
+        session.expiresAt
+      ]
+    );
   } catch (err) {
-    logger.error(`Erro ao salvar sessões: ${err.message}`);
+    logger.error(`Erro ao salvar sessão: ${err.message}`);
   }
 }
 
-function loadSessions() {
+async function buscarSessao(token) {
   try {
-    if (!fs.existsSync(sessionsFile)) return;
+    const result = await pool.query(
+      `
+      SELECT *
+      FROM auth_sessions
+      WHERE token = $1
+      LIMIT 1
+      `,
+      [token]
+    );
 
-    const raw = fs.readFileSync(sessionsFile, "utf8");
-    const parsed = JSON.parse(raw || "[]");
+    const row = result.rows[0];
 
-    sessions.clear();
+    if (!row) return null;
 
-    for (const [token, session] of parsed) {
-      sessions.set(token, session);
+    if (Date.now() > Number(row.expires_at)) {
+      await removerSessao(token);
+      return null;
     }
 
-    logger.info(`♻️ ${sessions.size} sessão(ões) de login restaurada(s).`);
+    return {
+      user: row.user_data,
+      expiresAt: Number(row.expires_at)
+    };
   } catch (err) {
-    logger.error(`Erro ao carregar sessões: ${err.message}`);
+    logger.error(`Erro ao buscar sessão: ${err.message}`);
+    return null;
   }
 }
 
-loadSessions();
-
-function limparSessoesExpiradas() {
-  const agora = Date.now();
-  let removeu = false;
-
-  for (const [token, session] of sessions) {
-    if (agora > session.expiresAt) {
-      sessions.delete(token);
-      removeu = true;
-    }
+async function removerSessao(token) {
+  try {
+    await pool.query(
+      `DELETE FROM auth_sessions WHERE token = $1`,
+      [token]
+    );
+  } catch (err) {
+    logger.error(`Erro ao remover sessão: ${err.message}`);
   }
+}
 
-  if (removeu) saveSessions();
+async function limparSessoesExpiradas() {
+  try {
+    await pool.query(
+      `
+      DELETE FROM auth_sessions
+      WHERE expires_at < $1
+      `,
+      [Date.now()]
+    );
+  } catch (err) {
+    logger.error(`Erro ao limpar sessões: ${err.message}`);
+  }
 }
 
 function safeCompare(a, b) {
   const bufferA = Buffer.from(String(a || ""));
   const bufferB = Buffer.from(String(b || ""));
 
-  if (bufferA.length !== bufferB.length) return false;
+  if (bufferA.length !== bufferB.length) {
+    return false;
+  }
 
   return crypto.timingSafeEqual(bufferA, bufferB);
 }
 
 router.post("/auth/login", async (req, res) => {
   try {
-    limparSessoesExpiradas();
+    await limparSessoesExpiradas();
 
     const { usuario, senha } = req.body || {};
+
     const user = await validateUser(usuario, senha);
 
     if (!user) {
@@ -90,12 +129,12 @@ router.post("/auth/login", async (req, res) => {
 
     const token = crypto.randomBytes(32).toString("hex");
 
-    sessions.set(token, {
+    const session = {
       expiresAt: Date.now() + SESSION_MS,
       user
-    });
+    };
 
-    saveSessions();
+    await salvarSessao(token, session);
 
     await addLog(
       user,
@@ -103,13 +142,13 @@ router.post("/auth/login", async (req, res) => {
       `${user.nome} entrou no sistema`
     );
 
-    res.json({
+    return res.json({
       token,
       user,
       expiresIn: SESSION_MS
     });
   } catch (error) {
-    res.status(500).json({
+    return res.status(500).json({
       error: "Erro ao fazer login."
     });
   }
@@ -117,17 +156,22 @@ router.post("/auth/login", async (req, res) => {
 
 router.patch("/auth/me/profile", authSession, async (req, res) => {
   try {
-    const updatedUser = await updateUserProfile(req.user.id, req.body || {});
+    const updatedUser = await updateUserProfile(
+      req.user.id,
+      req.body || {}
+    );
 
     const auth = req.headers["authorization"] || "";
-    const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
-    const session = token ? sessions.get(token) : null;
 
-    if (session) {
-      session.user = updatedUser;
-      session.expiresAt = Date.now() + SESSION_MS;
-      sessions.set(token, session);
-      saveSessions();
+    const token = auth.startsWith("Bearer ")
+      ? auth.slice(7)
+      : null;
+
+    if (token) {
+      await salvarSessao(token, {
+        user: updatedUser,
+        expiresAt: Date.now() + SESSION_MS
+      });
     }
 
     await addLog(
@@ -136,9 +180,13 @@ router.patch("/auth/me/profile", authSession, async (req, res) => {
       `${updatedUser.nome} atualizou o perfil`
     );
 
-    res.json({ user: updatedUser });
+    return res.json({
+      user: updatedUser
+    });
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    return res.status(400).json({
+      error: error.message
+    });
   }
 });
 
@@ -155,7 +203,10 @@ router.patch(
       }
 
       const users = await getUsers();
-      const index = users.findIndex(u => u.id === req.user.id);
+
+      const index = users.findIndex(
+        u => u.id === req.user.id
+      );
 
       if (index === -1) {
         return res.status(404).json({
@@ -175,14 +226,16 @@ router.patch(
       };
 
       const auth = req.headers["authorization"] || "";
-      const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
-      const session = token ? sessions.get(token) : null;
 
-      if (session) {
-        session.user = updatedUser;
-        session.expiresAt = Date.now() + SESSION_MS;
-        sessions.set(token, session);
-        saveSessions();
+      const token = auth.startsWith("Bearer ")
+        ? auth.slice(7)
+        : null;
+
+      if (token) {
+        await salvarSessao(token, {
+          user: updatedUser,
+          expiresAt: Date.now() + SESSION_MS
+        });
       }
 
       await addLog(
@@ -191,13 +244,13 @@ router.patch(
         `${req.user.nome} alterou a foto do perfil`
       );
 
-      res.json({
+      return res.json({
         success: true,
         foto,
         user: updatedUser
       });
     } catch (error) {
-      res.status(400).json({
+      return res.status(400).json({
         error: error.message || "Erro ao salvar foto."
       });
     }
@@ -206,10 +259,13 @@ router.patch(
 
 router.post("/auth/logout", async (req, res) => {
   const auth = req.headers["authorization"] || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+
+  const token = auth.startsWith("Bearer ")
+    ? auth.slice(7)
+    : null;
 
   if (token) {
-    const session = sessions.get(token);
+    const session = await buscarSessao(token);
 
     if (session?.user) {
       await addLog(
@@ -219,25 +275,30 @@ router.post("/auth/logout", async (req, res) => {
       );
     }
 
-    sessions.delete(token);
-    saveSessions();
+    await removerSessao(token);
   }
 
-  res.json({ ok: true });
+  return res.json({
+    ok: true
+  });
 });
 
 router.get("/auth/me", authSession, (req, res) => {
-  res.json({
+  return res.json({
     user: req.user
   });
 });
 
-function authSession(req, res, next) {
-  limparSessoesExpiradas();
+async function authSession(req, res, next) {
+  await limparSessoesExpiradas();
 
   const apiToken = process.env.API_TOKEN;
+
   const auth = req.headers["authorization"] || "";
-  const provided = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+
+  const provided = auth.startsWith("Bearer ")
+    ? auth.slice(7)
+    : null;
 
   if (!provided) {
     return res.status(401).json({
@@ -245,18 +306,23 @@ function authSession(req, res, next) {
     });
   }
 
-  const session = sessions.get(provided);
+  const session = await buscarSessao(provided);
 
   if (session) {
-    session.expiresAt = Date.now() + SESSION_MS;
-    sessions.set(provided, session);
-    saveSessions();
+    await salvarSessao(provided, {
+      user: session.user,
+      expiresAt: Date.now() + SESSION_MS
+    });
 
     req.user = session.user;
+
     return next();
   }
 
-  if (apiToken && apiToken !== "troque-por-um-token-seguro-aqui") {
+  if (
+    apiToken &&
+    apiToken !== "troque-por-um-token-seguro-aqui"
+  ) {
     const ok = safeCompare(provided, apiToken);
 
     if (ok) {
@@ -304,8 +370,8 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-setInterval(() => {
-  limparSessoesExpiradas();
+setInterval(async () => {
+  await limparSessoesExpiradas();
 }, 5 * 60 * 1000);
 
 module.exports = {

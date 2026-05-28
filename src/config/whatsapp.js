@@ -1,4 +1,3 @@
-const { updateSession } = require("../services/session.service");
 const { getBotConfig } = require("../services/botConfig.service");
 const logger = require("../utils/logger");
 const { emitEvent } = require("../services/socket.service");
@@ -16,20 +15,41 @@ const path = require("path");
 
 let sock = null;
 let reconnectAttempts = 0;
+let reconnecting = false;
+
+const processedMessages = new Set();
 const MAX_RECONNECT_DELAY_MS = 30_000;
 
 function getReconnectDelay() {
-  const delay = Math.min(1000 * 2 ** reconnectAttempts, MAX_RECONNECT_DELAY_MS);
+  const delay = Math.min(
+    1000 * 2 ** reconnectAttempts,
+    MAX_RECONNECT_DELAY_MS
+  );
+
   reconnectAttempts++;
+
   return delay;
 }
 
 function unwrapMessage(message) {
   if (!message) return null;
-  if (message.ephemeralMessage) return unwrapMessage(message.ephemeralMessage.message);
-  if (message.viewOnceMessage) return unwrapMessage(message.viewOnceMessage.message);
-  if (message.viewOnceMessageV2) return unwrapMessage(message.viewOnceMessageV2.message);
-  if (message.documentWithCaptionMessage) return unwrapMessage(message.documentWithCaptionMessage.message);
+
+  if (message.ephemeralMessage) {
+    return unwrapMessage(message.ephemeralMessage.message);
+  }
+
+  if (message.viewOnceMessage) {
+    return unwrapMessage(message.viewOnceMessage.message);
+  }
+
+  if (message.viewOnceMessageV2) {
+    return unwrapMessage(message.viewOnceMessageV2.message);
+  }
+
+  if (message.documentWithCaptionMessage) {
+    return unwrapMessage(message.documentWithCaptionMessage.message);
+  }
+
   return message;
 }
 
@@ -87,6 +107,70 @@ function parseMessageStatus(status) {
   }
 }
 
+function marcarMensagemProcessada(messageId) {
+  if (!messageId) return false;
+
+  if (processedMessages.has(messageId)) {
+    return true;
+  }
+
+  processedMessages.add(messageId);
+
+  setTimeout(() => {
+    processedMessages.delete(messageId);
+  }, 5 * 60 * 1000);
+
+  return false;
+}
+
+async function limparSocketAntigo(oldSock) {
+  try {
+    oldSock?.end?.();
+  } catch (_) {}
+
+  try {
+    oldSock?.ws?.close?.();
+  } catch (_) {}
+
+  try {
+    oldSock?.ev?.removeAllListeners?.();
+  } catch (_) {}
+}
+
+async function enviarComRetry(userId, response) {
+  const currentSock = sock;
+
+  if (!currentSock) {
+    logger.error("Falha ao enviar: socket inexistente.");
+    return false;
+  }
+
+  for (let i = 0; i < 3; i++) {
+    try {
+      await currentSock.sendMessage(userId, {
+        text: response
+      });
+
+      logger.success(
+        `Resposta enviada com sucesso. Tentativa ${i + 1}`
+      );
+
+      return true;
+    } catch (err) {
+      logger.warn(
+        `Tentativa ${i + 1} falhou: ${err.message}`
+      );
+
+      await new Promise(resolve =>
+        setTimeout(resolve, 1000)
+      );
+    }
+  }
+
+  logger.error("Falha definitiva ao enviar mensagem.");
+  return false;
+}
+
 async function connectWhatsApp(onMessage) {
   if (typeof onMessage !== "function") {
     throw new Error("connectWhatsApp precisa receber processMessage.");
@@ -98,13 +182,26 @@ async function connectWhatsApp(onMessage) {
 
   const { version } = await fetchLatestBaileysVersion();
 
+  if (sock?.ev) {
+    sock.ev.removeAllListeners("messages.upsert");
+    sock.ev.removeAllListeners("messages.update");
+    sock.ev.removeAllListeners("presence.update");
+    sock.ev.removeAllListeners("connection.update");
+    sock.ev.removeAllListeners("creds.update");
+  }
+
   sock = makeWASocket({
     version,
     auth: state,
     logger: pino({ level: "fatal" }),
     printQRInTerminal: false,
     syncFullHistory: false,
-    markOnlineOnConnect: true
+    markOnlineOnConnect: false,
+    keepAliveIntervalMs: 10000,
+    connectTimeoutMs: 60000,
+    defaultQueryTimeoutMs: 60000,
+    emitOwnEvents: false,
+    retryRequestDelayMs: 250
   });
 
   sock.ev.on("creds.update", saveCreds);
@@ -122,31 +219,58 @@ async function connectWhatsApp(onMessage) {
       const shouldReconnect = code !== DisconnectReason.loggedOut;
 
       logger.warn(`Conexão encerrada (código ${code})`);
-      emitEvent("whatsapp_status", { status: "disconnected", code });
+
+      emitEvent("whatsapp_status", {
+        status: "disconnected",
+        code
+      });
 
       if (shouldReconnect) {
+        if (reconnecting) {
+          logger.warn("Reconexão já em andamento...");
+          return;
+        }
+
+        reconnecting = true;
+
         const delay = getReconnectDelay();
+        const oldSock = sock;
 
         logger.info(
           `Reconectando em ${delay / 1000}s... (tentativa ${reconnectAttempts})`
         );
 
-        setTimeout(() => connectWhatsApp(onMessage), delay);
-      } else {
-        logger.warn("Sessão encerrada. Delete a pasta auth_info e reinicie.");
-        emitEvent("whatsapp_status", { status: "logged_out" });
+        setTimeout(async () => {
+          try {
+            await limparSocketAntigo(oldSock);
+            await connectWhatsApp(onMessage);
+          } finally {
+            reconnecting = false;
+          }
+        }, delay);
+
+        return;
       }
+
+      logger.warn("Sessão encerrada. Delete a pasta auth_info e reinicie.");
+
+      emitEvent("whatsapp_status", {
+        status: "logged_out"
+      });
     }
 
     if (connection === "open") {
       reconnectAttempts = 0;
+      reconnecting = false;
 
       logger.success("WhatsApp conectado com sucesso!");
-      emitEvent("whatsapp_status", { status: "connected" });
+
+      emitEvent("whatsapp_status", {
+        status: "connected"
+      });
     }
   });
 
-  // Detecta quando o CLIENTE está digitando no WhatsApp
   sock.ev.on("presence.update", update => {
     const userId = update.id;
 
@@ -183,6 +307,13 @@ async function connectWhatsApp(onMessage) {
 
   sock.ev.on("messages.upsert", async ({ messages, type }) => {
     for (const msg of messages) {
+      const messageId = msg.key?.id;
+
+      if (marcarMensagemProcessada(messageId)) {
+        logger.warn(`Mensagem duplicada ignorada: ${messageId}`);
+        continue;
+      }
+
       const jid = msg.key.remoteJid;
 
       if (!isValidUserMessage(msg, type)) {
@@ -194,12 +325,21 @@ async function connectWhatsApp(onMessage) {
       }
 
       const userId = jid;
+
       const contactName =
-        msg.pushName || msg.verifiedBizName || msg.notifyName || "";
+        msg.pushName ||
+        msg.verifiedBizName ||
+        msg.notifyName ||
+        "";
+
       const text = getTextMessage(msg).trim();
+
       const botConfig = await getBotConfig();
 
-      if (botConfig.ativo === false) {
+      if (
+        botConfig.ativo === false ||
+        botConfig.ativo === "false"
+      ) {
         logger.warn("Bot desativado. Mensagem ignorada.");
         continue;
       }
@@ -209,12 +349,12 @@ async function connectWhatsApp(onMessage) {
 
         if (tipoMidia) {
           try {
-            await sock.sendMessage(userId, {
-              text:
-                `⚠️ Recebi seu ${tipoMidia}, mas ainda não consigo processar arquivos.\n\n` +
+            await enviarComRetry(
+              userId,
+              `⚠️ Recebi seu ${tipoMidia}, mas ainda não consigo processar arquivos.\n\n` +
                 `Por favor, descreva sua dúvida em *texto* e será um prazer ajudar! 😊\n\n` +
                 `Digite *0* para ver o menu.`
-            });
+            );
           } catch (err) {
             logger.error(`Erro ao enviar aviso de mídia: ${err.message}`);
           }
@@ -222,8 +362,6 @@ async function connectWhatsApp(onMessage) {
 
         continue;
       }
-
-      updateSession(userId, {});
 
       try {
         logger.info(`Mensagem recebida de ${userId}: ${text}`);
@@ -239,8 +377,7 @@ async function connectWhatsApp(onMessage) {
           continue;
         }
 
-        await sock.sendMessage(userId, { text: response });
-        logger.success("Resposta enviada com sucesso.");
+        await enviarComRetry(userId, response);
       } catch (err) {
         logger.error(`Erro ao processar mensagem: ${err.message}`);
       }
@@ -269,7 +406,9 @@ async function sendMessage(userId, text) {
     throw new Error("WhatsApp não está conectado.");
   }
 
-  const sent = await sock.sendMessage(userId, { text });
+  const sent = await sock.sendMessage(userId, {
+    text
+  });
 
   logger.success(`Mensagem enviada para ${userId}`);
 

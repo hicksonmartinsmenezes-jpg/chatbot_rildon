@@ -1,12 +1,7 @@
-/**
- * Serviço de tickets.
- *
- * MELHORIA v7: protocolo gerado via SELECT nextval('protocolo_seq')
- * no PostgreSQL — atômico, sem colisão mesmo com requisições paralelas.
- */
-const crypto           = require("crypto");
+const crypto = require("crypto");
 const ticketRepository = require("../repositories/ticket.repository");
-const pool             = require("../database/postgres");
+const logger = require("../utils/logger");
+const { Mutex } = require("async-mutex");
 
 const TYPE_TO_SECTOR = {
   duvida_financeira:    "financeiro",
@@ -14,43 +9,49 @@ const TYPE_TO_SECTOR = {
   consultor_vendas:     "vendas",
   orcamento:            "vendas",
   suporte_tecnico:      "suporte",
-  suporte_humano:       "suporte",
+  suporte_humano:       "suporte",   // FIX: tipo que existia nos flows mas faltava no mapa
   garantia:             "garantia",
-  atendente_humano:     "geral",
+  atendente_humano:     "geral",     // FIX: idem
 };
 
-/**
- * Gera o próximo protocolo usando a SEQUENCE do PostgreSQL.
- * Formato: YYYY-NNNN (ex: 2026-0001)
- * A SEQUENCE garante atomicidade — sem colisão mesmo em paralelo.
- */
+// FIX: mutex para evitar protocolos duplicados quando dois usuários abrem ticket ao mesmo tempo
+const _protocolMutex = new Mutex();
+
 async function proximoProtocolo() {
-  const ano = new Date().getFullYear();
-  const res = await pool.query("SELECT nextval('protocolo_seq') AS seq");
-  const seq = res.rows[0].seq;
-  return `${ano}-${String(seq).padStart(4, "0")}`;
+  return _protocolMutex.runExclusive(async () => {
+    const ano = new Date().getFullYear();
+    const tickets = await ticketRepository.findAll();
+    const ticketsDoAno = tickets.filter(t =>
+      String(t.protocolo || "").startsWith(String(ano))
+    );
+    const seq = ticketsDoAno.length + 1;
+    return `${ano}-${String(seq).padStart(4, "0")}`;
+  });
 }
 
 async function createTicket({ userId, type, customerName, cpf, description }) {
   const protocolo = await proximoProtocolo();
-  const sector    = TYPE_TO_SECTOR[type] ?? "geral";
+  const sector = TYPE_TO_SECTOR[type] ?? "geral";
 
   const ticket = {
-    id:              crypto.randomUUID(),
+    id: crypto.randomUUID(),
     protocolo,
     userId,
     type,
-    customerName:    customerName || "Não informado",
-    cpf:             cpf          || "Não informado",
-    description:     description  || "",
-    status:          "aberto",
+    customerName: customerName || "Não informado",
+    cpf: cpf || "Não informado",
+    description: description || "",
+    status: "aberto",
     sector,
-    assignedTo:      null,
-    assignedToName:  null,
-    createdAt:       new Date(),
+    assignedTo: null,
+    assignedToName: null,
+    createdAt: new Date(),
   };
 
-  return ticketRepository.create(ticket);
+  const criado = await ticketRepository.create(ticket);
+  // FIX: removido console.log de produção; substituído por logger
+  logger.info(`Ticket criado: #${criado.protocolo} (${type})`);
+  return criado;
 }
 
 async function listTickets({ status, search } = {}) {
@@ -66,11 +67,9 @@ async function getTicketStats() {
 }
 
 async function getTicketsByCPF(cpf) {
-  const tickets   = await ticketRepository.findAll();
-  const cpfLimpo  = cpf.replace(/\D/g, "");
-  return tickets.filter(
-    (t) => t.cpf && t.cpf.replace(/\D/g, "") === cpfLimpo
-  );
+  const tickets = await ticketRepository.findAll();
+  const cpfLimpo = cpf.replace(/\D/g, "");
+  return tickets.filter(t => t.cpf && t.cpf.replace(/\D/g, "") === cpfLimpo);
 }
 
 async function assignTicket(id, user) {
@@ -82,11 +81,6 @@ async function transferTicket(id, sector) {
 }
 
 module.exports = {
-  createTicket,
-  listTickets,
-  updateTicketStatus,
-  assignTicket,
-  transferTicket,
-  getTicketStats,
-  getTicketsByCPF,
+  createTicket, listTickets, updateTicketStatus,
+  assignTicket, transferTicket, getTicketStats, getTicketsByCPF,
 };

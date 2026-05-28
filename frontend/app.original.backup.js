@@ -200,7 +200,7 @@ async function loadTickets() {
         </div>
         <p><strong>👤 Cliente:</strong> ${safe(ticket.customerName || "Não informado")}</p>
         <p><strong>🪪 CPF:</strong> ${safe(ticket.cpf || "Não informado")}</p>
-        <p><strong>📱 Número:</strong> ${formatPhone(ticket.userId)}</p>
+        <p><strong>📱 Número:</strong>  ${formatarNumeroWhatsApp(ticket.userId)}</p>
         <p class="desc"><strong>📋 Descrição:</strong><br>${safe(ticket.description || "—")}</p>
         <p><strong>🕐 Criado em:</strong> ${formatDate(ticket.createdAt)}</p>
         ${ticket.assignedToName ? `<p><strong>👨‍💼 Responsável:</strong> ${safe(ticket.assignedToName)}</p>` : ""}
@@ -218,6 +218,15 @@ async function loadTickets() {
     if (container) container.innerHTML = `<p class="empty">❌ Erro ao carregar atendimentos.</p>`;
   }
 }
+
+function formatarNumeroWhatsApp(userId) {
+  if (!userId) return "Não informado";
+
+  return String(userId)
+    .replace("@s.whatsapp.net", "")
+    .replace("@lid", "");
+}
+
 
 async function mudarStatus(id, status) {
   try {

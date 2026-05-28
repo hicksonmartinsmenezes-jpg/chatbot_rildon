@@ -1,39 +1,50 @@
-const { getSession, clearSession }                          = require("../services/session.service");
-const { createTicket }                                      = require("../services/ticket.service");
-const { estaEmHorarioDeAtendimento, mensagemForaDeHorario } = require("../utils/horario");
-const { notificarAtendente }                                = require("../services/notificacao.service");
+const { getSession, clearSession }                           = require("../services/session.service");
+const { createTicket }                                       = require("../services/ticket.service");
+const { estaEmHorarioDeAtendimento, mensagemForaDeHorario }  = require("../utils/horario");
+const { notificarAtendente, notificarSeDisponivel }          = require("../services/notificacao.service");
+const MSG                                                    = require("./messages");
 
 const suporteFlow    = require("./suporte.flow");
 const vendasFlow     = require("./vendas.flow");
 const financeiroFlow = require("./financeiro.flow");
 
+// Palavras que resetam a sessão e voltam ao menu principal
+const PALAVRAS_MENU = new Set([
+  "0", "menu", "inicio", "inicio", "voltar", "home",
+  "oi", "ola", "opa", "bom dia", "boa tarde", "boa noite",
+]);
+
+// Normaliza string: trim + lowercase + remove acentos
+function normalizar(str) {
+  return str.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
 function menuPrincipal() {
-  const horario = estaEmHorarioDeAtendimento();
-  const status  = horario ? "🟢 Atendimento aberto" : "🔴 *Fora do horário de atendimento*";
-
-  return ` 
-${status}
-Olá! Seja bem-vindo(a).
-
-Como podemos ajudar você hoje?
-
-1️ - Dúvidas frequentes
-2️ - Nossos serviços
-3️ - Horário de atendimento
-4️ - Suporte técnico
-5️ - Vendas / Orçamento
-6️ - Financeiro
-7️ - Falar com atendente
-
-_Digite o número da opção desejada._`;
+  const aberto = estaEmHorarioDeAtendimento();
+  const status  = aberto ? "🟢 Atendimento aberto" : "🔴 *Fora do horário de atendimento*";
+  return (
+    `${status}\n` +
+    "Olá! Seja bem-vindo(a).\n\n" +
+    "Como podemos ajudar você hoje?\n\n" +
+    "1️ - Dúvidas frequentes\n" +
+    "2️ - Nossos serviços\n" +
+    "3️ - Horário de atendimento\n" +
+    "4️ - Suporte técnico\n" +
+    "5️ - Vendas / Orçamento\n" +
+    "6️ - Financeiro\n" +
+    "7️ - Falar com atendente\n\n" +
+    "_Digite o número da opção desejada._"
+  );
 }
 
 async function mainFlow({ userId, message }) {
   const session = getSession(userId);
-  const msg     = message.trim().toLowerCase();
 
-  if (msg === "0" || msg === "menu" || msg === "início" || msg === "inicio") {
-    await clearSession(userId);
+  // Usa apenas msgNorm (já cobre acentos e variações) — condição única e sem redundância
+  const msgNorm = normalizar(message);
+
+  if (PALAVRAS_MENU.has(msgNorm)) {
+    clearSession(userId);
     return menuPrincipal();
   }
 
@@ -43,40 +54,62 @@ async function mainFlow({ userId, message }) {
 
   switch (message.trim()) {
     case "1":
-      return `❓ *Dúvidas Frequentes*\n\n*Como funciona o atendimento?*\nNosso atendimento inicial é automatizado. Se necessário, encaminhamos para um humano.\n\n*Posso falar com uma pessoa?*\nSim! Digite 7 no menu principal.\n\n*Qual o horário de atendimento?*\nVeja a opção 3 do menu.\n\n*Vocês fazem entrega?*\nEntre em contato via opção 5 (Vendas) para consultar.\n\nDigite *0* para voltar ao menu.`;
+      return (
+        "❓ *Dúvidas Frequentes*\n\n" +
+        "*Como funciona o atendimento?*\n" +
+        "Nosso atendimento inicial é automatizado. Se necessário, encaminhamos para um humano.\n\n" +
+        "*Posso falar com uma pessoa?*\n" +
+        "Sim! Digite 7 no menu principal.\n\n" +
+        "*Qual o horário de atendimento?*\n" +
+        "Veja a opção 3 do menu.\n\n" +
+        "*Vocês fazem entrega?*\n" +
+        "Entre em contato via opção 5 (Vendas) para consultar.\n\n" +
+        MSG.VOLTAR_MENU
+      );
 
     case "2":
-      return `🛠️ *Nossos Serviços*\n\n• Venda de peças elétricas\n• Suporte e consultoria técnica\n• Orçamentos personalizados\n• Atendimento presencial e online\n\nDigite *0* para voltar ao menu.`;
+      return (
+        "🛠️ *Nossos Serviços*\n\n" +
+        "• Venda de peças elétricas\n" +
+        "• Suporte e consultoria técnica\n" +
+        "• Orçamentos personalizados\n" +
+        "• Atendimento presencial e online\n\n" +
+        MSG.VOLTAR_MENU
+      );
 
     case "3":
-      return `🕐 *Horário de Atendimento*\n\n📅 Segunda a sexta: 07:50 às 17:50\n📅 Sábado: 07:50 às 12:00\n🚫 Domingo: Fechado\n\n${estaEmHorarioDeAtendimento() ? "✅ Estamos abertos agora!" : "⏰ No momento estamos fechados."}\n\nDigite *0* para voltar ao menu.`;
+      return (
+        "🕐 *Horário de Atendimento*\n\n" +
+        "🗓️ Segunda a sexta: *07:50h* às *17:50h*\n\n" +
+        "🗓️ Sábado: *07:50h* às *12:00h*\n\n" +
+        "🚫 Domingo: Fechado\n\n" +
+        `${estaEmHorarioDeAtendimento() ? "⚡ Estamos abertos agora!" : "⏰ No momento estamos fechados."}\n\n` +
+        MSG.VOLTAR_MENU
+      );
 
     case "4": return suporteFlow(message, userId, session);
     case "5": return vendasFlow(message, userId, session);
-
-    case "6": {
-      const ticket = await createTicket({
-        userId,
-        type:        "duvida_financeira",
-        description: "Cliente solicitou atendimento financeiro pelo menu principal.",
-      });
-      notificarAtendente(ticket);
-      return `💰 *Financeiro*\n\n    Sua solicitação foi registrada!\n\n    🎫 Protocolo: *#${ticket.protocolo}*\n    🕐 Aguarde, um atendente do financeiro entrará em contato em breve.\n\n    Digite *0* para voltar ao menu.`;
-    }
+    case "6": return financeiroFlow(message, userId, session);
 
     case "7": {
       const ticket = await createTicket({
         userId,
-        type:        "atendente_humano",
-        description: "Cliente solicitou atendimento humano via menu principal.",
+        type:         "atendente_humano",
+        sector:       "atendimento",
+        customerName: session.nome || MSG.NAO_INFORMADO,
+        description:  "Cliente solicitou atendimento humano",
       });
-      notificarAtendente(ticket);
 
-      if (!estaEmHorarioDeAtendimento()) {
-        return `${mensagemForaDeHorario()}\n\n🎫 Protocolo registrado: *#${ticket.protocolo}*`;
+      // Notifica apenas se estiver em horário de atendimento,
+      // evitando alertas desnecessários fora do expediente
+      if (estaEmHorarioDeAtendimento()) {
+        notificarAtendente(ticket);
+        return MSG.main.ATENDENTE_HUMANO(ticket);
       }
 
-      return `👤 *Atendimento Humano*\n\nSua solicitação foi registrada!\n\n🎫 Protocolo: *#${ticket.protocolo}*\n🕐 Aguarde, um atendente entrará em contato em breve.\n\nHorário: Seg–Sex 07:50–17:50 | Sáb 07:50–12:00\n\nDigite *0* para voltar ao menu.`;
+      // Fora do horário: registra protocolo mas não dispara notificação imediata
+      notificarSeDisponivel(ticket);
+      return `${mensagemForaDeHorario()}\n\n🎫 Protocolo registrado: *#${ticket.protocolo}*`;
     }
 
     default:

@@ -1,38 +1,39 @@
-const { updateSession, clearSession }                   = require("../services/session.service");
-const { createTicket, getTicketsByCPF }                 = require("../services/ticket.service");
+const { updateSession, clearSession }                       = require("../services/session.service");
+const { createTicket, getTicketsByCPF }                     = require("../services/ticket.service");
 const { validarCPF, validarNome, formatarCPF,
         validarTamanho, mensagemTamanhoInvalido,
-        sanitizarTexto }                                = require("../utils/validators");
+        sanitizarTexto }                                    = require("../utils/validators");
 const { estaEmHorarioDeAtendimento, mensagemForaDeHorario } = require("../utils/horario");
-const { notificarAtendente }                            = require("../services/notificacao.service");
+const { notificarAtendente }                                = require("../services/notificacao.service");
+const MSG                                                   = require("./messages");
 
 async function suporteFlow(message, userId, session) {
   const msg = sanitizarTexto(message.trim());
 
   if (session.sector === "suporte") {
 
+    // Passo 1: descrição do problema
     if (session.step === "aguardando_problema") {
       const v = validarTamanho(msg, 10);
       if (!v.ok) {
-        if (v.erro === "minimo") return "⚠️ Por favor, descreva o problema com mais detalhes (mínimo 10 caracteres).";
-        return mensagemTamanhoInvalido(10);
+        return v.erro === "minimo"
+          ? "⚠️ Por favor, descreva o problema com mais detalhes (mínimo 10 caracteres)."
+          : mensagemTamanhoInvalido(10);
       }
       await updateSession(userId, { problemDescription: msg, step: "aguardando_nome" });
-      return "📝 Entendido! Agora informe seu *nome completo* (nome e sobrenome).";
+      return MSG.suporte.PEDIR_NOME;
     }
 
+    // Passo 2: nome completo
     if (session.step === "aguardando_nome") {
-      if (!validarNome(msg)) {
-        return "⚠️ Por favor, informe seu *nome completo* (nome e sobrenome).";
-      }
+      if (!validarNome(msg)) return MSG.NOME_INVALIDO;
       await updateSession(userId, { customerName: msg, step: "aguardando_cpf" });
-      return "🪪 Informe seu *CPF* (somente números).";
+      return MSG.suporte.PEDIR_CPF;
     }
 
+    // Passo 3: CPF — cria ticket com todos os dados do cliente
     if (session.step === "aguardando_cpf") {
-      if (!validarCPF(msg)) {
-        return "⚠️ CPF inválido. Por favor, informe um *CPF válido* (somente números).";
-      }
+      if (!validarCPF(msg)) return MSG.CPF_INVALIDO;
 
       const ticket = await createTicket({
         userId,
@@ -45,61 +46,53 @@ async function suporteFlow(message, userId, session) {
       notificarAtendente(ticket);
       await clearSession(userId);
 
-      return `✅ *Chamado aberto com sucesso!*\n\n👤 Nome: ${ticket.customerName}\n🪪 CPF: ${ticket.cpf}\n🎫 Protocolo: *#${ticket.protocolo}*\n\n📋 Problema relatado:\n_${ticket.description}_\n\nNossa equipe irá analisar e retornar em breve.\nDigite *0* para voltar ao menu.`;
+      return MSG.suporte.CHAMADO_ABERTO(ticket);
     }
 
+    // Passo de consulta por CPF
     if (session.step === "aguardando_cpf_consulta") {
-      if (!validarCPF(msg)) {
-        return "⚠️ CPF inválido. Por favor, informe um *CPF válido* (somente números).";
-      }
+      if (!validarCPF(msg)) return MSG.CPF_INVALIDO;
 
       const tickets = await getTicketsByCPF(msg);
       await clearSession(userId);
 
-      if (tickets.length === 0) {
-        return `🔍 Nenhum chamado encontrado para o CPF informado.\n\nDigite *0* para voltar ao menu.`;
-      }
+      if (tickets.length === 0) return MSG.suporte.NENHUM_CHAMADO;
 
-      const lista = tickets
-        .slice(-5)
-        .map(t => `• *#${t.protocolo}* — ${t.type} — _${t.status}_\n  📅 ${new Date(t.createdAt).toLocaleDateString("pt-BR")}`)
-        .join("\n\n");
-
-      return `🔍 *Chamados encontrados (${tickets.length}):*\n\n${lista}\n\nDigite *0* para voltar ao menu.`;
+      // Exibe os últimos 5 e informa o total caso haja mais
+      return MSG.suporte.CONSULTA_RESULTADO(tickets);
     }
 
     switch (msg) {
       case "1":
         await updateSession(userId, { step: "aguardando_problema" });
-        return "🔧 Descreva o *problema técnico* que você está enfrentando:";
+        return MSG.suporte.PEDIR_PROBLEMA;
 
       case "2":
         await updateSession(userId, { step: "aguardando_cpf_consulta" });
-        return "🔍 Informe seu *CPF* para consultar seus atendimentos:";
+        return MSG.suporte.PEDIR_CPF_CONSULTA;
 
       case "3": {
         if (!estaEmHorarioDeAtendimento()) return mensagemForaDeHorario();
+
+        // Ticket de suporte humano inclui nome coletado na sessão (se disponível)
         const ticket = await createTicket({
           userId,
-          type:        "suporte_humano",
-          description: "Cliente solicitou suporte humano.",
+          type:         "suporte_humano",
+          customerName: session.customerName || MSG.NAO_INFORMADO,
+          description:  "Cliente solicitou suporte humano.",
         });
         notificarAtendente(ticket);
         await clearSession(userId);
-        return `👤 Você será atendido por um técnico em breve.\n\n🎫 Protocolo: *#${ticket.protocolo}*\n\nDigite *0* para voltar ao menu.`;
+        return MSG.suporte.TECNICO_HUMANO(ticket);
       }
 
       default:
-        return menuSuporte();
+        return MSG.suporte.MENU();
     }
   }
 
   await updateSession(userId, { sector: "suporte" });
-  return menuSuporte();
-}
-
-function menuSuporte() {
-  return `🔧 *Suporte Técnico*\n\nComo posso ajudar?\n\n1️⃣ - Abrir chamado técnico\n2️⃣ - Consultar chamado por CPF\n3️⃣ - Falar com técnico humano\n0️⃣ - Voltar ao menu principal`;
+  return MSG.suporte.MENU();
 }
 
 module.exports = suporteFlow;

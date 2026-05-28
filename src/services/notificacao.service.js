@@ -22,13 +22,12 @@ async function notificarAtendente(ticket) {
 
   const jid = normalizarJid(numero);
 
-  // Formata data/hora legível
-  const criadoEm = new Date(ticket.createdAt).toLocaleString("pt-BR", {
-    timeZone: process.env.TZ_ATENDIMENTO || "America/Maceio"
-  });
+  // FIX: usar TZ_NEGOCIO (nome correto no .env) — original usava TZ_ATENDIMENTO (variável inexistente)
+  const tz = process.env.TZ_NEGOCIO || "America/Maceio";
+  const criadoEm = new Date(ticket.createdAt).toLocaleString("pt-BR", { timeZone: tz });
 
   const mensagem =
-    `🔔 *Novo Ticket Aberto!*\n\n` +
+    "🔔 *Novo Ticket Aberto!*\n\n" +
     `🎫 Protocolo: *#${ticket.protocolo}*\n` +
     `📂 Tipo: ${ticket.type}\n` +
     `👤 Cliente: ${ticket.customerName}\n` +

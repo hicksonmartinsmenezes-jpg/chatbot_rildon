@@ -1,6 +1,18 @@
 const crypto = require("crypto");
 const pool = require("../database/postgres");
 
+async function gerarProtocolo() {
+  const ano = new Date().getFullYear();
+
+  const result = await pool.query(`
+    SELECT nextval('protocolo_seq') AS numero
+  `);
+
+  const numero = result.rows[0].numero;
+
+  return `${ano}-${String(numero).padStart(4, "0")}`;
+}
+
 async function create(ticket) {
   const id = ticket.id || crypto.randomUUID();
 
@@ -43,7 +55,7 @@ async function create(ticket) {
     ]
   );
 
-  return result.rows[0];
+  return mapTicket(result.rows[0]);
 }
 
 async function findAll({ status, search } = {}) {
@@ -93,9 +105,7 @@ async function updateStatus(id, status) {
     [status, String(id)]
   );
 
-  return result.rows[0]
-    ? mapTicket(result.rows[0])
-    : null;
+  return result.rows[0] ? mapTicket(result.rows[0]) : null;
 }
 
 async function assign(id, user) {
@@ -116,9 +126,7 @@ async function assign(id, user) {
     ]
   );
 
-  return result.rows[0]
-    ? mapTicket(result.rows[0])
-    : null;
+  return result.rows[0] ? mapTicket(result.rows[0]) : null;
 }
 
 async function transfer(id, sector) {
@@ -136,9 +144,7 @@ async function transfer(id, sector) {
     [sector, String(id)]
   );
 
-  return result.rows[0]
-    ? mapTicket(result.rows[0])
-    : null;
+  return result.rows[0] ? mapTicket(result.rows[0]) : null;
 }
 
 async function stats() {
@@ -171,20 +177,6 @@ function mapTicket(row) {
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
-}
-
-
-async function gerarProtocolo() {
-
-  const ano = new Date().getFullYear();
-
-  const result = await pool.query(`
-    SELECT nextval('protocolo_seq') AS numero
-  `);
-
-  const numero = result.rows[0].numero;
-
-  return `${ano}-${String(numero).padStart(4, "0")}`;
 }
 
 module.exports = {

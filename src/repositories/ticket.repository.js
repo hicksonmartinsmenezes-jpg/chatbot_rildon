@@ -173,11 +173,26 @@ function mapTicket(row) {
   };
 }
 
+
+async function gerarProtocolo() {
+
+  const ano = new Date().getFullYear();
+
+  const result = await pool.query(`
+    SELECT nextval('protocolo_seq') AS numero
+  `);
+
+  const numero = result.rows[0].numero;
+
+  return `${ano}-${String(numero).padStart(4, "0")}`;
+}
+
 module.exports = {
   create,
   findAll,
   updateStatus,
   assign,
   transfer,
-  stats
+  stats,
+  gerarProtocolo
 };

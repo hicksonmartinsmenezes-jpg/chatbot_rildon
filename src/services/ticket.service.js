@@ -1,36 +1,26 @@
 const crypto = require("crypto");
 const ticketRepository = require("../repositories/ticket.repository");
 const logger = require("../utils/logger");
-const { Mutex } = require("async-mutex");
 
 const TYPE_TO_SECTOR = {
-  duvida_financeira:    "financeiro",
+  duvida_financeira: "financeiro",
   atendente_financeiro: "financeiro",
-  consultor_vendas:     "vendas",
-  orcamento:            "vendas",
-  suporte_tecnico:      "suporte",
-  suporte_humano:       "suporte",   // FIX: tipo que existia nos flows mas faltava no mapa
-  garantia:             "garantia",
-  atendente_humano:     "geral",     // FIX: idem
+  consultor_vendas: "vendas",
+  orcamento: "vendas",
+  suporte_tecnico: "suporte",
+  suporte_humano: "suporte",
+  garantia: "garantia",
+  atendente_humano: "geral"
 };
 
-// FIX: mutex para evitar protocolos duplicados quando dois usuários abrem ticket ao mesmo tempo
-const _protocolMutex = new Mutex();
-
-async function proximoProtocolo() {
-  return _protocolMutex.runExclusive(async () => {
-    const ano = new Date().getFullYear();
-    const tickets = await ticketRepository.findAll();
-    const ticketsDoAno = tickets.filter(t =>
-      String(t.protocolo || "").startsWith(String(ano))
-    );
-    const seq = ticketsDoAno.length + 1;
-    return `${ano}-${String(seq).padStart(4, "0")}`;
-  });
-}
-
-async function createTicket({ userId, type, customerName, cpf, description }) {
-  const protocolo = await proximoProtocolo();
+async function createTicket({
+  userId,
+  type,
+  customerName,
+  cpf,
+  description
+}) {
+  const protocolo = await ticketRepository.gerarProtocolo();
   const sector = TYPE_TO_SECTOR[type] ?? "geral";
 
   const ticket = {
@@ -45,12 +35,13 @@ async function createTicket({ userId, type, customerName, cpf, description }) {
     sector,
     assignedTo: null,
     assignedToName: null,
-    createdAt: new Date(),
+    createdAt: new Date()
   };
 
   const criado = await ticketRepository.create(ticket);
-  // FIX: removido console.log de produção; substituído por logger
+
   logger.info(`Ticket criado: #${criado.protocolo} (${type})`);
+
   return criado;
 }
 
@@ -68,8 +59,12 @@ async function getTicketStats() {
 
 async function getTicketsByCPF(cpf) {
   const tickets = await ticketRepository.findAll();
-  const cpfLimpo = cpf.replace(/\D/g, "");
-  return tickets.filter(t => t.cpf && t.cpf.replace(/\D/g, "") === cpfLimpo);
+  const cpfLimpo = String(cpf || "").replace(/\D/g, "");
+
+  return tickets.filter(t => {
+    const cpfTicket = String(t.cpf || "").replace(/\D/g, "");
+    return cpfTicket === cpfLimpo;
+  });
 }
 
 async function assignTicket(id, user) {
@@ -81,6 +76,11 @@ async function transferTicket(id, sector) {
 }
 
 module.exports = {
-  createTicket, listTickets, updateTicketStatus,
-  assignTicket, transferTicket, getTicketStats, getTicketsByCPF,
+  createTicket,
+  listTickets,
+  updateTicketStatus,
+  assignTicket,
+  transferTicket,
+  getTicketStats,
+  getTicketsByCPF
 };

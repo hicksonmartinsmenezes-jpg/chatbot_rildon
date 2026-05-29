@@ -10,11 +10,11 @@ const financeiroFlow = require("./financeiro.flow");
 
 // Palavras que resetam a sessão e voltam ao menu principal
 const PALAVRAS_MENU = new Set([
-  "0", "menu", "inicio", "inicio", "voltar", "home",
+  "0", "menu", "inicio", "voltar", "home",
   "oi", "ola", "opa", "bom dia", "boa tarde", "boa noite",
 ]);
 
-// Normaliza string: trim + lowercase + remove acentos
+// Normaliza: trim + lowercase + remove acentos
 function normalizar(str) {
   return str.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
@@ -40,7 +40,9 @@ function menuPrincipal() {
 async function mainFlow({ userId, message }) {
   const session = getSession(userId);
 
-  // Usa apenas msgNorm (já cobre acentos e variações) — condição única e sem redundância
+  // MELHORIA: msgNorm é usado em TODOS os pontos de decisão (inclusive no switch)
+  // Antes o switch usava message.trim() sem normalização, causando falhas com
+  // entradas como "4 " (espaço extra) ou variações de encoding.
   const msgNorm = normalizar(message);
 
   if (PALAVRAS_MENU.has(msgNorm)) {
@@ -52,7 +54,8 @@ async function mainFlow({ userId, message }) {
   if (session.sector === "vendas")     return vendasFlow(message, userId, session);
   if (session.sector === "financeiro") return financeiroFlow(message, userId, session);
 
-  switch (message.trim()) {
+  // MELHORIA: switch usa msgNorm (normalizado) em vez de message.trim()
+  switch (msgNorm) {
     case "1":
       return (
         "❓ *Dúvidas Frequentes*\n\n" +
@@ -100,14 +103,11 @@ async function mainFlow({ userId, message }) {
         description:  "Cliente solicitou atendimento humano",
       });
 
-      // Notifica apenas se estiver em horário de atendimento,
-      // evitando alertas desnecessários fora do expediente
       if (estaEmHorarioDeAtendimento()) {
         notificarAtendente(ticket);
         return MSG.main.ATENDENTE_HUMANO(ticket);
       }
 
-      // Fora do horário: registra protocolo mas não dispara notificação imediata
       notificarSeDisponivel(ticket);
       return `${mensagemForaDeHorario()}\n\n🎫 Protocolo registrado: *#${ticket.protocolo}*`;
     }

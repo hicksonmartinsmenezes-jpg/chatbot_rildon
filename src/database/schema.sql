@@ -1,133 +1,104 @@
--- ─────────────────────────────────────────────────────────────────────────────
--- Schema chatbot_rildon — v2 (com sessões e protocolo atômico)
--- Execute: psql -U postgres -d chatbot_rildon -f schema.sql
--- É idempotente: pode rodar mais de uma vez sem erro.
--- ─────────────────────────────────────────────────────────────────────────────
+-- ─── Schema Principal ─────────────────────────────────────────────────────────
+-- Execute este arquivo para criar/atualizar as tabelas do banco.
+-- É seguro rodar múltiplas vezes (IF NOT EXISTS / ON CONFLICT).
 
-CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-
--- ── Usuários do painel ────────────────────────────────────────────────────────
+-- Usuários do painel
 CREATE TABLE IF NOT EXISTS users (
-  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  nome        VARCHAR(120) NOT NULL,
-  usuario     VARCHAR(80)  UNIQUE NOT NULL,
+  id          SERIAL PRIMARY KEY,
+  nome        VARCHAR(255) NOT NULL,
+  usuario     VARCHAR(100) UNIQUE NOT NULL,
   senha       TEXT         NOT NULL,
-  perfil      VARCHAR(30)  DEFAULT 'atendente',
-  sector      VARCHAR(80)  DEFAULT 'geral',
-  numero      VARCHAR(30),
+  perfil      VARCHAR(50)  NOT NULL DEFAULT 'operador',
+  email       VARCHAR(255),
   foto        TEXT,
-  ativo       BOOLEAN      DEFAULT true,
-  created_at  TIMESTAMP    DEFAULT NOW(),
-  updated_at  TIMESTAMP
+  ativo       BOOLEAN      NOT NULL DEFAULT TRUE,
+  created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
--- ── Tickets de atendimento ────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS tickets (
-  id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  protocolo        VARCHAR(40) UNIQUE NOT NULL,
-  user_id          VARCHAR(120),
-  customer_name    VARCHAR(120),
-  cpf              VARCHAR(30),
-  type             VARCHAR(80),
-  sector           VARCHAR(80),
-  description      TEXT,
-  status           VARCHAR(40) DEFAULT 'aberto',
-  assigned_to      UUID,
-  assigned_to_name VARCHAR(120),
-  created_at       TIMESTAMP   DEFAULT NOW(),
-  updated_at       TIMESTAMP
-);
-
--- ── Sequência dedicada para número de protocolo (sem colisão) ─────────────────
--- Gera números únicos e incrementais por ano.
--- Uso: SELECT nextval('protocolo_seq') para obter o próximo número.
-CREATE SEQUENCE IF NOT EXISTS protocolo_seq
-  START WITH 1
-  INCREMENT BY 1
-  NO CYCLE;
-
--- ── Histórico de conversas ────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS history (
-  id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id      VARCHAR(120),
-  contact_name VARCHAR(120),
-  message      TEXT,
-  response     TEXT,
-  sector       VARCHAR(80),
-  status       VARCHAR(40),
-  message_id   VARCHAR(120),
-  created_at   TIMESTAMP   DEFAULT NOW()
-);
-
--- ── Logs de atividade do painel ───────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS activity_logs (
-  id          UUID      PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id     VARCHAR(120),
-  user_name   VARCHAR(120),
-  action      VARCHAR(120),
-  description TEXT,
-  extra       JSONB,
-  created_at  TIMESTAMP DEFAULT NOW()
-);
-
--- ── Respostas rápidas ─────────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS quick_replies (
-  id         UUID      PRIMARY KEY DEFAULT gen_random_uuid(),
-  shortcut   VARCHAR(80),
-  message    TEXT,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
--- ── Configurações do sistema ──────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS settings (
-  id         SERIAL    PRIMARY KEY,
-  key        VARCHAR(120) UNIQUE NOT NULL,
-  value      TEXT,
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP
-);
-
--- ── Sessões WhatsApp (substitui sessions.json em disco) ───────────────────────
--- Persiste o contexto de conversa dos usuários do WhatsApp.
--- TTL: limpar sessões inativas com: DELETE FROM sessions WHERE updated_at < NOW() - INTERVAL '24 hours'
-CREATE TABLE IF NOT EXISTS sessions (
-  user_id    VARCHAR(120) PRIMARY KEY,
-  data       JSONB        NOT NULL DEFAULT '{}',
-  created_at TIMESTAMP    DEFAULT NOW(),
-  updated_at TIMESTAMP    DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS audit_logs (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id VARCHAR(120),
-  user_name VARCHAR(120),
-  user_role VARCHAR(60),
-  action VARCHAR(120),
-  target VARCHAR(120),
-  details JSONB,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-
-CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at
-ON audit_logs(created_at);
-
-
+-- Sessões de autenticação do painel (Bearer tokens)
 CREATE TABLE IF NOT EXISTS auth_sessions (
-  token VARCHAR(255) PRIMARY KEY,
-  user_data JSONB NOT NULL,
-  expires_at BIGINT NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW()
+  token       TEXT         PRIMARY KEY,
+  user_data   JSONB        NOT NULL,
+  expires_at  BIGINT       NOT NULL,
+  created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires ON auth_sessions (expires_at);
+
+-- Sessões de conversação do bot (estado do fluxo por usuário)
+CREATE TABLE IF NOT EXISTS sessions (
+  user_id     TEXT         PRIMARY KEY,
+  data        JSONB        NOT NULL DEFAULT '{}',
+  created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions (updated_at);
+
+-- Tickets de atendimento
+CREATE TABLE IF NOT EXISTS tickets (
+  id            SERIAL       PRIMARY KEY,
+  protocolo     VARCHAR(50)  UNIQUE NOT NULL,
+  user_id       TEXT         NOT NULL,
+  type          VARCHAR(100) NOT NULL,
+  sector        VARCHAR(100) NOT NULL DEFAULT 'geral',
+  customer_name TEXT,
+  cpf           VARCHAR(20),
+  description   TEXT,
+  status        VARCHAR(50)  NOT NULL DEFAULT 'aberto',
+  assigned_to   INTEGER      REFERENCES users(id) ON DELETE SET NULL,
+  created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_tickets_user_id   ON tickets (user_id);
+CREATE INDEX IF NOT EXISTS idx_tickets_status    ON tickets (status);
+CREATE INDEX IF NOT EXISTS idx_tickets_protocolo ON tickets (protocolo);
+
+-- Histórico de mensagens
+CREATE TABLE IF NOT EXISTS history (
+  id           SERIAL       PRIMARY KEY,
+  user_id      TEXT         NOT NULL,
+  contact_name TEXT,
+  message      TEXT         NOT NULL,
+  response     TEXT,
+  sector       VARCHAR(100) NOT NULL DEFAULT 'main',
+  created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_history_user_id    ON history (user_id);
+CREATE INDEX IF NOT EXISTS idx_history_created_at ON history (created_at);
+
+-- Respostas rápidas
+CREATE TABLE IF NOT EXISTS quick_replies (
+  id         SERIAL       PRIMARY KEY,
+  titulo     VARCHAR(255) NOT NULL,
+  texto      TEXT         NOT NULL,
+  created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires
-ON auth_sessions(expires_at);
+-- Configurações do sistema
+CREATE TABLE IF NOT EXISTS settings (
+  chave      TEXT  PRIMARY KEY,
+  valor      JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
--- ── Índices ───────────────────────────────────────────────────────────────────
-CREATE INDEX IF NOT EXISTS idx_tickets_status      ON tickets(status);
-CREATE INDEX IF NOT EXISTS idx_tickets_user_id     ON tickets(user_id);
-CREATE INDEX IF NOT EXISTS idx_tickets_created_at  ON tickets(created_at);
-CREATE INDEX IF NOT EXISTS idx_history_user_id     ON history(user_id);
-CREATE INDEX IF NOT EXISTS idx_history_created_at  ON history(created_at);
-CREATE INDEX IF NOT EXISTS idx_logs_created_at     ON activity_logs(created_at);
-CREATE INDEX IF NOT EXISTS idx_sessions_updated_at ON sessions(updated_at);
+-- Log de atividades do painel
+CREATE TABLE IF NOT EXISTS activity_log (
+  id          SERIAL       PRIMARY KEY,
+  usuario_id  INTEGER      REFERENCES users(id) ON DELETE SET NULL,
+  usuario     TEXT,
+  acao        TEXT         NOT NULL,
+  detalhes    TEXT,
+  ip          TEXT,
+  created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_activity_log_created ON activity_log (created_at);
+
+-- ─── MELHORIA: tabela de deduplicação de mensagens ────────────────────────────
+-- Garante que mensagens recebidas do WhatsApp não sejam processadas duas vezes,
+-- mesmo após reinicializações do processo Node.js.
+-- Entradas com mais de 24h são removidas automaticamente pelo server.js.
+CREATE TABLE IF NOT EXISTS processed_messages (
+  message_id   TEXT         PRIMARY KEY,
+  processed_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_processed_messages_at ON processed_messages (processed_at);

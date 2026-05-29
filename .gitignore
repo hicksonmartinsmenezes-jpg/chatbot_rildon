@@ -1,38 +1,21 @@
-# Dependências
-node_modules/
-
-# Variáveis de ambiente — NUNCA versionar
+# ── Ambiente ──────────────────────────────────────────────────
 .env
-.env.*
-!.env.example
 
-# Sessão do WhatsApp — contém chaves privadas da conta
-# NUNCA versionar, compartilhar em zip ou subir para repositório
+# ── WhatsApp (credenciais da sessão — NUNCA versionar) ────────
 auth_info/
 
-# Dados gerados em runtime
-src/data/tickets.json
-src/data/tickets_contador.json
-src/data/history.json
-src/data/sessions.json
-src/data/auth_sessions.json
-
-# Arquivos temporários de escrita atômica
-src/data/*.tmp
-
-# Logs
-src/logs/
-
-# Backups automáticos
+# ── Dados gerados em runtime ──────────────────────────────────
 src/backups/
-
-# Uploads de perfil (dados de usuário, não código)
+src/logs/
+src/data/
 src/uploads/profiles/
 
-# Sistema operacional
+# ── Node.js ───────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── SO ────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
-
-# Editor
-.vscode/
-.idea/

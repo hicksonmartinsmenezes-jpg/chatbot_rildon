@@ -1,89 +1,99 @@
-# ⚡ Chatbot Rildon Eletropeças v7
+# Chatbot WhatsApp — Rildon Eletropeças
 
-Chatbot WhatsApp sem API paga — Baileys + Node.js + PostgreSQL.
+Bot de atendimento via WhatsApp com painel de administração. Stack: **Node.js + Baileys + PostgreSQL + Socket.io**.
 
-## ✅ O que há de novo na v7 (melhorias)
+---
 
-### 🔒 Segurança
-- `.gitignore` reforçado: `auth_info/`, `src/uploads/profiles/`, `.env.*` e outros dados sensíveis explicitamente ignorados
-- `sanitizarTexto()` em todos os campos de entrada livre — remove caracteres de controle antes de persistir
-- Senha mínima de 4 caracteres e validação de formato de foto no perfil (já existia, mantido)
-- `DB_PASSWORD` verificada na inicialização com aviso explícito se ausente
-
-### 🎫 Protocolo atômico (sem colisão)
-- Geração via `SELECT nextval('protocolo_seq')` no PostgreSQL
-- Atomicidade garantida pelo banco — sem race condition mesmo com múltiplas requisições paralelas
-- Formato mantido: `YYYY-NNNN` (ex: `2026-0001`)
-
-### 💾 Sessões no PostgreSQL (tabela `sessions`)
-- Sessões persistem reinicializações do servidor
-- Cache em memória para leituras rápidas; escrita sempre vai ao banco (upsert)
-- Limpeza automática de sessões inativas via TTL configurável (`SESSION_TTL_HORAS`, padrão: 24h)
-- Compatível com PM2 fork mode e cluster mode (sessões compartilhadas via banco)
-
-### 🗄️ PostgreSQL consolidado
-- Pool configurável via `.env` (tamanho, timeouts)
-- `verificarConexao()` na inicialização: servidor não sobe se o banco estiver inacessível
-- `schema.sql` idempotente com `CREATE TABLE IF NOT EXISTS` e `CREATE SEQUENCE IF NOT EXISTS`
-- Inicialização sequencial em `server.js`: banco → HTTP → WhatsApp
-
-## ⚠️ PM2 — Fork mode vs Cluster mode
-
-| Modo | Funciona? | Observação |
-|------|-----------|------------|
-| `fork` (padrão) | ✅ Sim | Recomendado. |
-| `cluster` | ✅ Sim (v7) | Sessões no banco são compartilhadas entre workers. |
-
-## 🚀 Como instalar
+## Configuração rápida
 
 ```bash
-npm install
+# 1. Copiar e preencher as variáveis de ambiente
 cp .env.example .env
-# Edite o .env com suas configurações (banco, número, tokens)
+# edite .env com suas credenciais reais
 
-# Criar banco e tabelas
-psql -U postgres -c "CREATE DATABASE chatbot_rildon;"
+# 2. Instalar dependências
+npm install
+
+# 3. Criar tabelas no banco
 psql -U postgres -d chatbot_rildon -f src/database/schema.sql
 
+# 4. Iniciar em desenvolvimento
 npm run dev
+
+# 5. Iniciar em produção
+npm start
 ```
 
-Escaneie o QR Code que aparecer no terminal com o WhatsApp.
+---
 
-## 🌐 Painel web
+## Variáveis de ambiente obrigatórias
 
-Acesse: http://localhost:3000
+| Variável         | Descrição                                          |
+|------------------|----------------------------------------------------|
+| `API_TOKEN`      | Token Bearer para autenticação da API externa      |
+| `JWT_SECRET`     | Segredo para assinar tokens de sessão do painel    |
+| `DB_PASSWORD`    | Senha do PostgreSQL                                |
+| `ATENDENTE_NUMBER` | Número WhatsApp que recebe notificações de tickets |
 
-## 📁 Estrutura
+Gerar tokens seguros:
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+---
+
+## Melhorias aplicadas (v7 → v8)
+
+### 🔴 Segurança
+- **`.gitignore` completo**: `.env`, `auth_info/`, `src/backups/`, `src/logs/`, `src/data/` e `src/uploads/profiles/` nunca serão versionados
+- **CSP habilitada**: `contentSecurityPolicy` do Helmet estava `false`. Agora tem política configurada via `CSP_CONNECT_SRC` no `.env`
+- **SSL para PostgreSQL**: suporte a `DB_SSL=true` para conexões em produção (Heroku, Railway, Render)
+
+### 🟡 Confiabilidade
+- **Deduplicação persistente**: o `Set` em memória que deduplicava mensagens era perdido em cada restart. Agora usa a tabela `processed_messages` no PostgreSQL como segunda camada — mensagens recentes (últimas 24h) não são reprocessadas mesmo após reinicializações
+- **Limpeza automática da tabela de dedup**: `setInterval` a cada 6h remove entradas antigas; evita crescimento indefinido
+- **`main.flow.js` — switch usa `msgNorm`**: o switch anterior usava `message.trim()` sem normalização, causando falhas com entradas como `"4 "` (espaço extra) ou variações de acentuação. Agora usa a string já normalizada (`msgNorm`)
+
+### 🟠 Escalabilidade
+- **Rate limiter com abstração**: o objeto global `rateLimits` foi encapsulado em uma classe `MemoryRateLimiter` com interface documentada. Para migrar para Redis (necessário em múltiplas instâncias), basta criar `src/services/rateLimiter.redis.js` implementando os métodos `hit(userId)` e `cleanup()` e importar no lugar da implementação em memória
+
+### 🔧 Manutenibilidade
+- **`notificarSeDisponivel` exportado**: a função existia apenas como referência mas não estava no `module.exports`, causando erro em runtime. Agora exportada corretamente com semântica clara (fora do horário: registra mas não envia)
+- **`schema.sql` atualizado**: tabela `processed_messages` adicionada com índice para limpeza eficiente
+
+---
+
+## Estrutura do projeto
 
 ```
 src/
-├── config/whatsapp.js         # Conexão Baileys
+├── app.js              # Express, middlewares, rotas
+├── server.js           # Inicialização sequencial (banco → backup → HTTP → WhatsApp)
+├── config/
+│   └── whatsapp.js     # Conexão Baileys, reconexão, deduplicação
 ├── database/
-│   ├── postgres.js            # Pool + verificarConexao()
-│   └── schema.sql             # Tabelas + sequence protocolo_seq
-├── flows/                     # Fluxos de conversa (main/suporte/vendas/financeiro)
-├── services/
-│   ├── session.service.js     # Sessões no PostgreSQL + cache em memória
-│   ├── ticket.service.js      # Protocolo atômico via SEQUENCE
-│   ├── message.service.js     # Processamento com fila e rate limit
-│   └── ...
-└── utils/
-    ├── validators.js          # CPF, nome, tamanho + sanitizarTexto()
-    └── horario.js             # Horário de atendimento por timezone
+│   ├── postgres.js     # Pool de conexões, dedup helpers
+│   └── schema.sql      # DDL completo
+├── flows/              # Lógica de conversação por setor
+│   ├── main.flow.js
+│   ├── suporte.flow.js
+│   ├── vendas.flow.js
+│   ├── financeiro.flow.js
+│   └── messages.js
+├── services/           # Lógica de negócio
+├── routes/             # Endpoints da API REST
+├── repositories/       # Acesso ao banco por entidade
+├── middlewares/        # Auth, upload
+├── controllers/        # Orquestração request → service
+└── utils/              # logger, horario, validators
 ```
 
-## 🔑 Variáveis de ambiente importantes
+---
 
-| Variável | Descrição | Padrão |
-|---|---|---|
-| `DB_HOST` | Host do PostgreSQL | `localhost` |
-| `DB_PORT` | Porta | `5432` |
-| `DB_USER` | Usuário | `postgres` |
-| `DB_PASSWORD` | Senha (obrigatório) | — |
-| `DB_NAME` | Nome do banco | `chatbot_rildon` |
-| `DB_POOL_MAX` | Conexões no pool | `10` |
-| `SESSION_TTL_HORAS` | Expirar sessões inativas após N horas | `24` |
-| `ATENDENTE_NUMBER` | Número WhatsApp do atendente | — |
-| `AVISO_MINUTOS` | Aviso de inatividade | `3` |
-| `TIMEOUT_MINUTOS` | Encerramento por inatividade | `5` |
+## Segurança em produção
+
+1. **Nunca versionar** `.env` nem a pasta `auth_info/` — as credenciais da sessão WhatsApp estão lá
+2. Gerar novos valores para `API_TOKEN`, `JWT_SECRET` e `DB_PASSWORD` antes do deploy
+3. Configurar `CSP_CONNECT_SRC` com o domínio real do frontend (não usar `*`)
+4. Habilitar `DB_SSL=true` se o banco for remoto
+5. Usar HTTPS em produção (nginx, Caddy ou similar como proxy reverso)

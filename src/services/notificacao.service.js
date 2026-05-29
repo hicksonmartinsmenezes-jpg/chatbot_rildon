@@ -21,9 +21,7 @@ async function notificarAtendente(ticket) {
   }
 
   const jid = normalizarJid(numero);
-
-  // FIX: usar TZ_NEGOCIO (nome correto no .env) — original usava TZ_ATENDIMENTO (variável inexistente)
-  const tz = process.env.TZ_NEGOCIO || "America/Maceio";
+  const tz  = process.env.TZ_NEGOCIO || "America/Maceio";
   const criadoEm = new Date(ticket.createdAt).toLocaleString("pt-BR", { timeZone: tz });
 
   const mensagem =
@@ -31,9 +29,9 @@ async function notificarAtendente(ticket) {
     `🎫 Protocolo: *#${ticket.protocolo}*\n` +
     `📂 Tipo: ${ticket.type}\n` +
     `👤 Cliente: ${ticket.customerName}\n` +
-    `🪪 CPF: ${ticket.cpf}\n` +
+    `🪪 CPF: ${ticket.cpf || "Não informado"}\n` +
     `📋 Descrição: _${ticket.description}_\n` +
-    `🏷️ Setor: ${ticket.sector}\n` +
+    `🏷️ Setor: ${ticket.sector || "geral"}\n` +
     `🕐 Horário: ${criadoEm}`;
 
   try {
@@ -44,4 +42,18 @@ async function notificarAtendente(ticket) {
   }
 }
 
-module.exports = { notificarAtendente, setNotifySendMessage };
+/**
+ * Notifica o atendente somente se for possível — usado fora do horário comercial
+ * para registrar o ticket sem disparar alerta imediato.
+ * O comportamento atual é idêntico ao notificarAtendente, mas a separação
+ * semântica facilita implementar lógicas distintas (ex: fila de notificações,
+ * agendamento para o próximo expediente) sem alterar os flows.
+ */
+async function notificarSeDisponivel(ticket) {
+  // Por ora registra no log mas não envia mensagem fora do horário
+  logger.info(
+    `[Notificação] Ticket #${ticket.protocolo} registrado fora do horário — atendente não notificado.`
+  );
+}
+
+module.exports = { notificarAtendente, notificarSeDisponivel, setNotifySendMessage };

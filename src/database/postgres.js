@@ -1,19 +1,21 @@
 /**
- * Pool de conexões PostgreSQL com configuração via .env e
- * verificação de conectividade na inicialização.
+ * Pool de conexões PostgreSQL.
+ * Configuração via variáveis de ambiente (.env).
  */
 const { Pool } = require("pg");
 const logger   = require("../utils/logger");
 
 const pool = new Pool({
-  host:               process.env.DB_HOST     || "localhost",
-  port:               Number(process.env.DB_PORT) || 5432,
-  user:               process.env.DB_USER     || "postgres",
-  password:           process.env.DB_PASSWORD,
-  database:           process.env.DB_NAME     || "chatbot_rildon",
-  max:                Number(process.env.DB_POOL_MAX)                || 10,
-  idleTimeoutMillis:  Number(process.env.DB_POOL_IDLE_TIMEOUT)       || 30000,
-  connectionTimeoutMillis: Number(process.env.DB_POOL_CONNECTION_TIMEOUT) || 5000,
+  host:     process.env.DB_HOST     || "localhost",
+  port:     Number(process.env.DB_PORT) || 5432,
+  user:     process.env.DB_USER     || "postgres",
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME     || "chatbot_rildon",
+  max:      Number(process.env.DB_POOL_MAX)                || 10,
+  idleTimeoutMillis:       Number(process.env.DB_POOL_IDLE_TIMEOUT)        || 30000,
+  connectionTimeoutMillis: Number(process.env.DB_POOL_CONNECTION_TIMEOUT)  || 5000,
+  // MELHORIA: suporte a SSL para conexões em produção (ex: Heroku, Railway, Render)
+  ssl: process.env.DB_SSL === "true" ? { rejectUnauthorized: false } : false
 });
 
 pool.on("error", (err) => {
@@ -22,20 +24,62 @@ pool.on("error", (err) => {
 
 /**
  * Verifica conexão com o banco na inicialização.
- * Lança erro se não conseguir conectar (impede o servidor de subir sem banco).
+ * Lança erro se não conseguir conectar — impede o servidor de subir sem banco.
  */
 async function verificarConexao() {
+  const client = await pool.connect();
   try {
-    const client = await pool.connect();
-    const res    = await client.query("SELECT NOW() AS agora");
-    client.release();
+    const res = await client.query("SELECT NOW() AS agora");
     logger.success(`[PostgreSQL] Conectado — servidor: ${res.rows[0].agora}`);
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * MELHORIA: cria a tabela de deduplicação caso não exista.
+ * Chamado uma vez na inicialização (server.js).
+ * Mantém apenas mensagens das últimas 24h para não crescer indefinidamente.
+ */
+async function garantirTabelaDedup() {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS processed_messages (
+        message_id   TEXT        PRIMARY KEY,
+        processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    // Índice para limpeza periódica eficiente
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_processed_messages_at
+        ON processed_messages (processed_at)
+    `);
+
+    logger.info("[PostgreSQL] Tabela processed_messages pronta.");
   } catch (err) {
-    logger.error(`[PostgreSQL] Falha ao conectar: ${err.message}`);
-    logger.error("[PostgreSQL] Verifique DB_HOST, DB_USER, DB_PASSWORD e DB_NAME no .env");
-    throw err;
+    logger.warn(`[PostgreSQL] Não foi possível criar tabela de dedup: ${err.message}`);
+  }
+}
+
+/**
+ * Remove entradas de deduplicação com mais de 24h.
+ * Chamado periodicamente em server.js para evitar crescimento da tabela.
+ */
+async function limparMensagensProcessadas() {
+  try {
+    const res = await pool.query(
+      `DELETE FROM processed_messages WHERE processed_at < NOW() - INTERVAL '24 hours'`
+    );
+    if (res.rowCount > 0) {
+      logger.info(`[Dedup] ${res.rowCount} entrada(s) antigas removidas.`);
+    }
+  } catch (err) {
+    logger.warn(`[Dedup] Erro na limpeza: ${err.message}`);
   }
 }
 
 module.exports = pool;
-module.exports.verificarConexao = verificarConexao;
+module.exports.verificarConexao          = verificarConexao;
+module.exports.garantirTabelaDedup       = garantirTabelaDedup;
+module.exports.limparMensagensProcessadas = limparMensagensProcessadas;

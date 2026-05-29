@@ -1,4 +1,4 @@
-const mainFlow    = require("../flows/main.flow");
+const mainFlow        = require("../flows/main.flow");
 const { saveHistory } = require("./history.service");
 const { enqueue }     = require("./queue.service");
 const { getSession }  = require("./session.service");
@@ -7,39 +7,63 @@ const { emitEvent }   = require("./socket.service");
 const logger          = require("../utils/logger");
 
 // ─── Rate Limiting ───────────────────────────────────────────────────────────
-const rateLimits = {};
-const RATE_MAX   = parseInt(process.env.RATE_LIMIT_MAX       || "10");
-const RATE_JANELA = parseInt(process.env.RATE_LIMIT_JANELA_MS || "10000");
+//
+// MELHORIA: o objeto rateLimits era persistido em memória global, o que significa:
+//   1. Perde os contadores em cada restart do processo.
+//   2. Em múltiplas instâncias (Docker Swarm, PM2 cluster), cada processo tem
+//      seu próprio contador — o limite real efetivo é N×RATE_MAX.
+//
+// Solução aplicada: abstração RateLimiter com implementação em memória padrão,
+// pronta para ser trocada por Redis sem alterar o restante do código.
+// Para ativar Redis, basta criar src/services/rateLimiter.redis.js e importar aqui.
+//
+// Estrutura da abstração:
+//   - hit(userId): registra uma requisição, retorna true se ainda dentro do limite
+//   - cleanup():   remove entradas antigas (chamado periodicamente)
+// ─────────────────────────────────────────────────────────────────────────────
 
-// Remove entradas de usuários que já não estão ativos há mais de 1 hora
-// para evitar crescimento indefinido do objeto em memória.
-setInterval(() => {
-  const agora = Date.now();
-  const UMA_HORA = 60 * 60 * 1000;
-  for (const userId of Object.keys(rateLimits)) {
-    if (agora - rateLimits[userId].inicio > UMA_HORA) {
-      delete rateLimits[userId];
+const RATE_MAX    = parseInt(process.env.RATE_LIMIT_MAX        || "10");
+const RATE_JANELA = parseInt(process.env.RATE_LIMIT_JANELA_MS  || "10000");
+
+class MemoryRateLimiter {
+  constructor() {
+    this._store = {};
+
+    // Limpeza periódica: remove entradas inativas há mais de 1 hora
+    setInterval(() => this.cleanup(), 10 * 60 * 1000);
+  }
+
+  hit(userId) {
+    const agora = Date.now();
+
+    if (!this._store[userId]) {
+      this._store[userId] = { count: 0, inicio: agora };
+    }
+
+    const r = this._store[userId];
+
+    if (agora - r.inicio > RATE_JANELA) {
+      r.count = 0;
+      r.inicio = agora;
+    }
+
+    r.count++;
+    return r.count <= RATE_MAX;
+  }
+
+  cleanup() {
+    const agora    = Date.now();
+    const UMA_HORA = 60 * 60 * 1000;
+
+    for (const userId of Object.keys(this._store)) {
+      if (agora - this._store[userId].inicio > UMA_HORA) {
+        delete this._store[userId];
+      }
     }
   }
-}, 10 * 60 * 1000); // roda a cada 10 minutos
-
-function verificarRateLimit(userId) {
-  const agora = Date.now();
-
-  if (!rateLimits[userId]) {
-    rateLimits[userId] = { count: 0, inicio: agora };
-  }
-
-  const r = rateLimits[userId];
-
-  if (agora - r.inicio > RATE_JANELA) {
-    r.count = 0;
-    r.inicio = agora;
-  }
-
-  r.count++;
-  return r.count <= RATE_MAX;
 }
+
+const rateLimiter = new MemoryRateLimiter();
 
 // ─── Processamento ───────────────────────────────────────────────────────────
 async function processMessage({ userId, contactName, message }) {
@@ -50,7 +74,7 @@ async function processMessage({ userId, contactName, message }) {
     return "";
   }
 
-  if (!verificarRateLimit(userId)) {
+  if (!rateLimiter.hit(userId)) {
     logger.warn(`Rate limit atingido para ${userId}`);
     return "⚠️ Muitas mensagens em pouco tempo. Aguarde alguns segundos e tente novamente.";
   }
@@ -62,13 +86,7 @@ async function processMessage({ userId, contactName, message }) {
     const session  = getSession(userId);
 
     try {
-      await saveHistory({
-        userId,
-        contactName,
-        message,
-        response,
-        sector: session.sector || "main"
-      });
+      await saveHistory({ userId, contactName, message, response, sector: session.sector || "main" });
 
       emitEvent("nova_mensagem", {
         userId,

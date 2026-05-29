@@ -1,6 +1,54 @@
 // 08-settings.js
 // Arquivo modularizado automaticamente a partir do app.js original.
 
+
+// ─── Navegação visual da Central de Configurações ─────────────────────────────
+const SETTINGS_PANEL_TITLES = {
+  usuarios: "Usuários do painel",
+  empresa: "Dados da empresa",
+  atendimento: "Atendimento humano",
+  aparencia: "Aparência",
+  notificacoes: "Notificações",
+  historico: "Histórico"
+};
+
+function openSettingsPanel(panelName) {
+  const home = document.getElementById("settings-home");
+  const grid = document.getElementById("settings-detail-grid");
+  const toolbar = document.getElementById("settings-panel-toolbar");
+  const title = document.getElementById("settings-panel-title");
+
+  if (!grid) return;
+
+  home?.classList.add("hidden");
+  toolbar?.classList.remove("hidden");
+  grid.classList.remove("hidden");
+  grid.classList.add("single-panel");
+
+  document.querySelectorAll("[data-settings-panel]").forEach(card => {
+    card.classList.toggle("hidden", card.dataset.settingsPanel !== panelName);
+  });
+
+  if (title) {
+    title.textContent = SETTINGS_PANEL_TITLES[panelName] || "Configurações";
+  }
+}
+
+function backToSettingsHome() {
+  const home = document.getElementById("settings-home");
+  const grid = document.getElementById("settings-detail-grid");
+  const toolbar = document.getElementById("settings-panel-toolbar");
+
+  home?.classList.remove("hidden");
+  toolbar?.classList.add("hidden");
+  grid?.classList.add("hidden");
+  grid?.classList.remove("single-panel");
+
+  document.querySelectorAll("[data-settings-panel]").forEach(card => {
+    card.classList.remove("hidden");
+  });
+}
+
 // ─── Configurações ────────────────────────────────────────────────────────────
 let currentSettings = null;
 

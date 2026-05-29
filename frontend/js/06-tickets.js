@@ -78,17 +78,171 @@ if (currentTab === "metrics") {
 
 function updateStats(stats, tickets = []) {
   if (!stats) return;
+
   const total     = stats.total ?? 0;
   const aberto    = stats.aberto ?? stats.abertos ?? 0;
   const andamento = stats.em_andamento ?? 0;
   const resolvido = stats.resolvido ?? stats.resolvidos ?? 0;
+  const cancelado = stats.cancelado ?? stats.cancelados ?? 0;
 
-  setText("stat-total",    total);
-  setText("stat-aberto",   aberto);
+  setText("stat-total", total);
+  setText("stat-aberto", aberto);
   setText("stat-andamento", andamento);
   setText("stat-resolvido", resolvido);
   setText("stat-pendentes", aberto + andamento);
-  setText("stat-contatos",  new Set((tickets || []).map(t => t.userId)).size);
+  setText("stat-contatos", new Set((tickets || []).map(t => t.userId)).size);
+
+  setText("op-aberto", aberto);
+  setText("op-andamento", andamento);
+  setText("op-resolvido", resolvido);
+  setText("op-cancelado", cancelado);
+
+  renderExecutiveDashboard(tickets, {
+    total,
+    aberto,
+    andamento,
+    resolvido,
+    cancelado
+  });
+}
+
+function renderExecutiveDashboard(tickets = [], stats = {}) {
+  const lista = Array.isArray(tickets) ? tickets : [];
+
+  const hoje = new Date().toISOString().slice(0, 10);
+  const ticketsHoje = lista.filter(ticket => {
+    const data = ticket.createdAt || ticket.created_at;
+    return data && String(data).slice(0, 10) === hoje;
+  }).length;
+
+  setText("stat-hoje", ticketsHoje);
+
+  const total = Number(stats.total || 0);
+  const resolvido = Number(stats.resolvido || 0);
+  const taxaResolucao = total > 0 ? Math.round((resolvido / total) * 100) : 0;
+  setText("stat-resolucao-sub", `${taxaResolucao}% de resolução geral`);
+  setText("stat-total-sub", `${ticketsHoje} novo(s) hoje`);
+
+  const porSetor = contarPorCampo(lista, "sector");
+  const setorTop = Object.entries(porSetor).sort((a, b) => b[1] - a[1])[0];
+  setText("stat-top-sector", setorTop ? setorTop[0] : "—");
+
+  renderRecentTickets(lista);
+  renderExecutiveCharts(lista, porSetor);
+}
+
+function contarPorCampo(lista, campo) {
+  return lista.reduce((acc, item) => {
+    const chave = item?.[campo] || "geral";
+    acc[chave] = (acc[chave] || 0) + 1;
+    return acc;
+  }, {});
+}
+
+function renderRecentTickets(tickets = []) {
+  const container = document.getElementById("dashboard-recent-tickets");
+  if (!container) return;
+
+  const recentes = [...tickets]
+    .sort((a, b) => new Date(b.createdAt || b.created_at || 0) - new Date(a.createdAt || a.created_at || 0))
+    .slice(0, 5);
+
+  if (!recentes.length) {
+    container.innerHTML = `<p class="empty-mini">Nenhum ticket recente.</p>`;
+    return;
+  }
+
+  container.innerHTML = recentes.map(ticket => `
+    <div class="recent-ticket-item">
+      <div>
+        <strong>#${safe(ticket.protocolo || ticket.id || "—")} — ${safe(tipoLabel(ticket.type || "geral"))}</strong>
+        <span>${safe(ticket.customerName || "Cliente não informado")} • ${safe(ticket.sector || "geral")}</span>
+      </div>
+      <small>${safe(statusLabel(ticket.status || "aberto"))}</small>
+    </div>
+  `).join("");
+}
+
+function renderExecutiveCharts(tickets = [], porSetor = {}) {
+  if (typeof Chart === "undefined") return;
+
+  const dayCanvas = document.getElementById("exec-chart-day");
+  const sectorCanvas = document.getElementById("exec-chart-sector");
+
+  const porDia = tickets.reduce((acc, ticket) => {
+    const dataBruta = ticket.createdAt || ticket.created_at;
+    const dia = dataBruta ? String(dataBruta).slice(0, 10) : "Sem data";
+    acc[dia] = (acc[dia] || 0) + 1;
+    return acc;
+  }, {});
+
+  const diasOrdenados = Object.keys(porDia).sort().slice(-7);
+
+  if (dayCanvas) {
+    if (window.execDayChart) window.execDayChart.destroy();
+
+    window.execDayChart = new Chart(dayCanvas, {
+      type: "line",
+      data: {
+        labels: diasOrdenados.length ? diasOrdenados : ["Hoje"],
+        datasets: [{
+          label: "Atendimentos",
+          data: diasOrdenados.length ? diasOrdenados.map(dia => porDia[dia]) : [0],
+          tension: .36,
+          fill: true,
+          borderWidth: 2
+        }]
+      },
+      options: executiveChartOptions()
+    });
+  }
+
+  if (sectorCanvas) {
+    if (window.execSectorChart) window.execSectorChart.destroy();
+
+    const setores = Object.keys(porSetor);
+
+    window.execSectorChart = new Chart(sectorCanvas, {
+      type: "bar",
+      data: {
+        labels: setores.length ? setores : ["Sem setor"],
+        datasets: [{
+          label: "Tickets",
+          data: setores.length ? setores.map(setor => porSetor[setor]) : [0],
+          borderRadius: 12,
+          borderSkipped: false
+        }]
+      },
+      options: executiveChartOptions()
+    });
+  }
+}
+
+function executiveChartOptions() {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        labels: {
+          color: "#cbd5e1",
+          boxWidth: 12,
+          font: { weight: "bold" }
+        }
+      }
+    },
+    scales: {
+      x: {
+        ticks: { color: "#94a3b8" },
+        grid: { color: "rgba(255,255,255,.04)" }
+      },
+      y: {
+        beginAtZero: true,
+        ticks: { color: "#94a3b8", precision: 0 },
+        grid: { color: "rgba(255,255,255,.06)" }
+      }
+    }
+  };
 }
 
 async function checkServerStatus() {

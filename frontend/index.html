@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css">
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="supervisor.css">
   <link rel="icon" href="android-chrome-512x512.png">
@@ -178,7 +178,24 @@
 
       <!-- Dashboard -->
       <section id="tab-dashboard">
-        <section class="panel">
+        <section class="dashboard-executive-hero">
+          <div>
+            <span class="dashboard-kicker">Visão geral</span>
+            <h1>Dashboard Executivo</h1>
+            <p>Acompanhe atendimentos, desempenho por setor e movimentação recente em tempo real.</p>
+          </div>
+
+          <div class="dashboard-hero-actions">
+            <button class="btn-refresh" onclick="refreshAll()">
+              <i class="fa-solid fa-arrows-rotate"></i> Atualizar dados
+            </button>
+            <span class="dashboard-live-badge">
+              <i class="fa-solid fa-circle"></i> Operação ativa
+            </span>
+          </div>
+        </section>
+
+        <section class="panel dashboard-filter-panel">
           <div class="filters">
             <div class="field">
               <label>Data Início</label>
@@ -214,38 +231,71 @@
           </div>
         </section>
 
-        <section style="margin-top: 30px;" class="cards">
-          <div class="metric-card">
-            <div class="badge bg-green"><i class="fa-solid fa-check-double"></i></div>
-            <div class="value" id="stat-total">0</div>
-            <div class="label">Total de atendimentos <i class="fa-solid fa-circle-info"></i></div>
+        <section class="executive-cards">
+          <article class="executive-card primary">
+            <div class="executive-card-top">
+              <span>Total de atendimentos</span>
+              <i class="fa-solid fa-headset"></i>
+            </div>
+            <strong id="stat-total">0</strong>
+            <small id="stat-total-sub">Todos os tickets registrados</small>
+          </article>
+
+          <article class="executive-card warning">
+            <div class="executive-card-top">
+              <span>Abertos</span>
+              <i class="fa-solid fa-inbox"></i>
+            </div>
+            <strong id="stat-aberto">0</strong>
+            <small>Demandas aguardando atendimento</small>
+          </article>
+
+          <article class="executive-card info">
+            <div class="executive-card-top">
+              <span>Em andamento</span>
+              <i class="fa-solid fa-comments"></i>
+            </div>
+            <strong id="stat-andamento">0</strong>
+            <small>Atendimentos em tratativa</small>
+          </article>
+
+          <article class="executive-card success">
+            <div class="executive-card-top">
+              <span>Resolvidos</span>
+              <i class="fa-solid fa-circle-check"></i>
+            </div>
+            <strong id="stat-resolvido">0</strong>
+            <small id="stat-resolucao-sub">Finalizados com sucesso</small>
+          </article>
+        </section>
+
+        <section class="executive-insights">
+          <div class="insight-card">
+            <span class="insight-label">Pendentes</span>
+            <strong id="stat-pendentes">0</strong>
+            <small>Abertos + em andamento</small>
           </div>
 
-          <div class="metric-card">
-            <div class="badge bg-orange"><i class="fa-solid fa-phone-volume"></i></div>
-            <div class="value" id="stat-aberto">0</div>
-            <div class="label">Abertos <i class="fa-solid fa-circle-info"></i></div>
+          <div class="insight-card">
+            <span class="insight-label">Contatos únicos</span>
+            <strong id="stat-contatos">0</strong>
+            <small>Clientes identificados</small>
           </div>
 
-          <div class="metric-card">
-            <div class="badge bg-indigo"><i class="fa-solid fa-comment"></i></div>
-            <div class="value" id="stat-andamento">0</div>
-            <div class="label">Em andamento <i class="fa-solid fa-circle-info"></i></div>
+          <div class="insight-card">
+            <span class="insight-label">Tickets hoje</span>
+            <strong id="stat-hoje">0</strong>
+            <small>Novos registros no dia</small>
           </div>
 
-          <div class="metric-card">
-            <div class="badge bg-purple"><i class="fa-solid fa-comment-dots"></i></div>
-            <div class="value" id="stat-pendentes">0</div>
-            <div class="label">Pendentes <i class="fa-solid fa-circle-info"></i></div>
+          <div class="insight-card">
+            <span class="insight-label">Setor destaque</span>
+            <strong id="stat-top-sector">—</strong>
+            <small>Maior volume de tickets</small>
           </div>
         </section>
 
-
-      </section>
-
-
-       
-
+      
       <!-- Tickets -->
       <section id="tab-tickets" class="tab-content hidden">
         <section class="panel">
@@ -568,8 +618,80 @@ Como podemos ajudar você hoje?
           </div>
         </section>
 
-        <section class="settings-grid">
-          <div class="settings-card">
+        <section class="settings-home" id="settings-home">
+          <div class="settings-home-header">
+            <div>
+              <h2>Central de Configurações</h2>
+              <p>Escolha uma categoria para configurar apenas o que precisa.</p>
+            </div>
+          </div>
+
+          <div class="settings-home-grid">
+            <button type="button" class="settings-home-card" onclick="openSettingsPanel('usuarios')">
+              <span class="settings-home-icon bg-purple"><i class="fa-solid fa-users-gear"></i></span>
+              <span>
+                <strong>Usuários</strong>
+                <small>Atendentes, perfis e permissões.</small>
+              </span>
+              <i class="fa-solid fa-chevron-right"></i>
+            </button>
+
+            <button type="button" class="settings-home-card" onclick="openSettingsPanel('empresa')">
+              <span class="settings-home-icon bg-blue"><i class="fa-solid fa-building"></i></span>
+              <span>
+                <strong>Empresa</strong>
+                <small>Nome, telefone, logo e boas-vindas.</small>
+              </span>
+              <i class="fa-solid fa-chevron-right"></i>
+            </button>
+
+            <button type="button" class="settings-home-card" onclick="openSettingsPanel('atendimento')">
+              <span class="settings-home-icon bg-green"><i class="fa-solid fa-headset"></i></span>
+              <span>
+                <strong>Atendimento</strong>
+                <small>Setores, tickets e transferência.</small>
+              </span>
+              <i class="fa-solid fa-chevron-right"></i>
+            </button>
+
+            <button type="button" class="settings-home-card" onclick="openSettingsPanel('aparencia')">
+              <span class="settings-home-icon bg-indigo"><i class="fa-solid fa-palette"></i></span>
+              <span>
+                <strong>Aparência</strong>
+                <small>Cores, tema e nome do painel.</small>
+              </span>
+              <i class="fa-solid fa-chevron-right"></i>
+            </button>
+
+            <button type="button" class="settings-home-card" onclick="openSettingsPanel('notificacoes')">
+              <span class="settings-home-icon bg-orange"><i class="fa-solid fa-bell"></i></span>
+              <span>
+                <strong>Notificações</strong>
+                <small>Som, alertas e texto do aviso.</small>
+              </span>
+              <i class="fa-solid fa-chevron-right"></i>
+            </button>
+
+            <button type="button" class="settings-home-card" onclick="openSettingsPanel('historico')">
+              <span class="settings-home-icon bg-red"><i class="fa-solid fa-clock-rotate-left"></i></span>
+              <span>
+                <strong>Histórico</strong>
+                <small>Retenção, limite e exportação.</small>
+              </span>
+              <i class="fa-solid fa-chevron-right"></i>
+            </button>
+          </div>
+        </section>
+
+        <div class="settings-panel-toolbar hidden" id="settings-panel-toolbar">
+          <button type="button" class="btn-back-settings" onclick="backToSettingsHome()">
+            <i class="fa-solid fa-arrow-left"></i> Voltar para configurações
+          </button>
+          <strong id="settings-panel-title">Configurações</strong>
+        </div>
+
+        <section class="settings-grid settings-detail-grid hidden" id="settings-detail-grid">
+          <div class="settings-card settings-detail-card" data-settings-panel="usuarios">
             <div class="settings-card-title">
               <span class="settings-icon bg-purple">
                 <i class="fa-solid fa-users-gear"></i>
@@ -618,7 +740,7 @@ Como podemos ajudar você hoje?
             </div>
           </div>
 
-          <div class="settings-card">
+          <div class="settings-card settings-detail-card" data-settings-panel="empresa">
             <div class="settings-card-title">
               <span class="settings-icon bg-blue"><i class="fa-solid fa-building"></i></span>
               <div>
@@ -645,7 +767,7 @@ Como podemos ajudar você hoje?
             </div>
           </div>
 
-          <div class="settings-card">
+          <div class="settings-card settings-detail-card" data-settings-panel="atendimento">
             <div class="settings-card-title">
               <span class="settings-icon bg-green"><i class="fa-solid fa-headset"></i></span>
               <div>
@@ -669,7 +791,7 @@ Como podemos ajudar você hoje?
             </div>
           </div>
 
-          <div class="settings-card">
+          <div class="settings-card settings-detail-card" data-settings-panel="aparencia">
             <div class="settings-card-title">
               <span class="settings-icon bg-indigo"><i class="fa-solid fa-palette"></i></span>
               <div>
@@ -701,7 +823,7 @@ Como podemos ajudar você hoje?
             </div>
           </div>
 
-          <div class="settings-card">
+          <div class="settings-card settings-detail-card" data-settings-panel="notificacoes">
             <div class="settings-card-title">
               <span class="settings-icon bg-orange"><i class="fa-solid fa-bell"></i></span>
               <div>
@@ -738,7 +860,7 @@ Como podemos ajudar você hoje?
             </div>
           </div>
 
-          <div class="settings-card">
+          <div class="settings-card settings-detail-card" data-settings-panel="historico">
             <div class="settings-card-title">
               <span class="settings-icon bg-red"><i class="fa-solid fa-clock-rotate-left"></i></span>
               <div>

@@ -9,7 +9,8 @@ const pool = new Pool({
   host:     process.env.DB_HOST     || "localhost",
   port:     Number(process.env.DB_PORT) || 5432,
   user:     process.env.DB_USER     || "postgres",
-  password: process.env.DB_PASSWORD,
+  // Garantir string — DB_PASSWORD undefined causa erro SASL no driver pg
+  password: String(process.env.DB_PASSWORD || ""),
   database: process.env.DB_NAME     || "chatbot_rildon",
   max:      Number(process.env.DB_POOL_MAX)                || 10,
   idleTimeoutMillis:       Number(process.env.DB_POOL_IDLE_TIMEOUT)        || 30000,

@@ -66,11 +66,10 @@ async function mudarStatus(id, status) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status })
     });
-   loadTickets();
-
-if (currentTab === "metrics") {
-  loadMetricsCharts();
-}
+    loadTickets();
+    if (currentTab === "metrics") {
+      loadMetricsCharts();
+    }
   } catch {
     showToast("Não foi possível atualizar o ticket.");
   }
@@ -290,8 +289,8 @@ async function assumirTicket(id) {
     } else {
       loadTickets();
       if (currentTab === "metrics") {
-  loadMetricsCharts();
-}
+        loadMetricsCharts();
+      }
     }
   } catch (err) {
     showToast(`❌ ${err.message}`);
@@ -313,8 +312,8 @@ async function transferirTicket(id) {
     showToast("✅ Ticket transferido!");
     loadTickets();
     if (currentTab === "metrics") {
-  loadMetricsCharts();
-}
+      loadMetricsCharts();
+    }
   } catch (err) {
     showToast(`❌ ${err.message}`);
   }

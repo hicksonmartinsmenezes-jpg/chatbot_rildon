@@ -1,5 +1,6 @@
 const bcrypt = require("bcrypt");
 const crypto = require("crypto");
+const logger = require("../utils/logger");
 
 const userRepository =
   require("../repositories/user.repository");
@@ -77,7 +78,7 @@ async function createUser(data) {
     foto:
       data.foto || "",
     ativo:
-      data.ativo ?? true
+      data.ativo !== undefined ? data.ativo : true
   };
 
   const created =
@@ -100,11 +101,8 @@ async function updateUserProfile(
   data
 ) {
 
-  const users =
-    await getUsers();
-
   const user =
-    users.find(u => u.id === id);
+    await userRepository.findById(id);
 
   if (!user) {
     throw new Error(
@@ -150,9 +148,9 @@ async function updateUserProfile(
 
   if (novaSenha) {
 
-    if (novaSenha.length < 4) {
+    if (novaSenha.length < 8) {
       throw new Error(
-        "A nova senha deve ter pelo menos 4 caracteres."
+        "A nova senha deve ter pelo menos 8 caracteres."
       );
     }
 
@@ -231,9 +229,7 @@ async function updateUserPassword(
   return true;
 }
 
-console.log(
-  "👤 PostgreSQL: usuários carregados"
-);
+logger.info("👤 PostgreSQL: usuários carregados");
 
 async function deactivateUser(id) {
   const user = await userRepository.deactivate(id);

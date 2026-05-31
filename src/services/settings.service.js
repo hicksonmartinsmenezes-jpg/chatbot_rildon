@@ -1,5 +1,6 @@
 const settingsRepository =
   require("../repositories/settings.repository");
+const logger = require("../utils/logger");
 
 const DEFAULT_SETTINGS = {
   empresa: {
@@ -107,9 +108,7 @@ async function resetSettings() {
   return DEFAULT_SETTINGS;
 }
 
-console.log(
-  "⚙️ PostgreSQL: configurações carregadas"
-);
+logger.info("⚙️ PostgreSQL: configurações carregadas");
 
 module.exports = {
   DEFAULT_SETTINGS,

@@ -43,17 +43,38 @@ async function notificarAtendente(ticket) {
 }
 
 /**
- * Notifica o atendente somente se for possível — usado fora do horário comercial
- * para registrar o ticket sem disparar alerta imediato.
- * O comportamento atual é idêntico ao notificarAtendente, mas a separação
- * semântica facilita implementar lógicas distintas (ex: fila de notificações,
- * agendamento para o próximo expediente) sem alterar os flows.
+ * Notifica o atendente somente se possível — usado fora do horário comercial
+ * para registrar o ticket sem acionar alerta urgente imediato.
+ * Envia uma mensagem mais discreta, indicando que será visto no próximo expediente.
  */
 async function notificarSeDisponivel(ticket) {
-  // Por ora registra no log mas não envia mensagem fora do horário
-  logger.info(
-    `[Notificação] Ticket #${ticket.protocolo} registrado fora do horário — atendente não notificado.`
-  );
+  if (!sendMessageFunction) return;
+
+  const numero = process.env.ATENDENTE_NUMBER;
+  if (!numero) {
+    logger.warn("ATENDENTE_NUMBER não configurado — notificação ignorada.");
+    return;
+  }
+
+  const jid = normalizarJid(numero);
+  const tz  = process.env.TZ_NEGOCIO || "America/Maceio";
+  const criadoEm = new Date(ticket.createdAt).toLocaleString("pt-BR", { timeZone: tz });
+
+  const mensagem =
+    "📋 *Ticket registrado fora do horário*\\n\\n" +
+    `🎫 Protocolo: *#${ticket.protocolo}*\\n` +
+    `📂 Tipo: ${ticket.type}\\n` +
+    `👤 Cliente: ${ticket.customerName}\\n` +
+    `📋 Descrição: _${ticket.description}_\\n` +
+    `🕐 Registrado em: ${criadoEm}\\n\\n` +
+    "_Retorne ao cliente no próximo expediente._";
+
+  try {
+    await sendMessageFunction(jid, mensagem);
+    logger.info(`[Notificação fora de horário] Atendente notificado (${jid}) — ticket #${ticket.protocolo}`);
+  } catch (err) {
+    logger.error(`Erro ao notificar atendente (fora de horário): ${err.message}`);
+  }
 }
 
 module.exports = { notificarAtendente, notificarSeDisponivel, setNotifySendMessage };

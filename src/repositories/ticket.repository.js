@@ -179,9 +179,18 @@ function mapTicket(row) {
   };
 }
 
+async function findByCpf(cpfLimpo) {
+  const result = await pool.query(
+    `SELECT * FROM tickets WHERE REGEXP_REPLACE(cpf, '\\D', '', 'g') = $1 ORDER BY created_at DESC`,
+    [cpfLimpo]
+  );
+  return result.rows.map(mapTicket);
+}
+
 module.exports = {
   create,
   findAll,
+  findByCpf,
   updateStatus,
   assign,
   transfer,

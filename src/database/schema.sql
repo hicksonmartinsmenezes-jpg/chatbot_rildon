@@ -4,11 +4,13 @@
 
 -- Usuários do painel
 CREATE TABLE IF NOT EXISTS users (
-  id          SERIAL PRIMARY KEY,
+  id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
   nome        VARCHAR(255) NOT NULL,
   usuario     VARCHAR(100) UNIQUE NOT NULL,
   senha       TEXT         NOT NULL,
   perfil      VARCHAR(50)  NOT NULL DEFAULT 'operador',
+  sector      VARCHAR(100) NOT NULL DEFAULT 'geral',
+  numero      VARCHAR(30)  NOT NULL DEFAULT '',
   email       VARCHAR(255),
   foto        TEXT,
   ativo       BOOLEAN      NOT NULL DEFAULT TRUE,
@@ -36,22 +38,24 @@ CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions (updated_at);
 
 -- Tickets de atendimento
 CREATE TABLE IF NOT EXISTS tickets (
-  id            SERIAL       PRIMARY KEY,
-  protocolo     VARCHAR(50)  UNIQUE NOT NULL,
-  user_id       TEXT         NOT NULL,
-  type          VARCHAR(100) NOT NULL,
-  sector        VARCHAR(100) NOT NULL DEFAULT 'geral',
-  customer_name TEXT,
-  cpf           VARCHAR(20),
-  description   TEXT,
-  status        VARCHAR(50)  NOT NULL DEFAULT 'aberto',
-  assigned_to   INTEGER      REFERENCES users(id) ON DELETE SET NULL,
-  created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-  updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+  id                SERIAL       PRIMARY KEY,
+  protocolo         VARCHAR(50)  UNIQUE NOT NULL,
+  user_id           TEXT         NOT NULL,
+  type              VARCHAR(100) NOT NULL,
+  sector            VARCHAR(100) NOT NULL DEFAULT 'geral',
+  customer_name     TEXT,
+  cpf               VARCHAR(20),
+  description       TEXT,
+  status            VARCHAR(50)  NOT NULL DEFAULT 'aberto',
+  assigned_to       UUID         REFERENCES users(id) ON DELETE SET NULL,
+  assigned_to_name  TEXT,
+  created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS idx_tickets_user_id   ON tickets (user_id);
-CREATE INDEX IF NOT EXISTS idx_tickets_status    ON tickets (status);
-CREATE INDEX IF NOT EXISTS idx_tickets_protocolo ON tickets (protocolo);
+CREATE INDEX IF NOT EXISTS idx_tickets_user_id    ON tickets (user_id);
+CREATE INDEX IF NOT EXISTS idx_tickets_status     ON tickets (status);
+CREATE INDEX IF NOT EXISTS idx_tickets_protocolo  ON tickets (protocolo);
+CREATE INDEX IF NOT EXISTS idx_tickets_cpf        ON tickets (REGEXP_REPLACE(cpf, '\D', '', 'g'));
 
 -- Histórico de mensagens
 CREATE TABLE IF NOT EXISTS history (

@@ -62,6 +62,34 @@ function formatarCPF(cpf) {
   return nums.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
 }
 
+// ─── CNPJ ─────────────────────────────────────────────────────────────────────
+
+function validarCNPJ(cnpj) {
+  const nums = String(cnpj || "").replace(/\D/g, "");
+  if (nums.length !== 14) return false;
+  if (/^(\d)\1{13}$/.test(nums)) return false; // todos iguais
+
+  const calc = (n, p) => {
+    let soma = 0;
+    for (let i = 0; i < n; i++) soma += parseInt(nums[i]) * p[i];
+    const resto = soma % 11;
+    return resto < 2 ? 0 : 11 - resto;
+  };
+
+  const p1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+  const p2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+
+  return (
+    calc(12, p1) === parseInt(nums[12]) &&
+    calc(13, p2) === parseInt(nums[13])
+  );
+}
+
+function formatarCNPJ(cnpj) {
+  const nums = String(cnpj || "").replace(/\D/g, "");
+  return nums.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5");
+}
+
 // ─── Nome ─────────────────────────────────────────────────────────────────────
 
 function validarNome(nome) {
@@ -77,5 +105,7 @@ module.exports = {
   mensagemTamanhoInvalido,
   validarCPF,
   formatarCPF,
+  validarCNPJ,
+  formatarCNPJ,
   validarNome,
 };

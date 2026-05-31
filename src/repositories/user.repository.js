@@ -16,6 +16,14 @@ function mapUser(row) {
   };
 }
 
+async function findById(id) {
+  const result = await pool.query(
+    `SELECT * FROM users WHERE id = $1 LIMIT 1`,
+    [id]
+  );
+  return result.rows[0] ? mapUser(result.rows[0]) : null;
+}
+
 async function findAll() {
   const result = await pool.query(`
     SELECT *
@@ -117,6 +125,7 @@ async function deactivate(id) {
 
 module.exports = {
   findAll,
+  findById,
   findByUsername,
   create,
   updateProfile,

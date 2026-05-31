@@ -79,8 +79,6 @@ function safeCompare(a, b) {
 
 router.post("/auth/login", async (req, res) => {
   try {
-    await limparSessoesExpiradas();
-
     const { usuario, senha } = req.body || {};
     const user = await validateUser(usuario, senha);
 
@@ -223,8 +221,6 @@ router.get("/auth/me", authSession, (req, res) => {
 
 async function authSession(req, res, next) {
   try {
-    await limparSessoesExpiradas();
-
     const apiToken = process.env.API_TOKEN;
     const auth = req.headers["authorization"] || "";
     const provided = auth.startsWith("Bearer ") ? auth.slice(7) : null;

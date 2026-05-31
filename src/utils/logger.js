@@ -25,9 +25,21 @@ const colors = {
 };
 
 // Níveis numéricos para filtragem (LOG_LEVEL=warn suprime INFO e SUCCESS)
-const LEVELS = { SUCCESS: 0, INFO: 1, WARN: 2, ERROR: 3, ACCESS: 0 };
-const ENV_LEVEL = (process.env.LOG_LEVEL || "info").toUpperCase();
-const MIN_LEVEL = LEVELS[ENV_LEVEL] ?? 1;
+const LEVELS = {
+  SUCCESS: 0,
+  INFO: 1,
+  WARN: 2,
+  ERROR: 3,
+  ACCESS: 0
+};
+
+const ENV_LEVEL =
+  (process.env.LOG_LEVEL || "info").toUpperCase();
+
+const MIN_LEVEL =
+  LEVELS[ENV_LEVEL] !== undefined
+    ? LEVELS[ENV_LEVEL]
+    : 1;
 
 function format(level, message) {
   return `[${new Date().toISOString()}] [${level}] ${message}`;

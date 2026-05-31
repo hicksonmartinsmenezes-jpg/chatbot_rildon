@@ -18,10 +18,11 @@ async function createTicket({
   type,
   customerName,
   cpf,
-  description
+  description,
+  sector: sectorOverride
 }) {
   const protocolo = await ticketRepository.gerarProtocolo();
-  const sector = TYPE_TO_SECTOR[type] ?? "geral";
+  const sector = sectorOverride || TYPE_TO_SECTOR[type] || "geral";
 
   const ticket = {
     id: crypto.randomUUID(),
@@ -58,13 +59,9 @@ async function getTicketStats() {
 }
 
 async function getTicketsByCPF(cpf) {
-  const tickets = await ticketRepository.findAll();
   const cpfLimpo = String(cpf || "").replace(/\D/g, "");
-
-  return tickets.filter(t => {
-    const cpfTicket = String(t.cpf || "").replace(/\D/g, "");
-    return cpfTicket === cpfLimpo;
-  });
+  if (!cpfLimpo) return [];
+  return ticketRepository.findByCpf(cpfLimpo);
 }
 
 async function assignTicket(id, user) {

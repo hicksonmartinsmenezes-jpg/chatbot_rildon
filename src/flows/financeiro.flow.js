@@ -74,21 +74,10 @@ async function financeiroFlow(message, userId, session) {
         description: documento ? "Consulta financeira" : msg
       });
 
-      const ticketFormatado = {
-        ...ticket,
-        customerName: ticket.customerName || ticket.customer_name || nomeCliente,
-        cpf: ticket.cpf || documento || MSG.NAO_INFORMADO
-      };
-
-      notificarAtendente(ticketFormatado);
-
+      notificarAtendente(ticket);
       await clearSession(userId);
 
-      return MSG.financeiro.DUVIDA_REGISTRADA(
-        ticketFormatado,
-        documento,
-        msg
-      );
+      return MSG.financeiro.DUVIDA_REGISTRADA(ticket, documento, msg);
     }
 
     switch (msg) {
@@ -118,16 +107,10 @@ async function financeiroFlow(message, userId, session) {
           description: "Cliente solicitou atendente do financeiro."
         });
 
-        const ticketFormatado = {
-          ...ticket,
-          customerName: ticket.customerName || ticket.customer_name || nomeCliente
-        };
-
-        notificarAtendente(ticketFormatado);
-
+        notificarAtendente(ticket);
         await clearSession(userId);
 
-        return MSG.financeiro.ATENDENTE(ticketFormatado);
+        return MSG.financeiro.ATENDENTE(ticket);
       }
 
       default:

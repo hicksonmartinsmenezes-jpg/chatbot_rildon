@@ -1177,41 +1177,44 @@ body {
 
 /* AVATAR */
 
+
 .chat-avatar {
   width: 48px;
   height: 48px;
   min-width: 48px;
   flex: 0 0 48px;
 
-  border-radius: 50%;
-  overflow: hidden;
-  background: #2a3942;
   position: relative;
+  overflow: hidden;
+  border-radius: 50%;
 
   display: flex;
   align-items: center;
   justify-content: center;
 
-  color: white;
-  font-weight: 900;
-  line-height: 1;
+  background: linear-gradient(
+    135deg,
+    var(--primary),
+    var(--green)
+  );
+
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.95rem;
+  text-transform: uppercase;
+
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
 }
 
 .chat-avatar.big {
-   width: 48px;
-  height: 48px;
-  min-width: 48px;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  align-self: center;
+  width: 52px;
+  height: 52px;
+  min-width: 52px;
+  flex: 0 0 52px;
 }
 
 .chat-avatar img {
   position: absolute;
-
   inset: 0;
 
   width: 100%;
@@ -1222,7 +1225,6 @@ body {
 
 .avatar-fallback {
   position: absolute;
-
   inset: 0;
 
   display: none;
@@ -1230,7 +1232,14 @@ body {
   align-items: center;
   justify-content: center;
 
-  background: linear-gradient(135deg, var(--primary), var(--green));
+  font-weight: 800;
+  letter-spacing: 0.5px;
+
+  background: linear-gradient(
+    135deg,
+    var(--primary),
+    var(--green)
+  );
 }
 
 /* ITEM BODY */
@@ -3070,4 +3079,11 @@ body.light-theme .settings-form label {
   .history-card-header{ align-items:flex-start; }
   .history-card-meta{ align-items:flex-start; text-align:left; }
   .history-card-header{ flex-wrap:wrap; }
+}
+
+.contact-status {
+  display: block;
+  font-size: 12px;
+  margin-top: 2px;
+  color: var(--text-secondary);
 }

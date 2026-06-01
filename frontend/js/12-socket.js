@@ -38,35 +38,49 @@ socket.on("online_users", users => {
     if (status === "connected") setOnline(); else setOffline();
   });
 
-  socket.on("nova_mensagem", (data) => {
-    const alreadyExists = data.messageId && allHistory.some(item => item.messageId === data.messageId);
-    if (!alreadyExists) allHistory.unshift(data);
+ socket.on("nova_mensagem", (data) => {
+  const alreadyExists =
+    data.messageId &&
+    allHistory.some(item => item.messageId === data.messageId);
 
-    if (currentTab === "conversations") {
-      if (selectedConversationUser === data.userId) openConversation(data.userId, false);
-      else loadConversations();
+  if (!alreadyExists) {
+    allHistory.unshift(data);
+  }
+
+  const isCurrentConversation =
+    selectedConversationUser === data.userId;
+
+  if (data?.userId && !isCurrentConversation) {
+    unreadMessages[data.userId] =
+      (unreadMessages[data.userId] || 0) + 1;
+  }
+
+  if (currentTab === "conversations") {
+    if (isCurrentConversation) {
+      openConversation(data.userId, false);
+    } else {
+      loadConversations();
     }
+  }
 
-    if (currentTab === "history") loadHistory(true);
+  if (currentTab === "history") {
+    loadHistory(true);
+  }
 
-   if (currentTab === "dashboard" || currentTab === "tickets") {
-  loadTickets();
-}
+  if (currentTab === "dashboard" || currentTab === "tickets") {
+    loadTickets();
+  }
 
-if (currentTab === "metrics") {
-  loadMetricsCharts();
-}
+  if (currentTab === "metrics") {
+    loadMetricsCharts();
+  }
 
-  
-    playAlertSound("message");
+  playAlertSound("message");
 
-    if (data?.userId && selectedConversationUser !== data.userId) {
-      unreadMessages[data.userId] = (unreadMessages[data.userId] || 0) + 1;
-    }
-
-    if (!data.response || data.message) showToast("💬 Nova mensagem recebida!");
-  });
-
+  if (!data.response || data.message) {
+    showToast("💬 Nova mensagem recebida!");
+  }
+});
 socket.on("typing", data => {
   if (data.from !== "client") return;
   if (selectedConversationUser !== data.userId) return;

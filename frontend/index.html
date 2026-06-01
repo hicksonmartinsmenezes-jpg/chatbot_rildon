@@ -92,7 +92,7 @@
 
 
 
-<a href="#" onclick="switchTab('metrics', event)">
+<a href="#" class="supervisor-only" onclick="switchTab('metrics', event)">
   <i class="fa-solid fa-chart-line"></i>
   <span class="label">Métricas</span>
 </a>
@@ -148,7 +148,7 @@
       <section class="panel">
         <div class="tabs">
           <button class="tab active" onclick="switchTab('dashboard', event)">
-            <i class="fa-solid fa-desktop"></i> DASHBOARD
+            <i class="fa-solid fa-desktop"></i> PAINEL 
           </button>
 
           <button class="tab" onclick="switchTab('tickets', event)">
@@ -181,7 +181,7 @@
         <section class="dashboard-executive-hero">
           <div>
             <span class="dashboard-kicker">Visão geral</span>
-            <h1>Dashboard Executivo</h1>
+            <h1>Painel de Atendimento</h1>
             <p>Acompanhe atendimentos, desempenho por setor e movimentação recente em tempo real.</p>
           </div>
 
@@ -267,100 +267,6 @@
             <strong id="stat-resolvido">0</strong>
             <small id="stat-resolucao-sub">Finalizados com sucesso</small>
           </article>
-        </section>
-
-        <section class="executive-insights">
-          <div class="insight-card">
-            <span class="insight-label">Pendentes</span>
-            <strong id="stat-pendentes">0</strong>
-            <small>Abertos + em andamento</small>
-          </div>
-
-          <div class="insight-card">
-            <span class="insight-label">Contatos únicos</span>
-            <strong id="stat-contatos">0</strong>
-            <small>Clientes identificados</small>
-          </div>
-
-          <div class="insight-card">
-            <span class="insight-label">Tickets hoje</span>
-            <strong id="stat-hoje">0</strong>
-            <small>Novos registros no dia</small>
-          </div>
-
-          <div class="insight-card">
-            <span class="insight-label">Setor destaque</span>
-            <strong id="stat-top-sector">—</strong>
-            <small>Maior volume de tickets</small>
-          </div>
-        </section>
-
-        <section class="dashboard-executive-grid">
-          <div class="executive-panel chart-panel">
-            <div class="executive-panel-header">
-              <div>
-                <h3>Atendimentos por dia</h3>
-                <p>Volume diário dos últimos registros.</p>
-              </div>
-              <i class="fa-solid fa-chart-line"></i>
-            </div>
-            <canvas id="exec-chart-day"></canvas>
-          </div>
-
-          <div class="executive-panel chart-panel">
-            <div class="executive-panel-header">
-              <div>
-                <h3>Atendimentos por setor</h3>
-                <p>Distribuição operacional por área.</p>
-              </div>
-              <i class="fa-solid fa-chart-simple"></i>
-            </div>
-            <canvas id="exec-chart-sector"></canvas>
-          </div>
-        </section>
-
-        <section class="dashboard-executive-grid bottom">
-          <div class="executive-panel">
-            <div class="executive-panel-header">
-              <div>
-                <h3>Últimos tickets</h3>
-                <p>Registros recentes abertos pelo bot.</p>
-              </div>
-              <i class="fa-solid fa-list-check"></i>
-            </div>
-            <div id="dashboard-recent-tickets" class="recent-ticket-list">
-              <p class="empty-mini">Nenhum ticket carregado.</p>
-            </div>
-          </div>
-
-          <div class="executive-panel">
-            <div class="executive-panel-header">
-              <div>
-                <h3>Status da operação</h3>
-                <p>Resumo rápido para acompanhamento.</p>
-              </div>
-              <i class="fa-solid fa-gauge-high"></i>
-            </div>
-
-            <div class="operation-list">
-              <div>
-                <span>Fila aberta</span>
-                <strong id="op-aberto">0</strong>
-              </div>
-              <div>
-                <span>Em atendimento</span>
-                <strong id="op-andamento">0</strong>
-              </div>
-              <div>
-                <span>Resolvidos</span>
-                <strong id="op-resolvido">0</strong>
-              </div>
-              <div>
-                <span>Cancelados</span>
-                <strong id="op-cancelado">0</strong>
-              </div>
-            </div>
-          </div>
         </section>
       </section>
 
@@ -1048,33 +954,55 @@ Como podemos ajudar você hoje?
       <p>Resumo analítico dos atendimentos, setores e desempenho.</p>
     </div>
 
-    <button class="btn-refresh" onclick="loadDashboardCharts()">
+   <button class="btn-refresh" onclick="loadMetricsCharts()">
       <i class="fa-solid fa-arrows-rotate"></i>
       Atualizar
     </button>
   </section>
 
   <section class="metrics-cards">
-    <div class="metric-card">
-      <span>Total de atendimentos</span>
-      <strong id="metric-total">0</strong>
-    </div>
 
-    <div class="metric-card">
-      <span>Em andamento</span>
-      <strong id="metric-andamento">0</strong>
-    </div>
+  <div class="metric-card">
+    <span>Total de atendimentos</span>
+    <strong id="metric-total">0</strong>
+  </div>
 
-    <div class="metric-card">
-      <span>Resolvidos</span>
-      <strong id="metric-resolvidos">0</strong>
-    </div>
+  <div class="metric-card">
+    <span>Em andamento</span>
+    <strong id="metric-andamento">0</strong>
+  </div>
 
-    <div class="metric-card">
-      <span>Cancelados</span>
-      <strong id="metric-cancelados">0</strong>
-    </div>
-  </section>
+  <div class="metric-card">
+    <span>Resolvidos</span>
+    <strong id="metric-resolvidos">0</strong>
+  </div>
+
+  <div class="metric-card">
+    <span>Cancelados</span>
+    <strong id="metric-cancelados">0</strong>
+  </div>
+
+  <div class="metric-card">
+    <span>Tickets hoje</span>
+    <strong id="metric-hoje">0</strong>
+  </div>
+
+  <div class="metric-card">
+    <span>Pendentes</span>
+    <strong id="metric-pendentes">0</strong>
+  </div>
+
+  <div class="metric-card">
+    <span>Taxa de resolução</span>
+    <strong id="metric-taxa-resolucao">0%</strong>
+  </div>
+
+  <div class="metric-card">
+    <span>Setor destaque</span>
+    <strong id="metric-setor-top">—</strong>
+  </div>
+
+</section>
 
   <section class="charts-grid professional">
     <div class="chart-card">

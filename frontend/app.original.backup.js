@@ -350,24 +350,50 @@ async function loadConversations() {
 
     if (!list) return;
 
-    const usersSeen = new Set();
-    let users = [];
+  const usersSeen = new Set();
+  let users = [];
+
     for (const item of allHistory) {
-      if (item?.userId && !usersSeen.has(item.userId)) {
-        usersSeen.add(item.userId);
-        users.push(item.userId);
-      }
-    }
+  if (item?.userId && !usersSeen.has(item.userId)) {
+    usersSeen.add(item.userId);
+    users.push(item.userId);
+  }
+}
+
+users.sort((a, b) => {
+  const aLast = getLastHistoryItem(a);
+  const bLast = getLastHistoryItem(b);
+
+  return (
+    new Date(bLast?.createdAt || 0) -
+    new Date(aLast?.createdAt || 0)
+  );
+});
+
 
     if (search) {
-      users = users.filter(userId => {
-        const label = contactLabel(userId).toLowerCase();
-        const phone = formatPhone(userId).toLowerCase();
-        const last  = lastMessage(userId).toLowerCase();
-        return label.includes(search) || phone.includes(search) || last.includes(search);
-      });
-    }
+  users = users.filter(userId => {
+    const userHistory =
+      allHistory.filter(item => item.userId === userId);
 
+    const searchableText = userHistory
+      .map(item => [
+        contactLabel(userId),
+        formatPhone(userId),
+        item.contactName,
+        item.message,
+        item.response,
+        item.sector,
+        item.status
+      ]
+      .filter(Boolean)
+      .join(" "))
+      .join(" ")
+      .toLowerCase();
+
+    return searchableText.includes(search);
+  });
+}
     if (total) total.textContent = `${users.length} ${users.length === 1 ? "conversa" : "conversas"}`;
 
     if (!users.length) {
@@ -423,7 +449,12 @@ function lastMessage(userId) {
 
 function openConversation(userId, updateActive = true) {
   selectedConversationUser    = userId;
-  unreadMessages[userId]      = 0;
+ const hadUnread = unreadMessages[userId] > 0;
+unreadMessages[userId] = 0;
+
+if (hadUnread && updateActive) {
+  setTimeout(() => loadConversations(), 100);
+}
 
   const header     = document.getElementById("chat-window-header");
   const messagesBox = document.getElementById("chat-messages");
@@ -544,6 +575,13 @@ async function sendConversationMessage() {
     }
 
     showToast("✅ Mensagem enviada!");
+
+    await loadHistory(false);
+    await loadConversations();
+
+    if (selectedConversationUser) {
+      openConversation(selectedConversationUser);
+}
   } catch (err) {
     showToast(`❌ Erro ao enviar: ${err.message}`);
     // Restaura a mensagem no campo em caso de falha
@@ -593,7 +631,11 @@ async function enviarMensagemManual() {
       throw new Error(err.error || `HTTP ${res.status}`);
     }
 
-    showToast("✅ Mensagem enviada!");
+   showToast("✅ Mensagem enviada!");
+
+    await loadHistory(false);
+    await loadConversations();
+
     textarea.value = "";
     fecharChat();
   } catch (err) {

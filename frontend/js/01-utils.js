@@ -15,9 +15,15 @@ function setOffline() {
 function avatarHtml(userId, name, big = false) {
   return `
     <span class="chat-avatar ${big ? "big" : ""}">
-      <img src="${BASE}/api/contacts/photo?userId=${encodeURIComponent(userId)}"
-        onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-flex';">
-      <span class="avatar-fallback">${safe(initials(name))}</span>
+      <img
+        src="${BASE}/api/contacts/photo?userId=${encodeURIComponent(userId)}"
+        alt="${safe(name)}"
+        loading="lazy"
+        onerror="this.remove(); this.nextElementSibling.style.display='inline-flex';"
+      >
+      <span class="avatar-fallback" style="display:none;">
+        ${safe(initials(name))}
+      </span>
     </span>
   `;
 }

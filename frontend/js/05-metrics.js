@@ -13,11 +13,24 @@ async function loadMetricsCharts() {
     const andamento = document.getElementById("metric-andamento");
     const resolvidos= document.getElementById("metric-resolvidos");
     const cancelados= document.getElementById("metric-cancelados");
+    const hoje       = document.getElementById("metric-hoje");
+    const pendentes  = document.getElementById("metric-pendentes");
+    const taxa       = document.getElementById("metric-taxa-resolucao");
+    const setorTop   = document.getElementById("metric-setor-top");
 
     if (total)      total.innerHTML     = data.total     || 0;
     if (andamento)  andamento.innerHTML = data.andamento  || 0;
     if (resolvidos) resolvidos.innerHTML= data.resolvidos || 0;
     if (cancelados) cancelados.innerHTML= data.cancelados || 0;
+    if (hoje)      hoje.innerHTML      = data.hoje || 0;
+    if (pendentes) pendentes.innerHTML = data.pendentes || 0;
+    if (taxa)      taxa.innerHTML      = `${data.taxaResolucao || 0}%`;
+
+    if (setorTop) {
+      setorTop.innerHTML = data.setorMaisMovimentado
+        ? `${data.setorMaisMovimentado.nome} (${data.setorMaisMovimentado.total})`
+        : "—";
+    }
 
     // ── Gráfico de status (doughnut) ──────────────────────────────────────────
     upsertChart("metric-chart-status", "doughnut", {

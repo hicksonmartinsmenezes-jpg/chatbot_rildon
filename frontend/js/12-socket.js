@@ -53,6 +53,7 @@ socket.on("online_users", users => {
   if (data?.userId && !isCurrentConversation) {
     unreadMessages[data.userId] =
       (unreadMessages[data.userId] || 0) + 1;
+      updateSidebarUnreadBadge();
   }
 
   if (currentTab === "conversations") {

@@ -3087,3 +3087,52 @@ body.light-theme .settings-form label {
   margin-top: 2px;
   color: var(--text-secondary);
 }
+
+.sidebar a {
+  position: relative;
+}
+
+.sidebar a {
+  position: relative;
+}
+
+.sidebar-badge {
+  position: absolute;
+
+  top: -4px;
+  right: -4px;
+
+  width: 18px;
+  height: 18px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 50%;
+
+  background: #02f00e;
+  color: #fff;
+
+  font-size: 10px;
+  font-weight: 700;
+
+  border: 2px solid #111827;
+
+  z-index: 10;
+}
+
+.sidebar-badge.hidden {
+  display: none;
+}
+
+.menu-icon-wrapper {
+  position: relative;
+
+  width: 22px;
+  height: 22px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

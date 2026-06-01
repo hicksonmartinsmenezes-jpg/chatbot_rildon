@@ -48,9 +48,23 @@
     </a>
 
     <a href="#" onclick="switchTab('conversations', event)">
-      <i class="fa-brands fa-whatsapp"></i>
-      <span class="label">Conversas</span>
-    </a>
+
+  <div class="menu-icon-wrapper">
+
+    <i class="fa-brands fa-whatsapp"></i>
+
+    <span
+      id="sidebar-unread-count"
+      class="sidebar-badge hidden"
+    >
+      0
+    </span>
+
+  </div>
+
+  <span class="label">Conversas</span>
+
+</a>
 
     <a href="#" onclick="switchTab('history', event)">
       <i class="fa-solid fa-clock-rotate-left"></i>

@@ -129,6 +129,7 @@ function openConversation(userId, updateActive = true) {
   unreadMessages[userId] > 0;
 
   unreadMessages[userId] = 0;
+  updateSidebarUnreadBadge();
 
 if (hadUnread && updateActive) {
   setTimeout(() => loadConversations(), 100);
@@ -395,4 +396,20 @@ function notifyTyping() {
     headers: apiHeaders(),
     body:    JSON.stringify({ userId: selectedConversationUser })
   }).catch(() => {});
+}
+
+function updateSidebarUnreadBadge() {
+  const badge = document.getElementById("sidebar-unread-count");
+  if (!badge) return;
+
+  const totalUnread = Object.values(unreadMessages)
+    .reduce((sum, value) => sum + Number(value || 0), 0);
+
+  if (totalUnread > 0) {
+    badge.textContent = totalUnread > 99 ? "99+" : totalUnread;
+    badge.classList.remove("hidden");
+  } else {
+    badge.textContent = "0";
+    badge.classList.add("hidden");
+  }
 }

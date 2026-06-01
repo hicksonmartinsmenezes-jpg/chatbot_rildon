@@ -5,8 +5,6 @@ const logger = require("../utils/logger");
 const router = express.Router();
 
 router.get("/contacts/photo", async (req, res) => {
- 
-
   try {
     const { userId } = req.query;
 
@@ -19,19 +17,14 @@ router.get("/contacts/photo", async (req, res) => {
     const photoUrl = await getProfilePhotoUrl(userId);
 
     if (!photoUrl) {
-      return res.status(404).json({
-        error: "Foto não encontrada."
-      });
+      return res.status(204).end();
     }
 
     return res.redirect(photoUrl);
 
   } catch (error) {
     logger.error(error);
-
-    return res.status(404).json({
-      error: "Foto não encontrada."
-    });
+    return res.status(204).end();
   }
 });
 

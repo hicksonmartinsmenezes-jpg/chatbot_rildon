@@ -36,6 +36,8 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions (updated_at);
 
+CREATE SEQUENCE IF NOT EXISTS protocolo_seq START 1;
+
 -- Tickets de atendimento
 CREATE TABLE IF NOT EXISTS tickets (
   id                SERIAL       PRIMARY KEY,
@@ -57,6 +59,7 @@ CREATE INDEX IF NOT EXISTS idx_tickets_status     ON tickets (status);
 CREATE INDEX IF NOT EXISTS idx_tickets_protocolo  ON tickets (protocolo);
 CREATE INDEX IF NOT EXISTS idx_tickets_cpf        ON tickets (REGEXP_REPLACE(cpf, '\D', '', 'g'));
 
+
 -- Histórico de mensagens
 CREATE TABLE IF NOT EXISTS history (
   id           SERIAL       PRIMARY KEY,
@@ -65,8 +68,11 @@ CREATE TABLE IF NOT EXISTS history (
   message      TEXT         NOT NULL,
   response     TEXT,
   sector       VARCHAR(100) NOT NULL DEFAULT 'main',
+  status       VARCHAR(50) NOT NULL DEFAULT '',
+  message_id   TEXT,
   created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
+
 CREATE INDEX IF NOT EXISTS idx_history_user_id    ON history (user_id);
 CREATE INDEX IF NOT EXISTS idx_history_created_at ON history (created_at);
 
@@ -85,17 +91,18 @@ CREATE TABLE IF NOT EXISTS settings (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Log de atividades do painel
-CREATE TABLE IF NOT EXISTS activity_log (
+--- Log de atividades do painel
+CREATE TABLE IF NOT EXISTS activity_logs (
   id          SERIAL       PRIMARY KEY,
-  usuario_id  INTEGER      REFERENCES users(id) ON DELETE SET NULL,
+  usuario_id  UUID REFERENCES users(id) ON DELETE SET NULL,
   usuario     TEXT,
   acao        TEXT         NOT NULL,
   detalhes    TEXT,
   ip          TEXT,
   created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS idx_activity_log_created ON activity_log (created_at);
+
+CREATE INDEX IF NOT EXISTS idx_activity_logs_created ON activity_logs (created_at);
 
 -- ─── MELHORIA: tabela de deduplicação de mensagens ────────────────────────────
 -- Garante que mensagens recebidas do WhatsApp não sejam processadas duas vezes,

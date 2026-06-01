@@ -1,5 +1,5 @@
 // 04-history.js
-// Histórico executivo com filtros, resumo e timeline.
+// Histórico executivo com filtros server-side, resumo e timeline.
 
 function normalizeHistoryText(value) {
   return String(value || "")
@@ -12,48 +12,36 @@ function sameLocalDate(a, b) {
   if (!a || !b) return false;
   const da = new Date(a);
   const db = new Date(b);
-
   return (
     da.getFullYear() === db.getFullYear() &&
-    da.getMonth() === db.getMonth() &&
-    da.getDate() === db.getDate()
+    da.getMonth()    === db.getMonth()    &&
+    da.getDate()     === db.getDate()
   );
 }
 
 function isHistoryInsideDateRange(item, start, end) {
   if (!start && !end) return true;
   if (!item?.createdAt) return false;
-
   const itemDate = new Date(item.createdAt);
-
-  if (start) {
-    const startDate = new Date(`${start}T00:00:00`);
-    if (itemDate < startDate) return false;
-  }
-
-  if (end) {
-    const endDate = new Date(`${end}T23:59:59`);
-    if (itemDate > endDate) return false;
-  }
-
+  if (start) { const s = new Date(`${start}T00:00:00`); if (itemDate < s) return false; }
+  if (end)   { const e = new Date(`${end}T23:59:59`);   if (itemDate > e) return false; }
   return true;
 }
 
 function updateHistorySummary(history) {
-  const today = new Date();
+  const today   = new Date();
   const clients = new Set(history.map(item => item.userId).filter(Boolean));
-  const todayCount = history.filter(item => sameLocalDate(item.createdAt, today)).length;
+  const todayCount    = history.filter(item => sameLocalDate(item.createdAt, today)).length;
   const responseCount = history.filter(item => item.response).length;
 
-  setText("history-total-count", history.length);
-  setText("history-client-count", clients.size);
-  setText("history-today-count", todayCount);
+  setText("history-total-count",    history.length);
+  setText("history-client-count",   clients.size);
+  setText("history-today-count",    todayCount);
   setText("history-response-count", responseCount);
 }
 
 function renderHistoryEmpty(container, message = "Nenhum histórico encontrado.") {
   if (!container) return;
-
   container.innerHTML = `
     <div class="history-empty">
       <i class="fa-regular fa-comments"></i>
@@ -64,50 +52,43 @@ function renderHistoryEmpty(container, message = "Nenhum histórico encontrado."
 }
 
 function renderHistoryCard(item) {
-  const userId = item.userId || item.user_id || "";
-  const phone = formatPhone(userId);
+  const userId      = item.userId || item.user_id || "";
+  const phone       = formatPhone(userId);
   const contactName = item.contactName || item.contact_name || "Cliente";
-  const message = item.message || "—";
-  const response = item.response || "—";
-  const sector = item.sector || "geral";
+  const message     = item.message  || "—";
+  const response    = item.response || "—";
+  const sector      = item.sector   || "geral";
 
   return `
     <article class="history-card">
       <div class="history-card-marker"></div>
-
       <div class="history-card-header">
         <div class="history-avatar">
           <i class="fa-brands fa-whatsapp"></i>
         </div>
-
         <div class="history-client-info">
           <strong>${safe(contactName === "Cliente" ? phone : contactName)}</strong>
           <span>${safe(phone)}</span>
         </div>
-
         <div class="history-card-meta">
           <span class="history-sector">${safe(sector)}</span>
           <small>${safe(formatDate(item.createdAt))}</small>
         </div>
       </div>
-
       <div class="history-message-grid">
         <div class="history-message-box client-msg">
           <span><i class="fa-solid fa-user"></i> Cliente</span>
           <p>${safe(cutText(message, 260))}</p>
         </div>
-
         <div class="history-message-box bot-msg">
           <span><i class="fa-solid fa-robot"></i> Resposta enviada</span>
           <p>${safe(cutText(response, 320))}</p>
         </div>
       </div>
-
       <div class="history-card-actions">
         <button onclick="openHistoryConversation('${escapeAttr(userId)}')">
           <i class="fa-solid fa-comments"></i> Abrir conversa
         </button>
-
         <button onclick="copyHistoryPhone('${escapeAttr(phone)}')">
           <i class="fa-regular fa-copy"></i> Copiar número
         </button>
@@ -116,10 +97,11 @@ function renderHistoryCard(item) {
   `;
 }
 
+// ─── loadHistory com filtros server-side (paginação futura via cursor) ────────
 async function loadHistory(render = true) {
-  const search = document.getElementById("search-history")?.value || "";
+  const search    = document.getElementById("search-history")?.value    || "";
   const startDate = document.getElementById("history-date-start")?.value || "";
-  const endDate = document.getElementById("history-date-end")?.value || "";
+  const endDate   = document.getElementById("history-date-end")?.value   || "";
   const container = document.getElementById("history-container");
 
   if (render && container) {
@@ -133,32 +115,34 @@ async function loadHistory(render = true) {
 
   try {
     const params = new URLSearchParams();
-    params.append("limit", "300");
+    params.append("limit", "100"); // Reduzido de 300 para 100
+
+    // Envia filtros ao servidor quando disponíveis para reduzir payload
+    if (search)    params.append("q",    search);
+    if (startDate) params.append("from", startDate);
+    if (endDate)   params.append("to",   endDate);
 
     const res = await apiFetch(`${BASE}/api/history?${params}`);
     if (!res) return [];
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-    const raw = await res.json();
+    const raw        = await res.json();
     const historyRaw = Array.isArray(raw) ? raw : raw.data || [];
 
+    // Filtragem client-side como fallback (para backends que não suportam os params)
     const searchTerm = normalizeHistoryText(search);
 
     const history = historyRaw.filter(item => {
       const haystack = normalizeHistoryText([
-        item.userId,
-        item.user_id,
-        item.contactName,
-        item.contact_name,
-        item.message,
-        item.response,
+        item.userId, item.user_id,
+        item.contactName, item.contact_name,
+        item.message, item.response,
         item.sector,
         formatPhone(item.userId || item.user_id)
       ].join(" "));
 
       const matchesSearch = !searchTerm || haystack.includes(searchTerm);
-      const matchesDate = isHistoryInsideDateRange(item, startDate, endDate);
-
+      const matchesDate   = isHistoryInsideDateRange(item, startDate, endDate);
       return matchesSearch && matchesDate;
     });
 
@@ -175,30 +159,21 @@ async function loadHistory(render = true) {
     return history;
   } catch (err) {
     updateHistorySummary([]);
-
-    if (render && container) {
-      renderHistoryEmpty(container, "Erro ao carregar histórico.");
-    }
-
+    if (render && container) renderHistoryEmpty(container, "Erro ao carregar histórico.");
     return [];
   }
 }
 
 function clearHistoryFilters() {
-  setValue("search-history", "");
+  setValue("search-history",     "");
   setValue("history-date-start", "");
-  setValue("history-date-end", "");
+  setValue("history-date-end",   "");
   loadHistory(true);
 }
 
 function openHistoryConversation(userId) {
-  if (!userId) {
-    showToast("Não foi possível abrir a conversa.");
-    return;
-  }
-
+  if (!userId) { showToast("Não foi possível abrir a conversa."); return; }
   switchTab("conversations");
-
   setTimeout(async () => {
     await loadConversations();
     openConversation(userId);

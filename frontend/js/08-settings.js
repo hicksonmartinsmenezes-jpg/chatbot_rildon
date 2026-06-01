@@ -187,20 +187,27 @@ async function saveSettings() {
   }
 }
 
-async function resetSettings() {
-  if (!confirm("Restaurar configurações padrão do painel?")) return;
-  try {
-    const res = await apiFetch(`${BASE}/api/settings/reset`, { method: "POST" });
-    if (!res) return;
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const settings = await res.json();
-    currentSettings = settings;
-    fillSettingsForm(settings);
-    applyPanelSettings(settings);
-    showToast("Configurações restauradas.");
-  } catch {
-    showToast("❌ Erro ao restaurar configurações.");
-  }
+function resetSettings() {
+  showConfirmModal({
+    title:       "Restaurar configurações",
+    message:     "Restaurar as configurações padrão do painel? Esta ação sobrescreverá todas as configurações atuais.",
+    confirmText: "Restaurar",
+    danger:      true,
+    onConfirm:   async () => {
+      try {
+        const res = await apiFetch(`${BASE}/api/settings/reset`, { method: "POST" });
+        if (!res) return;
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const settings = await res.json();
+        currentSettings = settings;
+        fillSettingsForm(settings);
+        applyPanelSettings(settings);
+        showToast("Configurações restauradas.");
+      } catch {
+        showToast("❌ Erro ao restaurar configurações.");
+      }
+    }
+  });
 }
 
 // ─── Respostas Rápidas ────────────────────────────────────────────────────────

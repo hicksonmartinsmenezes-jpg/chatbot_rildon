@@ -1,5 +1,4 @@
 // 09-users.js
-// Arquivo modularizado automaticamente a partir do app.js original.
 
 // ─── Usuários do Painel ───────────────────────────────────────────────────────
 let panelUsersCache = [];
@@ -39,26 +38,16 @@ function renderPanelUsers() {
     <div class="panel-user-item">
       <div>
         <strong>${safe(user.nome)}</strong>
-      <p>
-
-  ${safe(user.usuario)}
-  •
-  ${safe(user.perfil)}
-  •
-
-  ${
-    window.onlineUsers?.some(u => u.id === user.id && u.online)
-      ? "🟢 Online"
-      : "⚫ Offline"
-  }
-
-</p>
+        <p>
+          ${safe(user.usuario)} • ${safe(user.perfil)} •
+          ${window.onlineUsers?.some(u => u.id === user.id && u.online) ? "🟢 Online" : "⚫ Offline"}
+        </p>
       </div>
       <div class="panel-user-actions">
-        <button onclick="resetPanelUserPassword('${escapeAttr(user.id)}')" title="Alterar senha">
+        <button onclick="promptResetPassword('${escapeAttr(user.id)}')" title="Alterar senha">
           <i class="fa-solid fa-key"></i>
         </button>
-        <button onclick="deletePanelUser('${escapeAttr(user.id)}')" title="Excluir usuário">
+        <button onclick="confirmDeleteUser('${escapeAttr(user.id)}', '${escapeAttr(user.nome)}')" title="Excluir usuário">
           <i class="fa-solid fa-trash"></i>
         </button>
       </div>
@@ -93,8 +82,18 @@ async function createPanelUser() {
   }
 }
 
+// Substitui confirm() nativo por modal estilizado
+function confirmDeleteUser(id, nome) {
+  showConfirmModal({
+    title:       "Excluir usuário",
+    message:     `Deseja realmente excluir o usuário "${nome}"? Esta ação não pode ser desfeita.`,
+    confirmText: "Excluir",
+    danger:      true,
+    onConfirm:   () => deletePanelUser(id)
+  });
+}
+
 async function deletePanelUser(id) {
-  if (!confirm("Deseja excluir este usuário?")) return;
   try {
     const res = await apiFetch(`${BASE}/api/users/${id}`, { method: "DELETE" });
     if (!res) return;
@@ -109,21 +108,31 @@ async function deletePanelUser(id) {
   }
 }
 
-async function resetPanelUserPassword(id) {
-  const novaSenha = prompt("Digite a nova senha para este usuário:");
-  if (!novaSenha) return;
-  if (novaSenha.length < 4) { showToast("A senha deve ter pelo menos 4 caracteres."); return; }
-
-  try {
-    const res = await apiFetch(`${BASE}/api/users/${id}/password`, {
-      method: "PATCH",
-      body: JSON.stringify({ senha: novaSenha })
-    });
-    if (!res) return;
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || "Erro ao alterar senha.");
-    showToast("✅ Senha alterada com sucesso!");
-  } catch (err) {
-    showToast(`❌ ${err.message}`);
-  }
+// Substitui prompt() nativo por modal de senha
+function promptResetPassword(id) {
+  showInputModal({
+    title:       "Alterar senha",
+    label:       "Nova senha",
+    placeholder: "Mínimo 4 caracteres",
+    type:        "password",
+    confirmText: "Salvar senha",
+    onConfirm:   async (novaSenha) => {
+      if (novaSenha.length < 4) { showToast("A senha deve ter pelo menos 4 caracteres."); return; }
+      try {
+        const res = await apiFetch(`${BASE}/api/users/${id}/password`, {
+          method: "PATCH",
+          body:   JSON.stringify({ senha: novaSenha })
+        });
+        if (!res) return;
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Erro ao alterar senha.");
+        showToast("✅ Senha alterada com sucesso!");
+      } catch (err) {
+        showToast(`❌ ${err.message}`);
+      }
+    }
+  });
 }
+
+// Alias mantido para compatibilidade (caso haja chamadas diretas no HTML)
+const resetPanelUserPassword = promptResetPassword;

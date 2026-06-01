@@ -1,5 +1,4 @@
 // 07-conversations.js
-// Arquivo modularizado automaticamente a partir do app.js original.
 
 // ─── Conversas ────────────────────────────────────────────────────────────────
 async function loadConversations() {
@@ -15,11 +14,9 @@ async function loadConversations() {
 
     const res = await apiFetch(`${BASE}/api/history?${params}`);
     if (!res) return;
-  const raw = await res.json();
+    const raw = await res.json();
 
-  allHistory = Array.isArray(raw)
-  ? raw
-  : raw.data || [];
+    allHistory = Array.isArray(raw) ? raw : raw.data || [];
 
     if (!list) return;
 
@@ -95,20 +92,24 @@ function lastMessage(userId) {
 }
 
 function openConversation(userId, updateActive = true) {
-  selectedConversationUser    = userId;
-  unreadMessages[userId]      = 0;
+  selectedConversationUser = userId;
+  unreadMessages[userId]   = 0;
 
-  const header     = document.getElementById("chat-window-header");
+  const header      = document.getElementById("chat-window-header");
   const messagesBox = document.getElementById("chat-messages");
 
   if (header) {
     const name = getContactName(userId) || formatPhone(userId);
+    // Status de conexão real via socket (não fixa "Online")
+    const isOnline = window.onlineUsers?.some(u => u.userId === userId);
+    const statusText = isOnline ? "Online" : "";
+
     header.innerHTML = `
       <div class="chat-header-profile">
         ${avatarHtml(userId, name, true)}
         <div>
           <strong>${safe(contactLabel(userId))}</strong>
-          <span>Online</span>
+          ${statusText ? `<span>${safe(statusText)}</span>` : ""}
           <div id="chat-typing-status"></div>
         </div>
       </div>
@@ -135,7 +136,7 @@ function openConversation(userId, updateActive = true) {
   }
 
   let lastDay = "";
-  const html = [];
+  const html  = [];
 
   for (const item of messages) {
     const currentDay = dayLabel(item.createdAt);
@@ -194,20 +195,19 @@ async function sendConversationMessage() {
   const found        = quickRepliesCache.find(r => r.shortcut.toLowerCase() === message.toLowerCase());
   const finalMessage = found ? found.message : message;
 
-  // Limpa imediatamente (antes da requisição) para evitar envio duplo acidental
   input.value = "";
 
   try {
     await fetch(`${BASE}/api/messages/typing`, {
-      method: "POST",
+      method:  "POST",
       headers: apiHeaders(),
-      body: JSON.stringify({ userId: selectedConversationUser })
+      body:    JSON.stringify({ userId: selectedConversationUser })
     });
 
     const res = await apiFetch(`${BASE}/api/messages/send`, {
-      method: "POST",
+      method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId: selectedConversationUser, message: finalMessage })
+      body:    JSON.stringify({ userId: selectedConversationUser, message: finalMessage })
     });
 
     if (!res) return;
@@ -219,7 +219,6 @@ async function sendConversationMessage() {
     showToast("✅ Mensagem enviada!");
   } catch (err) {
     showToast(`❌ Erro ao enviar: ${err.message}`);
-    // Restaura a mensagem no campo em caso de falha
     if (input) input.value = finalMessage;
   } finally {
     sendingConversationMessage = false;
@@ -229,8 +228,8 @@ async function sendConversationMessage() {
 // ─── Chat rápido (modal) ──────────────────────────────────────────────────────
 function abrirChat(userId) {
   currentChatUser = userId;
-  document.getElementById("chat-user").textContent    = `Cliente: ${formatPhone(userId)}`;
-  document.getElementById("chat-message").value       = "";
+  document.getElementById("chat-user").textContent = `Cliente: ${formatPhone(userId)}`;
+  document.getElementById("chat-message").value    = "";
   document.getElementById("chat-modal").classList.remove("hidden");
 }
 
@@ -249,15 +248,15 @@ async function enviarMensagemManual() {
 
   try {
     await fetch(`${BASE}/api/messages/typing`, {
-      method: "POST",
+      method:  "POST",
       headers: apiHeaders(),
-      body: JSON.stringify({ userId: currentChatUser })
+      body:    JSON.stringify({ userId: currentChatUser })
     });
 
     const res = await apiFetch(`${BASE}/api/messages/send`, {
-      method: "POST",
+      method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId: currentChatUser, message })
+      body:    JSON.stringify({ userId: currentChatUser, message })
     });
 
     if (!res) return;
@@ -284,24 +283,17 @@ function renderMessageStatus(status) {
   }
 }
 
-let typingTimer = null;
-
+// ─── Typing indicator ─────────────────────────────────────────────────────────
 let lastTypingAt = 0;
 
 function notifyTyping() {
   if (!selectedConversationUser) return;
-
   const now = Date.now();
-
   if (now - lastTypingAt < 1200) return;
-
   lastTypingAt = now;
-
   fetch(`${BASE}/api/messages/typing`, {
-    method: "POST",
+    method:  "POST",
     headers: apiHeaders(),
-    body: JSON.stringify({
-      userId: selectedConversationUser
-    })
+    body:    JSON.stringify({ userId: selectedConversationUser })
   }).catch(() => {});
 }

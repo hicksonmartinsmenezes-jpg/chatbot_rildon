@@ -1,5 +1,4 @@
 // 06-tickets.js
-// Arquivo modularizado automaticamente a partir do app.js original.
 
 // ─── Tickets ──────────────────────────────────────────────────────────────────
 async function loadTickets() {
@@ -67,9 +66,7 @@ async function mudarStatus(id, status) {
       body: JSON.stringify({ status })
     });
     loadTickets();
-    if (currentTab === "metrics") {
-      loadMetricsCharts();
-    }
+    if (currentTab === "metrics") loadMetricsCharts();
   } catch {
     showToast("Não foi possível atualizar o ticket.");
   }
@@ -84,25 +81,19 @@ function updateStats(stats, tickets = []) {
   const resolvido = stats.resolvido ?? stats.resolvidos ?? 0;
   const cancelado = stats.cancelado ?? stats.cancelados ?? 0;
 
-  setText("stat-total", total);
-  setText("stat-aberto", aberto);
-  setText("stat-andamento", andamento);
-  setText("stat-resolvido", resolvido);
-  setText("stat-pendentes", aberto + andamento);
+  setText("stat-total",    total);
+  setText("stat-aberto",   aberto);
+  setText("stat-andamento",andamento);
+  setText("stat-resolvido",resolvido);
+  setText("stat-pendentes",aberto + andamento);
   setText("stat-contatos", new Set((tickets || []).map(t => t.userId)).size);
 
-  setText("op-aberto", aberto);
+  setText("op-aberto",    aberto);
   setText("op-andamento", andamento);
   setText("op-resolvido", resolvido);
   setText("op-cancelado", cancelado);
 
-  renderExecutiveDashboard(tickets, {
-    total,
-    aberto,
-    andamento,
-    resolvido,
-    cancelado
-  });
+  renderExecutiveDashboard(tickets, { total, aberto, andamento, resolvido, cancelado });
 }
 
 function renderExecutiveDashboard(tickets = [], stats = {}) {
@@ -116,14 +107,14 @@ function renderExecutiveDashboard(tickets = [], stats = {}) {
 
   setText("stat-hoje", ticketsHoje);
 
-  const total = Number(stats.total || 0);
-  const resolvido = Number(stats.resolvido || 0);
+  const total      = Number(stats.total    || 0);
+  const resolvido  = Number(stats.resolvido|| 0);
   const taxaResolucao = total > 0 ? Math.round((resolvido / total) * 100) : 0;
   setText("stat-resolucao-sub", `${taxaResolucao}% de resolução geral`);
-  setText("stat-total-sub", `${ticketsHoje} novo(s) hoje`);
+  setText("stat-total-sub",     `${ticketsHoje} novo(s) hoje`);
 
-  const porSetor = contarPorCampo(lista, "sector");
-  const setorTop = Object.entries(porSetor).sort((a, b) => b[1] - a[1])[0];
+  const porSetor  = contarPorCampo(lista, "sector");
+  const setorTop  = Object.entries(porSetor).sort((a, b) => b[1] - a[1])[0];
   setText("stat-top-sector", setorTop ? setorTop[0] : "—");
 
   renderRecentTickets(lista);
@@ -133,7 +124,7 @@ function renderExecutiveDashboard(tickets = [], stats = {}) {
 function contarPorCampo(lista, campo) {
   return lista.reduce((acc, item) => {
     const chave = item?.[campo] || "geral";
-    acc[chave] = (acc[chave] || 0) + 1;
+    acc[chave]  = (acc[chave] || 0) + 1;
     return acc;
   }, {});
 }
@@ -165,9 +156,6 @@ function renderRecentTickets(tickets = []) {
 function renderExecutiveCharts(tickets = [], porSetor = {}) {
   if (typeof Chart === "undefined") return;
 
-  const dayCanvas = document.getElementById("exec-chart-day");
-  const sectorCanvas = document.getElementById("exec-chart-sector");
-
   const porDia = tickets.reduce((acc, ticket) => {
     const dataBruta = ticket.createdAt || ticket.created_at;
     const dia = dataBruta ? String(dataBruta).slice(0, 10) : "Sem data";
@@ -177,71 +165,27 @@ function renderExecutiveCharts(tickets = [], porSetor = {}) {
 
   const diasOrdenados = Object.keys(porDia).sort().slice(-7);
 
-  if (dayCanvas) {
-    if (window.execDayChart) window.execDayChart.destroy();
+  upsertChart("exec-chart-day", "line", {
+    labels:   diasOrdenados.length ? diasOrdenados : ["Hoje"],
+    datasets: [{
+      label:       "Atendimentos",
+      data:        diasOrdenados.length ? diasOrdenados.map(d => porDia[d]) : [0],
+      tension:     0.36,
+      fill:        true,
+      borderWidth: 2
+    }]
+  });
 
-    window.execDayChart = new Chart(dayCanvas, {
-      type: "line",
-      data: {
-        labels: diasOrdenados.length ? diasOrdenados : ["Hoje"],
-        datasets: [{
-          label: "Atendimentos",
-          data: diasOrdenados.length ? diasOrdenados.map(dia => porDia[dia]) : [0],
-          tension: .36,
-          fill: true,
-          borderWidth: 2
-        }]
-      },
-      options: executiveChartOptions()
-    });
-  }
-
-  if (sectorCanvas) {
-    if (window.execSectorChart) window.execSectorChart.destroy();
-
-    const setores = Object.keys(porSetor);
-
-    window.execSectorChart = new Chart(sectorCanvas, {
-      type: "bar",
-      data: {
-        labels: setores.length ? setores : ["Sem setor"],
-        datasets: [{
-          label: "Tickets",
-          data: setores.length ? setores.map(setor => porSetor[setor]) : [0],
-          borderRadius: 12,
-          borderSkipped: false
-        }]
-      },
-      options: executiveChartOptions()
-    });
-  }
-}
-
-function executiveChartOptions() {
-  return {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        labels: {
-          color: "#cbd5e1",
-          boxWidth: 12,
-          font: { weight: "bold" }
-        }
-      }
-    },
-    scales: {
-      x: {
-        ticks: { color: "#94a3b8" },
-        grid: { color: "rgba(255,255,255,.04)" }
-      },
-      y: {
-        beginAtZero: true,
-        ticks: { color: "#94a3b8", precision: 0 },
-        grid: { color: "rgba(255,255,255,.06)" }
-      }
-    }
-  };
+  const setores = Object.keys(porSetor);
+  upsertChart("exec-chart-sector", "bar", {
+    labels:   setores.length ? setores : ["Sem setor"],
+    datasets: [{
+      label:         "Tickets",
+      data:          setores.length ? setores.map(s => porSetor[s]) : [0],
+      borderRadius:  12,
+      borderSkipped: false
+    }]
+  });
 }
 
 async function checkServerStatus() {
@@ -256,12 +200,26 @@ async function checkServerStatus() {
 
 function playAlertSound(type = "ticket") {
   try {
-    const src = type === "message"
-      ? "https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg"
-      : "https://actions.google.com/sounds/v1/alarms/beep_short.ogg";
-    const audio = new Audio(src);
-    audio.volume = 0.5;
-    audio.play().catch(() => {});
+    // Sons hospedados localmente para evitar dependência de domínio externo.
+    // Fallback para Web Audio API se os arquivos não existirem.
+    const localSrc = type === "message" ? "/sounds/message.ogg" : "/sounds/ticket.ogg";
+    const audio    = new Audio(localSrc);
+    audio.volume   = 0.5;
+    audio.play().catch(() => {
+      // Fallback: gera beep simples via Web Audio API
+      try {
+        const ctx  = new (window.AudioContext || window.webkitAudioContext)();
+        const osc  = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.value = type === "message" ? 880 : 660;
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.3);
+      } catch (_) {}
+    });
   } catch (_) {}
 }
 
@@ -288,38 +246,41 @@ async function assumirTicket(id) {
       openConversation(data.ticket.userId);
     } else {
       loadTickets();
-      if (currentTab === "metrics") {
-        loadMetricsCharts();
+      if (currentTab === "metrics") loadMetricsCharts();
+    }
+  } catch (err) {
+    showToast(`❌ ${err.message}`);
+  }
+}
+
+// Substitui prompt() por modal de confirmação
+async function transferirTicket(id) {
+  showInputModal({
+    title:       "Transferir ticket",
+    label:       "Para qual setor?",
+    placeholder: "vendas, financeiro, suporte, garantia",
+    confirmText: "Transferir",
+    onConfirm:   async (sector) => {
+      if (!sector) return;
+      try {
+        const res = await apiFetch(`${BASE}/api/tickets/${id}/transfer`, {
+          method: "PATCH",
+          body:   JSON.stringify({ sector })
+        });
+        if (!res) return;
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Erro ao transferir ticket.");
+        showToast("✅ Ticket transferido!");
+        loadTickets();
+        if (currentTab === "metrics") loadMetricsCharts();
+      } catch (err) {
+        showToast(`❌ ${err.message}`);
       }
     }
-  } catch (err) {
-    showToast(`❌ ${err.message}`);
-  }
+  });
 }
 
-async function transferirTicket(id) {
-  const sector = prompt("Transferir para qual setor?\n\nvendas\nfinanceiro\nsuporte\ngarantia");
-  if (!sector) return;
-
-  try {
-    const res = await apiFetch(`${BASE}/api/tickets/${id}/transfer`, {
-      method: "PATCH",
-      body: JSON.stringify({ sector })
-    });
-    if (!res) return;
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || "Erro ao transferir ticket.");
-    showToast("✅ Ticket transferido!");
-    loadTickets();
-    if (currentTab === "metrics") {
-      loadMetricsCharts();
-    }
-  } catch (err) {
-    showToast(`❌ ${err.message}`);
-  }
-}
-
-// ─── Gráficos ─────────────────────────────────────────────────────────────────
+// ─── Gráficos do dashboard admin ──────────────────────────────────────────────
 async function loadDashboardCharts() {
   if (typeof Chart === "undefined") return;
 
@@ -331,27 +292,17 @@ async function loadDashboardCharts() {
     if (!res) return;
     const data = await res.json();
 
-    const statusCanvas = document.getElementById("chart-status");
-    const sectorCanvas = document.getElementById("chart-sector");
-    if (!statusCanvas || !sectorCanvas) return;
-
-    if (chartStatus) chartStatus.destroy();
-    if (chartSector) chartSector.destroy();
-
-    chartStatus = new Chart(statusCanvas, {
-      type: "doughnut",
-      data: {
-        labels: Object.keys(data.porStatus || {}),
-        datasets: [{ data: Object.values(data.porStatus || {}) }]
-      }
+    const statusChart = upsertChart("chart-status", "doughnut", {
+      labels:   Object.keys(data.porStatus  || {}),
+      datasets: [{ data: Object.values(data.porStatus || {}) }]
+    });
+    const sectorChart = upsertChart("chart-sector", "bar", {
+      labels:   Object.keys(data.porSetor  || {}),
+      datasets: [{ label: "Atendimentos", data: Object.values(data.porSetor || {}) }]
     });
 
-    chartSector = new Chart(sectorCanvas, {
-      type: "bar",
-      data: {
-        labels: Object.keys(data.porSetor || {}),
-        datasets: [{ label: "Atendimentos", data: Object.values(data.porSetor || {}) }]
-      }
-    });
+    // Mantém referências globais de compatibilidade
+    AppState.chartStatus = statusChart;
+    AppState.chartSector = sectorChart;
   } catch (_) {}
 }

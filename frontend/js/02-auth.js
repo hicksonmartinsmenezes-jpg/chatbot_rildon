@@ -1,10 +1,13 @@
 // 02-auth.js
-// Arquivo modularizado automaticamente a partir do app.js original.
 
 // ─── Sessão / Auth ────────────────────────────────────────────────────────────
+// NOTA DE SEGURANÇA: sessionStorage é vulnerável a XSS.
+// A solução ideal é usar cookies HttpOnly; Secure; SameSite=Strict gerenciados
+// pelo servidor. Enquanto isso, mantemos sessionStorage mas com token de curta
+// duração e renovação automática no apiFetch.
 function getSessionToken()  { return sessionStorage.getItem("session_token") || ""; }
 function setSessionToken(t) { sessionStorage.setItem("session_token", t); }
-function clearSessionToken(){ sessionStorage.removeItem("session_token"); }
+function clearSessionToken(){ sessionStorage.removeItem("session_token"); sessionStorage.removeItem("current_user"); }
 
 function apiHeaders(extra = {}) {
   const token = getSessionToken();
@@ -15,10 +18,13 @@ function apiHeaders(extra = {}) {
 
 // ─── Login ────────────────────────────────────────────────────────────────────
 async function login() {
-  const user  = document.getElementById("login-user").value.trim();
-  const pass  = document.getElementById("login-pass").value.trim();
-  const error = document.getElementById("login-error");
-  const btn   = document.querySelector(".login-card button");
+  const userEl  = document.getElementById("login-user");
+  const passEl  = document.getElementById("login-pass");
+  const error   = document.getElementById("login-error");
+  const btn     = document.querySelector(".login-card button");
+
+  const user = userEl?.value.trim() || "";
+  const pass = passEl?.value.trim() || "";
 
   if (!user || !pass) { error.textContent = "Preencha usuário e senha."; return; }
 
@@ -39,6 +45,10 @@ async function login() {
 
     setSessionToken(data.token);
     if (data.user) sessionStorage.setItem("current_user", JSON.stringify(data.user));
+
+    // Limpa campos de login da memória
+    if (userEl) userEl.value = "";
+    if (passEl) passEl.value = "";
 
     showDashboard();
     applyUserPermissions();

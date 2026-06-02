@@ -336,6 +336,31 @@ async function sendMessage(userId, text) {
   return { id: sent.key.id, remoteJid: sent.key.remoteJid, fromMe: sent.key.fromMe };
 }
 
+async function sendMedia(userId, filePath, caption = "") {
+
+  if (!sock) {
+    throw new Error("WhatsApp não está conectado.");
+  }
+
+  const sent = await sock.sendMessage(
+    userId,
+    {
+      image: {
+        url: filePath
+      },
+      caption
+    }
+  );
+
+  logger.success(`Imagem enviada para ${userId}`);
+
+  return {
+    id: sent.key.id,
+    remoteJid: sent.key.remoteJid,
+    fromMe: sent.key.fromMe
+  };
+}
+
 function getSocket() {
   return sock;
 }
@@ -352,6 +377,7 @@ async function sendTypingPresence(userId) {
 module.exports = {
   connectWhatsApp,
   sendMessage,
+  sendMedia,
   getProfilePhotoUrl,
   getSocket,
   sendTypingPresence

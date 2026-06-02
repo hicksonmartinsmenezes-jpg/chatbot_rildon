@@ -1,6 +1,11 @@
 const pool = require("../database/postgres");
 const logger = require("../utils/logger");
-const { sendMessage } = require("../config/whatsapp");
+const {
+  sendMessage,
+  sendMedia
+} = require("../config/whatsapp");
+
+const path = require("path");
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -22,7 +27,7 @@ function normalizeUserId(userId) {
   return `${digits}@s.whatsapp.net`;
 }
 
-async function createBroadcast({ title, message, recipients, createdBy }) {
+async function createBroadcast({ title, message, recipients, createdBy, imageUrl }) {
   if (!title || !message) {
     throw new Error("Título e mensagem são obrigatórios.");
   }
@@ -55,12 +60,12 @@ const cleanedRecipients = Array.from(recipientMap.values());
 
     const broadcastRes = await client.query(
       `
-      INSERT INTO broadcasts
-      (title, message, total_recipients, created_by)
-      VALUES ($1, $2, $3, $4)
+     INSERT INTO broadcasts
+      (title, message, total_recipients, created_by, image_url)
+      VALUES ($1, $2, $3, $4, $5)
       RETURNING *
       `,
-      [title, message, cleanedRecipients.length, createdBy || null]
+      [title, message, cleanedRecipients.length, createdBy || null, imageUrl || null]
     );
 
     const broadcast = broadcastRes.rows[0];
@@ -167,7 +172,28 @@ async function processBroadcastQueue(broadcastId) {
 
   for (const recipient of recipients) {
     try {
-      await sendMessage(recipient.user_id, broadcast.message);
+     if (broadcast.image_url) {
+
+  const imagePath = path.join(
+    __dirname,
+    "..",
+    broadcast.image_url
+  );
+
+  await sendMedia(
+    recipient.user_id,
+    imagePath,
+    broadcast.message
+  );
+
+} else {
+
+  await sendMessage(
+    recipient.user_id,
+    broadcast.message
+  );
+
+}
 
       await pool.query(
         `
@@ -280,11 +306,35 @@ SELECT
   }));
 }
 
+async function getBroadcastStats() {
+  const res = await pool.query(`
+    SELECT
+      COUNT(*)::int AS campaigns,
+      COALESCE(SUM(sent_count), 0)::int AS sent,
+      COALESCE(SUM(failed_count), 0)::int AS failed,
+      COALESCE(SUM(total_recipients), 0)::int AS total_recipients
+    FROM broadcasts
+  `);
+
+  const stats = res.rows[0];
+
+  const totalAttempts = stats.sent + stats.failed;
+
+  return {
+    campaigns: stats.campaigns,
+    sent: stats.sent,
+    failed: stats.failed,
+    successRate: totalAttempts > 0
+      ? Math.round((stats.sent / totalAttempts) * 100)
+      : 0
+  };
+}
 
 module.exports = {
   createBroadcast,
   listBroadcasts,
   getBroadcastRecipients,
   startBroadcast,
-  getBroadcastAudience
+  getBroadcastAudience,
+  getBroadcastStats
 };

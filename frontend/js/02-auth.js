@@ -93,14 +93,32 @@ function checkAuth() {
   }
 }
 
+let sessionExpiredShown = false;
+
 // ─── Fetch autenticado ────────────────────────────────────────────────────────
 async function apiFetch(url, options = {}) {
-  const res = await fetch(url, { ...options, headers: apiHeaders(options.headers) });
+  const res = await fetch(url, {
+    ...options,
+    headers: apiHeaders(options.headers)
+  });
+
   if (res.status === 401) {
-    clearSessionToken();
-    alert("Sua sessão expirou. Faça login novamente.");
-    location.reload();
-    return null;
+    if (!sessionExpiredShown) {
+      sessionExpiredShown = true;
+
+      clearSessionToken();
+
+      if (typeof showToast === "function") {
+        showToast("Sua sessão expirou. Faça login novamente.");
+      }
+
+      setTimeout(() => {
+        location.reload();
+      }, 1200);
+    }
+
+    return res;
   }
+
   return res;
 }

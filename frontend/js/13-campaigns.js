@@ -4,6 +4,8 @@ async function loadCampaigns() {
   const list = document.getElementById("campaign-list");
   if (!list) return;
 
+   loadCampaignStats();
+
   list.innerHTML = `<div class="loading">Carregando campanhas...</div>`;
 
   try {
@@ -15,16 +17,52 @@ async function loadCampaigns() {
       return;
     }
 
-    list.innerHTML = data.map(campaign => `
+
+    const hasSendingCampaign = data.some(campaign => campaign.status === "sending");
+
+    list.innerHTML = data.map(campaign => {
+ const total = Number(campaign.total_recipients || 0);
+  const sent = Number(campaign.sent_count || 0);
+  const failed = Number(campaign.failed_count || 0);
+  const processed = sent + failed;
+
+  const progress = total > 0
+    ? Math.min(100, Math.round((processed / total) * 100))
+    : 0;
+
+  return `
       <div class="campaign-item">
         <div>
-          <strong>${safe(campaign.title)}</strong>
+
+  ${
+    campaign.image_url
+      ? `
+      <img
+        src="${campaign.image_url}"
+        class="campaign-thumb"
+      >
+      `
+      : ""
+  }
+
+         <strong>${safe(campaign.title)}</strong>
           <span>Status: ${safe(campaign.status)}</span>
           <small>
             Enviados: ${campaign.sent_count || 0} /
             ${campaign.total_recipients || 0}
             • Falhas: ${campaign.failed_count || 0}
           </small>
+
+          <div class="campaign-progress-info">
+            <span>${progress}% concluído</span>
+            <span>${processed}/${total}</span>
+            </div>
+
+            <div class="campaign-progress">
+            <div style="width: ${progress}%"></div>
+            </div>
+
+
         </div>
 
         ${
@@ -36,7 +74,12 @@ async function loadCampaigns() {
             : ""
         }
       </div>
-    `).join("");
+     `;
+    }).join("");    
+
+    if (hasSendingCampaign) {
+    setTimeout(loadCampaigns, 5000);
+}
 
   } catch (err) {
     console.error("Erro campanhas:", err);
@@ -92,15 +135,61 @@ async function createCampaign() {
       return;
     }
 
+
+
+     let imageUrl = null;
+
+const imageInput =
+  document.getElementById("campaign-image");
+
+if (imageInput?.files?.length) {
+
+  const formData = new FormData();
+
+  formData.append(
+    "image",
+    imageInput.files[0]
+  );
+
+  const uploadRes = await fetch(
+    "/api/broadcasts/upload",
+    {
+      method: "POST",
+      headers: {
+        Authorization:
+          `Bearer ${getSessionToken()}`
+      },
+      body: formData
+    }
+  );
+
+  const uploadData =
+    await uploadRes.json();
+
+  if (!uploadRes.ok) {
+    showToast(
+      uploadData.error ||
+      "Erro ao enviar imagem."
+    );
+    return;
+  }
+
+  imageUrl = uploadData.url;
+}   
+
+
+
+
     const res = await apiFetch("/api/broadcasts", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        title,
+         title,
         message,
-        recipients
+        recipients,
+        imageUrl
       })
     });
 
@@ -120,16 +209,21 @@ async function createCampaign() {
       recipientsInput.value = "";
     }
 
-    const imageInput = document.getElementById("campaign-image");
-    const previewBox = document.getElementById("campaign-image-preview");
-    const previewImg = document.getElementById("campaign-preview-img");
+    const imageInputReset =
+  document.getElementById("campaign-image");
 
-    if (imageInput) imageInput.value = "";
+    const previewBox =
+    document.getElementById("campaign-image-preview");
+
+    const previewImg =
+    document.getElementById("campaign-preview-img");
+
+    if (imageInputReset) imageInputReset.value = "";
     if (previewBox) previewBox.classList.add("hidden");
     if (previewImg) previewImg.src = "";
-
     loadCampaigns();
     updateCampaignAudienceCount();
+    loadCampaignStats();
 
   } catch (err) {
     console.error("Erro ao criar campanha:", err);
@@ -154,6 +248,8 @@ async function startCampaign(id) {
 
     showToast("Campanha iniciada.");
     loadCampaigns();
+    loadCampaignStats();
+
 
   } catch (err) {
     console.error("Erro ao iniciar campanha:", err);
@@ -196,7 +292,11 @@ function toggleCustomRecipients() {
 }
 
 async function updateCampaignAudienceCount() {
-  const countBox = document.getElementById("campaign-audience-count");
+
+  if (!getSessionToken()) return;
+
+  const countBox =
+  document.getElementById("campaign-audience-count");
   if (!countBox) return;
 
   const audienceType =
@@ -232,3 +332,49 @@ async function updateCampaignAudienceCount() {
     countBox.innerHTML = "Erro ao calcular destinatários.";
   }
 }
+
+async function loadCampaignStats() {
+
+  if (!getSessionToken()) return;
+
+  try {
+    const res = await apiFetch("/api/broadcasts/stats");
+    const data = await res.json();
+
+    if (!res.ok) return;
+
+    document.getElementById("campaign-stat-total").textContent = data.campaigns || 0;
+    document.getElementById("campaign-stat-sent").textContent = data.sent || 0;
+    document.getElementById("campaign-stat-failed").textContent = data.failed || 0;
+    document.getElementById("campaign-stat-success").textContent = `${data.successRate || 0}%`;
+
+  } catch (err) {
+    console.error("Erro estatísticas campanhas:", err);
+  }
+}
+
+function switchCampaignPanel(panel, event) {
+  document
+    .querySelectorAll(".campaign-tab")
+    .forEach(btn => btn.classList.remove("active"));
+
+  event?.currentTarget?.classList.add("active");
+
+  document
+    .getElementById("campaign-panel-create")
+    ?.classList.toggle("hidden", panel !== "create");
+
+  document
+    .getElementById("campaign-panel-monitor")
+    ?.classList.toggle("hidden", panel !== "monitor");
+
+  if (panel === "monitor") {
+    loadCampaigns();
+    loadCampaignStats();
+  }
+
+  if (panel === "create") {
+    updateCampaignAudienceCount();
+  }
+}
+

@@ -77,7 +77,7 @@
     </a>
 
     <a href="#" onclick="switchTab('channels', event)">
-      <i class="fa-solid fa-mobile-screen"></i>
+      <i class="fa fa-bullhorn"></i>
       <span class="label">Campanhas</span>
     </a>
 
@@ -368,8 +368,8 @@
               id="conversation-message"
               placeholder="Digite uma mensagem..."
               onkeydown="handleConversationKeydown(event)"
-              oninput="notifyTyping()"
-            ></textarea>
+             ></textarea>
+             oninput="notifyTyping()"
               <button onclick="sendConversationMessage()" title="Enviar">
                 <i class="fa-solid fa-paper-plane"></i>
               </button>
@@ -465,16 +465,24 @@
       </span>
 
       <h2>Transmissões para clientes</h2>
-      <p>Crie campanhas e envie mensagens para clientes cadastrados com controle e histórico.</p>
+      <p>Crie campanhas e acompanhe envios com controle e histórico.</p>
     </div>
 
-    <button class="btn-refresh" onclick="loadCampaigns()">
-      <i class="fa-solid fa-rotate"></i>
-      Atualizar
-    </button>
+    <div class="campaign-tabs">
+      <button class="campaign-tab active" onclick="switchCampaignPanel('create', event)">
+        <i class="fa-solid fa-plus"></i>
+        Criar campanha
+      </button>
+
+      <button class="campaign-tab supervisor-only" onclick="switchCampaignPanel('monitor', event)">
+        <i class="fa-solid fa-chart-line"></i>
+        Acompanhar
+      </button>
+    </div>
   </div>
 
-  <div class="campaigns-layout">
+  <!-- PAINEL: CRIAR CAMPANHA -->
+  <div id="campaign-panel-create">
 
     <div class="panel campaign-form-card">
       <h3>Nova campanha</h3>
@@ -485,9 +493,7 @@
       <label>Mensagem</label>
       <textarea id="campaign-message" placeholder="Digite a mensagem que será enviada aos clientes..."></textarea>
 
-
       <label>Imagem da campanha (opcional)</label>
-
       <input
         type="file"
         id="campaign-image"
@@ -501,73 +507,79 @@
 
       <label>Destinatários</label>
 
-<div class="campaign-audience-options">
+      <div class="campaign-audience-options">
 
-  <label class="campaign-radio">
-    <input
-      type="radio"
-      name="campaign-audience"
-      value="all_clients"
-      checked
-      onchange="toggleCustomRecipients()"
-    >
-    <span>Todos os clientes</span>
-  </label>
+        <label class="campaign-radio">
+          <input type="radio" name="campaign-audience" value="all_clients" checked onchange="toggleCustomRecipients()">
+          <span>Todos os clientes</span>
+        </label>
 
-  <label class="campaign-radio">
-    <input
-      type="radio"
-      name="campaign-audience"
-      value="with_tickets"
-      onchange="toggleCustomRecipients()"
-    >
-    <span>Clientes com ticket</span>
-  </label>
+        <label class="campaign-radio">
+          <input type="radio" name="campaign-audience" value="with_tickets" onchange="toggleCustomRecipients()">
+          <span>Clientes com ticket</span>
+        </label>
 
-  <label class="campaign-radio">
-    <input
-      type="radio"
-      name="campaign-audience"
-      value="last_30_days"
-      onchange="toggleCustomRecipients()"
-    >
-    <span>Últimos 30 dias</span>
-  </label>
+        <label class="campaign-radio">
+          <input type="radio" name="campaign-audience" value="last_30_days" onchange="toggleCustomRecipients()">
+          <span>Últimos 30 dias</span>
+        </label>
 
-  <label class="campaign-radio">
-    <input
-      type="radio"
-      name="campaign-audience"
-      value="custom"
-      onchange="toggleCustomRecipients()"
-    >
-    <span>Lista personalizada</span>
-  </label>
+        <label class="campaign-radio">
+          <input type="radio" name="campaign-audience" value="custom" onchange="toggleCustomRecipients()">
+          <span>Lista personalizada</span>
+        </label>
 
-</div>
+      </div>
 
-<div id="campaign-audience-count" class="campaign-audience-count">
-  Selecione um público para calcular os destinatários.
-</div>
+      <div id="campaign-audience-count" class="campaign-audience-count">
+        Selecione um público para calcular os destinatários.
+      </div>
 
-<div id="custom-recipients-box" class="hidden">
+      <div id="custom-recipients-box" class="hidden">
+        <label>Números personalizados</label>
 
-  <label>Números personalizados</label>
-
-  <textarea
-    id="campaign-recipients"
-    oninput="updateCampaignAudienceCount()"
-    placeholder="Digite um número por linha. Ex:
+        <textarea
+          id="campaign-recipients"
+          oninput="updateCampaignAudienceCount()"
+          placeholder="Digite um número por linha. Ex:
 557999999999
 557988888888"
-  ></textarea>
-
-</div>
+        ></textarea>
+      </div>
 
       <button class="send-btn" onclick="createCampaign()">
         <i class="fa-solid fa-paper-plane"></i>
         Criar campanha
       </button>
+    </div>
+
+  </div>
+
+  <!-- PAINEL: ACOMPANHAR CAMPANHAS -->
+  <div id="campaign-panel-monitor" class="hidden supervisor-only">
+
+    <div class="campaign-stats-grid">
+
+      <div class="campaign-stat-card">
+        <span>Campanhas</span>
+        <strong id="campaign-stat-total">0</strong>
+      </div>
+
+      <div class="campaign-stat-card">
+        <span>Mensagens enviadas</span>
+        <strong id="campaign-stat-sent">0</strong>
+      </div>
+
+      <div class="campaign-stat-card">
+        <span>Falhas</span>
+        <strong id="campaign-stat-failed">0</strong>
+      </div>
+
+      <div class="campaign-stat-card">
+        <span>Taxa de sucesso</span>
+        <strong id="campaign-stat-success">0%</strong>
+      </div>
+
     </div>
 
     <div class="panel campaign-list-card">
@@ -576,6 +588,11 @@
           <h3>Campanhas criadas</h3>
           <p>Acompanhe status, envios e falhas.</p>
         </div>
+
+        <button class="btn-refresh" onclick="loadCampaigns()">
+          <i class="fa-solid fa-rotate"></i>
+          Atualizar
+        </button>
       </div>
 
       <div id="campaign-list">

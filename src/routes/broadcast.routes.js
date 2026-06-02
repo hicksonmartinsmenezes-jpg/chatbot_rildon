@@ -1,11 +1,15 @@
 const express = require("express");
+const path = require("path");
+const fs = require("fs");
+const multer = require("multer");
 
 const {
   createBroadcast,
   listBroadcasts,
   getBroadcastRecipients,
   startBroadcast,
-  getBroadcastAudience
+  getBroadcastAudience,
+  getBroadcastStats
 } = require("../services/broadcast.service");
 
 const router = express.Router();
@@ -19,18 +23,65 @@ router.get("/broadcasts", async (req, res) => {
   }
 });
 
+
+const uploadDir = path.join(__dirname, "../uploads/campaigns");
+
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: uploadDir,
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    const name = `campaign-${Date.now()}${ext}`;
+    cb(null, name);
+  }
+});
+
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024
+  },
+  fileFilter: (req, file, cb) => {
+    if (!file.mimetype.startsWith("image/")) {
+      return cb(new Error("Apenas imagens são permitidas."));
+    }
+
+    cb(null, true);
+  }
+});
+
+
 router.post("/broadcasts", async (req, res) => {
   try {
-    const { title, message, recipients } = req.body;
+    const { title, message, recipients, imageUrl } = req.body;
 
     const broadcast = await createBroadcast({
       title,
       message,
       recipients,
+      imageUrl,
       createdBy: req.user?.nome || req.user?.usuario || null
     });
 
     res.status(201).json(broadcast);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+
+router.post("/broadcasts/upload", upload.single("image"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "Nenhuma imagem enviada." });
+    }
+
+    res.json({
+      url: `/uploads/campaigns/${req.file.filename}`
+    });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -44,6 +95,17 @@ router.get("/broadcasts/audience/:type", async (req, res) => {
     res.status(400).json({ error: err.message });
   }
 });
+
+
+router.get("/broadcasts/stats", async (req, res) => {
+  try {
+    const stats = await getBroadcastStats();
+    res.json(stats);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 router.get("/broadcasts/:id/recipients", async (req, res) => {
   try {
@@ -62,5 +124,7 @@ router.post("/broadcasts/:id/start", async (req, res) => {
     res.status(400).json({ error: err.message });
   }
 });
+
+
 
 module.exports = router;

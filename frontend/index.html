@@ -78,7 +78,7 @@
 
     <a href="#" onclick="switchTab('channels', event)">
       <i class="fa-solid fa-mobile-screen"></i>
-      <span class="label">Canais</span>
+      <span class="label">Campanhas</span>
     </a>
 
     <a href="#" class="admin-only"  onclick="switchTab('chatbot', event)"
@@ -456,12 +456,136 @@
       </section>
 
       <section id="tab-channels" class="tab-content hidden">
-        <div class="panel placeholder-panel">
-          <i class="fa-solid fa-mobile-screen"></i>
-          <h2>Canais</h2>
-          <p>Área preparada para WhatsApp, site, Instagram e outros canais.</p>
+
+  <div class="panel campaigns-hero">
+    <div>
+      <span class="section-kicker">
+        <i class="fa-solid fa-bullhorn"></i>
+        Central de campanhas
+      </span>
+
+      <h2>Transmissões para clientes</h2>
+      <p>Crie campanhas e envie mensagens para clientes cadastrados com controle e histórico.</p>
+    </div>
+
+    <button class="btn-refresh" onclick="loadCampaigns()">
+      <i class="fa-solid fa-rotate"></i>
+      Atualizar
+    </button>
+  </div>
+
+  <div class="campaigns-layout">
+
+    <div class="panel campaign-form-card">
+      <h3>Nova campanha</h3>
+
+      <label>Título</label>
+      <input id="campaign-title" type="text" placeholder="Ex: Promoção de baterias">
+
+      <label>Mensagem</label>
+      <textarea id="campaign-message" placeholder="Digite a mensagem que será enviada aos clientes..."></textarea>
+
+
+      <label>Imagem da campanha (opcional)</label>
+
+      <input
+        type="file"
+        id="campaign-image"
+        accept="image/*"
+        onchange="previewCampaignImage(event)"
+      >
+
+      <div id="campaign-image-preview" class="hidden">
+        <img id="campaign-preview-img">
+      </div>
+
+      <label>Destinatários</label>
+
+<div class="campaign-audience-options">
+
+  <label class="campaign-radio">
+    <input
+      type="radio"
+      name="campaign-audience"
+      value="all_clients"
+      checked
+      onchange="toggleCustomRecipients()"
+    >
+    <span>Todos os clientes</span>
+  </label>
+
+  <label class="campaign-radio">
+    <input
+      type="radio"
+      name="campaign-audience"
+      value="with_tickets"
+      onchange="toggleCustomRecipients()"
+    >
+    <span>Clientes com ticket</span>
+  </label>
+
+  <label class="campaign-radio">
+    <input
+      type="radio"
+      name="campaign-audience"
+      value="last_30_days"
+      onchange="toggleCustomRecipients()"
+    >
+    <span>Últimos 30 dias</span>
+  </label>
+
+  <label class="campaign-radio">
+    <input
+      type="radio"
+      name="campaign-audience"
+      value="custom"
+      onchange="toggleCustomRecipients()"
+    >
+    <span>Lista personalizada</span>
+  </label>
+
+</div>
+
+<div id="campaign-audience-count" class="campaign-audience-count">
+  Selecione um público para calcular os destinatários.
+</div>
+
+<div id="custom-recipients-box" class="hidden">
+
+  <label>Números personalizados</label>
+
+  <textarea
+    id="campaign-recipients"
+    oninput="updateCampaignAudienceCount()"
+    placeholder="Digite um número por linha. Ex:
+557999999999
+557988888888"
+  ></textarea>
+
+</div>
+
+      <button class="send-btn" onclick="createCampaign()">
+        <i class="fa-solid fa-paper-plane"></i>
+        Criar campanha
+      </button>
+    </div>
+
+    <div class="panel campaign-list-card">
+      <div class="campaign-list-header">
+        <div>
+          <h3>Campanhas criadas</h3>
+          <p>Acompanhe status, envios e falhas.</p>
         </div>
-      </section>
+      </div>
+
+      <div id="campaign-list">
+        <div class="empty">Nenhuma campanha carregada.</div>
+      </div>
+    </div>
+
+  </div>
+
+</section>
 
 
       <!-- Chatbot -->
@@ -1121,6 +1245,7 @@ Como podemos ajudar você hoje?
   <script src="js/10-logs.js"></script>
   <script src="js/11-profile.js"></script>
   <script src="js/12-socket.js"></script>
+  <script src="js/13-campaigns.js"></script>
   <script src="js/14-charts.js"></script>
   <script src="js/15-modal.js"></script>
   <script src="js/13-main.js"></script>

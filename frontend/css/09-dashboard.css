@@ -1,0 +1,187 @@
+/* ==========================================
+   09-dashboard.css — Dashboard executivo e métricas avançadas
+========================================== */
+
+/* ─── Hero do dashboard ───────────────── */
+.dashboard-executive-hero {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top left, rgba(29, 108, 245, 0.24), transparent 34%),
+    linear-gradient(135deg, #111827, #0f172a 55%, #0b0b0b);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 24px;
+  padding: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 22px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.28);
+}
+
+.dashboard-executive-hero::after {
+  content: "";
+  position: absolute;
+  width: 220px;
+  height: 220px;
+  right: -80px;
+  top: -80px;
+  border-radius: 50%;
+  background: rgba(46, 204, 113, 0.12);
+  filter: blur(2px);
+  pointer-events: none;
+}
+
+.dashboard-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius-full);
+  background: rgba(29, 108, 245, 0.14);
+  color: #93c5fd;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-bottom: 12px;
+}
+
+.dashboard-executive-hero h1 {
+  color: #fff;
+  font-size: 32px;
+  line-height: 1.1;
+  margin: 0 0 8px;
+  font-weight: 900;
+}
+
+.dashboard-executive-hero p {
+  color: #cbd5e1;
+  max-width: 680px;
+  margin: 0;
+}
+
+.dashboard-hero-actions {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.dashboard-live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 14px;
+  border-radius: var(--radius-full);
+  background: rgba(46, 204, 113, 0.12);
+  border: 1px solid rgba(46, 204, 113, 0.24);
+  color: #86efac;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.dashboard-live-badge i { font-size: 8px; }
+.dashboard-filter-panel { margin-top: 20px; }
+
+/* ─── Cards executivos ────────────────── */
+.executive-cards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 24px;
+}
+
+.executive-card {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.012));
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 18px;
+  padding: 18px;
+  min-height: 168px;
+  box-shadow: 0 14px 45px rgba(0, 0, 0, 0.22);
+  transition: var(--transition-normal);
+  
+}
+
+.executive-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.32);
+}
+
+.executive-card::before {
+  content: "";
+  position: absolute;
+  inset: auto -40px -70px auto;
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  opacity: 0.16;
+  background: #fff;
+}
+
+.executive-card.primary::before { background: #3b82f6; }
+.executive-card.warning::before { background: #f59e0b; }
+.executive-card.info::before    { background: #6366f1; }
+.executive-card.success::before { background: #22c55e; }
+
+.executive-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #cbd5e1;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.executive-card-top i {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.07);
+  color: #fff;
+}
+
+.executive-card strong {
+  display: block;
+  font-size: 38px;
+  color: #fff;
+  line-height: 1;
+  margin: 24px 0 8px;
+  font-weight: 900;
+}
+
+.executive-card small {
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+
+
+
+@media (max-width: 720px) {
+  .dashboard-executive-hero {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .dashboard-executive-hero h1 { font-size: 26px; }
+
+  .dashboard-hero-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .executive-cards{
+    grid-template-columns: 1fr;
+  }
+}

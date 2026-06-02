@@ -9,6 +9,7 @@ const quickReplyRoutes  = require("./routes/quickReply.routes");
 const userRoutes        = require("./routes/user.routes");
 const activityLogRoutes = require("./routes/activityLog.routes");
 const metricsRoutes     = require("./routes/metrics.routes");
+const broadcastRoutes = require("./routes/broadcast.routes");
 
 const {
   router: authRouter,
@@ -121,7 +122,8 @@ app.use("/api", authSession, requireAdmin, settingsRoutes);
 app.use("/api", authSession, requireAdmin, quickReplyRoutes);
 app.use("/api", authSession, requireAdmin, userRoutes);
 app.use("/api", authSession, requireAdmin, activityLogRoutes);
-app.use("/api", authSession, metricsRoutes);
+app.use("/api", authSession, requireAdmin, metricsRoutes);
+app.use("/api", authSession, requireAdmin, broadcastRoutes);
 
 // Health check (para Docker / balanceador de carga)
 app.get("/health", (req, res) => {

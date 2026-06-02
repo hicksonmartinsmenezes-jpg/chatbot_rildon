@@ -1,0 +1,397 @@
+/* ==========================================
+   02-layout.css — Sidebar, Topbar e estrutura principal
+========================================== */
+
+/* ─── Sidebar ─────────────────────────── */
+.sidebar {
+  width: 72px;
+  background: #0d0d0d;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 16px;
+  gap: 14px;
+  transition: width var(--transition-normal);
+  overflow: hidden;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+
+.sidebar.open {
+  width: 235px;
+  align-items: stretch;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+.sidebar .burger {
+  color: #fff;
+  font-size: 20px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  align-self: center;
+}
+
+.sidebar a {
+  position: relative;
+  color: #6b7280;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  font-size: 18px;
+  transition: var(--transition-fast);
+  text-decoration: none;
+  gap: 12px;
+}
+
+.sidebar.open a {
+  width: 100%;
+  justify-content: flex-start;
+  padding: 0 12px;
+}
+
+.sidebar a:hover {
+  color: #fff;
+  background: #1a1a1a;
+}
+
+.sidebar a.active,
+.sidebar a.highlight {
+  color: #fff;
+  background: #1d6cf522;
+}
+
+.sidebar .label {
+  display: none;
+  font-size: 14px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.sidebar.open .label {
+  display: inline;
+}
+
+/* ─── Badge do menu lateral ─────────────── */
+.menu-icon-wrapper {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-badge {
+  position: absolute;
+  top: -6px;
+  right: -8px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  background: #25d366;
+  color: #07130c;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+  border: 2px solid #0d0d0d;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+  z-index: 20;
+}
+
+.sidebar-badge.hidden {
+  display: none;
+}
+
+/* ─── Topbar ──────────────────────────── */
+.topbar {
+  height: 72px;
+  background: #0d0d0d;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: right;
+  padding: 0 28px;
+}
+
+.brand {
+  font-size: 22px;
+  letter-spacing: 0.4px;
+}
+
+.brand strong {
+  color: #fff;
+  font-weight: 900;
+}
+
+.brand span {
+  color: var(--green);
+  margin-left: 6px;
+  font-weight: 900;
+}
+
+/* ─── Ações do topo ───────────────────── */
+.top-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.icon-btn,
+.logout-btn {
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  color: #d1d5db;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.icon-btn {
+  width: 40px;
+  height: 40px;
+  position: relative;
+}
+
+.icon-btn:hover,
+.logout-btn:hover {
+  background: #232323;
+  color: #fff;
+}
+
+.notification #notification-dot {
+  width: 9px;
+  height: 9px;
+  background: var(--red);
+  border-radius: 50%;
+  position: absolute;
+  top: 8px;
+  right: 9px;
+  display: none;
+}
+
+.notification.has-alert #notification-dot {
+  display: block;
+}
+
+.logout-btn {
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+}
+
+/* ─── Avatar do usuário ───────────────── */
+.avatar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  padding: 6px 12px 6px 6px;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+}
+
+.avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #1d6cf5, #4f46e5);
+  color: #fff;
+  font-weight: 800;
+  font-size: 18px;
+}
+
+.avatar-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+
+.avatar-text strong {
+  color: #fff;
+  font-size: 13px;
+}
+
+.avatar-text span {
+  color: var(--green);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.avatar-wrap i {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.green-bar {
+  width: 4px;
+  height: 56px;
+  background: var(--green);
+  border-radius: 2px;
+  margin-left: 8px;
+}
+
+#top-user-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+/* ─── Wrapper principal ───────────────── */
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.content {
+  padding: 24px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ─── Painel base ─────────────────────── */
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 18px;
+  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.16);
+}
+
+/* ─── Seção com título ────────────────── */
+.section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.section-title h2 {
+  font-size: 1.25rem;
+  color: #fff;
+}
+
+.section-title p {
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.section-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  color: #93c5fd;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* ─── Placeholder vazio ───────────────── */
+.placeholder-panel {
+  min-height: 260px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--muted);
+}
+
+.placeholder-panel i {
+  font-size: 42px;
+  color: #444;
+  margin-bottom: 16px;
+}
+
+.placeholder-panel h2 {
+  color: #fff;
+  margin-bottom: 6px;
+}
+
+/* ─── Estados vazios / carregando ─────── */
+.empty,
+.loading {
+  grid-column: 1 / -1;
+  padding: 44px;
+  text-align: center;
+  color: var(--muted);
+  background: var(--panel);
+  border: 1px dashed #333;
+  border-radius: var(--radius-md);
+}
+
+/* ─── Responsivo ──────────────────────── */
+@media (max-width: 720px) {
+  body {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: 100%;
+    height: auto;
+    flex-direction: row;
+    overflow-x: auto;
+    padding: 12px;
+    position: static;
+  }
+
+  .sidebar.open {
+    width: 100%;
+  }
+
+  .sidebar .label,
+  .sidebar.open .label {
+    display: none;
+  }
+
+  .topbar {
+    height: auto;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 14px;
+    padding: 16px;
+  }
+
+  .top-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .avatar-text,
+  .green-bar {
+    display: none;
+  }
+
+  .content {
+    padding: 16px;
+  }
+
+  .section-title {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

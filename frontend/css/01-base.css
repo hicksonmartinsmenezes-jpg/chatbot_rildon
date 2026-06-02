@@ -1,0 +1,120 @@
+/* ==========================================
+   01-base.css — Reset, variáveis e estilos globais
+========================================== */
+
+/* ─── Reset ─────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ─── Variáveis de design ─────────────────────────────── */
+:root {
+  /* Cores base */
+  --bg:       #0b0b0b;
+  --panel:    #161616;
+  --panel-2:  #1c1c1c;
+  --border:   #262626;
+
+  /* Texto */
+  --text:  #e5e7eb;
+  --muted: #9ca3af;
+
+  /* Identidade */
+  --primary: #1d6cf5;
+
+  /* Status */
+  --green:  #2ecc71;
+  --orange: #f59e0b;
+  --red:    #ef4444;
+  --blue:   #3b82f6;
+  --purple: #7c3aed;
+
+  /* Transições padrão */
+  --transition-fast:   .18s ease;
+  --transition-normal: .22s ease;
+  --transition-slow:   .3s ease;
+
+  /* Border-radius padrão */
+  --radius-sm:  8px;
+  --radius-md:  12px;
+  --radius-lg:  18px;
+  --radius-xl:  24px;
+  --radius-full: 999px;
+}
+
+/* ─── HTML / Body ────────────────────────── */
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  font-family: 'Nunito', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  display: flex;
+  min-height: 100vh;
+}
+
+/* ─── Utilitários globais ────────────────── */
+.hidden {
+  display: none !important;
+}
+
+/* ─── Inputs e Textareas ─────────────────── */
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #6b7280;
+}
+
+/* ─── Focus acessível ─────────────────────── */
+*:focus-visible {
+  outline: 2px solid rgba(29, 108, 245, 0.75);
+  outline-offset: 3px;
+}
+
+/* ─── Tema Claro ──────────────────────────── */
+body.light-theme {
+  --bg:      #f4f5f7;
+  --panel:   #ffffff;
+  --panel-2: #f9fafb;
+  --border:  #e5e7eb;
+  --text:    #111827;
+  --muted:   #6b7280;
+}
+
+body.light-theme .sidebar,
+body.light-theme .topbar {
+  background: #ffffff;
+}
+
+body.light-theme .settings-card,
+body.light-theme .panel,
+body.light-theme .field,
+body.light-theme .toolbar input,
+body.light-theme .toolbar select,
+body.light-theme .settings-form input,
+body.light-theme .settings-form select,
+body.light-theme .settings-form textarea,
+body.light-theme .settings-switch-row {
+  background: #ffffff;
+  color: #111827;
+}
+
+body.light-theme .settings-card-title h3,
+body.light-theme .section-title h2,
+body.light-theme .placeholder-panel h2,
+body.light-theme .settings-switch-row strong,
+body.light-theme .settings-form label {
+  color: #111827;
+}

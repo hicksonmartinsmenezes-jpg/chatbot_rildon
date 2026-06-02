@@ -18,6 +18,18 @@ function switchTab(tab, event) {
     setTimeout(() => loadMetricsCharts(), 300);
   }
 
+  if (tab === "channels") {
+  if (typeof loadCampaigns === "function") {
+    loadCampaigns();
+  }
+
+  if (typeof updateCampaignAudienceCount === "function") {
+    setTimeout(() => {
+      updateCampaignAudienceCount();
+    }, 100);
+  }
+}
+
   currentTab = tab;
 
   document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));

@@ -1,0 +1,356 @@
+/* ==========================================
+   03-components.css — Componentes reutilizáveis
+   (botões, abas, filtros, métricas, badges, toast)
+========================================== */
+
+/* ─── Transições padronizadas de botões ── */
+button,
+.btn-refresh,
+.send-btn,
+.btn-status,
+.settings-tab,
+.history-clear-btn,
+.btn-back-settings {
+  transition:
+    transform var(--transition-fast),
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast),
+    filter var(--transition-fast);
+}
+
+button:hover,
+.btn-refresh:hover,
+.send-btn:hover,
+.btn-status:hover,
+.settings-tab:hover,
+.history-clear-btn:hover,
+.btn-back-settings:hover {
+  transform: translateY(-1px);
+}
+
+button:active,
+.btn-refresh:active,
+.send-btn:active,
+.btn-status:active,
+.settings-tab:active,
+.history-clear-btn:active,
+.btn-back-settings:active {
+  transform: translateY(0);
+}
+
+/* ─── Bordas padronizadas de painéis ───── */
+.panel,
+.ticket-card,
+.metric-card,
+.executive-card,
+.history-card,
+.settings-card,
+.settings-home-card,
+.profile-box {
+  border-color: rgba(255, 255, 255, 0.075);
+}
+
+.panel,
+.ticket-card,
+.history-card,
+.settings-card {
+  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.16);
+}
+
+/* ─── Abas (Tabs) ─────────────────────── */
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 20px;
+  background: #2b2b2b;
+  color: #d1d5db;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-weight: 900;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+
+.tab:hover {
+  filter: brightness(1.08);
+}
+
+.tab.active {
+  background: var(--primary);
+  color: #fff;
+}
+
+/* ─── Filtros (barra de busca/datas) ───── */
+.filters {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+}
+
+.field {
+  position: relative;
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  min-height: 58px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.field label {
+  font-size: 11px;
+  color: #9ca3af;
+  margin-bottom: 2px;
+}
+
+.field input {
+  background: transparent;
+  border: none;
+  color: #e5e7eb;
+  font-family: inherit;
+  outline: none;
+  font-weight: 800;
+}
+
+.field .placeholder {
+  color: #d1d5db;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.field .icon-right {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #9ca3af;
+  font-size: 14px;
+}
+
+.btn-refresh {
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  color: #e5e7eb;
+  padding: 0 20px;
+  height: 56px;
+  border-radius: var(--radius-sm);
+  font-weight: 900;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.btn-refresh:hover {
+  background: #252525;
+}
+
+/* ─── Toolbar (busca de seção) ─────────── */
+.toolbar {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.toolbar input,
+.toolbar select {
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  color: #e5e7eb;
+  padding: 13px 14px;
+  border-radius: var(--radius-sm);
+  outline: none;
+  font-family: inherit;
+  flex: 1;
+  min-width: 180px;
+}
+
+/* ─── Cards de Métricas ───────────────── */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+}
+
+.metric-card {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.02),
+    rgba(255, 255, 255, 0.01)
+  );
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-xl);
+  padding: 24px;
+  min-height: 170px;
+  display: flex;
+  flex-direction: column;
+  transition:
+    transform var(--transition-normal),
+    box-shadow var(--transition-normal),
+    border-color var(--transition-normal);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.18);
+}
+
+.metric-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+}
+
+.metric-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    circle at top right,
+    rgba(255, 255, 255, 0.06),
+    transparent 35%
+  );
+  pointer-events: none;
+}
+
+.metric-card .badge {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 22px;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.35);
+}
+
+.metric-card .value {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 42px;
+  font-weight: 600;
+  color: #e5e7eb;
+}
+
+.metric-card .value.small {
+  font-size: 26px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.metric-card .label {
+  border-top: 1px solid #2a2a2a;
+  padding-top: 12px;
+  text-align: center;
+  color: #cbd5e1;
+  font-size: 15px;
+}
+
+.metric-card .label i {
+  color: #6b7280;
+  margin-left: 6px;
+  font-size: 12px;
+}
+
+/* ─── Paleta de cores utilitárias ─────── */
+.bg-green  { background: linear-gradient(135deg, #34d27a, #1fa85c); }
+.bg-orange { background: linear-gradient(135deg, #f59e3a, #e07b22); }
+.bg-indigo { background: linear-gradient(135deg, #4f46e5, #3730a3); }
+.bg-purple { background: linear-gradient(135deg, #6d28d9, #4c1d95); }
+.bg-yellow { background: linear-gradient(135deg, #f5b53a, #d99422); }
+.bg-teal   { background: linear-gradient(135deg, #2dd4bf, #0d9488); }
+.bg-blue   { background: linear-gradient(135deg, #3b82f6, #1d4ed8); }
+.bg-red    { background: linear-gradient(135deg, #ef4444, #b91c1c); }
+
+/* ─── Status Badge ─────────────────────── */
+.status-badge {
+  font-size: 11px;
+  padding: 5px 9px;
+  border-radius: var(--radius-full);
+  text-transform: uppercase;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.status-aberto      { background: #fef3c7; color: #92400e; }
+.status-em_andamento { background: #dbeafe; color: #1e40af; }
+.status-resolvido   { background: #dcfce7; color: #166534; }
+.status-cancelado   { background: #fee2e2; color: #991b1b; }
+
+/* ─── Toast de notificação ─────────────── */
+.toast {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  background: #111827;
+  color: #fff;
+  padding: 14px 18px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 800;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.25);
+  transform: translateY(120px);
+  opacity: 0;
+  transition: 0.25s ease;
+  z-index: 99999;
+}
+
+.toast.show {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+/* ─── Status do contato ────────────────── */
+.contact-status {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+/* ─── Responsivo ──────────────────────── */
+@media (max-width: 1100px) {
+  .cards   { grid-template-columns: repeat(2, 1fr); }
+  .filters { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 720px) {
+  .cards,
+  .filters {
+    grid-template-columns: 1fr;
+  }
+
+  .tabs {
+    flex-direction: column;
+  }
+
+  .tab {
+    justify-content: center;
+  }
+
+  .btn-refresh {
+    width: 100%;
+    justify-content: center;
+  }
+}

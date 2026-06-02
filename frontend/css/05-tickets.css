@@ -1,0 +1,193 @@
+/* ==========================================
+   05-tickets.css — Cards e grid de atendimentos
+========================================== */
+
+.ticket-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  gap: 16px;
+}
+
+/* ─── Card do ticket ─────────────────── */
+.ticket-card {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-left: 5px solid #555;
+  border-radius: var(--radius-md);
+  padding: 18px;
+  transition: var(--transition-fast);
+}
+
+.ticket-card:hover {
+  transform: translateY(-2px);
+  border-color: #333;
+}
+
+/* ─── Variantes de status ─────────────── */
+.ticket-card.aberto       { border-left-color: var(--orange); }
+.ticket-card.em_andamento { border-left-color: var(--blue); }
+.ticket-card.resolvido    { border-left-color: var(--green); }
+.ticket-card.cancelado    { border-left-color: var(--red); opacity: 0.75; }
+
+/* ─── Header do card ──────────────────── */
+.ticket-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.ticket-id {
+  font-weight: 900;
+  color: #fff;
+}
+
+/* ─── Corpo do card ───────────────────── */
+.ticket-card p {
+  color: #cbd5e1;
+  font-size: 14px;
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+.ticket-card strong {
+  color: #fff;
+}
+
+.desc {
+  background: #141414;
+  border: 1px solid #252525;
+  border-radius: 10px;
+  padding: 10px;
+  white-space: pre-line;
+}
+
+/* ─── Footer de ações ────────────────── */
+.ticket-footer {
+  margin-top: 14px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-status {
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 8px 11px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.btn-andamento { background: #dbeafe; color: #1e40af; }
+.btn-resolvido { background: #dcfce7; color: #166534; }
+.btn-cancelado { background: #fee2e2; color: #991b1b; }
+.btn-chat      { background: #e0f2fe; color: #075985; }
+
+/* ─── Animação novo ticket ──────────── */
+.novo-ticket {
+  border: 2px solid var(--orange);
+  animation: pulseTicket 1.6s infinite;
+}
+
+@keyframes pulseTicket {
+  0%   { box-shadow: 0 0 0   rgba(245, 158, 11, 0.20); }
+  50%  { box-shadow: 0 0 22px rgba(245, 158, 11, 0.55); }
+  100% { box-shadow: 0 0 0   rgba(245, 158, 11, 0.20); }
+}
+
+/* ─── Modal de resposta rápida ─────── */
+.chat-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.72);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
+  padding: 20px;
+}
+
+.chat-modal.hidden {
+  display: none;
+}
+
+.chat-box {
+  width: 100%;
+  max-width: 520px;
+  background: #0f172a;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  padding: 24px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+}
+
+.chat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.chat-header h3 {
+  color: #fff;
+  font-size: 1.2rem;
+}
+
+.chat-header button {
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  cursor: pointer;
+}
+
+.chat-user {
+  color: #94a3b8;
+  margin-bottom: 14px;
+  font-weight: 700;
+}
+
+.chat-box textarea {
+  width: 100%;
+  min-height: 150px;
+  resize: vertical;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  outline: none;
+  border-radius: 16px;
+  padding: 16px;
+  background: #1e293b;
+  color: #fff;
+  font-size: 0.95rem;
+  margin-bottom: 16px;
+  font-family: inherit;
+}
+
+.chat-box textarea:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.18);
+}
+
+.send-btn {
+  width: 100%;
+  border: none;
+  padding: 14px;
+  border-radius: 14px;
+  font-weight: 900;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  color: white;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+/* ─── Responsivo ──────────────────────── */
+@media (max-width: 720px) {
+  .ticket-grid {
+    grid-template-columns: 1fr;
+  }
+}

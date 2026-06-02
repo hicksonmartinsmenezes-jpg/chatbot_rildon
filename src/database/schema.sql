@@ -131,3 +131,35 @@ CREATE TABLE IF NOT EXISTS processed_messages (
 
 CREATE INDEX IF NOT EXISTS idx_processed_messages_at
 ON processed_messages(processed_at);
+
+-- Campanhas / Transmissões
+CREATE TABLE IF NOT EXISTS broadcasts (
+  id SERIAL PRIMARY KEY,
+  title VARCHAR(255) NOT NULL,
+  message TEXT NOT NULL,
+  total_recipients INTEGER NOT NULL DEFAULT 0,
+  sent_count INTEGER NOT NULL DEFAULT 0,
+  failed_count INTEGER NOT NULL DEFAULT 0,
+  status VARCHAR(30) NOT NULL DEFAULT 'pending',
+  created_by TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  started_at TIMESTAMPTZ,
+  finished_at TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS broadcast_recipients (
+  id SERIAL PRIMARY KEY,
+  broadcast_id INTEGER NOT NULL REFERENCES broadcasts(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL,
+  contact_name TEXT,
+  status VARCHAR(30) NOT NULL DEFAULT 'pending',
+  error TEXT,
+  sent_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_broadcast_recipients_broadcast
+ON broadcast_recipients(broadcast_id);
+
+CREATE INDEX IF NOT EXISTS idx_broadcast_recipients_user
+ON broadcast_recipients(user_id);

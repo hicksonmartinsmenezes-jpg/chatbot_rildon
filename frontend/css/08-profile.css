@@ -1,0 +1,153 @@
+/* ==========================================
+   08-profile.css — Página de perfil do usuário
+========================================== */
+
+.profile-box {
+  max-width: 520px;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.03),
+      rgba(255, 255, 255, 0.015)
+    ),
+    #0f172a;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 28px;
+  padding: 28px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+  animation: profileShow 0.22s ease;
+}
+
+@keyframes profileShow {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ─── Área de foto ─────────────────────── */
+.profile-photo-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  margin: 18px 0 26px;
+}
+
+#profile-photo-preview {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 4px solid rgba(255, 255, 255, 0.08);
+  background: #111827;
+  box-shadow: 0 10px 35px rgba(0, 0, 0, 0.35);
+}
+
+#profile-photo {
+  width: 100%;
+  color: #cbd5e1;
+  font-family: inherit;
+  font-size: 14px;
+}
+
+#profile-photo::-webkit-file-upload-button {
+  border: none;
+  background: linear-gradient(135deg, var(--primary), #1554c7);
+  color: white;
+  padding: 11px 16px;
+  border-radius: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  margin-right: 12px;
+  transition: var(--transition-fast);
+}
+
+#profile-photo::-webkit-file-upload-button:hover {
+  filter: brightness(1.08);
+}
+
+/* ─── Campos do perfil ─────────────────── */
+.profile-box label {
+  display: block;
+  margin-bottom: 8px;
+  margin-top: 14px;
+  color: #cbd5e1;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.profile-box input[type="text"] {
+  width: 100%;
+  height: 52px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  outline: none;
+  border-radius: 14px;
+  padding: 0 16px;
+  background: #1e293b;
+  color: #fff;
+  font-size: 15px;
+  transition: var(--transition-fast);
+}
+
+.profile-box input[type="text"]:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px rgba(29, 108, 245, 0.14);
+}
+
+/* ─── Botão salvar ─────────────────────── */
+.profile-box .send-btn {
+  margin-top: 22px;
+  height: 54px;
+  border-radius: 16px;
+  font-size: 15px;
+  font-weight: 900;
+  background: linear-gradient(135deg, var(--primary), #1554c7);
+  box-shadow: 0 12px 30px rgba(29, 108, 245, 0.28);
+}
+
+.profile-box .send-btn:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+}
+
+/* ─── Painel de usuários (admin) ───────── */
+.panel-user-item {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.panel-user-item strong {
+  color: #fff;
+}
+
+.panel-user-item p {
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+.panel-user-item button {
+  width: 38px;
+  height: 38px;
+  border: none;
+  border-radius: 10px;
+  background: rgba(239, 68, 68, 0.14);
+  color: #ef4444;
+  cursor: pointer;
+}
+
+.panel-user-actions {
+  display: flex;
+  gap: 8px;
+}

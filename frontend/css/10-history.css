@@ -1,0 +1,322 @@
+/* ==========================================
+   10-history.css — Histórico de atendimentos
+========================================== */
+
+/* ─── Hero do histórico ───────────────── */
+.history-hero {
+  background:
+    radial-gradient(circle at top right, rgba(29, 108, 245, 0.16), transparent 32%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01));
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.history-title-row h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 26px;
+}
+
+/* ─── Filtros do histórico ────────────── */
+.history-filters {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) 180px 180px auto;
+  gap: 14px;
+  align-items: end;
+}
+
+.history-search-field,
+.history-date-field {
+  background: #0f172a;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  min-height: 56px;
+}
+
+.history-search-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+}
+
+.history-search-field i { color: #64748b; }
+
+.history-search-field input,
+.history-date-field input {
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #e5e7eb;
+  font-family: inherit;
+  font-weight: 800;
+}
+
+.history-date-field {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 8px 14px;
+}
+
+.history-date-field label {
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 900;
+  margin-bottom: 2px;
+}
+
+.history-clear-btn {
+  height: 56px;
+  border: none;
+  border-radius: 16px;
+  padding: 0 18px;
+  background: #1f2937;
+  color: #e5e7eb;
+  font-family: inherit;
+  font-weight: 900;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.history-clear-btn:hover { background: #273449; }
+
+/* ─── Cards de resumo ─────────────────── */
+.history-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.history-summary-card {
+  background: #111827;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 18px;
+  padding: 18px;
+  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.20);
+}
+
+.history-summary-card span {
+  display: block;
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 900;
+  margin-bottom: 8px;
+}
+
+.history-summary-card strong {
+  display: block;
+  color: #fff;
+  font-size: 30px;
+  line-height: 1;
+}
+
+/* ─── Timeline ────────────────────────── */
+.history-timeline {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.history-card {
+  position: relative;
+  background: #111827;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 22px;
+  padding: 20px;
+  overflow: hidden;
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.22);
+  transition: var(--transition-normal);
+}
+
+.history-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(29, 108, 245, 0.45);
+  box-shadow: 0 22px 55px rgba(0, 0, 0, 0.30);
+}
+
+.history-card-marker {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  background: linear-gradient(180deg, #22c55e, #1d6cf5);
+}
+
+/* ─── Cabeçalho do card ───────────────── */
+.history-card-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.history-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(34, 197, 94, 0.12);
+  color: #4ade80;
+  font-size: 23px;
+  flex-shrink: 0;
+}
+
+.history-client-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.history-client-info strong {
+  display: block;
+  color: #fff;
+  font-size: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-client-info span {
+  display: block;
+  color: #94a3b8;
+  font-size: 13px;
+  margin-top: 3px;
+}
+
+.history-card-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  color: #94a3b8;
+  font-size: 12px;
+  text-align: right;
+}
+
+.history-sector {
+  background: rgba(29, 108, 245, 0.14);
+  color: #bfdbfe;
+  padding: 5px 10px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+/* ─── Grid de mensagens ───────────────── */
+.history-message-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.history-message-box {
+  border-radius: 18px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  min-height: 116px;
+}
+
+.history-message-box span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #cbd5e1;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 10px;
+}
+
+.history-message-box p {
+  color: #e5e7eb;
+  line-height: 1.55;
+  font-size: 14px;
+  white-space: pre-line;
+}
+
+.client-msg { background: rgba(34, 197, 94, 0.08); }
+.bot-msg    { background: rgba(29, 108, 245, 0.08); }
+
+/* ─── Ações do card ───────────────────── */
+.history-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.history-card-actions button {
+  border: none;
+  border-radius: 12px;
+  background: #1f2937;
+  color: #e5e7eb;
+  padding: 10px 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: inherit;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.history-card-actions button:hover { background: #2563eb; }
+
+/* ─── Estados vazios ─────────────────── */
+.history-empty,
+.history-loading {
+  background: #111827;
+  border: 1px dashed rgba(255, 255, 255, 0.10);
+  border-radius: 22px;
+  padding: 46px 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-align: center;
+  color: #94a3b8;
+}
+
+.history-empty i,
+.history-loading i {
+  font-size: 34px;
+  color: #64748b;
+}
+
+.history-empty h3 {
+  color: #fff;
+  font-size: 18px;
+}
+
+/* ─── Responsivo ──────────────────────── */
+@media (max-width: 1100px) {
+  .history-filters       { grid-template-columns: 1fr 1fr; }
+  .history-summary-grid  { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .history-message-grid  { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 720px) {
+  .history-filters,
+  .history-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .history-card-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .history-card-meta {
+    align-items: flex-start;
+    text-align: left;
+  }
+}

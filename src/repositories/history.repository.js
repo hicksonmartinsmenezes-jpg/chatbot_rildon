@@ -1,4 +1,3 @@
-const crypto = require("crypto");
 const pool = require("../database/postgres");
 
 function mapHistory(row) {
@@ -16,12 +15,9 @@ function mapHistory(row) {
 }
 
 async function create(data) {
-  const id = data.id || crypto.randomUUID();
-
   const result = await pool.query(
     `
     INSERT INTO history (
-      id,
       user_id,
       contact_name,
       message,
@@ -31,17 +27,16 @@ async function create(data) {
       message_id,
       created_at
     )
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
     RETURNING *
     `,
     [
-      id,
       data.userId,
       data.contactName || "",
       data.message || null,
       data.response || null,
       data.sector || "geral",
-      data.status || "",
+      data.status || null,
       data.messageId || null,
       data.createdAt || new Date()
     ]
@@ -50,11 +45,7 @@ async function create(data) {
   return mapHistory(result.rows[0]);
 }
 
-async function findAll({
-  userId,
-  limit = 50,
-  offset = 0
-} = {}) {
+async function findAll({ userId, limit = 50, offset = 0 } = {}) {
   const values = [];
   const where = [];
 

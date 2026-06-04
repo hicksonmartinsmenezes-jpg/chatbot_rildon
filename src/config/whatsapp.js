@@ -13,15 +13,24 @@ const {
 const qrcode = require("qrcode-terminal");
 const pino   = require("pino");
 const path   = require("path");
+const fs     = require("fs");
 
 let sock              = null;
 let reconnectAttempts = 0;
 let reconnecting      = false;
+let isWhatsAppConnected = false;
+let cachedConfig = null;
+let lastConfigCheck = 0;
+
 
 // MELHORIA: cache em memória + confirmação no banco para deduplicação robusta
 // O Set em memória é um atalho rápido; o banco garante que reinicializações
 // não causem reprocessamento de mensagens recentes.
 const processedMessages = new Set();
+setInterval(() => {
+  processedMessages.clear();
+}, 5 * 60 * 1000);
+
 const MAX_RECONNECT_DELAY_MS = 30_000;
 
 function getReconnectDelay() {
@@ -112,12 +121,14 @@ async function marcarMensagemProcessada(messageId) {
       return true;
     }
   } catch (err) {
-    logger.warn(`[Dedup] Erro ao checar banco: ${err.message} — usando apenas memória`);
-  }
+  logger.warn(
+    `[Dedup] Erro ao checar banco: ${err.message}`
+  );
+}
 
   processedMessages.add(messageId);
-  setTimeout(() => processedMessages.delete(messageId), 5 * 60 * 1000);
-  return false;
+
+return false;
 }
 
 async function limparSocketAntigo(oldSock) {
@@ -127,11 +138,17 @@ async function limparSocketAntigo(oldSock) {
 }
 
 async function enviarComRetry(userId, response) {
-  const currentSock = sock;
-  if (!currentSock) {
-    logger.error("Falha ao enviar: socket inexistente.");
-    return false;
-  }
+
+ const currentSock = sock;
+
+if (
+  !currentSock ||
+  !isWhatsAppConnected ||
+  currentSock.ws?.readyState !== 1
+) {
+  logger.warn("WhatsApp desconectado. Cancelando envio.");
+  return false;
+}
 
   for (let i = 0; i < 3; i++) {
     try {
@@ -191,10 +208,36 @@ async function connectWhatsApp(onMessage) {
     }
 
     if (connection === "close") {
+      isWhatsAppConnected = false;
+
       const code           = lastDisconnect?.error?.output?.statusCode;
-      const shouldReconnect = code !== DisconnectReason.loggedOut;
+     const shouldReconnect =
+      code !== DisconnectReason.loggedOut &&
+      code !== 401 &&
+      code !== 440;
 
       logger.warn(`Conexão encerrada (código ${code})`);
+      if (code === 401 || code === 440) {
+  try {
+    fs.rmSync(
+      path.join(__dirname, "../../auth_info"),
+      {
+        recursive: true,
+        force: true
+      }
+    );
+
+    logger.warn(
+      "Sessão inválida removida automaticamente."
+    );
+  } catch (err) {
+    logger.error(
+      `Erro removendo auth_info: ${err.message}`
+    );
+  }
+}
+
+
       emitEvent("whatsapp_status", { status: "disconnected", code });
 
       if (shouldReconnect) {
@@ -221,16 +264,24 @@ async function connectWhatsApp(onMessage) {
         return;
       }
 
-      logger.warn("Sessão encerrada. Delete a pasta auth_info e reinicie.");
+        logger.warn(
+      "Sessão encerrada. Novo QR Code será necessário."
+    );
       emitEvent("whatsapp_status", { status: "logged_out" });
     }
 
     if (connection === "open") {
-      reconnectAttempts = 0;
-      reconnecting      = false;
-      logger.success("WhatsApp conectado com sucesso!");
-      emitEvent("whatsapp_status", { status: "connected" });
-    }
+       isWhatsAppConnected = true;
+
+  reconnectAttempts = 0;
+  reconnecting      = false;
+
+  logger.success("WhatsApp conectado com sucesso!");
+
+  emitEvent("whatsapp_status", {
+    status: "connected"
+  });
+}
   });
 
   sock.ev.on("presence.update", update => {
@@ -262,7 +313,9 @@ async function connectWhatsApp(onMessage) {
 
       // MELHORIA: deduplicação com persistência no banco
       if (await marcarMensagemProcessada(messageId)) {
-        logger.warn(`Mensagem duplicada ignorada: ${messageId}`);
+            logger.debug?.(
+        `Duplicada ignorada`
+      );
         continue;
       }
 
@@ -283,7 +336,7 @@ async function connectWhatsApp(onMessage) {
 
       const text = getTextMessage(msg).trim();
 
-      const botConfig = await getBotConfig();
+     const botConfig = await getBotConfigCached();
       if (botConfig.ativo === false || botConfig.ativo === "false") {
         logger.warn("Bot desativado. Mensagem ignorada.");
         continue;
@@ -330,48 +383,172 @@ async function getProfilePhotoUrl(userId) {
 }
 
 async function sendMessage(userId, text) {
-  if (!sock) throw new Error("WhatsApp não está conectado.");
-  const sent = await sock.sendMessage(userId, { text });
-  logger.success(`Mensagem enviada para ${userId}`);
-  return { id: sent.key.id, remoteJid: sent.key.remoteJid, fromMe: sent.key.fromMe };
+  try {
+
+    if (
+  !sock ||
+  !isWhatsAppConnected ||
+  sock.ws?.readyState !== 1
+) {
+  throw new Error("WhatsApp não conectado.");
 }
 
+    const sent = await sock.sendMessage(
+      userId,
+      { text }
+    );
+
+    logger.success(
+      `Mensagem enviada para ${userId}`
+    );
+
+    return {
+      id: sent.key.id,
+      remoteJid: sent.key.remoteJid,
+      fromMe: sent.key.fromMe
+    };
+
+  } catch (err) {
+
+    logger.error(
+      `Falha ao enviar mensagem: ${err.message}`
+    );
+
+    if (
+      err.message?.includes("Connection Closed") ||
+      err.output?.statusCode === 428
+    ) {
+
+      logger.warn(
+        "WhatsApp desconectado. Ignorando envio."
+      );
+
+      return {
+        id: null,
+        remoteJid: userId,
+        fromMe: true
+      };
+    }
+
+    throw err;
+  }
+}
 async function sendMedia(userId, filePath, caption = "") {
 
-  if (!sock) {
-    throw new Error("WhatsApp não está conectado.");
-  }
-
-  const sent = await sock.sendMessage(
-    userId,
-    {
-      image: {
-        url: filePath
-      },
-      caption
-    }
-  );
-
-  logger.success(`Imagem enviada para ${userId}`);
-
-  return {
-    id: sent.key.id,
-    remoteJid: sent.key.remoteJid,
-    fromMe: sent.key.fromMe
-  };
+ if (
+  !sock ||
+  !isWhatsAppConnected ||
+  sock.ws?.readyState !== 1
+) {
+  throw new Error("WhatsApp não está conectado.");
 }
 
+  try {
+
+    const sent = await sock.sendMessage(
+      userId,
+      {
+        image: {
+          url: filePath
+        },
+        caption
+      }
+    );
+
+    logger.success(
+      `Imagem enviada para ${userId}`
+    );
+
+    return {
+      id: sent.key.id,
+      remoteJid: sent.key.remoteJid,
+      fromMe: sent.key.fromMe
+    };
+
+  } catch (err) {
+
+    logger.error(
+      `Erro ao enviar mídia: ${err.message}`
+    );
+
+    return {
+      id: null,
+      remoteJid: userId,
+      fromMe: true
+    };
+  }
+}
 function getSocket() {
   return sock;
 }
 
 async function sendTypingPresence(userId) {
-  if (!sock) return;
-  await sock.presenceSubscribe(userId);
-  await sock.sendPresenceUpdate("composing", userId);
-  setTimeout(async () => {
-    try { await sock.sendPresenceUpdate("paused", userId); } catch (_) {}
-  }, 3000);
+  if (
+  !sock ||
+  !isWhatsAppConnected ||
+  sock.ws?.readyState !== 1
+) {
+  return;
+}
+
+  try {
+    await sock.presenceSubscribe(userId);
+    await sock.sendPresenceUpdate("composing", userId);
+
+    setTimeout(async () => {
+      try {
+        await sock.sendPresenceUpdate("paused", userId);
+      } catch (_) {}
+    }, 3000);
+
+  } catch (err) {
+    logger.warn(
+      `Erro ao enviar presença: ${err.message}`
+    );
+  }
+}
+
+function isConnected() {
+  return !!sock && isWhatsAppConnected;
+}
+
+setInterval(async () => {
+  try {
+    await pool.query(`
+      DELETE FROM processed_messages
+      WHERE processed_at < NOW() - INTERVAL '7 days'
+    `);
+  } catch (err) {
+    logger.warn(`Erro limpando dedup: ${err.message}`);
+  }
+}, 24 * 60 * 60 * 1000);
+
+
+async function getBotConfigCached() {
+  const now = Date.now();
+
+  if (
+    cachedConfig &&
+    now - lastConfigCheck < 30000
+  ) {
+    return cachedConfig;
+  }
+
+  cachedConfig = await getBotConfig();
+  lastConfigCheck = now;
+
+  return cachedConfig;
+}
+
+function normalizeJid(jid) {
+  if (
+    jid.endsWith("@s.whatsapp.net") ||
+    jid.endsWith("@lid")
+  ) {
+    return jid;
+  }
+
+  return `${jid}@s.whatsapp.net`;
 }
 
 module.exports = {
@@ -380,5 +557,6 @@ module.exports = {
   sendMedia,
   getProfilePhotoUrl,
   getSocket,
-  sendTypingPresence
+  sendTypingPresence,
+  isConnected
 };

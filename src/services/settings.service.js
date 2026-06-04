@@ -72,16 +72,28 @@ function mergeDeep(base, extra) {
   return output;
 }
 
-async function getSettings() {
-  const saved =
-    await settingsRepository.get(
-      "panel_settings"
-    );
+// MELHORIA: cache em memória de 30s para evitar query ao banco em cada mensagem recebida.
+// getBotConfig() era chamado 2x por mensagem (whatsapp.js + message.service.js).
+// invalidateSettingsCache() deve ser chamado sempre que saveSettings() ou resetSettings() for usado.
+let _settingsCache    = null;
+let _settingsCacheAt  = 0;
+const SETTINGS_CACHE_TTL = 30_000; // 30 segundos
 
-  return mergeDeep(
-    DEFAULT_SETTINGS,
-    saved || {}
-  );
+function invalidateSettingsCache() {
+  _settingsCache = null;
+  _settingsCacheAt = 0;
+}
+
+async function getSettings() {
+  if (_settingsCache && Date.now() - _settingsCacheAt < SETTINGS_CACHE_TTL) {
+    return _settingsCache;
+  }
+
+  const saved = await settingsRepository.get("panel_settings");
+  _settingsCache = mergeDeep(DEFAULT_SETTINGS, saved || {});
+  _settingsCacheAt = Date.now();
+
+  return _settingsCache;
 }
 
 async function saveSettings(settings) {
@@ -96,6 +108,7 @@ async function saveSettings(settings) {
     merged
   );
 
+  invalidateSettingsCache(); // MELHORIA: invalida cache após salvar
   return merged;
 }
 
@@ -105,6 +118,7 @@ async function resetSettings() {
     DEFAULT_SETTINGS
   );
 
+  invalidateSettingsCache(); // MELHORIA: invalida cache após reset
   return DEFAULT_SETTINGS;
 }
 
@@ -114,5 +128,6 @@ module.exports = {
   DEFAULT_SETTINGS,
   getSettings,
   saveSettings,
-  resetSettings
+  resetSettings,
+  invalidateSettingsCache
 };

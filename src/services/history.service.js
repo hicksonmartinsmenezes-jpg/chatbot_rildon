@@ -1,5 +1,5 @@
-const historyRepository =
-  require("../repositories/history.repository");
+const historyRepository = require("../repositories/history.repository");
+const logger = require("../utils/logger");
 
 async function saveHistory({
   userId,
@@ -13,20 +13,17 @@ async function saveHistory({
   return historyRepository.create({
     userId,
     contactName: contactName || "",
-    message: message || "",
-    response: response || "",
+    message: message || null,
+    response: response || null,
     sector: sector || "main",
     messageId: messageId || null,
-    status: status || "",
+    // CORRIGIDO: status vazio → null (alinhado ao schema corrigido)
+    status: status || null,
     createdAt: new Date()
   });
 }
 
-async function listHistory({
-  userId,
-  limit,
-  offset
-} = {}) {
+async function listHistory({ userId, limit, offset } = {}) {
   return historyRepository.findAll({
     userId,
     limit: limit || 50,
@@ -35,22 +32,14 @@ async function listHistory({
 }
 
 async function listHistoryByUser(userId) {
-  return historyRepository.findAll({
-    userId,
-    limit: 500
-  });
+  return historyRepository.findAll({ userId, limit: 500 });
 }
 
 async function updateMessageStatus(messageId, status) {
-  return historyRepository.updateMessageStatus(
-    messageId,
-    status
-  );
+  return historyRepository.updateMessageStatus(messageId, status);
 }
 
-console.log(
-  "💬 PostgreSQL: histórico carregado"
-);
+logger.info("💬 PostgreSQL: histórico carregado");
 
 module.exports = {
   saveHistory,

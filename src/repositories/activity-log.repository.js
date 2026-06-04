@@ -1,4 +1,3 @@
-const crypto = require("crypto");
 const pool = require("../database/postgres");
 
 function mapLog(row) {
@@ -14,7 +13,6 @@ function mapLog(row) {
 }
 
 async function findAll(limit = 500) {
-
   const result = await pool.query(
     `
     SELECT *
@@ -29,14 +27,9 @@ async function findAll(limit = 500) {
 }
 
 async function create(data) {
-
-  const id =
-    data.id || crypto.randomUUID();
-
   const result = await pool.query(
     `
     INSERT INTO activity_logs (
-      id,
       user_id,
       user_name,
       action,
@@ -44,11 +37,10 @@ async function create(data) {
       extra,
       created_at
     )
-    VALUES ($1,$2,$3,$4,$5,$6,$7)
+    VALUES ($1,$2,$3,$4,$5,$6)
     RETURNING *
     `,
     [
-      id,
       data.userId || "system",
       data.userName || "Sistema",
       data.action,

@@ -1,3 +1,4 @@
+const logger = require("../utils/logger");
 const express = require("express");
 const crypto = require("crypto");
 
@@ -103,7 +104,7 @@ router.post("/auth/login", async (req, res) => {
       expiresIn: SESSION_MS
     });
   } catch (error) {
-    console.error("Erro no login:", error);
+    logger.error(`[auth/login] ${error.message}`);
 
     return res.status(500).json({
       error: "Erro ao fazer login."
@@ -234,10 +235,15 @@ async function authSession(req, res, next) {
     const session = await buscarSessao(provided);
 
     if (session) {
-      await salvarSessao(provided, {
-        user: session.user,
-        expiresAt: Date.now() + SESSION_MS
-      });
+      // MELHORIA: renova a sessão apenas quando restar menos de 10 min,
+      // evitando escrita no banco em toda requisição (antes: sempre renovava)
+      const RENEW_THRESHOLD = 10 * 60 * 1000;
+      if (session.expiresAt - Date.now() < RENEW_THRESHOLD) {
+        await salvarSessao(provided, {
+          user: session.user,
+          expiresAt: Date.now() + SESSION_MS
+        });
+      }
 
       req.user = session.user;
       return next();

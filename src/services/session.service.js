@@ -3,18 +3,33 @@ const pool = require("../database/postgres");
 const { getBotConfig } = require("./botConfig.service");
 
 const sessions = {};
-const timers = {};
+const timers   = {};
 
-const AVISO_MS = parseInt(process.env.AVISO_MINUTOS || "3") * 60 * 1000;
-const TIMEOUT_MS = parseInt(process.env.TIMEOUT_MINUTOS || "5") * 60 * 1000;
 const TTL_HORAS = parseInt(process.env.SESSION_TTL_HORAS || "24");
 
-let _sendMessage = null;
+let _sendMessage    = null;
+let cleanupStarted  = false;
+
+async function getTimeouts() {
+  try {
+    const cfg = await getBotConfig();
+    return {
+      avisoMs:   (cfg.timeoutAviso        || parseInt(process.env.AVISO_MINUTOS   || "3")) * 60_000,
+      timeoutMs: (cfg.timeoutEncerramento || parseInt(process.env.TIMEOUT_MINUTOS || "5")) * 60_000
+    };
+  } catch {
+    return {
+      avisoMs:   parseInt(process.env.AVISO_MINUTOS   || "3") * 60_000,
+      timeoutMs: parseInt(process.env.TIMEOUT_MINUTOS || "5") * 60_000
+    };
+  }
+}
 
 async function setSendMessage(fn) {
   _sendMessage = fn;
+  const { avisoMs, timeoutMs } = await getTimeouts();
   logger.info(
-    `⏱️ Timeout de inatividade ativo (aviso: ${AVISO_MS / 60000}min | encerramento: ${TIMEOUT_MS / 60000}min)`
+    `⏱️ Timeout de inatividade ativo (aviso: ${avisoMs / 60000}min | encerramento: ${timeoutMs / 60000}min)`
   );
 
   await _carregarSessoes();
@@ -24,8 +39,10 @@ async function setSendMessage(fn) {
 async function _carregarSessoes() {
   try {
     const res = await pool.query(
-      `SELECT user_id, data FROM sessions
-       WHERE updated_at > NOW() - INTERVAL '${TTL_HORAS} hours'`
+      `SELECT user_id, data
+       FROM sessions
+       WHERE updated_at > NOW() - ($1 * INTERVAL '1 hour')`,
+      [TTL_HORAS]
     );
 
     for (const row of res.rows) {
@@ -39,11 +56,14 @@ async function _carregarSessoes() {
 }
 
 function _agendarLimpezaTTL() {
+  if (cleanupStarted) return;
+  cleanupStarted = true;
+
   setInterval(async () => {
     try {
       const res = await pool.query(
-        `DELETE FROM sessions
-         WHERE updated_at < NOW() - INTERVAL '${TTL_HORAS} hours'`
+        `DELETE FROM sessions WHERE updated_at < NOW() - ($1 * INTERVAL '1 hour')`,
+        [TTL_HORAS]
       );
 
       if (res.rowCount > 0) {
@@ -107,55 +127,67 @@ function cancelTimer(userId) {
 
 async function isBotAtivo() {
   const botConfig = await getBotConfig();
-
-  return !(
-    botConfig.ativo === false ||
-    botConfig.ativo === "false"
-  );
+  return !(botConfig.ativo === false || botConfig.ativo === "false");
 }
 
 function resetTimer(userId) {
   cancelTimer(userId);
 
-  const aviso = setTimeout(async () => {
-    if (!_sendMessage) return;
+  // CORRIGIDO: bloco de guarda duplicado removido — apenas uma verificação
+  getTimeouts().then((timeouts) => {
+    const avisoMs = timeouts.avisoMs;
+    let timeoutMs = timeouts.timeoutMs;
 
-    try {
-      if (!(await isBotAtivo())) {
-        logger.warn("Bot desativado. Aviso de inatividade ignorado.");
-        return;
-      }
-
-      await _sendMessage(
-        userId,
-        `⏳ Ainda está aí? Não recebi resposta nos últimos ${AVISO_MS / 60000} minutos.\n\nSe precisar de ajuda, é só digitar *0* para voltar ao menu.\n\nVou encerrar o atendimento em mais ${(TIMEOUT_MS - AVISO_MS) / 60000} minuto(s) caso não haja resposta.`
+    if (timeoutMs <= avisoMs) {
+      logger.warn(
+        "[Session] timeoutEncerramento menor ou igual ao timeoutAviso. Ajustando automaticamente."
       );
-    } catch (err) {
-      logger.error("Erro ao enviar aviso de inatividade:", err.message);
+      timeoutMs = avisoMs + 60_000;
     }
-  }, AVISO_MS);
 
-  const fim = setTimeout(async () => {
-    if (!_sendMessage) return;
+    const aviso = setTimeout(async () => {
+      if (!_sendMessage) return;
 
-    try {
-      if (!(await isBotAtivo())) {
-        logger.warn("Bot desativado. Encerramento por inatividade ignorado.");
-        return;
+      try {
+        if (!(await isBotAtivo())) {
+          logger.warn("Bot desativado. Aviso de inatividade ignorado.");
+          return;
+        }
+
+        await _sendMessage(
+          userId,
+          `⏳ Ainda está aí? Não recebi resposta nos últimos ${avisoMs / 60000} minutos.\n\nSe precisar de ajuda, é só digitar *0* para voltar ao menu.\n\nVou encerrar o atendimento em mais ${(timeoutMs - avisoMs) / 60000} minuto(s) caso não haja resposta.`
+        );
+      } catch (err) {
+        logger.error("Erro ao enviar aviso de inatividade:", err.message);
       }
+    }, avisoMs);
 
-      await _sendMessage(
-        userId,
-        "👋 Atendimento encerrado por inatividade.\n\nQuando quiser, é só mandar uma mensagem que estaremos aqui! 😊"
-      );
-    } catch (err) {
-      logger.error("Erro ao enviar mensagem de encerramento:", err.message);
-    } finally {
-      await clearSession(userId);
-    }
-  }, TIMEOUT_MS);
+    const fim = setTimeout(async () => {
+      if (!_sendMessage) return;
 
-  timers[userId] = { aviso, fim };
+      try {
+        if (!(await isBotAtivo())) {
+          logger.warn("Bot desativado. Encerramento por inatividade ignorado.");
+          return;
+        }
+
+        await _sendMessage(
+          userId,
+          "👋 Atendimento encerrado por inatividade.\n\nQuando quiser, é só mandar uma mensagem que estaremos aqui! 😊"
+        );
+      } catch (err) {
+        logger.error("Erro ao enviar mensagem de encerramento:", err.message);
+      } finally {
+        await clearSession(userId);
+      }
+    }, timeoutMs);
+
+    timers[userId] = { aviso, fim };
+
+  }).catch(err => {
+    logger.warn(`[Session] Falha ao carregar timeouts: ${err.message}`);
+  });
 }
 
 module.exports = {

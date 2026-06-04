@@ -5,6 +5,7 @@ const helmet     = require("helmet");
 const rateLimit  = require("express-rate-limit");
 const logger     = require("./utils/logger");
 
+const pool              = require("./database/postgres");
 const quickReplyRoutes  = require("./routes/quickReply.routes");
 const userRoutes        = require("./routes/user.routes");
 const activityLogRoutes = require("./routes/activityLog.routes");
@@ -87,7 +88,13 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false
 }));
 
-app.use(cors());
+// MELHORIA: CORS restrito à origem configurada via .env (antes: aberto para qualquer origem)
+const corsOptions = {
+  origin: (process.env.CORS_ORIGIN || "").split(",").map(s => s.trim()).filter(Boolean),
+  credentials: true
+};
+// Se CORS_ORIGIN não foi definido, permite apenas same-origin (sem header CORS)
+app.use(corsOptions.origin.length > 0 ? cors(corsOptions) : cors({ origin: false }));
 
 app.use(express.json({ limit: "2mb" }));
 
@@ -109,8 +116,8 @@ app.use(express.static(path.join(__dirname, "../frontend")));
 // ── Rotas ─────────────────────────────────────────────────────────────────────
 app.use("/api", authRouter);
 
-// Rotas públicas (sem sessão necessária)
-app.use("/api", contactRoutes);
+// Rotas autenticadas
+app.use("/api", authSession, contactRoutes);
 
 // Rotas autenticadas
 app.use("/api", authSession, ticketRoutes);
@@ -125,12 +132,26 @@ app.use("/api", authSession, requireAdmin, activityLogRoutes);
 app.use("/api", authSession, requireAdmin, metricsRoutes);
 app.use("/api", authSession, requireAdmin, broadcastRoutes);
 
-// Health check (para Docker / balanceador de carga)
-app.get("/health", (req, res) => {
-  res.json({ status: "ok", uptime: process.uptime() });
+// Health check — verifica banco também para balanceadores e orquestradores
+app.get("/health", async (req, res) => {
+  try {
+    await pool.query("SELECT 1");
+    res.json({ status: "ok", uptime: process.uptime() });
+  } catch (err) {
+    res.status(503).json({ status: "degraded", db: false, error: err.message });
+  }
 });
 
 // Upload de fotos de perfil
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+// ── Global error handler ──────────────────────────────────────────────────────
+// MELHORIA: captura erros não tratados em rotas async e retorna JSON padronizado
+// em vez de HTML 500 ou silêncio
+app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
+  logger.error(`[Express] ${req.method} ${req.path} — ${err.message}`);
+  const status = err.status || err.statusCode || 500;
+  res.status(status).json({ error: err.message || "Erro interno do servidor." });
+});
 
 module.exports = app;

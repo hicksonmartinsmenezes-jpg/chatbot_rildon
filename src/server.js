@@ -79,3 +79,35 @@ initSocket(server);
     process.exit(1);
   }
 })();
+
+process.on("unhandledRejection", (err) => {
+  logger.error(
+    `Unhandled Rejection: ${err?.stack || err}`
+  );
+});
+
+process.on("uncaughtException", (err) => {
+  logger.error(
+    `Uncaught Exception: ${err?.stack || err}`
+  );
+
+  process.exit(1);
+});
+
+function gracefulShutdown(signal) {
+  logger.warn(`${signal} recebido. Encerrando servidor...`);
+
+  const forceExit = setTimeout(() => {
+    logger.error("Forçando encerramento após timeout.");
+    process.exit(1);
+  }, 10000);
+
+  server.close(() => {
+    clearTimeout(forceExit);
+    logger.info("Servidor HTTP encerrado com segurança.");
+    process.exit(0);
+  });
+}
+
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));

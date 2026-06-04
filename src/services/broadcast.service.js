@@ -6,6 +6,10 @@ const {
 } = require("../config/whatsapp");
 
 const path = require("path");
+const fs   = require("fs");
+
+// Diretório canônico de imagens de campanhas — usado para validar paths
+const CAMPAIGNS_DIR = path.resolve(__dirname, "../uploads/campaigns");
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -92,14 +96,13 @@ const cleanedRecipients = Array.from(recipientMap.values());
   }
 }
 
-async function listBroadcasts() {
+// MELHORIA: paginação para não retornar sempre os mesmos 100 registros fixos
+async function listBroadcasts({ page = 1, limit = 20 } = {}) {
+  const offset = (page - 1) * limit;
+
   const res = await pool.query(
-    `
-    SELECT *
-    FROM broadcasts
-    ORDER BY created_at DESC
-    LIMIT 100
-    `
+    `SELECT * FROM broadcasts ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
+    [limit, offset]
   );
 
   return res.rows;
@@ -139,6 +142,10 @@ async function startBroadcast(broadcastId) {
     throw new Error("Esta transmissão já foi finalizada.");
   }
 
+  if (broadcast.status === "cancelled") {
+    throw new Error("Esta transmissão foi cancelada.");
+  }
+
   await pool.query(
     `
     UPDATE broadcasts
@@ -153,6 +160,24 @@ async function startBroadcast(broadcastId) {
   });
 
   return { ok: true, message: "Transmissão iniciada." };
+}
+
+// MELHORIA: cancelamento de transmissão em andamento
+async function cancelBroadcast(broadcastId) {
+  const res = await pool.query(
+    `UPDATE broadcasts
+     SET status = 'cancelled', finished_at = NOW()
+     WHERE id = $1 AND status IN ('pending', 'sending')
+     RETURNING id`,
+    [broadcastId]
+  );
+
+  if (res.rowCount === 0) {
+    throw new Error("Transmissão não encontrada ou não pode ser cancelada.");
+  }
+
+  logger.info(`[Broadcast] Transmissão ${broadcastId} cancelada.`);
+  return { ok: true, message: "Transmissão cancelada." };
 }
 
 async function processBroadcastQueue(broadcastId) {
@@ -171,14 +196,31 @@ async function processBroadcastQueue(broadcastId) {
   let failedCount = Number(broadcast.failed_count || 0);
 
   for (const recipient of recipients) {
+    // MELHORIA: verificar se a transmissão foi cancelada a cada iteração
+    const statusCheck = await pool.query(
+      `SELECT status FROM broadcasts WHERE id = $1`,
+      [broadcastId]
+    );
+    if (statusCheck.rows[0]?.status === "cancelled") {
+      logger.info(`[Broadcast] Transmissão ${broadcastId} cancelada — interrompendo loop.`);
+      return;
+    }
+
     try {
      if (broadcast.image_url) {
+  // MELHORIA: proteção contra path traversal — usa apenas o basename do valor
+  // gravado no banco, resolvido dentro do diretório canônico de campanhas.
+  const safeName  = path.basename(broadcast.image_url);
+  const imagePath = path.join(CAMPAIGNS_DIR, safeName);
 
-  const imagePath = path.join(
-    __dirname,
-    "..",
-    broadcast.image_url
-  );
+  // Garante que o path resolvido ainda está dentro do diretório permitido
+  if (!imagePath.startsWith(CAMPAIGNS_DIR + path.sep) && imagePath !== CAMPAIGNS_DIR) {
+    throw new Error(`Path de imagem inválido: ${broadcast.image_url}`);
+  }
+
+  if (!fs.existsSync(imagePath)) {
+    throw new Error(`Arquivo de imagem não encontrado: ${safeName}`);
+  }
 
   await sendMedia(
     recipient.user_id,
@@ -335,6 +377,7 @@ module.exports = {
   listBroadcasts,
   getBroadcastRecipients,
   startBroadcast,
+  cancelBroadcast,
   getBroadcastAudience,
   getBroadcastStats
 };

@@ -4,7 +4,7 @@ async function loadMetricsCharts() {
   if (typeof Chart === "undefined") return;
 
   try {
-    const res = await apiFetch(`${BASE}/api/metrics`);
+    const res = await apiFetch(`/api/metrics`);
     if (!res) return;
 
     const data = await res.json();

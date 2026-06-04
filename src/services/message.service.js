@@ -69,7 +69,7 @@ const rateLimiter = new MemoryRateLimiter();
 async function processMessage({ userId, contactName, message }) {
   const botConfig = await getBotConfig();
 
-  if (botConfig.ativo === false) {
+  if (botConfig.ativo === false || botConfig.ativo === "false") {
     logger.warn("Bot bloqueado dentro do processMessage.");
     return "";
   }
@@ -83,17 +83,30 @@ async function processMessage({ userId, contactName, message }) {
     logger.info(`Mensagem recebida de ${userId}: ${message}`);
 
     const response = await mainFlow({ userId, message });
-    const session  = getSession(userId);
+
+    if (!response) {
+      logger.warn(`Fluxo sem resposta para ${userId}`);
+      return "";
+    }
+
+    const session = getSession(userId) || {};
+    const sector = session.sector || "main";
 
     try {
-      await saveHistory({ userId, contactName, message, response, sector: session.sector || "main" });
+      await saveHistory({
+        userId,
+        contactName,
+        message,
+        response,
+        sector
+      });
 
       emitEvent("nova_mensagem", {
         userId,
         contactName,
         message,
         response,
-        sector:    session.sector || "main",
+        sector,
         createdAt: new Date()
       });
     } catch (err) {

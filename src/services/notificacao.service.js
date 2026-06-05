@@ -61,12 +61,12 @@ async function notificarSeDisponivel(ticket) {
   const criadoEm = new Date(ticket.createdAt).toLocaleString("pt-BR", { timeZone: tz });
 
   const mensagem =
-    "📋 *Ticket registrado fora do horário*\\n\\n" +
-    `🎫 Protocolo: *#${ticket.protocolo}*\\n` +
-    `📂 Tipo: ${ticket.type}\\n` +
-    `👤 Cliente: ${ticket.customerName}\\n` +
-    `📋 Descrição: _${ticket.description}_\\n` +
-    `🕐 Registrado em: ${criadoEm}\\n\\n` +
+    "📋 *Ticket registrado fora do horário*\n\n" +
+    `🎫 Protocolo: *#${ticket.protocolo}*\n` +
+    `📂 Tipo: ${ticket.type}\n` +
+    `👤 Cliente: ${ticket.customerName}\n` +
+    `📋 Descrição: _${ticket.description}_\n` +
+    `🕐 Registrado em: ${criadoEm}\n\n` +
     "_Retorne ao cliente no próximo expediente._";
 
   try {

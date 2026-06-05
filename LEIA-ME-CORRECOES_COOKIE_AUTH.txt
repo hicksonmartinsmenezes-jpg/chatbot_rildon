@@ -1,0 +1,24 @@
+Correções aplicadas neste pacote:
+
+1. frontend/js/02-auth.js
+   - apiFetch agora envia credentials: "include".
+   - apiHeaders não força Content-Type quando o body for FormData.
+
+2. frontend/js/13-campaigns.js
+   - Upload de imagem de campanha agora usa credentials: "include".
+   - Removido headers vazio no upload para não quebrar FormData.
+
+3. Conferir .env no projeto final:
+   CORS_ORIGIN=http://localhost:3000
+
+4. Depois de copiar, rode:
+   npm install
+   docker compose down
+   docker compose up -d --build
+
+5. Testar obrigatoriamente:
+   - login
+   - /api/auth/me
+   - alteração de foto de perfil
+   - criação de campanha com imagem
+   - logout

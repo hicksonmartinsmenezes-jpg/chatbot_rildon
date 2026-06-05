@@ -65,11 +65,17 @@ async function loadCampaigns() {
 
         </div>
 
-        ${
-          campaign.status === "pending"
+        ${ campaign.status === "pending"
             ? `<button onclick="startCampaign(${campaign.id})">
                 <i class="fa-solid fa-play"></i>
                 Iniciar
+              </button>`
+            : ""
+        }
+        ${ campaign.status === "sending"
+            ? `<button onclick="cancelCampaign(${campaign.id})" style="background:var(--danger,#e74c3c);color:#fff;border-color:transparent">
+                <i class="fa-solid fa-stop"></i>
+                Cancelar
               </button>`
             : ""
         }
@@ -155,10 +161,7 @@ if (imageInput?.files?.length) {
     "/api/broadcasts/upload",
     {
       method: "POST",
-      headers: {
-        Authorization:
-          `Bearer ${getSessionToken()}`
-      },
+      credentials: "include",
       body: formData
     }
   );
@@ -257,6 +260,31 @@ async function startCampaign(id) {
   }
 }
 
+async function cancelCampaign(id) {
+  if (!confirm("Cancelar esta campanha? O envio será interrompido.")) return;
+
+  try {
+    const res = await apiFetch(`/api/broadcasts/${id}/cancel`, {
+      method: "POST"
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      showToast(data.error || "Erro ao cancelar campanha.");
+      return;
+    }
+
+    showToast("Campanha cancelada.");
+    loadCampaigns();
+    loadCampaignStats();
+
+  } catch (err) {
+    console.error("Erro ao cancelar campanha:", err);
+    showToast("Erro ao cancelar campanha.");
+  }
+}
+
 function previewCampaignImage(event) {
 
   const file = event.target.files[0];
@@ -293,7 +321,7 @@ function toggleCustomRecipients() {
 
 async function updateCampaignAudienceCount() {
 
-  if (!getSessionToken()) return;
+  if (!getCurrentUser()) return;
 
   const countBox =
   document.getElementById("campaign-audience-count");
@@ -335,7 +363,7 @@ async function updateCampaignAudienceCount() {
 
 async function loadCampaignStats() {
 
-  if (!getSessionToken()) return;
+  if (!getCurrentUser()) return;
 
   try {
     const res = await apiFetch("/api/broadcasts/stats");

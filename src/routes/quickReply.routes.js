@@ -1,4 +1,5 @@
-const express = require("express");
+const express      = require("express");
+const asyncHandler = require("../utils/asyncHandler");
 
 const {
   getQuickReplies,
@@ -7,14 +8,14 @@ const {
 
 const router = express.Router();
 
-router.get("/quick-replies", async (req, res) => {
+router.get("/quick-replies", asyncHandler(async (req, res) => {
   const replies = await getQuickReplies();
   res.json(replies);
-});
+}));
 
-router.put("/quick-replies", async (req, res) => {
+router.put("/quick-replies", asyncHandler(async (req, res) => {
   const saved = await saveQuickReplies(req.body || []);
   res.json(saved);
-});
+}));
 
 module.exports = router;

@@ -40,9 +40,9 @@
 
   /* Border-radius padrão */
   --radius-sm:  8px;
-  --radius-md:  12px;
-  --radius-lg:  18px;
-  --radius-xl:  24px;
+  --radius-md:  14px;
+  --radius-lg:  20px;
+  --radius-xl:  26px;
   --radius-full: 999px;
 }
 

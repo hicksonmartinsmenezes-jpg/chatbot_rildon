@@ -5,7 +5,7 @@
 /* ─── Sidebar ─────────────────────────── */
 .sidebar {
   width: 72px;
-  background: #0d0d0d;
+  background: var(--bg);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -57,7 +57,7 @@
 
 .sidebar a:hover {
   color: #fff;
-  background: #1a1a1a;
+  background: var(--panel);
 }
 
 .sidebar a.active,
@@ -115,11 +115,11 @@
 /* ─── Topbar ──────────────────────────── */
 .topbar {
   height: 72px;
-  background: #0d0d0d;
+  background: var(--bg);
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
-  justify-content: right;
+  justify-content: flex-end;
   padding: 0 28px;
 }
 
@@ -148,8 +148,8 @@
 
 .icon-btn,
 .logout-btn {
-  background: #1a1a1a;
-  border: 1px solid #2a2a2a;
+  background: var(--panel);
+  border: 1px solid var(--border);
   color: #d1d5db;
   border-radius: var(--radius-full);
   cursor: pointer;
@@ -196,8 +196,8 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  background: #1a1a1a;
-  border: 1px solid #2a2a2a;
+  background: var(--panel);
+  border: 1px solid var(--border);
   padding: 6px 12px 6px 6px;
   border-radius: var(--radius-full);
   cursor: pointer;

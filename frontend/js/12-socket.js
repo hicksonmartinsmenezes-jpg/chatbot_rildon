@@ -78,7 +78,7 @@ socket.on("online_users", users => {
 
   playAlertSound("message");
 
-  if (!data.response || data.message) {
+  if ((!data.response || data.message) && !isCurrentConversation) {
     showToast("💬 Nova mensagem recebida!");
   }
 });
@@ -89,12 +89,12 @@ socket.on("typing", data => {
   const status = document.getElementById("chat-typing-status");
   if (!status) return;
 
-  status.innerHTML = "Digitando...";
+  status.textContent = "Digitando...";
 
   clearTimeout(window.typingTimeout);
 
   window.typingTimeout = setTimeout(() => {
-    status.innerHTML = "";
+    status.textContent = "";
   }, 2000);
 });
 

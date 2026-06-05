@@ -6,7 +6,8 @@ const {
   validarNome,
   validarTamanho,
   mensagemTamanhoInvalido,
-  sanitizarTexto
+  sanitizarTexto,
+  normalizar
 } = require("../utils/validators");
 const {
   estaEmHorarioDeAtendimento,
@@ -30,16 +31,17 @@ function validarDocumento(str) {
 }
 
 async function financeiroFlow(message, userId, session) {
-  const msg = sanitizarTexto(String(message || "").trim());
+  // CORRIGIDO: normalizar() usado em vez de apenas trim()
+  const msg = normalizar(sanitizarTexto(message));
 
   if (session.sector === "financeiro") {
     if (session.step === "aguardando_nome") {
-      if (!validarNome(msg)) {
+      if (!validarNome(sanitizarTexto(message))) {
         return MSG.NOME_INVALIDO;
       }
 
       await updateSession(userId, {
-        nome: msg,
+        nome: sanitizarTexto(message),
         step: "aguardando_duvida"
       });
 
@@ -61,7 +63,7 @@ async function financeiroFlow(message, userId, session) {
         if (!v.ok) {
           return v.erro === "minimo"
             ? "⚠️ Por favor, descreva melhor sua dúvida financeira ou envie CPF/CNPJ."
-            : mensagemTamanhoInvalido(5);
+            : mensagemTamanhoInvalido();
         }
       }
 
@@ -71,7 +73,7 @@ async function financeiroFlow(message, userId, session) {
         sector: "financeiro",
         cpf: documento || null,
         customerName: nomeCliente,
-        description: documento ? "Consulta financeira" : msg
+        description: documento ? "Consulta financeira" : sanitizarTexto(message)
       });
 
       notificarAtendente(ticket);
@@ -82,11 +84,8 @@ async function financeiroFlow(message, userId, session) {
 
     switch (msg) {
       case "1":
-        await updateSession(userId, {
-          sector: "financeiro",
-          step: "aguardando_nome"
-        });
-
+        // CORRIGIDO: sector já está em session; não atribuir duas vezes
+        await updateSession(userId, { step: "aguardando_nome" });
         return MSG.financeiro.PEDIR_NOME;
 
       case "2":

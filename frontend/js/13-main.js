@@ -3,7 +3,7 @@
 // ─── Inicialização ────────────────────────────────────────────────────────────
 checkAuth();
 
-if (getSessionToken()) {
+if (getCurrentUser()) {
   refreshAll();
   const user = getCurrentUser();
   if (user?.perfil === "admin") loadSettings();
@@ -14,7 +14,7 @@ let _pollId = null;
 
 function startPolling() {
   return setInterval(() => {
-    if (!getSessionToken()) return;
+    if (!getCurrentUser()) return;
     if (currentTab === "dashboard" || currentTab === "tickets") loadTickets();
     if (currentTab === "history") loadHistory(true);
   }, 15000);
@@ -34,7 +34,7 @@ document.addEventListener("visibilitychange", () => {
     stopPolling();
   } else {
     // Ao voltar para a aba, força uma atualização imediata e reinicia o poll
-    if (getSessionToken()) {
+    if (getCurrentUser()) {
       if (currentTab === "dashboard" || currentTab === "tickets") loadTickets();
       if (currentTab === "history") loadHistory(true);
     }

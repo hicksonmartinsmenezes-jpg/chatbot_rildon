@@ -1,4 +1,3 @@
-const crypto = require("crypto");
 const pool = require("../database/postgres");
 
 async function gerarProtocolo() {
@@ -14,12 +13,9 @@ async function gerarProtocolo() {
 }
 
 async function create(ticket) {
-  const id = ticket.id || crypto.randomUUID();
-
   const result = await pool.query(
     `
     INSERT INTO tickets (
-      id,
       protocolo,
       user_id,
       customer_name,
@@ -34,12 +30,11 @@ async function create(ticket) {
       updated_at
     )
     VALUES (
-      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13
+      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12
     )
     RETURNING *
     `,
     [
-      id,
       ticket.protocolo,
       ticket.userId,
       ticket.customerName,
@@ -51,14 +46,14 @@ async function create(ticket) {
       ticket.assignedTo || null,
       ticket.assignedToName || null,
       ticket.createdAt || new Date(),
-      ticket.updatedAt || null
+      ticket.updatedAt || new Date()
     ]
   );
 
   return mapTicket(result.rows[0]);
 }
 
-async function findAll({ status, search } = {}) {
+async function findAll({ status, search, limit = 500, offset = 0 } = {}) {
   const values = [];
   const where = [];
 
@@ -81,11 +76,15 @@ async function findAll({ status, search } = {}) {
     `);
   }
 
+  values.push(limit);
+  values.push(offset);
+
   const query = `
     SELECT *
     FROM tickets
     ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
     ORDER BY created_at DESC
+    LIMIT $${values.length - 1} OFFSET $${values.length}
   `;
 
   const result = await pool.query(query, values);
@@ -111,12 +110,14 @@ async function updateStatus(id, status) {
 async function assign(id, user) {
   const result = await pool.query(
     `
-    UPDATE tickets
+   UPDATE tickets
     SET assigned_to = $1,
         assigned_to_name = $2,
         status = 'em_andamento',
         updated_at = NOW()
-    WHERE id::text = $3 OR protocolo = $3
+    WHERE
+    (id::text = $3 OR protocolo = $3)
+    AND assigned_to IS NULL
     RETURNING *
     `,
     [

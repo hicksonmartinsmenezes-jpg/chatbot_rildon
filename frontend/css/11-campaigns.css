@@ -37,11 +37,11 @@
 .campaign-form-card input,
 .campaign-form-card textarea {
   width: 100%;
-  border: 1px solid rgba(255,255,255,.08);
+  border: 1px solid var(--border);
   outline: none;
   border-radius: 12px;
-  background: #111827;
-  color: #fff;
+  background: var(--panel-2);
+  color: var(--text);
   padding: 13px 14px;
   font-family: inherit;
 }
@@ -73,8 +73,8 @@
 
   padding: 16px;
   border-radius: 14px;
-  background: #111827;
-  border: 1px solid rgba(255,255,255,.06);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
   margin-bottom: 12px;
 }
 
@@ -125,18 +125,18 @@
   padding: 12px 14px;
   border-radius: 12px;
 
-  background: #111827;
-  border: 1px solid rgba(255,255,255,.08);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
 
-  color: #e5e7eb;
+  color: var(--text);
   font-weight: 800;
 
   cursor: pointer;
 }
 
 .campaign-radio:hover {
-  border-color: rgba(29,108,245,.45);
-  background: #162033;
+  border-color: var(--primary);
+  background: var(--panel);
 }
 
 .campaign-radio input {
@@ -216,13 +216,6 @@
   transition: width .35s ease;
 }
 
-.campaigns-hero {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
 .campaign-tabs {
   display: flex;
   align-items: center;
@@ -233,8 +226,8 @@
   border: none;
   border-radius: 12px;
   padding: 11px 14px;
-  background: #252525;
-  color: #fff;
+  background: var(--panel);
+  color: var(--text);
   font-weight: 900;
   cursor: pointer;
 }

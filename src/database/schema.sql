@@ -1,3 +1,7 @@
+-- Schema principal do Rildon Eletropeças Chatbot
+-- Para novas instalações: psql -U <user> -d <db> -f schema.sql
+-- Para ambientes existentes: use os arquivos em migrations/
+
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 CREATE SEQUENCE IF NOT EXISTS protocolo_seq START 1;
@@ -41,6 +45,8 @@ CREATE INDEX IF NOT EXISTS idx_sessions_updated
 ON sessions(updated_at);
 
 -- Tickets
+-- Setores válidos: suporte, vendas, financeiro, garantia, geral, atendimento
+-- Status válidos:  aberto, em_andamento, resolvido, cancelado
 CREATE TABLE IF NOT EXISTS tickets (
   id                SERIAL PRIMARY KEY,
   protocolo         VARCHAR(50) UNIQUE NOT NULL,
@@ -54,18 +60,17 @@ CREATE TABLE IF NOT EXISTS tickets (
   assigned_to       UUID REFERENCES users(id) ON DELETE SET NULL,
   assigned_to_name  TEXT,
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  CONSTRAINT chk_ticket_status CHECK (status IN ('aberto','em_andamento','resolvido','cancelado')),
+  CONSTRAINT chk_ticket_sector CHECK (sector IN ('suporte','vendas','financeiro','garantia','geral','atendimento'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_tickets_user_id
-ON tickets(user_id);
-
-CREATE INDEX IF NOT EXISTS idx_tickets_status
-ON tickets(status);
-
-CREATE INDEX IF NOT EXISTS idx_tickets_protocolo
-ON tickets(protocolo);
-
+CREATE INDEX IF NOT EXISTS idx_tickets_user_id    ON tickets(user_id);
+CREATE INDEX IF NOT EXISTS idx_tickets_status     ON tickets(status);
+CREATE INDEX IF NOT EXISTS idx_tickets_protocolo  ON tickets(protocolo);
+CREATE INDEX IF NOT EXISTS idx_tickets_sector     ON tickets(sector);
+CREATE INDEX IF NOT EXISTS idx_tickets_assigned_name ON tickets(assigned_to_name);
 CREATE INDEX IF NOT EXISTS idx_tickets_cpf
 ON tickets(REGEXP_REPLACE(cpf, '\D', '', 'g'));
 
@@ -77,19 +82,14 @@ CREATE TABLE IF NOT EXISTS history (
   message      TEXT,
   response     TEXT,
   sector       VARCHAR(100) NOT NULL DEFAULT 'geral',
-  status       VARCHAR(50) NOT NULL DEFAULT '',
+  status       VARCHAR(50) DEFAULT NULL,  -- NULL = sem status; 'sent', 'delivered', 'read'
   message_id   TEXT,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_history_user_id
-ON history(user_id);
-
-CREATE INDEX IF NOT EXISTS idx_history_created_at
-ON history(created_at);
-
-CREATE INDEX IF NOT EXISTS idx_history_message_id
-ON history(message_id);
+CREATE INDEX IF NOT EXISTS idx_history_user_id    ON history(user_id);
+CREATE INDEX IF NOT EXISTS idx_history_created_at ON history(created_at);
+CREATE INDEX IF NOT EXISTS idx_history_message_id ON history(message_id);
 
 -- Respostas rápidas
 CREATE TABLE IF NOT EXISTS quick_replies (
@@ -120,10 +120,9 @@ CREATE TABLE IF NOT EXISTS activity_logs (
   extra       JSONB DEFAULT '{}'
 );
 
-CREATE INDEX IF NOT EXISTS idx_activity_logs_created
-ON activity_logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_activity_logs_created ON activity_logs(created_at);
 
--- Mensagens já processadas
+-- Mensagens já processadas (deduplicação)
 CREATE TABLE IF NOT EXISTS processed_messages (
   message_id   TEXT PRIMARY KEY,
   processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -134,32 +133,37 @@ ON processed_messages(processed_at);
 
 -- Campanhas / Transmissões
 CREATE TABLE IF NOT EXISTS broadcasts (
-  id SERIAL PRIMARY KEY,
-  title VARCHAR(255) NOT NULL,
-  message TEXT NOT NULL,
-  total_recipients INTEGER NOT NULL DEFAULT 0,
-  sent_count INTEGER NOT NULL DEFAULT 0,
-  failed_count INTEGER NOT NULL DEFAULT 0,
-  status VARCHAR(30) NOT NULL DEFAULT 'pending',
-  created_by TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  started_at TIMESTAMPTZ,
-  finished_at TIMESTAMPTZ
+  id                SERIAL PRIMARY KEY,
+  title             VARCHAR(255) NOT NULL,
+  message           TEXT NOT NULL,
+  image_url         TEXT,
+  total_recipients  INTEGER NOT NULL DEFAULT 0,
+  sent_count        INTEGER NOT NULL DEFAULT 0,
+  failed_count      INTEGER NOT NULL DEFAULT 0,
+  status            VARCHAR(30) NOT NULL DEFAULT 'pending',
+  created_by        TEXT,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  started_at        TIMESTAMPTZ,
+  finished_at       TIMESTAMPTZ
 );
 
 CREATE TABLE IF NOT EXISTS broadcast_recipients (
-  id SERIAL PRIMARY KEY,
-  broadcast_id INTEGER NOT NULL REFERENCES broadcasts(id) ON DELETE CASCADE,
-  user_id TEXT NOT NULL,
-  contact_name TEXT,
-  status VARCHAR(30) NOT NULL DEFAULT 'pending',
-  error TEXT,
-  sent_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id            SERIAL PRIMARY KEY,
+  broadcast_id  INTEGER NOT NULL REFERENCES broadcasts(id) ON DELETE CASCADE,
+  user_id       TEXT NOT NULL,
+  contact_name  TEXT,
+  status        VARCHAR(30) NOT NULL DEFAULT 'pending',
+  error         TEXT,
+  sent_at       TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_broadcast_recipients_broadcast
-ON broadcast_recipients(broadcast_id);
+CREATE INDEX IF NOT EXISTS idx_broadcast_recipients_broadcast ON broadcast_recipients(broadcast_id);
+CREATE INDEX IF NOT EXISTS idx_broadcast_recipients_user      ON broadcast_recipients(user_id);
 
-CREATE INDEX IF NOT EXISTS idx_broadcast_recipients_user
-ON broadcast_recipients(user_id);
+-- Controle de migrations (usado pelo runner src/database/migrate.js)
+CREATE TABLE IF NOT EXISTS migrations_log (
+  id         SERIAL PRIMARY KEY,
+  filename   TEXT UNIQUE NOT NULL,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

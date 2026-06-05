@@ -271,8 +271,9 @@ async function deleteQuickReply(id) {
 async function saveQuickReplies() {
   try {
     const res = await apiFetch(`${BASE}/api/quick-replies`, {
-      method: "PUT",
-      body: JSON.stringify(quickRepliesCache)
+      method:  "PUT",
+      headers: apiHeaders(),
+      body:    JSON.stringify(quickRepliesCache)
     });
     if (!res || !res.ok) throw new Error("Erro ao salvar.");
     quickRepliesCache = await res.json();

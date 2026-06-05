@@ -1,5 +1,6 @@
 const logger = require("../utils/logger");
 const {
+  createTicket,
   listTickets,
   updateTicketStatus,
   getTicketStats,
@@ -7,20 +8,52 @@ const {
   transferTicket
 } = require("../services/ticket.service");
 
-const SETORES_VALIDOS = ["suporte", "vendas", "financeiro", "garantia", "geral", "atendimento"];
+// CORRIGIDO: "atendimento" adicionado — mainFlow cria tickets com esse setor
+const SETORES_VALIDOS = [
+  "suporte", "vendas", "financeiro", "garantia", "geral", "atendimento"
+];
+
+const STATUS_VALIDOS = ["aberto", "em_andamento", "resolvido", "cancelado"];
+
+async function postTicket(req, res) {
+  try {
+    const { userId, type, customerName, cpf, description, sector } = req.body || {};
+
+    // CORRIGIDO: validação de campos obrigatórios
+    if (!userId) {
+      return res.status(400).json({ error: "userId é obrigatório." });
+    }
+    if (!type) {
+      return res.status(400).json({ error: "type é obrigatório." });
+    }
+
+    const ticket = await createTicket({ userId, type, customerName, cpf, description, sector });
+
+    res.status(201).json({ ok: true, ticket });
+  } catch (err) {
+    logger.error(`[postTicket] ${err.message}`);
+    res.status(400).json({ error: err.message || "Erro ao criar ticket." });
+  }
+}
 
 async function getTickets(req, res) {
   try {
     const { status, search } = req.query;
 
+    // CORRIGIDO: validação de status antes de passar ao repositório
+    if (status && !STATUS_VALIDOS.includes(status)) {
+      return res.status(400).json({
+        error: `Status inválido. Use: ${STATUS_VALIDOS.join(", ")}`
+      });
+    }
+
     let tickets = await listTickets({ status, search });
 
-    // Filtro por perfil: atendente vê somente o seu setor
     if (req.user?.perfil === "atendente") {
       tickets = tickets.filter(ticket => {
-        const mesmoSetor    = (ticket.sector || "geral") === (req.user.sector || "geral");
-        const disponivel    = !ticket.assignedTo;
-        const jaAssumido    = ticket.assignedTo === req.user.id;
+        const mesmoSetor = (ticket.sector || "geral") === (req.user.sector || "geral");
+        const disponivel  = !ticket.assignedTo;
+        const jaAssumido  = ticket.assignedTo === req.user.id;
         return (mesmoSetor && disponivel) || jaAssumido;
       });
     }
@@ -37,13 +70,13 @@ async function getTickets(req, res) {
 async function patchTicket(req, res) {
   try {
     const id = req.params.id;
-    const { status } = req.body;
 
-    const allowed = ["aberto", "em_andamento", "resolvido", "cancelado"];
+    // CORRIGIDO: garante que status é string antes de incluir
+    const status = typeof req.body?.status === "string" ? req.body.status : "";
 
-    if (!allowed.includes(status)) {
+    if (!STATUS_VALIDOS.includes(status)) {
       return res.status(400).json({
-        error: `Status inválido. Use: ${allowed.join(", ")}`
+        error: `Status inválido. Use: ${STATUS_VALIDOS.join(", ")}`
       });
     }
 
@@ -105,40 +138,61 @@ async function transferirTicket(req, res) {
   }
 }
 
+// CORRIGIDO: dashboard calculado em SQL via getTicketStats() + query dedicada
+// em vez de carregar todos os tickets em memória e calcular em JS
 async function getTicketDashboard(req, res) {
   try {
-    const tickets = await listTickets();
-    const hoje = new Date().toISOString().slice(0, 10);
+    const pool = require("../database/postgres");
+    // Timezone configurável via .env para evitar hardcode por região
+    const TZ = process.env.TZ_NEGOCIO || "America/Maceio";
 
-    const porStatus = {
-      aberto:       tickets.filter(t => t.status === "aberto").length,
-      em_andamento: tickets.filter(t => t.status === "em_andamento").length,
-      resolvido:    tickets.filter(t => t.status === "resolvido").length,
-      cancelado:    tickets.filter(t => t.status === "cancelado").length
-    };
+    const [statsRes, setorRes, atendenteRes, hojeRes] = await Promise.all([
+      pool.query(`
+        SELECT
+          COUNT(*)::int AS total,
+          COUNT(*) FILTER (WHERE status = 'aberto')::int       AS aberto,
+          COUNT(*) FILTER (WHERE status = 'em_andamento')::int AS em_andamento,
+          COUNT(*) FILTER (WHERE status = 'resolvido')::int    AS resolvido,
+          COUNT(*) FILTER (WHERE status = 'cancelado')::int    AS cancelado
+        FROM tickets
+      `),
+      pool.query(`
+        SELECT COALESCE(sector,'geral') AS setor, COUNT(*)::int AS total
+        FROM tickets
+        GROUP BY setor
+        ORDER BY total DESC
+      `),
+      pool.query(`
+        SELECT assigned_to_name AS nome, COUNT(*)::int AS total
+        FROM tickets
+        WHERE assigned_to_name IS NOT NULL
+        GROUP BY assigned_to_name
+        ORDER BY total DESC
+      `),
+      pool.query(`
+        SELECT COUNT(*)::int AS total
+        FROM tickets
+        WHERE DATE(created_at AT TIME ZONE $1) = CURRENT_DATE
+      `, [TZ])
+    ]);
 
-    const porSetor = tickets.reduce((acc, ticket) => {
-      const setor = ticket.sector || ticket.type || "geral";
-      acc[setor] = (acc[setor] || 0) + 1;
-      return acc;
-    }, {});
+    const s = statsRes.rows[0];
 
-    const porAtendente = tickets.reduce((acc, ticket) => {
-      if (!ticket.assignedToName) return acc;
-      acc[ticket.assignedToName] = (acc[ticket.assignedToName] || 0) + 1;
-      return acc;
-    }, {});
+    const porSetor = {};
+    for (const row of setorRes.rows) porSetor[row.setor] = row.total;
 
-    // Filtra tickets criados hoje comparando só a data local (não ISO string)
-    const hojeTotal = tickets.filter(t => {
-      if (!t.createdAt) return false;
-      return new Date(t.createdAt).toISOString().slice(0, 10) === hoje;
-    }).length;
+    const porAtendente = {};
+    for (const row of atendenteRes.rows) porAtendente[row.nome] = row.total;
 
     res.json({
-      total: tickets.length,
-      hoje: hojeTotal,
-      porStatus,
+      total: s.total,
+      hoje: hojeRes.rows[0].total,
+      porStatus: {
+        aberto:       s.aberto,
+        em_andamento: s.em_andamento,
+        resolvido:    s.resolvido,
+        cancelado:    s.cancelado
+      },
       porSetor,
       porAtendente
     });
@@ -149,6 +203,7 @@ async function getTicketDashboard(req, res) {
 }
 
 module.exports = {
+  postTicket,
   getTickets,
   patchTicket,
   assumirTicket,

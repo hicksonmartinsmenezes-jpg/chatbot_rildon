@@ -6,6 +6,17 @@
 
   <title>Rildon Painel de Atendimento</title>
   <meta name="description" content="Painel de atendimento WhatsApp - Rildon Eletropeças">
+  <meta name="theme-color" content="#111827">
+
+  <!-- OG tags para preview ao compartilhar o link -->
+  <meta property="og:title"       content="Rildon — Painel de Atendimento">
+  <meta property="og:description" content="Painel de atendimento WhatsApp - Rildon Eletropeças">
+  <meta property="og:type"        content="website">
+
+  <!-- Favicon: usa o SVG do logo que já existe no projeto -->
+  <link rel="icon" type="image/svg+xml" href="FlaticonSalesRildon.svg">
+  <!-- Fallback para navegadores sem suporte a SVG favicon -->
+  <link rel="icon" type="image/png"     href="android-chrome-512x512.png" sizes="512x512">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -13,24 +24,40 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css">
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="supervisor.css">
-  <link rel="icon" href="android-chrome-512x512.png">
 </head>
 
 <body>
   <!-- Login -->
   <section id="login-screen" class="login-screen">
     <div class="login-card">
-     <img src="FlaticonSalesRildon.svg" class="logo-img" alt="Rildon Eletropeças">
+      <img src="FlaticonSalesRildon.svg" class="logo-img" alt="Rildon Eletropeças">
       <h2>Rildon Eletropeças</h2>
       <p>Acesso ao painel administrativo</p>
 
-      <input type="text" id="login-user" autocomplete="username" aria-label="Usuário" placeholder="Usuário">
-      <input type="password" id="login-pass" autocomplete="current-password" aria-label="Senha" placeholder="Senha">
+      <form id="login-form" onsubmit="event.preventDefault(); login()" novalidate>
+        <input type="text" id="login-user" autocomplete="username" aria-label="Usuário" placeholder="Usuário" required>
 
-      <button onclick="login()">Entrar</button>
-      <span id="login-error"></span>
+        <div class="password-wrapper">
+          <input type="password" id="login-pass" autocomplete="current-password" aria-label="Senha" placeholder="Senha" required>
+          <button type="button" class="toggle-pass" onclick="togglePasswordVisibility()" aria-label="Mostrar/ocultar senha" tabindex="-1">
+            <i id="toggle-pass-icon" class="fa-solid fa-eye"></i>
+          </button>
+        </div>
+
+        <button type="submit">Entrar</button>
+      </form>
+      <span id="login-error" role="alert"></span>
     </div>
   </section>
+
+  <noscript>
+    <div style="position:fixed;inset:0;background:#080808;display:flex;align-items:center;justify-content:center;font-family:sans-serif;color:#e5e7eb;text-align:center;padding:20px;z-index:99999">
+      <div>
+        <strong style="font-size:1.2rem">JavaScript é necessário</strong>
+        <p style="margin-top:8px;color:#9ca3af">Este painel requer JavaScript habilitado para funcionar.</p>
+      </div>
+    </div>
+  </noscript>
 
   <!-- Sidebar -->
 
@@ -71,7 +98,7 @@
       <span class="label">Histórico</span>
     </a>
 
-    <a href="#" onclick="switchTab('leads', event)">
+    <a href="#" onclick="switchTab('leads', event)" style="display:none;" aria-hidden="true">
       <i class="fa-solid fa-list"></i>
       <span class="label">Gestão de Lead</span>
     </a>
@@ -177,7 +204,7 @@
             <i class="fa-solid fa-magnifying-glass"></i> HISTÓRICO
           </button>
 
-          <button class="tab" onclick="switchTab('leads', event)">
+          <button class="tab" onclick="switchTab('leads', event)" style="display:none;" aria-hidden="true">
             <i class="fa-solid fa-user-group"></i> RESUMO POR USUÁRIOS
           </button>
 
@@ -221,19 +248,19 @@
               <input type="date" id="date-end">
             </div>
 
-            <div class="field select">
+            <div class="field select field-disabled" title="Filtro em desenvolvimento" aria-disabled="true">
               <label>Usuário</label>
               <div class="placeholder">Todos</div>
               <i class="fa-solid fa-chevron-down icon-right"></i>
             </div>
 
-            <div class="field select">
+            <div class="field select field-disabled" title="Filtro em desenvolvimento" aria-disabled="true">
               <label>Departamento</label>
               <div class="placeholder">Todos</div>
               <i class="fa-solid fa-chevron-down icon-right"></i>
             </div>
 
-            <div class="field select">
+            <div class="field select field-disabled" title="Filtro em desenvolvimento" aria-disabled="true">
               <label>Conexão</label>
               <div class="placeholder">WhatsApp</div>
               <i class="fa-solid fa-chevron-down icon-right"></i>
@@ -368,8 +395,10 @@
               id="conversation-message"
               placeholder="Digite uma mensagem..."
               onkeydown="handleConversationKeydown(event)"
-             ></textarea>
-             oninput="notifyTyping()"
+              oninput="notifyTyping(); autoResizeTextarea(this)"
+              rows="1"
+              ></textarea>
+            
               <button onclick="sendConversationMessage()" title="Enviar">
                 <i class="fa-solid fa-paper-plane"></i>
               </button>
@@ -763,10 +792,13 @@ Como podemos ajudar você hoje?
 6|financeiro
 7|humano</textarea>
 
-          <button class="btn-refresh" onclick="saveFlow()">
+          <button class="btn-refresh" onclick="saveFlow()" disabled title="Em desenvolvimento">
             <i class="fa-solid fa-floppy-disk"></i>
             Salvar fluxo
           </button>
+          <span style="font-size:12px; color: var(--text-muted, #888); margin-top:6px; display:block;">
+            <i class="fa-solid fa-circle-info"></i> Editor de fluxos em desenvolvimento — salvar em breve disponível.
+          </span>
         </div>
       </div>
     </div>
@@ -887,7 +919,12 @@ Como podemos ajudar você hoje?
               <input id="user-username" type="text" placeholder="Ex: maria">
 
               <label>Senha</label>
-              <input id="user-password" type="password" placeholder="Senha de acesso">
+              <div class="password-wrapper">
+                <input id="user-password" type="password" placeholder="Senha de acesso" autocomplete="new-password">
+                <button type="button" class="toggle-pass" onclick="togglePassword('user-password', this)" aria-label="Mostrar/ocultar senha" tabindex="-1">
+                  <i class="fa-solid fa-eye"></i>
+                </button>
+              </div>
 
               <label>Perfil</label>
               <select id="user-role">
@@ -931,7 +968,7 @@ Como podemos ajudar você hoje?
               <input id="set-company-name" type="text" placeholder="Ex: Rildon Eletropeças">
 
               <label>Telefone comercial</label>
-              <input id="set-company-phone" type="text" placeholder="Ex: (79) 99999-9999">
+              <input id="set-company-phone" type="tel" placeholder="Ex: (79) 99999-9999" autocomplete="tel">
 
               <label>Horário de atendimento</label>
               <input id="set-company-hours" type="text" placeholder="Ex: Segunda a sexta, 08h às 18h">
@@ -1191,11 +1228,16 @@ Como podemos ajudar você hoje?
   </div>
 
   <!-- Modal rápido de resposta -->
-  <div id="chat-modal" class="chat-modal hidden">
+  <div id="chat-modal" class="chat-modal hidden"
+       role="dialog"
+       aria-modal="true"
+       aria-labelledby="chat-modal-title">
     <div class="chat-box">
       <div class="chat-header">
-        <h3>Responder Cliente</h3>
-        <button onclick="fecharChat()">✕</button>
+        <h3 id="chat-modal-title">Responder Cliente</h3>
+        <button onclick="fecharChat()" aria-label="Fechar modal">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
       </div>
 
       <div class="chat-user" id="chat-user"></div>
@@ -1208,11 +1250,16 @@ Como podemos ajudar você hoje?
   </div>
 
 
-<div id="profile-modal" class="chat-modal hidden">
+<div id="profile-modal" class="chat-modal hidden"
+     role="dialog"
+     aria-modal="true"
+     aria-labelledby="profile-modal-title">
   <div class="chat-box profile-box">
     <div class="chat-header">
-      <h3>Meu Perfil</h3>
-      <button onclick="closeProfileModal()">✕</button>
+      <h3 id="profile-modal-title">Meu Perfil</h3>
+      <button onclick="closeProfileModal()" aria-label="Fechar perfil">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
     </div>
 
     <div class="profile-photo-area">
@@ -1230,7 +1277,7 @@ Como podemos ajudar você hoje?
     <input id="profile-name" type="text" placeholder="Seu nome">
 
     <label>Número</label>
-    <input id="profile-phone" type="text" placeholder="(79) 99999-9999">
+    <input id="profile-phone" type="tel" placeholder="(79) 99999-9999" autocomplete="tel">
 
     <button class="send-btn" onclick="saveProfile()">
       Salvar perfil
@@ -1241,9 +1288,9 @@ Como podemos ajudar você hoje?
 
 
   <!-- Toast -->
-  <div id="toast" class="toast">
-    <i class="fa-solid fa-bell"></i>
-    <span>Novo atendimento recebido!</span>
+  <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true">
+    <i class="fa-solid fa-bell" aria-hidden="true"></i>
+    <span id="toast-message">Novo atendimento recebido!</span>
   </div>
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>

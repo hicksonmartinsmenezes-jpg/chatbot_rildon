@@ -43,10 +43,33 @@ function contactLabel(userId) {
 
 function formatPhone(userId) {
   if (!userId) return "—";
-  return String(userId)
+
+  // Remove sufixos do JID do WhatsApp
+  const raw = String(userId)
     .replace("@s.whatsapp.net", "")
     .replace("@c.us", "")
-    .replace("@lid", "");
+    .replace("@lid", "")
+    .replace(/\D/g, ""); // mantém apenas dígitos
+
+  if (!raw) return "—";
+
+  // Remove código do Brasil (55) se presente e número tiver DDD + número
+  let local = raw;
+  if (local.startsWith("55") && local.length >= 12 && local.length <= 14) {
+    local = local.slice(2);
+  }
+
+  // Celular com 9 dígitos: (DDD) 9XXXX-XXXX
+  if (local.length === 11) {
+    return `(${local.slice(0, 2)}) ${local.slice(2, 7)}-${local.slice(7)}`;
+  }
+  // Fixo com 8 dígitos: (DDD) XXXX-XXXX
+  if (local.length === 10) {
+    return `(${local.slice(0, 2)}) ${local.slice(2, 6)}-${local.slice(6)}`;
+  }
+
+  // Número não reconhecido como BR: retorna limpo
+  return raw;
 }
 
 const STATUS_LABELS = { aberto: "Aberto", em_andamento: "Em andamento", resolvido: "Resolvido", cancelado: "Cancelado" };
@@ -87,6 +110,21 @@ function shortTime(value) {
   if (!value) return "";
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+}
+
+function relativeTime(value) {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+  const diff  = Date.now() - d.getTime();
+  const mins  = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days  = Math.floor(diff / 86400000);
+  if (mins  < 1)  return "Agora";
+  if (mins  < 60) return `Há ${mins}min`;
+  if (hours < 24) return `Há ${hours}h`;
+  if (days  < 30) return `Há ${days}d`;
+  return d.toLocaleDateString("pt-BR");
 }
 
 function dayLabel(value) {
@@ -134,13 +172,61 @@ function cssEscape(value) {
   return window.CSS?.escape ? CSS.escape(value) : String(value).replace(/([@.])/g, "\\$1");
 }
 
-// ─── Toast ────────────────────────────────────────────────────────────────────
+// ─── Toast com tipos visuais ──────────────────────────────────────────────────
+// type: 'success' | 'error' | 'warning' | 'info'
+const TOAST_ICONS = {
+  success: "fa-circle-check",
+  error:   "fa-circle-xmark",
+  warning: "fa-triangle-exclamation",
+  info:    "fa-circle-info"
+};
+
 let _toastTimer = null;
-function showToast(message) {
-  const toast = document.getElementById("toast");
+function showToast(message, type = "success") {
+  const toast   = document.getElementById("toast");
   if (!toast) return;
-  toast.querySelector("span").textContent = message;
+
+  const iconEl  = toast.querySelector("i");
+  const spanEl  = toast.querySelector("span");
+  if (spanEl) spanEl.textContent = message;
+
+  // Ícone dinâmico por tipo
+  if (iconEl) {
+    iconEl.className = `fa-solid ${TOAST_ICONS[type] || TOAST_ICONS.success}`;
+  }
+
+  // Cor da borda por tipo
+  toast.dataset.type = type;
+
+  toast.classList.remove("show");
+  void toast.offsetWidth; // força reflow para reiniciar animação
   toast.classList.add("show");
   clearTimeout(_toastTimer);
   _toastTimer = setTimeout(() => toast.classList.remove("show"), 3500);
+}
+
+
+// ─── Auto-resize de textarea ─────────────────────────────────────────────────
+function autoResizeTextarea(el) {
+  el.style.height = "auto";
+  el.style.height = Math.min(el.scrollHeight, 130) + "px";
+}
+
+// Reset altura ao limpar textarea programaticamente
+function resetTextareaHeight(el) {
+  if (!el) return;
+  el.style.height = "auto";
+}
+
+// ─── Toggle genérico de visibilidade de senha ────────────────────────────────
+// Usado em qualquer campo de senha no painel (ex: cadastro de usuário)
+function togglePassword(inputId, btn) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  const isHidden = input.type === "password";
+  input.type = isHidden ? "text" : "password";
+  const icon = btn.querySelector("i");
+  if (icon) {
+    icon.className = isHidden ? "fa-solid fa-eye-slash" : "fa-solid fa-eye";
+  }
 }

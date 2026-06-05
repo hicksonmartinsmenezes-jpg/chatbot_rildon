@@ -2,6 +2,8 @@ const { getSession, clearSession }                           = require("../servi
 const { createTicket }                                       = require("../services/ticket.service");
 const { estaEmHorarioDeAtendimento, mensagemForaDeHorario }  = require("../utils/horario");
 const { notificarAtendente, notificarSeDisponivel }          = require("../services/notificacao.service");
+// CORRIGIDO: normalizar() vem de validators (fonte única de verdade)
+const { normalizar }                                         = require("../utils/validators");
 const MSG                                                    = require("./messages");
 
 const suporteFlow    = require("./suporte.flow");
@@ -13,11 +15,6 @@ const PALAVRAS_MENU = new Set([
   "0", "menu", "inicio", "voltar", "home",
   "oi", "ola", "opa", "bom dia", "boa tarde", "boa noite",
 ]);
-
-// Normaliza: trim + lowercase + remove acentos
-function normalizar(str) {
-  return str.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-}
 
 function menuPrincipal() {
   const aberto = estaEmHorarioDeAtendimento();
@@ -39,10 +36,6 @@ function menuPrincipal() {
 
 async function mainFlow({ userId, message }) {
   const session = getSession(userId);
-
-  // MELHORIA: msgNorm é usado em TODOS os pontos de decisão (inclusive no switch)
-  // Antes o switch usava message.trim() sem normalização, causando falhas com
-  // entradas como "4 " (espaço extra) ou variações de encoding.
   const msgNorm = normalizar(message);
 
   if (PALAVRAS_MENU.has(msgNorm)) {
@@ -54,7 +47,6 @@ async function mainFlow({ userId, message }) {
   if (session.sector === "vendas")     return vendasFlow(message, userId, session);
   if (session.sector === "financeiro") return financeiroFlow(message, userId, session);
 
-  // MELHORIA: switch usa msgNorm (normalizado) em vez de message.trim()
   switch (msgNorm) {
     case "1":
       return (

@@ -1,6 +1,10 @@
 const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, "../.env") });
 
+// ── Validação de variáveis de ambiente ───────────────────────────────────────
+// DEVE ser importado logo após o dotenv — aborta o processo se faltar algo crítico
+const env = require("./config/env");
+
 const fs     = require("fs");
 const logger = require("./utils/logger");
 const app    = require("./app");
@@ -17,24 +21,12 @@ const { processMessage }       = require("./services/message.service");
 const { setSendMessage }       = require("./services/session.service");
 const { setNotifySendMessage } = require("./services/notificacao.service");
 
-const PORT = process.env.PORT || 3000;
+const PORT = env.PORT;
 
 // Garante que o diretório de dados existe
-const dataDir = path.join(__dirname, "../src/data");
+// CORRIGIDO: caminho era '../src/data' — quando __dirname = src/, resolvia errado
+const dataDir = path.join(__dirname, "data");
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-
-// ── Avisos de configuração ────────────────────────────────────────────────────
-if (!process.env.API_TOKEN || process.env.API_TOKEN === "troque-por-um-token-seguro-aqui") {
-  logger.warn("⚠️  API_TOKEN não configurado. Configure antes de expor em produção!");
-}
-
-if (!process.env.DB_PASSWORD) {
-  logger.warn("⚠️  DB_PASSWORD não definida. Verifique o arquivo .env.");
-}
-
-if (!process.env.JWT_SECRET || process.env.JWT_SECRET === "coloque-um-segredo-longo-e-aleatorio-aqui") {
-  logger.warn("⚠️  JWT_SECRET não configurado com valor seguro!");
-}
 
 // ── Servidor HTTP + Socket.io ─────────────────────────────────────────────────
 const http           = require("http");
@@ -79,3 +71,35 @@ initSocket(server);
     process.exit(1);
   }
 })();
+
+process.on("unhandledRejection", (err) => {
+  logger.error(
+    `Unhandled Rejection: ${err?.stack || err}`
+  );
+});
+
+process.on("uncaughtException", (err) => {
+  logger.error(
+    `Uncaught Exception: ${err?.stack || err}`
+  );
+
+  process.exit(1);
+});
+
+function gracefulShutdown(signal) {
+  logger.warn(`${signal} recebido. Encerrando servidor...`);
+
+  const forceExit = setTimeout(() => {
+    logger.error("Forçando encerramento após timeout.");
+    process.exit(1);
+  }, 10000);
+
+  server.close(() => {
+    clearTimeout(forceExit);
+    logger.info("Servidor HTTP encerrado com segurança.");
+    process.exit(0);
+  });
+}
+
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));

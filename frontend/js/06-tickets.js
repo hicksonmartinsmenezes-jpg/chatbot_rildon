@@ -33,24 +33,64 @@ async function loadTickets() {
 
     container.innerHTML = data.tickets.map(ticket => `
       <div class="ticket-card ${ticket.status} ${ticket.status === "aberto" ? "novo-ticket" : ""}" id="card-${ticket.id}">
+
         <div class="ticket-header">
-          <span class="ticket-id">#${ticket.protocolo || ticket.id} — ${tipoLabel(ticket.type)}</span>
+          <div class="ticket-header-left">
+            <span class="ticket-id">#${safe(ticket.protocolo || ticket.id)}</span>
+            <span class="ticket-type-badge">${safe(tipoLabel(ticket.type))}</span>
+          </div>
           <span class="status-badge status-${ticket.status}">${statusLabel(ticket.status)}</span>
         </div>
-        <p><strong>👤 Cliente:</strong> ${safe(ticket.customerName || "Não informado")}</p>
-        <p><strong>🪪 CPF:</strong> ${safe(ticket.cpf || "Não informado")}</p>
-        <p><strong>📱 Número:</strong> ${formatPhone(ticket.userId)}</p>
-        <p class="desc"><strong>📋 Descrição:</strong><br>${safe(ticket.description || "—")}</p>
-        <p><strong>🕐 Criado em:</strong> ${formatDate(ticket.createdAt)}</p>
-        ${ticket.assignedToName ? `<p><strong>👨‍💼 Responsável:</strong> ${safe(ticket.assignedToName)}</p>` : ""}
-        <div class="ticket-footer">
-          ${!ticket.assignedTo ? `<button class="btn-status btn-andamento" onclick="assumirTicket('${ticket.id}')">Assumir</button>` : ""}
-          <button class="btn-status btn-chat" onclick="abrirChat('${escapeAttr(ticket.userId)}')">Responder</button>
-          ${ticket.status !== "em_andamento" ? `<button class="btn-status btn-andamento" onclick="mudarStatus('${ticket.id}', 'em_andamento')">Em andamento</button>` : ""}
-          ${ticket.status !== "resolvido"    ? `<button class="btn-status btn-resolvido" onclick="mudarStatus('${ticket.id}', 'resolvido')">Resolvido</button>` : ""}
-          ${ticket.status !== "cancelado"    ? `<button class="btn-status btn-cancelado" onclick="mudarStatus('${ticket.id}', 'cancelado')">Cancelar</button>` : ""}
-          <button class="btn-status" onclick="transferirTicket('${ticket.id}')">Transferir</button>
+
+        <div class="ticket-meta">
+          <div class="ticket-meta-item">
+            <i class="fa-solid fa-user" aria-hidden="true"></i>
+            <span title="${escapeAttr(ticket.customerName || "Não informado")}">${safe(ticket.customerName || "Não informado")}</span>
+          </div>
+          <div class="ticket-meta-item">
+            <i class="fa-solid fa-mobile-screen" aria-hidden="true"></i>
+            <span>${safe(formatPhone(ticket.userId))}</span>
+          </div>
+          ${ticket.cpf && ticket.cpf !== "Não informado" && ticket.cpf !== "não informado" ? `
+          <div class="ticket-meta-item">
+            <i class="fa-solid fa-id-card" aria-hidden="true"></i>
+            <span>${safe(ticket.cpf)}</span>
+          </div>` : ""}
+          ${ticket.sector ? `
+          <div class="ticket-meta-item">
+            <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
+            <span>${safe(ticket.sector)}</span>
+          </div>` : ""}
         </div>
+
+        ${ticket.description ? `<div class="desc">${safe(ticket.description)}</div>` : ""}
+
+        <div class="ticket-footer-meta">
+          <span class="ticket-time">
+            <i class="fa-regular fa-clock" aria-hidden="true"></i>
+            ${safe(relativeTime(ticket.createdAt))}
+          </span>
+          ${ticket.assignedToName ? `
+          <span class="ticket-assigned">
+            <i class="fa-solid fa-user-check" aria-hidden="true"></i>
+            ${safe(ticket.assignedToName)}
+          </span>` : ""}
+        </div>
+
+        <div class="ticket-footer">
+          <div class="ticket-footer-primary">
+            ${!ticket.assignedTo ? `<button class="btn-status btn-andamento" onclick="assumirTicket('${ticket.id}')"><i class="fa-solid fa-hand-pointer"></i> Assumir</button>` : ""}
+            <button class="btn-status btn-chat" onclick="abrirChat('${escapeAttr(ticket.userId)}')"><i class="fa-solid fa-reply"></i> Responder</button>
+            ${ticket.status !== "em_andamento" ? `<button class="btn-status btn-andamento" onclick="mudarStatus('${ticket.id}', 'em_andamento')"><i class="fa-solid fa-spinner"></i> Em andamento</button>` : ""}
+            ${ticket.status !== "resolvido"    ? `<button class="btn-status btn-resolvido" onclick="mudarStatus('${ticket.id}', 'resolvido')"><i class="fa-solid fa-check"></i> Resolvido</button>` : ""}
+            <button class="btn-status btn-transfer" onclick="transferirTicket('${ticket.id}')"><i class="fa-solid fa-right-left"></i> Transferir</button>
+          </div>
+          ${ticket.status !== "cancelado" ? `
+          <div class="ticket-footer-danger">
+            <button class="btn-status btn-cancelado" onclick="mudarStatus('${ticket.id}', 'cancelado')"><i class="fa-solid fa-xmark"></i> Cancelar</button>
+          </div>` : ""}
+        </div>
+
       </div>
     `).join("");
   } catch (err) {
@@ -59,16 +99,38 @@ async function loadTickets() {
 }
 
 async function mudarStatus(id, status) {
+  // Confirmação antes de ações destrutivas
+  if (status === "cancelado") {
+    showConfirmModal({
+      title:       "Cancelar ticket",
+      message:     `Tem certeza que deseja cancelar o ticket #${id}? Esta ação não pode ser desfeita.`,
+      confirmText: "Sim, cancelar",
+      danger:      true,
+      onConfirm:   () => _executarMudarStatus(id, status)
+    });
+    return;
+  }
+  await _executarMudarStatus(id, status);
+}
+
+async function _executarMudarStatus(id, status) {
   try {
-    await apiFetch(`${BASE}/api/tickets/${id}`, {
+    const res = await apiFetch(`${BASE}/api/tickets/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status })
     });
+    if (!res) return;
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      showToast(data.error || "Não foi possível atualizar o ticket.", "error");
+      return;
+    }
+    showToast("✅ Status atualizado!", "success");
     loadTickets();
     if (currentTab === "metrics") loadMetricsCharts();
   } catch {
-    showToast("Não foi possível atualizar o ticket.");
+    showToast("Não foi possível atualizar o ticket.", "error");
   }
 }
 

@@ -8,50 +8,34 @@ if (btnMenu) btnMenu.addEventListener("click", () => sidebar.classList.toggle("o
 
 // ─── Navegação ────────────────────────────────────────────────────────────────
 function switchTab(tab, event) {
+  // CORRIGIDO: evita scroll pro topo e bug de histórico do navegador
+  if (event) event.preventDefault();
 
-  if (tab === "logs") {
-    loadActivityLogs();
-  }
-
-  if (tab === "metrics") {
-    loadTickets();
-    setTimeout(() => loadMetricsCharts(), 300);
-  }
-
+  if (tab === "logs")    loadActivityLogs();
+  if (tab === "metrics") { loadTickets(); setTimeout(() => loadMetricsCharts(), 300); }
   if (tab === "channels") {
-  if (typeof loadCampaigns === "function") {
-    loadCampaigns();
+    if (typeof loadCampaigns === "function") loadCampaigns();
+    if (typeof updateCampaignAudienceCount === "function")
+      setTimeout(() => updateCampaignAudienceCount(), 100);
   }
-
-  if (typeof updateCampaignAudienceCount === "function") {
-    setTimeout(() => {
-      updateCampaignAudienceCount();
-    }, 100);
-  }
-}
 
   currentTab = tab;
 
+  // Sincroniza tabs superiores E sidebar ao mesmo tempo
   document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
   document.querySelectorAll(".sidebar a").forEach(a => a.classList.remove("active"));
 
-  if (event?.currentTarget?.classList.contains("tab")) {
-    event.currentTarget.classList.add("active");
-  }
-
-  if (event?.currentTarget?.tagName === "A") {
-    event.currentTarget.classList.add("active");
-    const relatedTab = document.querySelector(`.tab[onclick*="${tab}"]`);
-    if (relatedTab) relatedTab.classList.add("active");
-  }
+  // Marca tab superior ativa
+  document.querySelectorAll(`.tab[onclick*="'${tab}'"]`).forEach(t => t.classList.add("active"));
+  // Marca item do sidebar ativo
+  document.querySelectorAll(`.sidebar a[onclick*="'${tab}'"]`).forEach(a => a.classList.add("active"));
+  // Também marca o elemento que disparou o evento (qualquer origem)
+  if (event?.currentTarget) event.currentTarget.classList.add("active");
 
   document.querySelectorAll("[id^='tab-']").forEach(s => s.classList.add("hidden"));
   document.getElementById(`tab-${tab}`)?.classList.remove("hidden");
 
-  if (tab === "dashboard") {
-  loadTickets();
-  loadHistory(false);
-}
+  if (tab === "dashboard")     { loadTickets(); loadHistory(false); }
   if (tab === "tickets")       loadTickets();
   if (tab === "history")       loadHistory(true);
   if (tab === "conversations") loadConversations();

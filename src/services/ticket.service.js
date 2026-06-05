@@ -1,16 +1,17 @@
-const crypto = require("crypto");
 const ticketRepository = require("../repositories/ticket.repository");
 const logger = require("../utils/logger");
 
+// Mapeamento type → sector. "atendente_humano" agora mapeado explicitamente.
 const TYPE_TO_SECTOR = {
-  duvida_financeira: "financeiro",
-  atendente_financeiro: "financeiro",
-  consultor_vendas: "vendas",
-  orcamento: "vendas",
-  suporte_tecnico: "suporte",
-  suporte_humano: "suporte",
-  garantia: "garantia",
-  atendente_humano: "geral"
+  duvida_financeira:   "financeiro",
+  atendente_financeiro:"financeiro",
+  consultor_vendas:    "vendas",
+  orcamento:           "vendas",
+  suporte_tecnico:     "suporte",
+  suporte_humano:      "suporte",
+  garantia:            "garantia",
+  // CORRIGIDO: atendente_humano → "atendimento" (consistente com main.flow)
+  atendente_humano:    "atendimento"
 };
 
 async function createTicket({
@@ -25,7 +26,6 @@ async function createTicket({
   const sector = sectorOverride || TYPE_TO_SECTOR[type] || "geral";
 
   const ticket = {
-    id: crypto.randomUUID(),
     protocolo,
     userId,
     type,
@@ -36,12 +36,13 @@ async function createTicket({
     sector,
     assignedTo: null,
     assignedToName: null,
-    createdAt: new Date()
+    createdAt: new Date(),
+    updatedAt: new Date()
   };
 
   const criado = await ticketRepository.create(ticket);
 
-  logger.info(`Ticket criado: #${criado.protocolo} (${type})`);
+  logger.info(`Ticket criado: #${criado.protocolo} (${type}) setor=${sector}`);
 
   return criado;
 }

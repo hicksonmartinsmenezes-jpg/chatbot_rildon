@@ -30,11 +30,9 @@ async function previewProfilePhoto(event) {
     formData.append("foto", file);
 
     const response = await fetch("/api/auth/me/photo", {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${getSessionToken()}`
-      },
-      body: formData
+      method:      "PATCH",
+      credentials: "include",   // cookie HttpOnly enviado automaticamente
+      body:        formData
     });
 
     const data = await response.json();

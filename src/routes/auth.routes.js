@@ -1,7 +1,8 @@
+const logger  = require("../utils/logger");
 const express = require("express");
-const crypto = require("crypto");
+const crypto  = require("crypto");
 
-const pool = require("../database/postgres");
+const pool   = require("../database/postgres");
 const upload = require("../middlewares/uploadProfile");
 const { addLog } = require("../services/activityLog.service");
 
@@ -12,35 +13,44 @@ const {
 
 const router = express.Router();
 
-const SESSION_MS = 30 * 60 * 1000;
+// ─── Configuração do cookie de sessão ────────────────────────────────────────
+const SESSION_MS      = 30 * 60 * 1000; // 30 min
+const COOKIE_NAME     = "rildon_sid";
+const COOKIE_OPTIONS  = {
+  httpOnly:  true,                                   // JS do cliente nunca acessa
+  secure:    process.env.NODE_ENV === "production",  // HTTPS obrigatório em prod
+  sameSite:  "strict",                               // protege contra CSRF
+  maxAge:    SESSION_MS,
+  path:      "/"
+};
+
+// ─── Helpers de sessão no banco ───────────────────────────────────────────────
+function extrairToken(req) {
+  // 1. Cookie HttpOnly (caminho principal)
+  if (req.cookies?.[COOKIE_NAME]) return req.cookies[COOKIE_NAME];
+  // 2. Fallback: Authorization header (integração API externa / API_TOKEN)
+  const auth = req.headers["authorization"] || "";
+  return auth.startsWith("Bearer ") ? auth.slice(7) : null;
+}
 
 async function salvarSessao(token, session) {
   await pool.query(
-    `
-    INSERT INTO auth_sessions (token, user_data, expires_at, created_at)
-    VALUES ($1, $2, $3, NOW())
-    ON CONFLICT (token)
-    DO UPDATE SET
-      user_data = EXCLUDED.user_data,
-      expires_at = EXCLUDED.expires_at
-    `,
+    `INSERT INTO auth_sessions (token, user_data, expires_at, created_at)
+     VALUES ($1, $2, $3, NOW())
+     ON CONFLICT (token)
+     DO UPDATE SET user_data = EXCLUDED.user_data, expires_at = EXCLUDED.expires_at`,
     [token, JSON.stringify(session.user), session.expiresAt]
   );
 }
 
 async function buscarSessao(token) {
   const result = await pool.query(
-    `
-    SELECT token, user_data, expires_at
-    FROM auth_sessions
-    WHERE token = $1
-    LIMIT 1
-    `,
+    `SELECT token, user_data, expires_at
+     FROM auth_sessions WHERE token = $1 LIMIT 1`,
     [token]
   );
 
   const row = result.rows[0];
-
   if (!row) return null;
 
   if (Date.now() > Number(row.expires_at)) {
@@ -48,44 +58,32 @@ async function buscarSessao(token) {
     return null;
   }
 
-  return {
-    user: row.user_data,
-    expiresAt: Number(row.expires_at)
-  };
+  return { user: row.user_data, expiresAt: Number(row.expires_at) };
 }
 
 async function removerSessao(token) {
-  await pool.query(
-    `DELETE FROM auth_sessions WHERE token = $1`,
-    [token]
-  );
+  await pool.query(`DELETE FROM auth_sessions WHERE token = $1`, [token]);
 }
 
 async function limparSessoesExpiradas() {
-  await pool.query(
-    `DELETE FROM auth_sessions WHERE expires_at < $1`,
-    [Date.now()]
-  );
+  await pool.query(`DELETE FROM auth_sessions WHERE expires_at < $1`, [Date.now()]);
 }
 
 function safeCompare(a, b) {
-  const bufferA = Buffer.from(String(a || ""));
-  const bufferB = Buffer.from(String(b || ""));
-
-  if (bufferA.length !== bufferB.length) return false;
-
-  return crypto.timingSafeEqual(bufferA, bufferB);
+  const ba = Buffer.from(String(a || ""));
+  const bb = Buffer.from(String(b || ""));
+  if (ba.length !== bb.length) return false;
+  return crypto.timingSafeEqual(ba, bb);
 }
 
+// ─── POST /api/auth/login ─────────────────────────────────────────────────────
 router.post("/auth/login", async (req, res) => {
   try {
     const { usuario, senha } = req.body || {};
     const user = await validateUser(usuario, senha);
 
     if (!user) {
-      return res.status(401).json({
-        error: "Usuário ou senha inválidos."
-      });
+      return res.status(401).json({ error: "Usuário ou senha inválidos." });
     }
 
     const token = crypto.randomBytes(32).toString("hex");
@@ -97,214 +95,154 @@ router.post("/auth/login", async (req, res) => {
 
     await addLog(user, "LOGIN", `${user.nome} entrou no sistema`);
 
-    return res.json({
-      token,
-      user,
-      expiresIn: SESSION_MS
-    });
-  } catch (error) {
-    console.error("Erro no login:", error);
+    // Define o cookie HttpOnly — JS do cliente nunca vê o token
+    res.cookie(COOKIE_NAME, token, COOKIE_OPTIONS);
 
-    return res.status(500).json({
-      error: "Erro ao fazer login."
-    });
+    return res.json({ user, expiresIn: SESSION_MS });
+  } catch (error) {
+    logger.error(`[auth/login] ${error.message}`);
+    return res.status(500).json({ error: "Erro ao fazer login." });
   }
 });
 
-router.patch("/auth/me/profile", authSession, async (req, res) => {
-  try {
-    const updatedUser = await updateUserProfile(req.user.id, req.body || {});
-
-    const auth = req.headers["authorization"] || "";
-    const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
-
-    if (token) {
-      await salvarSessao(token, {
-        user: updatedUser,
-        expiresAt: Date.now() + SESSION_MS
-      });
-    }
-
-    await addLog(
-      updatedUser,
-      "UPDATE_PROFILE",
-      `${updatedUser.nome} atualizou o perfil`
-    );
-
-    return res.json({ user: updatedUser });
-  } catch (error) {
-    return res.status(400).json({
-      error: error.message
-    });
-  }
-});
-
-router.patch(
-  "/auth/me/photo",
-  authSession,
-  upload.single("foto"),
-  async (req, res) => {
-    try {
-      if (!req.file) {
-        return res.status(400).json({
-          error: "Nenhuma foto enviada."
-        });
-      }
-
-      const foto = `/uploads/profiles/${req.file.filename}`;
-
-      const updatedUser = await updateUserProfile(req.user.id, {
-        nome: req.user.nome,
-        numero: req.user.numero || "",
-        foto
-      });
-
-      const auth = req.headers["authorization"] || "";
-      const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
-
-      if (token) {
-        await salvarSessao(token, {
-          user: updatedUser,
-          expiresAt: Date.now() + SESSION_MS
-        });
-      }
-
-      await addLog(
-        updatedUser,
-        "UPDATE_PHOTO",
-        `${updatedUser.nome} alterou a foto do perfil`
-      );
-
-      return res.json({
-        success: true,
-        foto,
-        user: updatedUser
-      });
-    } catch (error) {
-      return res.status(400).json({
-        error: error.message || "Erro ao salvar foto."
-      });
-    }
-  }
-);
-
+// ─── POST /api/auth/logout ────────────────────────────────────────────────────
 router.post("/auth/logout", async (req, res) => {
   try {
-    const auth = req.headers["authorization"] || "";
-    const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+    const token = extrairToken(req);
 
     if (token) {
       const session = await buscarSessao(token);
-
       if (session?.user) {
-        await addLog(
-          session.user,
-          "LOGOUT",
-          `${session.user.nome} saiu do sistema`
-        );
+        await addLog(session.user, "LOGOUT", `${session.user.nome} saiu do sistema`);
       }
-
       await removerSessao(token);
     }
 
+    // Apaga o cookie no navegador
+    res.clearCookie(COOKIE_NAME, { path: "/" });
     return res.json({ ok: true });
-  } catch (error) {
+  } catch {
+    res.clearCookie(COOKIE_NAME, { path: "/" });
     return res.json({ ok: true });
   }
 });
 
+// ─── GET /api/auth/me ─────────────────────────────────────────────────────────
 router.get("/auth/me", authSession, (req, res) => {
-  return res.json({
-    user: req.user
-  });
+  return res.json({ user: req.user });
 });
 
-async function authSession(req, res, next) {
+// ─── PATCH /api/auth/me/profile ───────────────────────────────────────────────
+router.patch("/auth/me/profile", authSession, async (req, res) => {
   try {
-    const apiToken = process.env.API_TOKEN;
-    const auth = req.headers["authorization"] || "";
-    const provided = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+    const updatedUser = await updateUserProfile(req.user.id, req.body || {});
+    const token       = extrairToken(req);
 
-    if (!provided) {
-      return res.status(401).json({
-        error: "Token não fornecido."
-      });
-    }
-
-    const session = await buscarSessao(provided);
-
-    if (session) {
-      await salvarSessao(provided, {
-        user: session.user,
+    if (token) {
+      await salvarSessao(token, {
+        user:      updatedUser,
         expiresAt: Date.now() + SESSION_MS
       });
-
-      req.user = session.user;
-      return next();
     }
 
+    await addLog(updatedUser, "UPDATE_PROFILE", `${updatedUser.nome} atualizou o perfil`);
+    return res.json({ user: updatedUser });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+});
+
+// ─── PATCH /api/auth/me/photo ─────────────────────────────────────────────────
+router.patch("/auth/me/photo", authSession, upload.single("foto"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "Nenhuma foto enviada." });
+    }
+
+    const foto        = `/uploads/profiles/${req.file.filename}`;
+    const updatedUser = await updateUserProfile(req.user.id, {
+      nome:   req.user.nome,
+      numero: req.user.numero || "",
+      foto
+    });
+
+    const token = extrairToken(req);
+    if (token) {
+      await salvarSessao(token, {
+        user:      updatedUser,
+        expiresAt: Date.now() + SESSION_MS
+      });
+    }
+
+    await addLog(updatedUser, "UPDATE_PHOTO", `${updatedUser.nome} alterou a foto do perfil`);
+    return res.json({ success: true, foto, user: updatedUser });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "Erro ao salvar foto." });
+  }
+});
+
+// ─── Middleware de sessão ─────────────────────────────────────────────────────
+async function authSession(req, res, next) {
+  try {
+    const provided = extrairToken(req);
+
+    if (!provided) {
+      return res.status(401).json({ error: "Sessão não encontrada. Faça login novamente." });
+    }
+
+    // Verifica API_TOKEN para integrações externas (fallback via header)
+    const apiToken = process.env.API_TOKEN;
     if (apiToken && apiToken !== "troque-por-um-token-seguro-aqui") {
-      const ok = safeCompare(provided, apiToken);
-
-      if (ok) {
-        req.user = {
-          id: "api",
-          nome: "Integração API",
-          usuario: "api",
-          perfil: "api"
-        };
-
+      if (safeCompare(provided, apiToken)) {
+        req.user = { id: "api", nome: "Integração API", usuario: "api", perfil: "api" };
         return next();
       }
     }
 
-    return res.status(401).json({
-      error: "Sessão inválida ou expirada. Faça login novamente."
-    });
+    const session = await buscarSessao(provided);
+
+    if (!session) {
+      res.clearCookie(COOKIE_NAME, { path: "/" });
+      return res.status(401).json({ error: "Sessão inválida ou expirada. Faça login novamente." });
+    }
+
+    // Renova sessão apenas quando restar menos de 10 min (evita escrita a cada req)
+    const RENEW_THRESHOLD = 10 * 60 * 1000;
+    if (session.expiresAt - Date.now() < RENEW_THRESHOLD) {
+      const newExpiry = Date.now() + SESSION_MS;
+      await salvarSessao(provided, { user: session.user, expiresAt: newExpiry });
+      // Renova o cookie também
+      res.cookie(COOKIE_NAME, provided, COOKIE_OPTIONS);
+    }
+
+    req.user = session.user;
+    return next();
   } catch (error) {
-    return res.status(500).json({
-      error: "Erro ao validar sessão."
-    });
+    logger.error(`[authSession] ${error.message}`);
+    return res.status(500).json({ error: "Erro ao validar sessão." });
   }
 }
 
 function requireRole(...roles) {
   return (req, res, next) => {
     if (!req.user || !roles.includes(req.user.perfil)) {
-      return res.status(403).json({
-        error: "Acesso negado."
-      });
+      return res.status(403).json({ error: "Acesso negado." });
     }
-
     next();
   };
 }
 
 function requireAdmin(req, res, next) {
-  if (!req.user) {
-    return res.status(401).json({
-      error: "Sessão inválida."
-    });
-  }
-
+  if (!req.user) return res.status(401).json({ error: "Sessão inválida." });
   if (req.user.perfil !== "admin") {
-    return res.status(403).json({
-      error: "Acesso permitido apenas para administradores."
-    });
+    return res.status(403).json({ error: "Acesso permitido apenas para administradores." });
   }
-
   next();
 }
 
+// Limpeza de sessões expiradas a cada 5 min
 setInterval(async () => {
-  try {
-    await limparSessoesExpiradas();
-  } catch (_) {}
+  try { await limparSessoesExpiradas(); } catch (_) {}
 }, 5 * 60 * 1000);
 
-module.exports = {
-  router,
-  authSession,
-  requireAdmin,
-  requireRole
-};
+module.exports = { router, authSession, requireAdmin, requireRole };

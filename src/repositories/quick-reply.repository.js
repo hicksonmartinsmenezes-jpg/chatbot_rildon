@@ -1,4 +1,3 @@
-const crypto = require("crypto");
 const pool = require("../database/postgres");
 
 function mapReply(row) {
@@ -29,16 +28,14 @@ async function replaceAll(replies = []) {
     const result = await pool.query(
       `
       INSERT INTO quick_replies (
-        id,
         shortcut,
         message,
         created_at
       )
-      VALUES ($1,$2,$3,$4)
+      VALUES ($1,$2,$3)
       RETURNING *
       `,
       [
-        reply.id || crypto.randomUUID(),
         reply.shortcut,
         reply.message,
         reply.createdAt || new Date()
@@ -62,9 +59,7 @@ async function findByShortcut(shortcut) {
     [shortcut]
   );
 
-  return result.rows[0]
-    ? mapReply(result.rows[0])
-    : null;
+  return result.rows[0] ? mapReply(result.rows[0]) : null;
 }
 
 module.exports = {

@@ -1,11 +1,11 @@
 const { sendMessage, sendTypingPresence } = require("../config/whatsapp");
 const { saveHistory } = require("../services/history.service");
-const { emitEvent } = require("../services/socket.service");
-
+const { emitEvent }   = require("../services/socket.service");
+const logger          = require("../utils/logger");
 
 async function sendManualMessage(req, res) {
   try {
-    const { userId, message } = req.body;
+    const { userId, message } = req.body || {};
 
     if (!userId || !message) {
       return res.status(400).json({
@@ -13,15 +13,20 @@ async function sendManualMessage(req, res) {
       });
     }
 
-    const sent = await sendMessage(userId, message);
+    // CORRIGIDO: garante que message é string
+    if (typeof message !== "string" || message.trim() === "") {
+      return res.status(400).json({ error: "message deve ser uma string não vazia." });
+    }
+
+    const sent = await sendMessage(userId, message.trim());
 
     const historyItem = await saveHistory({
       userId,
       contactName: "",
       message: null,
-      response: message,
+      response: message.trim(),
       sector: "manual",
-      messageId: sent.id,
+      messageId: sent?.id || null,
       status: "sent"
     });
 
@@ -29,57 +34,46 @@ async function sendManualMessage(req, res) {
       userId,
       contactName: "",
       message: null,
-      response: message,
+      response: message.trim(),
       sector: "manual",
-      messageId: sent.id,
+      messageId: sent?.id || null,
       status: "sent",
       createdAt: new Date()
     });
 
     res.json({
       success: true,
-      messageId: sent.id,
-      remoteJid: sent.remoteJid,
-      fromMe: sent.fromMe,
+      messageId: sent?.id || null,
+      remoteJid: sent?.remoteJid || null,
+      fromMe: sent?.fromMe ?? true,
       history: historyItem
     });
 
   } catch (error) {
-    console.error("Erro ao enviar mensagem:", error);
-
-    res.status(500).json({
-      error: "Erro ao enviar mensagem."
-    });
+    // CORRIGIDO: console.error → logger.error
+    logger.error(`[sendManualMessage] ${error.message}`);
+    res.status(500).json({ error: "Erro ao enviar mensagem." });
   }
 }
 
 async function sendTyping(req, res) {
   try {
-    const { userId } = req.body;
+    const { userId } = req.body || {};
 
     if (!userId) {
-      return res.status(400).json({
-        error: "userId obrigatório."
-      });
+      return res.status(400).json({ error: "userId obrigatório." });
     }
 
-    emitEvent("typing", {
-      userId,
-      from: "agent"
-    });
+    emitEvent("typing", { userId, from: "agent" });
 
     await sendTypingPresence(userId);
 
-    return res.json({
-      success: true
-    });
+    return res.json({ success: true });
 
   } catch (error) {
-    console.error("Erro typing:", error);
-
-    return res.status(500).json({
-      error: "Erro ao enviar presença."
-    });
+    // CORRIGIDO: console.error → logger.error
+    logger.error(`[sendTyping] ${error.message}`);
+    return res.status(500).json({ error: "Erro ao enviar presença." });
   }
 }
 

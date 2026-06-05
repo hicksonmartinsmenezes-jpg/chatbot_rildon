@@ -89,8 +89,6 @@ async function loadConversations() {
               <span>${safe(preview)}</span>
               ${unread > 0 ? `<span class="chat-unread">${unread}</span>` : ""}
             </span>
-
-            <em>${safe(formatPhone(userId))}</em>
           </span>
         </button>
       `;
@@ -144,21 +142,25 @@ if (hadUnread && updateActive) {
     const isOnline = window.onlineUsers?.some(u => u.userId === userId);
     const statusText =
     isOnline
-      ? "🟢 Online"
-      : "⚫ Offline";
+      ? "Online"
+      : " Offline";
 
       header.innerHTML = `
     <div class="chat-header-profile">
       ${avatarHtml(userId, name, true)}
 
-      <div>
-        <strong>${safe(contactLabel(userId))}</strong>
+      <div class="chat-header-info">
 
-        <span class="contact-status">
+        <strong class="chat-contact-name">
+          ${safe(name)}
+        </strong>
+
+        <span class="chat-contact-status">
           ${safe(statusText)}
         </span>
 
         <div id="chat-typing-status"></div>
+
       </div>
     </div>
 
@@ -167,7 +169,7 @@ if (hadUnread && updateActive) {
         <i class="fa-solid fa-rotate-right"></i>
       </button>
     </div>
-  `;
+    `;
   }
 
   if (updateActive) {
@@ -259,9 +261,12 @@ async function sendConversationMessage() {
   const finalMessage = found ? found.message : message;
 
   input.value = "";
+  resetTextareaHeight(input);
 
   try {
     await fetch(`${BASE}/api/messages/typing`, {
+    credentials: "include",
+
       method:  "POST",
       headers: apiHeaders(),
       body:    JSON.stringify({ userId: selectedConversationUser })
@@ -328,6 +333,8 @@ async function enviarMensagemManual() {
 
   try {
     await fetch(`${BASE}/api/messages/typing`, {
+    credentials: "include",
+
       method:  "POST",
       headers: apiHeaders(),
       body:    JSON.stringify({ userId: currentChatUser })
@@ -392,6 +399,7 @@ function notifyTyping() {
   lastTypingAt = now;
 
   fetch(`${BASE}/api/messages/typing`, {
+    credentials: "include",
     method:  "POST",
     headers: apiHeaders(),
     body:    JSON.stringify({ userId: selectedConversationUser })

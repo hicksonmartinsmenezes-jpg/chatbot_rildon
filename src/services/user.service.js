@@ -229,8 +229,6 @@ async function updateUserPassword(
   return true;
 }
 
-logger.info("👤 PostgreSQL: usuários carregados");
-
 async function deactivateUser(id) {
   const user = await userRepository.deactivate(id);
 

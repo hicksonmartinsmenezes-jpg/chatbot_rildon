@@ -8,6 +8,7 @@ const {
   listBroadcasts,
   getBroadcastRecipients,
   startBroadcast,
+  cancelBroadcast,
   getBroadcastAudience,
   getBroadcastStats
 } = require("../services/broadcast.service");
@@ -16,7 +17,9 @@ const router = express.Router();
 
 router.get("/broadcasts", async (req, res) => {
   try {
-    const broadcasts = await listBroadcasts();
+    const page  = Math.max(1, parseInt(req.query.page  || "1"));
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit || "20")));
+    const broadcasts = await listBroadcasts({ page, limit });
     res.json(broadcasts);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -119,6 +122,16 @@ router.get("/broadcasts/:id/recipients", async (req, res) => {
 router.post("/broadcasts/:id/start", async (req, res) => {
   try {
     const result = await startBroadcast(req.params.id);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// MELHORIA: rota de cancelamento de transmissão
+router.post("/broadcasts/:id/cancel", async (req, res) => {
+  try {
+    const result = await cancelBroadcast(req.params.id);
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });

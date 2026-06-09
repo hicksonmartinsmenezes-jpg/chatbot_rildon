@@ -28,7 +28,7 @@ function normalizar(str) {
     .trim()
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
+    .replace(/[̀-ͯ]/g, "");
 }
 
 // ─── Tamanho ──────────────────────────────────────────────────────────────────
@@ -101,7 +101,12 @@ function formatarCNPJ(cnpj) {
 
 function validarNome(nome) {
   const n = sanitizarTexto(nome).replace(/\s+/g, " ");
-  const partes = n.split(" ").filter((p) => /^[A-Za-zÀ-ÖØ-öø-ÿ]{2,}$/.test(p));
+  // Aceita hífens e apóstrofos dentro de nomes: D'Angelo, Jean-Pierre, O'Brien
+  const partes = n.split(" ").filter((p) => /^[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'-]*[A-Za-zÀ-ÖØ-öø-ÿ]$/.test(p) && p.length >= 2);
+  // Aceita nome único com ≥3 chars (apelido, artista, nome estrangeiro: Rildon, Prince, Cher)
+  if (partes.length === 1 && partes[0].length >= 3) return true;
+  // Fallback: nome que não passou no filtro mas tem ≥3 chars e só letras/hífen/apóstrofo
+  if (partes.length === 0 && n.trim().length >= 3 && /^[A-Za-zÀ-ÖØ-öø-ÿ'-]+$/.test(n.trim())) return true;
   return partes.length >= 2;
 }
 

@@ -26,7 +26,10 @@ async function getBotConfig() {
       "Atendimento encerrado por inatividade.",
 
     menuPrincipal: bot.menuPrincipal || "",
-    opcoesMenu: bot.opcoesMenu || ""
+    opcoesMenu: bot.opcoesMenu || "",
+
+    // IA ativa por padrão — pode ser desligada pelo painel (bot.iaAtiva = false)
+    iaAtiva: bot.iaAtiva !== false,
   };
 }
 

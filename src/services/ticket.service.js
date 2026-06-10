@@ -47,16 +47,16 @@ async function createTicket({
   return criado;
 }
 
-async function listTickets({ status, search } = {}) {
-  return ticketRepository.findAll({ status, search });
+async function listTickets({ status, search, dateStart, dateEnd } = {}) {
+  return ticketRepository.findAll({ status, search, dateStart, dateEnd });
 }
 
 async function updateTicketStatus(id, status) {
   return ticketRepository.updateStatus(id, status);
 }
 
-async function getTicketStats() {
-  return ticketRepository.stats();
+async function getTicketStats({ dateStart, dateEnd } = {}) {
+  return ticketRepository.stats({ dateStart, dateEnd });
 }
 
 async function getTicketsByCPF(cpf) {

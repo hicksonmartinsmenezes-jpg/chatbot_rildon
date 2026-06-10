@@ -3,6 +3,27 @@
 // ─── Inicialização ────────────────────────────────────────────────────────────
 checkAuth();
 
+// Pré-preenche filtros de data com o dia atual e conecta auto-refresh
+(function initDateFilters() {
+  const hoje = new Date();
+  const yyyy = hoje.getFullYear();
+  const mm   = String(hoje.getMonth() + 1).padStart(2, "0");
+  const dd   = String(hoje.getDate()).padStart(2, "0");
+  const hojeStr = `${yyyy}-${mm}-${dd}`;
+
+  const startEl = document.getElementById("date-start");
+  const endEl   = document.getElementById("date-end");
+
+  if (startEl && !startEl.value) {
+    startEl.value = hojeStr;
+    startEl.addEventListener("change", loadTickets);
+  }
+  if (endEl && !endEl.value) {
+    endEl.value = hojeStr;
+    endEl.addEventListener("change", loadTickets);
+  }
+})();
+
 if (getCurrentUser()) {
   refreshAll();
   const user = getCurrentUser();

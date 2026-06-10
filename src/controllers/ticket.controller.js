@@ -38,7 +38,7 @@ async function postTicket(req, res) {
 
 async function getTickets(req, res) {
   try {
-    const { status, search } = req.query;
+    const { status, search, dateStart, dateEnd } = req.query;
 
     // CORRIGIDO: validação de status antes de passar ao repositório
     if (status && !STATUS_VALIDOS.includes(status)) {
@@ -47,7 +47,7 @@ async function getTickets(req, res) {
       });
     }
 
-    let tickets = await listTickets({ status, search });
+    let tickets = await listTickets({ status, search, dateStart, dateEnd });
 
     if (req.user?.perfil === "atendente") {
       tickets = tickets.filter(ticket => {
@@ -58,7 +58,7 @@ async function getTickets(req, res) {
       });
     }
 
-    const stats = await getTicketStats();
+    const stats = await getTicketStats({ dateStart, dateEnd });
 
     res.json({ stats, total: tickets.length, tickets });
   } catch (err) {

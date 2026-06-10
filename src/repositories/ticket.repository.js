@@ -53,7 +53,8 @@ async function create(ticket) {
   return mapTicket(result.rows[0]);
 }
 
-async function findAll({ status, search, limit = 500, offset = 0 } = {}) {
+async function findAll({ status, search, dateStart, dateEnd, limit = 500, offset = 0 } = {}) {
+  const TZ = process.env.TZ_NEGOCIO || "America/Maceio";
   const values = [];
   const where = [];
 
@@ -74,6 +75,16 @@ async function findAll({ status, search, limit = 500, offset = 0 } = {}) {
         OR LOWER(protocolo) LIKE $${values.length}
       )
     `);
+  }
+
+  if (dateStart) {
+    values.push(dateStart);
+    where.push(`DATE(created_at AT TIME ZONE '${TZ}') >= $${values.length}::date`);
+  }
+
+  if (dateEnd) {
+    values.push(dateEnd);
+    where.push(`DATE(created_at AT TIME ZONE '${TZ}') <= $${values.length}::date`);
   }
 
   values.push(limit);
@@ -148,7 +159,21 @@ async function transfer(id, sector) {
   return result.rows[0] ? mapTicket(result.rows[0]) : null;
 }
 
-async function stats() {
+async function stats({ dateStart, dateEnd } = {}) {
+  const TZ = process.env.TZ_NEGOCIO || "America/Maceio";
+  const values = [];
+  const where = [];
+
+  if (dateStart) {
+    values.push(dateStart);
+    where.push(`DATE(created_at AT TIME ZONE '${TZ}') >= $${values.length}::date`);
+  }
+
+  if (dateEnd) {
+    values.push(dateEnd);
+    where.push(`DATE(created_at AT TIME ZONE '${TZ}') <= $${values.length}::date`);
+  }
+
   const result = await pool.query(`
     SELECT
       COUNT(*)::int AS total,
@@ -157,7 +182,8 @@ async function stats() {
       COUNT(*) FILTER (WHERE status = 'resolvido')::int AS resolvido,
       COUNT(*) FILTER (WHERE status = 'cancelado')::int AS cancelado
     FROM tickets
-  `);
+    ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+  `, values);
 
   return result.rows[0];
 }

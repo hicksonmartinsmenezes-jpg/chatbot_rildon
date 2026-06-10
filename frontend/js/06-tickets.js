@@ -9,9 +9,14 @@ async function loadTickets() {
   if (container) container.innerHTML = `<p class="loading">Carregando atendimentos...</p>`;
 
   try {
+    const dateStart = document.getElementById("date-start")?.value || "";
+    const dateEnd   = document.getElementById("date-end")?.value   || "";
+
     const params = new URLSearchParams();
-    if (search) params.append("search", search);
-    if (status) params.append("status", status);
+    if (search)    params.append("search",    search);
+    if (status)    params.append("status",    status);
+    if (dateStart) params.append("dateStart", dateStart);
+    if (dateEnd)   params.append("dateEnd",   dateEnd);
 
     const res = await apiFetch(`${BASE}/api/tickets?${params}`);
     if (!res) return;

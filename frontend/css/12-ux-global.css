@@ -73,7 +73,6 @@ body::selection {
 .panel,
 .ticket-card,
 .metric-card,
-.executive-card,
 .history-card,
 .settings-card,
 .settings-home-card,
@@ -379,14 +378,12 @@ label,
   letter-spacing: -0.04em;
 }
 
-.executive-card,
 .metric-card,
 .history-summary-card,
 .campaign-stat-card {
   border-radius: 22px;
 }
 
-.executive-card:hover,
 .metric-card:hover,
 .history-summary-card:hover,
 .campaign-stat-card:hover,

@@ -90,10 +90,9 @@ body::selection {
 
 /* Sidebar */
 .sidebar {
-  background: rgba(8, 11, 18, 0.92);
+  background: rgba(14, 14, 14, 0.97);
   border-right: 1px solid var(--border);
-  box-shadow: 12px 0 35px rgba(0, 0, 0, 0.18);
-  backdrop-filter: blur(14px);
+  box-shadow: 12px 0 35px rgba(0, 0, 0, 0.28);
   z-index: 50;
 }
 
@@ -121,15 +120,15 @@ body::selection {
 
 .sidebar a:hover {
   color: #fff;
-  background: rgba(37, 99, 235, 0.10);
-  border-color: rgba(37, 99, 235, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.10);
 }
 
 .sidebar a.active,
 .sidebar a.highlight {
-  background: linear-gradient(135deg, rgba(37, 99, 235, .22), rgba(34, 197, 94, .08));
-  border-color: rgba(37, 99, 235, 0.28);
-  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.12);
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 }
 
 .sidebar.open a.active::before,
@@ -146,9 +145,8 @@ body::selection {
 /* Topbar */
 .topbar {
   height: 76px;
-  background: rgba(8, 11, 18, 0.82);
+  background: rgba(12, 12, 12, 0.96);
   border-bottom: 1px solid var(--border);
-  backdrop-filter: blur(14px);
   position: sticky;
   top: 0;
   z-index: 40;
@@ -291,7 +289,7 @@ textarea,
 .campaign-form-card textarea,
 .chat-search,
 .chat-box textarea {
-  background: rgba(15, 23, 42, 0.74);
+  background: rgba(18, 18, 18, 0.90);
   border-color: rgba(148, 163, 184, 0.14);
   color: #f8fafc;
 }
@@ -320,8 +318,8 @@ textarea:focus,
 .campaign-form-card input:focus,
 .campaign-form-card textarea:focus,
 .chat-box textarea:focus {
-  border-color: rgba(37, 99, 235, 0.72);
-  box-shadow: 0 0 0 4px var(--ring);
+  border-color: rgba(255, 255, 255, 0.20);
+  box-shadow: 0 0 0 3px rgba(255,255,255,0.05);
 }
 
 label,
@@ -338,7 +336,7 @@ label,
 .loading {
   background:
     linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.015)),
-    rgba(15, 23, 42, 0.72);
+    rgba(18, 18, 18, 0.90);
   border: 1px dashed rgba(148, 163, 184, 0.22);
   color: #9fb0c4;
 }
@@ -358,6 +356,17 @@ label,
 
 @keyframes uxSpin {
   to { transform: rotate(360deg); }
+}
+
+/* ─── Date input — ícone claro ─────────── */
+input[type="date"] {
+  color-scheme: dark !important;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: brightness(0) invert(1) !important;
+  cursor: pointer;
+  opacity: 0.85;
 }
 
 /* Dashboard */

@@ -2,6 +2,93 @@
    05-tickets.css — Cards e grid de atendimentos
 ========================================== */
 
+/* ─── Layout da aba ───────────────────── */
+#tab-tickets {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+#tab-tickets .panel {
+  background: linear-gradient(160deg, #1a1a1a 0%, #121212 60%, #0f0f0f 100%);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 20px;
+  padding: 24px 28px;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.04);
+}
+
+#tab-tickets .section-title {
+  margin-bottom: 20px;
+}
+
+#tab-tickets .section-title h2 {
+  font-size: 1.35rem;
+  font-weight: 900;
+  color: #fff;
+  letter-spacing: -0.02em;
+}
+
+#tab-tickets .section-title p {
+  color: #64748b;
+  font-size: 13.5px;
+  margin-top: 3px;
+}
+
+#tab-tickets .toolbar {
+  gap: 14px;
+}
+
+.search-wrap {
+  position: relative;
+  flex: 1;
+}
+
+.search-wrap .search-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #64748b;
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.search-wrap input {
+  width: 100%;
+  padding-left: 38px !important;
+}
+
+#tab-tickets .toolbar input,
+#tab-tickets .toolbar select {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  color: #e5e7eb;
+  padding: 10px 14px;
+  font-size: 13.5px;
+  transition: border-color 0.18s;
+}
+
+#tab-tickets .toolbar input {
+  flex: 1;
+}
+
+#tab-tickets .toolbar input:focus,
+#tab-tickets .toolbar select:focus {
+  outline: none;
+  border-color: rgba(255,255,255,0.18);
+}
+
+#tab-tickets .toolbar select option {
+  background: #1a1a1a;
+  color: #e5e7eb;
+}
+
+#tab-tickets .ticket-grid {
+  padding-bottom: 8px;
+}
+
+/* ─── Grid ────────────────────────────── */
 .ticket-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));

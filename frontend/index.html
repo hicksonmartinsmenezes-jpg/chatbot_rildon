@@ -22,9 +22,9 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css">
-  <link rel="stylesheet" href="style.css?v=3">
-  <link rel="stylesheet" href="supervisor.css?v=3">
-  <link rel="stylesheet" href="css/09-dashboard.css?v=3">
+  <link rel="stylesheet" href="style.css?v=21">
+  <link rel="stylesheet" href="supervisor.css?v=21">
+  <link rel="stylesheet" href="css/09-dashboard.css?v=21">
 </head>
 
 <body>
@@ -336,7 +336,10 @@
           </div>
 
           <div class="toolbar">
-            <input type="text" id="search" aria-label="Buscar atendimentos" placeholder="🔍 Buscar por nome, CPF, número ou tipo..." oninput="loadTickets()">
+            <div class="search-wrap">
+              <i class="fa-solid fa-magnifying-glass search-icon"></i>
+              <input type="text" id="search" aria-label="Buscar atendimentos" placeholder="Buscar por nome, CPF, número ou tipo..." oninput="loadTickets()">
+            </div>
             <select id="filter-status" onchange="loadTickets()">
               <option value="">Todos os status</option>
               <option value="aberto">Aberto</option>

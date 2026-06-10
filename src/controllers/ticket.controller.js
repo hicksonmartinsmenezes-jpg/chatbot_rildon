@@ -58,9 +58,10 @@ async function getTickets(req, res) {
       });
     }
 
-    const stats = await getTicketStats({ dateStart, dateEnd });
+    const stats     = await getTicketStats({ dateStart, dateEnd });
+    const liveStats = await getTicketStats({}); // sem filtro de data = estado atual real
 
-    res.json({ stats, total: tickets.length, tickets });
+    res.json({ stats, liveStats, total: tickets.length, tickets });
   } catch (err) {
     logger.error(`[getTickets] ${err.message}`);
     res.status(500).json({ error: "Erro ao listar tickets." });

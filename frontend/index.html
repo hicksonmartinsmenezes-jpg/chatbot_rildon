@@ -74,7 +74,7 @@
 
   <div class="menu-icon-wrapper">
 
-    <i class="fa-brands fa-whatsapp"></i>
+    <i class="fa-solid fa-headset"></i>
 
     <span
       id="sidebar-unread-count"
@@ -85,7 +85,7 @@
 
   </div>
 
-  <span class="label">Conversas</span>
+  <span class="label">Atendimentos</span>
 
 </a>
 
@@ -279,22 +279,22 @@
 
           <article class="executive-card warning">
             <div class="executive-card-icon">
-              <i class="fa-solid fa-inbox"></i>
+              <i class="fa-solid fa-clock"></i>
             </div>
             <strong id="stat-aberto">0</strong>
             <div class="executive-card-label">
-              <span>Abertos</span>
+              <span>Pendentes</span>
               <i class="fa-solid fa-circle-info"></i>
             </div>
           </article>
 
           <article class="executive-card info">
             <div class="executive-card-icon">
-              <i class="fa-solid fa-comments"></i>
+              <i class="fa-solid fa-headset"></i>
             </div>
             <strong id="stat-andamento">0</strong>
             <div class="executive-card-label">
-              <span>Em andamento</span>
+              <span>Andamento</span>
               <i class="fa-solid fa-circle-info"></i>
             </div>
           </article>
@@ -305,7 +305,7 @@
             </div>
             <strong id="stat-pendentes">0</strong>
             <div class="executive-card-label">
-              <span>Pendentes</span>
+              <span>Encerrados</span>
               <i class="fa-solid fa-circle-info"></i>
             </div>
           </article>
@@ -367,7 +367,7 @@
 
             <div class="chat-search">
               <i class="fa-solid fa-magnifying-glass"></i>
-              <input id="search-conversations" type="text" aria-label="Pesquisar conversa" placeholder="Pesquisar conversa..." oninput="loadConversations()">
+              <input id="search-conversations" type="text" aria-label="Pesquisar conversa" placeholder="Pesquisar conversa..." oninput="debouncedSearch()">
             </div>
 
             <div class="chat-list" id="chat-list"></div>
@@ -398,7 +398,7 @@
               rows="1"
               ></textarea>
             
-              <button onclick="sendConversationMessage()" title="Enviar">
+              <button id="btn-send-conversation" onclick="sendConversationMessage()" title="Enviar">
                 <i class="fa-solid fa-paper-plane"></i>
               </button>
             </div>
@@ -1296,22 +1296,22 @@ Como podemos ajudar você hoje?
 
   <!-- JS modularizado -->
   <script src="js/00-core.js"></script>
-  <script src="js/01-utils.js?v=2"></script>
+  <script src="js/01-utils.js?v=3"></script>
   <script src="js/02-auth.js"></script>
   <script src="js/03-navigation.js"></script>
   <script src="js/04-history.js"></script>
   <script src="js/05-metrics.js"></script>
-  <script src="js/06-tickets.js"></script>
-  <script src="js/07-conversations.js"></script>
+  <script src="js/06-tickets.js?v=2"></script>
+  <script src="js/07-conversations.js?v=7"></script>
   <script src="js/08-settings.js"></script>
   <script src="js/09-users.js"></script>
   <script src="js/10-logs.js"></script>
   <script src="js/11-profile.js"></script>
-  <script src="js/12-socket.js"></script>
+  <script src="js/12-socket.js?v=2"></script>
   <script src="js/13-campaigns.js"></script>
   <script src="js/14-charts.js"></script>
   <script src="js/15-modal.js"></script>
-  <script src="js/13-main.js"></script>
+  <script src="js/13-main.js?v=2"></script>
 
 
 </body>

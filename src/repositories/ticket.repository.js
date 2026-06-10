@@ -53,8 +53,15 @@ async function create(ticket) {
   return mapTicket(result.rows[0]);
 }
 
+// Valida timezone para evitar injeção SQL via variável de ambiente
+const _VALID_TZ_RE = /^[A-Za-z_/]+$/;
+function safeTZ() {
+  const tz = process.env.TZ_NEGOCIO || "";
+  return _VALID_TZ_RE.test(tz) ? tz : "America/Maceio";
+}
+
 async function findAll({ status, search, dateStart, dateEnd, limit = 500, offset = 0 } = {}) {
-  const TZ = process.env.TZ_NEGOCIO || "America/Maceio";
+  const TZ = safeTZ();
   const values = [];
   const where = [];
 
@@ -160,7 +167,7 @@ async function transfer(id, sector) {
 }
 
 async function stats({ dateStart, dateEnd } = {}) {
-  const TZ = process.env.TZ_NEGOCIO || "America/Maceio";
+  const TZ = safeTZ();
   const values = [];
   const where = [];
 

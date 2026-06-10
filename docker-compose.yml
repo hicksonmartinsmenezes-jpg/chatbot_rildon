@@ -10,12 +10,11 @@ services:
     ports:
       - "3000:3000"
 
+    env_file:
+      - .env
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_USER: postgres
-      DB_PASSWORD: postgres
-      DB_NAME: chatbot_rildon
 
     depends_on:
       - postgres
@@ -36,7 +35,7 @@ services:
 
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: 1515zz
       POSTGRES_DB: chatbot_rildon
 
     volumes:

@@ -19,7 +19,7 @@ function avatarHtml(userId, name, big = false) {
         src="${BASE}/api/contacts/photo?userId=${encodeURIComponent(userId)}&t=${Math.floor(Date.now()/60000)}"
         alt="${safe(name)}"
         loading="lazy"
-        onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-flex';"
+        onerror="this.style.display='none'; const fb=this.nextElementSibling; if(fb&&fb.classList.contains('avatar-fallback')) fb.style.display='inline-flex';"
       >
       <span class="avatar-fallback" style="display:none;">
         ${safe(initials(name))}

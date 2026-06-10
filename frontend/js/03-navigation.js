@@ -25,15 +25,18 @@ function switchTab(tab, event) {
   document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
   document.querySelectorAll(".sidebar a").forEach(a => a.classList.remove("active"));
 
-  // Marca tab superior ativa
-  document.querySelectorAll(`.tab[onclick*="'${tab}'"]`).forEach(t => t.classList.add("active"));
+  // Marca tab superior ativa — usa data-tab se disponível, fallback para onclick*=
+  document.querySelectorAll(`.tab[data-tab="${tab}"], .tab[onclick*="'${tab}'"]`).forEach(t => t.classList.add("active"));
   // Marca item do sidebar ativo
-  document.querySelectorAll(`.sidebar a[onclick*="'${tab}'"]`).forEach(a => a.classList.add("active"));
+  document.querySelectorAll(`.sidebar a[data-tab="${tab}"], .sidebar a[onclick*="'${tab}'"]`).forEach(a => a.classList.add("active"));
   // Também marca o elemento que disparou o evento (qualquer origem)
   if (event?.currentTarget) event.currentTarget.classList.add("active");
 
   document.querySelectorAll("[id^='tab-']").forEach(s => s.classList.add("hidden"));
   document.getElementById(`tab-${tab}`)?.classList.remove("hidden");
+
+  // Oculta o painel de abas superiores quando está em Atendimentos
+  document.body.classList.toggle("tab-fullscreen", tab === "conversations");
 
   if (tab === "dashboard")     { loadTickets(); loadHistory(false); }
   if (tab === "tickets")       loadTickets();

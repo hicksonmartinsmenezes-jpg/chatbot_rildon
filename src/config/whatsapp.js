@@ -185,6 +185,8 @@ async function connectWhatsApp(onMessage) {
     sock.ev.removeAllListeners("presence.update");
     sock.ev.removeAllListeners("connection.update");
     sock.ev.removeAllListeners("creds.update");
+    sock.ev.removeAllListeners("contacts.upsert");
+    sock.ev.removeAllListeners("contacts.set");
   }
 
   sock = makeWASocket({
@@ -293,10 +295,9 @@ async function connectWhatsApp(onMessage) {
     }
 
     if (connection === "open") {
-       isWhatsAppConnected = true;
-
   reconnectAttempts = 0;
   reconnecting      = false;
+  isWhatsAppConnected = true;
 
   logger.success("WhatsApp conectado com sucesso!");
 
@@ -399,32 +400,24 @@ async function connectWhatsApp(onMessage) {
 }
 
 async function getProfilePhotoUrl(userId) {
+  if (!sock) return null;
   const raw = String(userId);
-  logger.info(`[photo] chamado userId=${raw} sock=${!!sock} mapSize=${Object.keys(lidToJid).length}`);
-
-  if (!sock) {
-    logger.info(`[photo] sock nulo — retornando null`);
-    return null;
-  }
-
   const resolvedJid = lidToJid[raw] || raw;
-  logger.info(`[photo] resolvedJid=${resolvedJid}`);
 
-  // Tenta o JID resolvido (pode ser @s.whatsapp.net se lidToJid tiver o mapeamento)
+  // Tenta o JID resolvido primeiro (se disponível no mapa)
   if (resolvedJid !== raw) {
     try {
       const url = await sock.profilePictureUrl(resolvedJid, "image");
-      if (url) { logger.info(`[photo] OK ${resolvedJid}`); return url; }
-    } catch (e) { logger.info(`[photo] falhou resolvedJid=${resolvedJid}: ${e.message}`); }
+      if (url) return url;
+    } catch (_) {}
   }
 
-  // Tenta com o JID original (inclusive @lid — para ver qual erro o servidor retorna)
+  // Tenta com o JID original
   try {
     const url = await sock.profilePictureUrl(raw, "image");
-    if (url) { logger.info(`[photo] OK raw ${raw}`); return url; }
-  } catch (e) { logger.info(`[photo] falhou raw=${raw}: ${e.message}`); }
+    if (url) return url;
+  } catch (_) {}
 
-  logger.info(`[photo] sem foto para ${raw}`);
   return null;
 }
 

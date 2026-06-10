@@ -3,6 +3,12 @@
 // ─── Estado local ─────────────────────────────────────────────────────────────
 let activeTicketFilter = "pendentes";
 let ticketsByUser      = {}; // userId → ticket mais recente
+let _searchDebounceTimer = null;
+
+function debouncedSearch() {
+  clearTimeout(_searchDebounceTimer);
+  _searchDebounceTimer = setTimeout(() => loadConversations(), 300);
+}
 
 // ─── Filtro de status ─────────────────────────────────────────────────────────
 function setTicketFilter(filter, btn) {
@@ -37,22 +43,33 @@ async function loadConversations(silent = false) {
     if (ticketRes?.ok) {
       const ticketData = await ticketRes.json();
       const tickets = ticketData.tickets || [];
-      for (const t of tickets) {
+      // Ordena: tickets ativos primeiro, depois por data DESC
+      // Assim um ticket aberto/em_andamento sempre ganha sobre um resolvido mais recente
+      const STATUS_PRIO = { aberto: 0, em_andamento: 1, resolvido: 2, cancelado: 3 };
+      const sorted = [...tickets].sort((a, b) => {
+        const sp = (STATUS_PRIO[a.status] ?? 9) - (STATUS_PRIO[b.status] ?? 9);
+        if (sp !== 0) return sp;
+        return new Date(b.createdAt) - new Date(a.createdAt);
+      });
+      for (const t of sorted) {
         if (!t.userId) continue;
-        if (!ticketsByUser[t.userId] ||
-            new Date(t.createdAt) > new Date(ticketsByUser[t.userId].createdAt)) {
-          ticketsByUser[t.userId] = t;
-        }
+        if (!ticketsByUser[t.userId]) ticketsByUser[t.userId] = t;
       }
     }
 
-    // Atualiza badges de contagem
+    // Atualiza badges de contagem — oculta quando zero
     const pendentes   = Object.values(ticketsByUser).filter(t => t.status === "aberto").length;
     const emAndamento = Object.values(ticketsByUser).filter(t => t.status === "em_andamento").length;
     const badgeP = document.getElementById("badge-pendentes");
     const badgeA = document.getElementById("badge-em_andamento");
-    if (badgeP) badgeP.textContent = pendentes;
-    if (badgeA) badgeA.textContent = emAndamento;
+    if (badgeP) {
+      badgeP.textContent = pendentes;
+      badgeP.style.display = pendentes > 0 ? "" : "none";
+    }
+    if (badgeA) {
+      badgeA.textContent = emAndamento;
+      badgeA.style.display = emAndamento > 0 ? "" : "none";
+    }
 
     if (!list) return;
 
@@ -80,21 +97,15 @@ async function loadConversations(silent = false) {
     }
     // "todos" → sem filtro adicional
 
-    // Filtra por busca
+    // Filtra por busca — índice pré-calculado para evitar O(n²)
     if (search) {
-      users = users.filter(userId => {
-        const userHistory = allHistory.filter(item => item.userId === userId);
-        const text = userHistory.map(item => [
-          contactLabel(userId),
-          formatPhone(userId),
-          item.contactName,
-          item.message,
-          item.response,
-          item.sector,
-          item.status
-        ].filter(Boolean).join(" ")).join(" ").toLowerCase();
-        return text.includes(search);
-      });
+      const idx = {};
+      for (const item of allHistory) {
+        if (!item?.userId) continue;
+        if (!idx[item.userId]) idx[item.userId] = `${contactLabel(item.userId)} ${formatPhone(item.userId)} `.toLowerCase();
+        idx[item.userId] += `${item.contactName || ""} ${item.message || ""} ${item.response || ""} ${item.sector || ""} `.toLowerCase();
+      }
+      users = users.filter(uid => (idx[uid] || "").includes(search));
     }
 
     // Ordena por última atividade
@@ -206,6 +217,12 @@ function openConversation(userId, updateActive = true) {
           <i class="fa-solid fa-xmark"></i> Fechar
         </button>
       `;
+    } else if (!ticket || ticket.status === "resolvido" || ticket.status === "cancelado") {
+      actionButtons = `
+        <button class="conv-action-btn conv-btn-aceitar" onclick="reabrirTicketConv('${userId}')">
+          <i class="fa-solid fa-rotate-left"></i> Reabrir
+        </button>
+      `;
     }
 
     header.innerHTML = `
@@ -270,7 +287,8 @@ function openConversation(userId, updateActive = true) {
   }
 
   messagesBox.innerHTML = html.join("");
-  messagesBox.scrollTop = messagesBox.scrollHeight;
+  // Aguarda render antes de rolar para garantir altura correta
+  requestAnimationFrame(() => { messagesBox.scrollTop = messagesBox.scrollHeight; });
 }
 
 // ─── Ações de ticket na conversa ─────────────────────────────────────────────
@@ -284,6 +302,34 @@ async function aceitarTicketConv(id) {
     await loadConversations();
     if (selectedConversationUser) openConversation(selectedConversationUser);
     if (currentTab === "metrics") loadMetricsCharts();
+  } catch (err) {
+    showToast(`❌ ${err.message}`);
+  }
+}
+
+async function reabrirTicketConv(userId) {
+  try {
+    const ticket = ticketsByUser[userId];
+    if (ticket) {
+      // Reabre ticket existente
+      const res = await apiFetch(`${BASE}/api/tickets/${ticket.id}`, {
+        method:  "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ status: "aberto" })
+      });
+      if (!res?.ok) throw new Error("Erro ao reabrir.");
+    } else {
+      // Cria novo ticket se não existir nenhum
+      const res = await apiFetch(`${BASE}/api/tickets`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ userId, type: "geral", sector: "atendimento" })
+      });
+      if (!res?.ok) throw new Error("Erro ao criar atendimento.");
+    }
+    showToast("✅ Atendimento reaberto!");
+    await loadConversations();
+    openConversation(userId);
   } catch (err) {
     showToast(`❌ ${err.message}`);
   }
@@ -304,8 +350,8 @@ async function fecharTicketConv(id) {
         });
         if (!res?.ok) throw new Error("Erro ao fechar.");
         showToast("✅ Atendimento fechado!");
+        fecharChat();
         await loadConversations();
-        if (selectedConversationUser) openConversation(selectedConversationUser);
         if (currentTab === "metrics") loadMetricsCharts();
       } catch (err) {
         showToast(`❌ ${err.message}`);
@@ -322,10 +368,11 @@ async function transferirTicketConv(id) {
     confirmText: "Transferir",
     onConfirm:   async (sector) => {
       if (!sector) return;
+      const sectorNorm = sector.trim().toLowerCase();
       try {
         const res = await apiFetch(`${BASE}/api/tickets/${id}/transfer`, {
           method: "PATCH",
-          body:   JSON.stringify({ sector })
+          body:   JSON.stringify({ sector: sectorNorm })
         });
         if (!res?.ok) throw new Error("Erro ao transferir.");
         showToast("✅ Transferido!");
@@ -358,7 +405,16 @@ async function sendConversationMessage() {
     return;
   }
 
+  if (message.length > 4096) {
+    showToast("❌ Mensagem muito longa (máx. 4096 caracteres).");
+    return;
+  }
+
   sendingConversationMessage = true;
+
+  // Desabilita botão de envio visualmente durante a requisição
+  const sendBtn = document.getElementById("btn-send-conversation");
+  if (sendBtn) { sendBtn.disabled = true; sendBtn.style.opacity = "0.5"; }
 
   const found = quickRepliesCache.find(reply =>
     reply.shortcut.toLowerCase() === message.toLowerCase()
@@ -398,6 +454,7 @@ async function sendConversationMessage() {
     if (input) input.value = finalMessage;
   } finally {
     sendingConversationMessage = false;
+    if (sendBtn) { sendBtn.disabled = false; sendBtn.style.opacity = ""; }
   }
 }
 

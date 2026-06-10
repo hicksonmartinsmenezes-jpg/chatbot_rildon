@@ -84,14 +84,16 @@ async function processMessage({ userId, contactName, message }) {
   try { await reopenTicketIfClosed(userId); } catch (e) { logger.warn(`Erro ao reabrir ticket: ${e.message}`); }
 
   // Emite imediatamente para o frontend saber que o cliente mandou mensagem
-  emitEvent("nova_mensagem", {
-    userId,
-    contactName,
-    message,
-    response: null,
-    sector: null,
-    createdAt: new Date()
-  });
+  try {
+    emitEvent("nova_mensagem", {
+      userId,
+      contactName,
+      message,
+      response: null,
+      sector: null,
+      createdAt: new Date()
+    });
+  } catch (e) { logger.warn(`Erro ao emitir nova_mensagem: ${e.message}`); }
 
   return enqueue(userId, async () => {
     logger.info(`Mensagem recebida de ${userId}: ${message}`);
@@ -116,14 +118,16 @@ async function processMessage({ userId, contactName, message }) {
       });
 
       // Emite de novo com a resposta do bot já salva
-      emitEvent("nova_mensagem", {
-        userId,
-        contactName,
-        message,
-        response,
-        sector,
-        createdAt: new Date()
-      });
+      try {
+        emitEvent("nova_mensagem", {
+          userId,
+          contactName,
+          message,
+          response,
+          sector,
+          createdAt: new Date()
+        });
+      } catch (e) { logger.warn(`Erro ao emitir nova_mensagem (resposta): ${e.message}`); }
     } catch (err) {
       logger.error(`Erro ao salvar histórico: ${err.message}`);
     }

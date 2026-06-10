@@ -2,6 +2,11 @@
    09-dashboard.css — Dashboard executivo premium
 ========================================== */
 
+/* ─── Zoom 90% apenas no dashboard ───── */
+#tab-dashboard {
+  zoom: 0.80;
+}
+
 /* ─── Hero do dashboard ───────────────── */
 .dashboard-executive-hero {
   position: relative;

@@ -439,7 +439,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .chat-search,
 .chat-window-header,
 .chat-input-area {
-  background: rgba(17, 27, 33, 0.94);
+  background: #0d0d0d;
 }
 
 .chat-item {

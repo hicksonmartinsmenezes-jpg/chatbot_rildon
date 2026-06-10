@@ -28,10 +28,18 @@ socket.on("connect", () => {
 });
 
 socket.on("online_users", users => {
-
-  window.onlineUsers = users;
-
+  window.onlineUsers = Array.isArray(users) ? users : [];
   renderPanelUsers();
+
+  // Atualiza status online/offline na conversa aberta em tempo real
+  if (selectedConversationUser) {
+    const statusEl = document.querySelector(".chat-contact-status");
+    if (statusEl) {
+      const isOnline = window.onlineUsers.some(u => u.userId === selectedConversationUser);
+      statusEl.textContent = isOnline ? "Online" : "Offline";
+      statusEl.className = `chat-contact-status ${isOnline ? "online" : "offline"}`;
+    }
+  }
 });
 
   socket.on("whatsapp_status", ({ status }) => {
@@ -39,23 +47,25 @@ socket.on("online_users", users => {
   });
 
  socket.on("nova_mensagem", (data) => {
-  // Ignora duplicatas por messageId; sem messageId sempre processa
-  const alreadyExists =
-    data.messageId &&
-    allHistory.some(item => item.messageId === data.messageId);
+  // Valida estrutura mínima
+  if (!data?.userId || typeof data.userId !== "string") return;
 
-  if (!alreadyExists) {
-    // Só adiciona ao histórico em memória se for um item completo (com resposta salva)
-    if (data.response) allHistory.unshift(data);
-  }
+  // Deduplicação: por messageId se disponível, senão por userId+message+timestamp próximo
+  const alreadyExists = data.messageId
+    ? allHistory.some(item => item.messageId === data.messageId)
+    : allHistory.some(item =>
+        item.userId === data.userId &&
+        item.message === data.message &&
+        Math.abs(new Date(item.createdAt) - new Date(data.createdAt)) < 3000
+      );
 
-  const isCurrentConversation =
-    selectedConversationUser === data.userId;
+  if (!alreadyExists && data.response) allHistory.unshift(data);
 
-  if (data?.userId && !isCurrentConversation) {
-    unreadMessages[data.userId] =
-      (unreadMessages[data.userId] || 0) + 1;
-      updateSidebarUnreadBadge();
+  const isCurrentConversation = selectedConversationUser === data.userId;
+
+  if (!isCurrentConversation) {
+    unreadMessages[data.userId] = (unreadMessages[data.userId] || 0) + 1;
+    updateSidebarUnreadBadge();
   }
 
   if (currentTab === "conversations") {

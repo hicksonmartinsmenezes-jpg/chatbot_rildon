@@ -22,7 +22,7 @@ async function loadTickets() {
     if (!res) return;
     const data = await res.json();
 
-    updateStats(data.stats, data.tickets || []);
+    updateStats(data.stats, data.tickets || [], data.liveStats);
 
     if (!firstLoadTickets && data.total > lastTicketTotal) showNewTicketAlert();
 
@@ -37,7 +37,7 @@ async function loadTickets() {
     }
 
     container.innerHTML = data.tickets.map(ticket => `
-      <div class="ticket-card ${ticket.status} ${ticket.status === "aberto" ? "novo-ticket" : ""}" id="card-${ticket.id}">
+      <div class="ticket-card ${ticket.status} ${ticket.status === "aberto" ? "novo-ticket" : ""}" id="card-${escapeAttr(String(ticket.id))}">
 
         <div class="ticket-header">
           <div class="ticket-header-left">
@@ -139,20 +139,24 @@ async function _executarMudarStatus(id, status) {
   }
 }
 
-function updateStats(stats, tickets = []) {
+function updateStats(stats, tickets = [], liveStats = null) {
   if (!stats) return;
 
   const total     = stats.total ?? 0;
-  const aberto    = stats.aberto ?? stats.abertos ?? 0;
-  const andamento = stats.em_andamento ?? 0;
   const resolvido = stats.resolvido ?? stats.resolvidos ?? 0;
   const cancelado = stats.cancelado ?? stats.cancelados ?? 0;
 
+  // Cards de estado atual usam liveStats (sem filtro de data) para bater com as abas de Atendimentos
+  const live      = liveStats || stats;
+  const aberto    = live.aberto ?? live.abertos ?? 0;
+  const andamento = live.em_andamento ?? 0;
+  const fechados  = (live.resolvido ?? 0) + (live.cancelado ?? 0);
+
   setText("stat-total",    total);
-  setText("stat-aberto",   aberto);
-  setText("stat-andamento",andamento);
+  setText("stat-aberto",   aberto);    // Pendentes = aberto (todos, sem filtro de data)
+  setText("stat-andamento",andamento); // Ativos    = em_andamento (todos)
   setText("stat-resolvido",resolvido);
-  setText("stat-pendentes",aberto + andamento);
+  setText("stat-pendentes",fechados);  // Fechados  = resolvido + cancelado (todos)
   setText("stat-contatos", new Set((tickets || []).map(t => t.userId)).size);
 
   setText("op-aberto",    aberto);
@@ -329,10 +333,11 @@ async function transferirTicket(id) {
     confirmText: "Transferir",
     onConfirm:   async (sector) => {
       if (!sector) return;
+      const sectorNorm = sector.trim().toLowerCase();
       try {
         const res = await apiFetch(`${BASE}/api/tickets/${id}/transfer`, {
           method: "PATCH",
-          body:   JSON.stringify({ sector })
+          body:   JSON.stringify({ sector: sectorNorm })
         });
         if (!res) return;
         const data = await res.json().catch(() => ({}));

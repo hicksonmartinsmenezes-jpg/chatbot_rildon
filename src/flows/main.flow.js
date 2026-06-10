@@ -162,7 +162,9 @@ async function _mainFlowInterno({ userId, message }) {
 
   // Reconhecimento de cliente retornando — busca nome no histórico quando sessão está vazia
   let nomeSalvo = session.nome || session.customerName || null;
-  if (!nomeSalvo && !session.sector) {
+  // getSession() retorna { sector: "main" } como padrão — "main" não é um sector real,
+  // então o lookup de nome deve rodar quando o sector é "main" (sessão inicial) ou nulo.
+  if (!nomeSalvo && (!session.sector || session.sector === "main")) {
     const nomeHistorico = await _buscarNomeCliente(userId);
     if (nomeHistorico) {
       nomeSalvo = nomeHistorico;
@@ -331,13 +333,9 @@ async function _mainFlowInterno({ userId, message }) {
     default: {
       const botConfig = await getBotConfig();
 
-      // IA desativada → orienta a usar o menu
+      // IA desativada → exibe o menu diretamente
       if (!botConfig.iaAtiva) {
-        return (
-          "Não entendi bem sua mensagem. 😊\n\n" +
-          "Escolha uma das opções abaixo que te ajudo na hora:\n\n" +
-          menuPrincipal(nomeSalvo)
-        );
+        return menuPrincipal(nomeSalvo);
       }
 
       const historico = session.aiHistorico || [];

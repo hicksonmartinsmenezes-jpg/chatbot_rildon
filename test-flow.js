@@ -308,7 +308,7 @@ async function testCrediario() {
 
   // CPF válido para testes (gerado matematicamente correto)
   const rCpf = await enviar("52998224725", "CPF válido");
-  contem(rCpf, "motivo", "pede motivo após CPF");
+  contem(rCpf, "crediário", "pede descrição do que quer comprar no crediário");
 
   const rFim = await enviar("Quero comprar um alternador no crediário", "motivo");
   contem(rFim, "Protocolo", "crediário finalizado com protocolo");
@@ -345,7 +345,7 @@ async function testAtendenteGestao() {
   await resetarSessao();
   await enviar("3", null);
   const rGestNome = await enviar("Roberto Carlos", "nome gestão");
-  contem(rGestNome, "motivo", "gestão pede motivo");
+  contem(rGestNome, "aconteceu", "gestão pede descrição do problema");
 
   const rGest = await enviar("Tive problema com produto com defeito", "motivo gestão");
   contem(rGest, "Protocolo", "gestão registrada");

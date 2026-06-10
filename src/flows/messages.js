@@ -56,9 +56,7 @@ const MSG = {
 
     PEDIR_NOME:  "📝 Para continuar, informe seu *nome completo*:",
     PEDIR_CPF:   "🪪 Informe seu *CPF* (somente números):",
-    PEDIR_MOTIVO:
-      "💬 Descreva brevemente o que deseja comprar no crediário\n" +
-      "ou o motivo da consulta:",
+    PEDIR_MOTIVO: "💬 Descreva o que deseja comprar ou contratar pelo crediário:",
 
     SOLICITACAO_REGISTRADA: (ticket) =>
       `✅ *Solicitação de crediário registrada!*\n\n` +
@@ -76,7 +74,7 @@ const MSG = {
 
   gestao: {
     PEDIR_NOME:   "📝 Para registrar sua solicitação, informe seu *nome completo*:",
-    PEDIR_MOTIVO: "💬 Descreva o motivo pelo qual deseja falar com a gestão:",
+    PEDIR_MOTIVO: "💬 Conta o que aconteceu ou como a nossa equipe pode te ajudar:",
 
     REGISTRADO: (ticket) =>
       `✅ *Solicitação registrada com sucesso!*\n\n` +

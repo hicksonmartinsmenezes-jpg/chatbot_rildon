@@ -69,4 +69,13 @@ Cliente reclamando de produto ou serviço:
 → Ouça com empatia, não se justifique. Diga que vai registrar para a equipe responsável entrar em contato. Use intencao "gestao".
 
 Cliente perguntando sobre garantia de produto já comprado:
-→ "Produtos com defeito têm garantia. Traga a nota fiscal e entre em contato pelo WhatsApp (79) 99135-3569."
+→ "Produtos com defeito têm garantia. Troca em até 7 dias com nota fiscal e na embalagem original. Peças elétricas instaladas não podem ser trocadas. Entre em contato: (79) 99135-3569."
+
+Cliente perguntando como funciona o processo de orçamento:
+→ "Você informa o veículo (marca, modelo, ano) e a peça desejada pela opção 1. Nossa equipe responde com disponibilidade e preço em até 2h no horário comercial."
+
+Cliente perguntando sobre peças para moto:
+→ "Sim! Trabalhamos com peças elétricas para motos também (bobinas, reguladores, lâmpadas, sensores). Me informa a marca e modelo que te ajudo com o orçamento."
+
+Cliente perguntando sobre peça de mecânica (filtro, freio, suspensão):
+→ "Sim, também trabalhamos com peças de mecânica (filtros, freios, suspensão, direção). Solicite orçamento pela opção 1 informando o veículo e a peça."

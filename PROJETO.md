@@ -362,6 +362,17 @@ MSG.main.ATENDENTE_HUMANO(ticket) // Confirmação de atendente humano
 `getSession()` retorna `{ sector: "main" }` como padrão. "main" não é um setor real —
 é o valor inicial. Toda lógica de setor deve ter `sector !== "main"`.
 
+Em especial, a busca de nome do cliente retornando **exige** essa checagem:
+```js
+// CORRETO — reconhece clientes de retorno:
+if (!nomeSalvo && (!session.sector || session.sector === "main")) {
+    const nomeHistorico = await _buscarNomeCliente(userId);
+}
+
+// ERRADO — !session.sector é sempre false porque sector = "main" (truthy):
+if (!nomeSalvo && !session.sector) { ... }  // nunca executa!
+```
+
 ### 2. `getBotConfig().iaAtiva` deve defaultar para `true`
 Ver seção 7. Se esquecer o `!== false`, a IA nunca é chamada e o bot só responde "Não entendi".
 
@@ -391,6 +402,16 @@ qualquer operação destrutiva de git. Em caso de desastre, os arquivos crítico
 A opção "Falar com Atendente" foi removida do menu (era redundante com opção 1).
 O setor `"atendente"` só é acessível via IA com `intencao: "atendente"`.
 Os testes que testam atendente devem usar mock de IA, não `enviar("2")`.
+
+### 9. Horário do sábado: 08:00 (não 07:50)
+`estaEmHorarioDeAtendimento()` usa `8*60` para sábado. Todos os textos exibidos ao cliente
+dizem "08:00". Qualquer alteração nessa função deve manter consistência com `empresa.js`
+e com a opção 4 do menu.
+
+### 10. A loja TAMBÉM vende mecânica (filtros, freios, suspensão)
+A instrução 0 de `empresa.js` e o system prompt da IA mencionam mecânica geral.
+Não diga ao cliente que a loja só tem elétrica — isso é incorreto.
+Perguntas sobre filtros/freios devem ser classificadas como `intencao: "vendas"`.
 
 ---
 
@@ -429,23 +450,19 @@ Após criar o ticket, `notificarAtendente(ticket)` dispara via Socket.io para o 
 
 Estas melhorias foram identificadas mas ainda não implementadas:
 
-1. **Crediário UX**: o flow atual pergunta nome + CPF + motivo, mas não há feedback de prazo claro.
+1. **Crediário UX**: o flow atual pergunta nome + CPF + descrição, mas não há feedback de prazo claro.
    Melhorar `MSG.crediario.SOLICITACAO_REGISTRADA` com prazo esperado de retorno.
 
-2. **"Falar com a Equipe" — tom**: a mensagem `MSG.gestao.PEDIR_MOTIVO` ainda diz
-   "motivo pelo qual deseja falar com a gestão" — pouco natural. Poderia ser
-   "Conte o que aconteceu, nossa equipe vai te ajudar:".
+2. **Horário inteligente no menu**: `menuPrincipal()` exibe 🟢/🔴, mas poderia mostrar
+   "Voltamos segunda-feira às 07:50h" quando fora do horário — `proximoAtendimento()` já existe em `horario.js`.
 
-3. **Horário inteligente no menu**: `menuPrincipal()` já exibe 🟢/🔴, mas poderia mostrar
-   "Abrimos em X horas" quando fora do horário.
-
-4. **Mais arquivos de treinamento**: produtos específicos por linha (pesada, agrícola),
+3. **Mais arquivos de treinamento**: produtos específicos por linha (pesada, agrícola),
    tabela de aplicações (qual alternador para qual carro).
 
-5. **`MSG.vendas.CONSULTOR`**: existe em `messages.js` mas é código morto — não é chamado
+4. **`MSG.vendas.CONSULTOR`**: existe em `messages.js` mas é código morto — não é chamado
    por nenhum flow. Remover ou documentar intenção futura.
 
-6. **Admin panel**: revisão dos timeouts de sessão (atualmente 7/15 min via `botConfig`).
+5. **Admin panel**: revisão dos timeouts de sessão (atualmente 7/15 min via `botConfig`).
 
 ---
 

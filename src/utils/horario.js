@@ -16,24 +16,46 @@ function agoraInfo() {
 
 function estaEmHorarioDeAtendimento() {
   const { dia, hm } = agoraInfo();
-  const inicio    = 7 * 60 + 50;  // 07:50
-  const fimSemana = 17 * 60 + 50; // 17:50
-  const fimSabado = 12 * 60;       // 12:00
-  if (dia === 0) return false;
-  if (dia === 6) return hm >= inicio && hm < fimSabado;
-  return hm >= inicio && hm < fimSemana;
+  const inicioSemana = 7 * 60 + 50;  // 07:50 — seg a sex
+  const inicioSabado = 8 * 60;        // 08:00 — sábado (alinhado com empresa.js e menu)
+  const fimSemana    = 17 * 60 + 50;  // 17:50
+  const fimSabado    = 12 * 60;        // 12:00
+
+  if (dia === 0) return false;                                          // domingo: fechado
+  if (dia === 6) return hm >= inicioSabado && hm < fimSabado;          // sábado
+  return hm >= inicioSemana && hm < fimSemana;                          // seg–sex
+}
+
+// ── Retorna quando a loja vai reabrir (para exibir ao cliente) ─────────────────
+function proximoAtendimento() {
+  const { dia, hm } = agoraInfo();
+
+  // Antes de abrir: informa que abre mais tarde hoje
+  if (dia >= 1 && dia <= 5 && hm < 7 * 60 + 50) return "hoje às *07:50h*";
+  if (dia === 6 && hm < 8 * 60)                  return "hoje às *08:00h*";
+
+  // Sábado após fechar, sexta após fechar ou domingo → segunda-feira
+  if (dia === 0 ||
+      (dia === 6 && hm >= 12 * 60) ||
+      (dia === 5 && hm >= 17 * 60 + 50)) {
+    return "segunda-feira às *07:50h*";
+  }
+
+  // Seg–Qui após fechar → próximo dia útil (dia+1 é sempre um dia útil aqui)
+  const nomes = ["", "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira"];
+  return `${nomes[dia + 1]} às *07:50h*`;
 }
 
 function mensagemForaDeHorario() {
   return (
     "🕐 *Fora do horário de atendimento*\n\n" +
-    "No momento estamos fechados. Mas não se preocupe, seu atendimento foi registrado!\n\n" +
+    `Estamos fechados agora, mas voltamos ${proximoAtendimento()}! 😊\n\n` +
     "📅 *Horário de atendimento:*\n" +
     "Segunda a sexta: 07:50 às 17:50\n" +
-    "Sábado: 07:50 às 12:00\n\n" +
-    "Retornaremos assim que abrirmos. 😊\n\n" +
-    "Digite *0* para voltar ao menu."
+    "Sábado: 08:00 às 12:00\n\n" +
+    "_Você pode deixar sua mensagem que respondemos assim que abrirmos._\n\n" +
+    "Digite *0* para ver o menu."
   );
 }
 
-module.exports = { estaEmHorarioDeAtendimento, mensagemForaDeHorario };
+module.exports = { estaEmHorarioDeAtendimento, mensagemForaDeHorario, proximoAtendimento };

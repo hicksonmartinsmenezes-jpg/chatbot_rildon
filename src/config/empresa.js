@@ -58,6 +58,7 @@ const EMPRESA = {
     "Kits de reboque e tomadas elétricas para reboque",
     "Discos para tacógrafo",
     "Produtos químicos automotivos (água desmineralizada, adesivos, selantes)",
+    "Peças de mecânica geral: filtros (ar, óleo, combustível), pastilhas e lonas de freio, componentes de suspensão e direção",
   ],
 
   servicos: [
@@ -107,7 +108,7 @@ const EMPRESA = {
 
   // ── Instruções de comportamento do bot ──────────────────────────────────────
   instrucoes: [
-    "A loja é especializada em PEÇAS ELÉTRICAS AUTOMOTIVAS — não vendemos materiais elétricos residenciais/industriais como disjuntores de painel, tomadas NBR ou eletrodutos.",
+    "A loja é especializada em PEÇAS ELÉTRICAS AUTOMOTIVAS e também trabalha com peças de mecânica geral (filtros, freios, suspensão, direção). Não vendemos materiais elétricos residenciais/industriais como disjuntores de painel, tomadas NBR ou eletrodutos.",
     "Quando o cliente perguntar sobre uma peça automotiva que a loja provavelmente tem, incentive-o a solicitar um orçamento (opção 1 do menu).",
     "Nunca invente preços — sempre oriente a solicitar um orçamento formal.",
     "Se não souber responder, oriente o cliente a solicitar um orçamento (opção 1) ou diga que um atendente entrará em contato.",

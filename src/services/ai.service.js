@@ -174,8 +174,9 @@ async function _buildSystemPrompt(nomeCliente, contexto) {
 ESTILO: simpático, informal-profissional, respostas curtas (máx 3 linhas), emojis moderados (máx 2).
 Só mencione endereço/horário se perguntado diretamente. Não ofereça informações que o cliente não pediu.
 
-ATUAÇÃO: linha leve (carros), pesada (MB, Volvo, Scania, VW Truck, Iveco) e agrícola.
-PRODUTOS: ${EMPRESA.produtos.slice(0, 8).join(", ")}.
+ATUAÇÃO: linha leve (carros e motos), pesada (MB, Volvo, Scania, VW Truck, Iveco) e agrícola.
+PRODUTOS ELÉTRICOS: ${EMPRESA.produtos.slice(0, 10).join(", ")}.
+TAMBÉM TRABALHAMOS COM: peças de mecânica geral (filtros ar/óleo/combustível, pastilhas, lonas de freio, suspensão, direção).
 MARCAS: ${EMPRESA.marcas.join(", ")}.
 NÃO TRABALHAMOS: elétrica residencial/industrial (tomadas NBR, disjuntores prediais, eletrodutos).
 
@@ -195,11 +196,11 @@ RETORNE SEMPRE JSON EXATO:
 {"resposta":"texto","intencao":"chat"}
 
 intencao DEVE SER:
-• "vendas"    → intenção CLARA de comprar ou solicitar orçamento ("preciso de", "tem X?", "quero comprar", "quanto custa")
+• "vendas"    → cliente quer comprar, verificar preço ou disponibilidade de peça específica: "preciso de X", "tem X para Y?", "quanto custa", "vocês trabalham com X?", "tem filtro/alternador/sensor para [carro]?"
 • "crediario" → menciona crediário, financiamento ou parcelamento explicitamente
-• "atendente" → pede EXPLICITAMENTE falar com humano/atendente/vendedor
-• "gestao"    → reclamação grave, insatisfação forte ou pede gerente/gestor
-• "chat"      → padrão: saudações, dúvidas técnicas gerais, perguntas sobre a loja, fora do escopo`,
+• "atendente" → pede EXPLICITAMENTE falar com humano/atendente/vendedor agora
+• "gestao"    → reclamação, insatisfação forte, produto com defeito, ou pede gerente/responsável
+• "chat"      → PADRÃO: saudações, dúvidas técnicas sem intenção de compra imediata, informações gerais sobre a loja`,
     };
     _promptBaseCacheAt = agora;
   }

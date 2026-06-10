@@ -16,10 +16,10 @@ function avatarHtml(userId, name, big = false) {
   return `
     <span class="chat-avatar ${big ? "big" : ""}">
       <img
-        src="${BASE}/api/contacts/photo?userId=${encodeURIComponent(userId)}"
+        src="${BASE}/api/contacts/photo?userId=${encodeURIComponent(userId)}&t=${Math.floor(Date.now()/60000)}"
         alt="${safe(name)}"
         loading="lazy"
-        onerror="this.remove(); this.nextElementSibling.style.display='inline-flex';"
+        onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-flex';"
       >
       <span class="avatar-fallback" style="display:none;">
         ${safe(initials(name))}

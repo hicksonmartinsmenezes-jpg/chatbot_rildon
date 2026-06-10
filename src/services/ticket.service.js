@@ -65,6 +65,18 @@ async function getTicketsByCPF(cpf) {
   return ticketRepository.findByCpf(cpfLimpo);
 }
 
+async function reopenTicketIfClosed(userId) {
+  const tickets = await ticketRepository.findByUserId(userId);
+  if (!tickets.length) return false;
+  const latest = tickets[0]; // já ordenado DESC
+  if (latest.status === "resolvido" || latest.status === "cancelado") {
+    await ticketRepository.updateStatus(latest.id, "aberto");
+    logger.info(`Ticket #${latest.protocolo} reaberto para ${userId}`);
+    return true;
+  }
+  return false;
+}
+
 async function assignTicket(id, user) {
   return ticketRepository.assign(id, user);
 }
@@ -77,6 +89,7 @@ module.exports = {
   createTicket,
   listTickets,
   updateTicketStatus,
+  reopenTicketIfClosed,
   assignTicket,
   transferTicket,
   getTicketStats,

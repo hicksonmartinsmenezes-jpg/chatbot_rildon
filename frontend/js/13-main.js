@@ -38,7 +38,8 @@ function startPolling() {
     if (!getCurrentUser()) return;
     if (currentTab === "dashboard" || currentTab === "tickets") loadTickets();
     if (currentTab === "history") loadHistory(true);
-  }, 15000);
+    if (currentTab === "conversations") loadConversations(true);
+  }, 30000);
 }
 
 function stopPolling() {

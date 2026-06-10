@@ -17,15 +17,15 @@
    10 → Histórico
 ========================================== */
 
-@import url('css/01-base.css?v=21');
-@import url('css/02-layout.css?v=21');
-@import url('css/03-components.css?v=21');
-@import url('css/04-login.css?v=21');
-@import url('css/05-tickets.css?v=21');
-@import url('css/06-conversations.css?v=21');
-@import url('css/07-settings.css?v=21');
-@import url('css/08-profile.css?v=21');
-@import url('css/09-dashboard.css?v=21');
-@import url('css/10-history.css?v=21');
-@import url("./css/11-campaigns.css?v=21");
-@import url('./css/12-ux-global.css?v=21');
+@import url('css/01-base.css?v=38');
+@import url('css/02-layout.css?v=38');
+@import url('css/03-components.css?v=38');
+@import url('css/04-login.css?v=38');
+@import url('css/05-tickets.css?v=38');
+@import url('css/06-conversations.css?v=38');
+@import url('css/07-settings.css?v=38');
+@import url('css/08-profile.css?v=38');
+@import url('css/09-dashboard.css?v=38');
+@import url('css/10-history.css?v=38');
+@import url("./css/11-campaigns.css?v=38");
+@import url('./css/12-ux-global.css?v=38');

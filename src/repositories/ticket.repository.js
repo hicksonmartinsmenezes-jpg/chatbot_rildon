@@ -206,6 +206,14 @@ function mapTicket(row) {
   };
 }
 
+async function findByUserId(userId) {
+  const result = await pool.query(
+    `SELECT * FROM tickets WHERE user_id = $1 ORDER BY created_at DESC LIMIT 10`,
+    [userId]
+  );
+  return result.rows.map(mapTicket);
+}
+
 async function findByCpf(cpfLimpo) {
   const result = await pool.query(
     `SELECT * FROM tickets WHERE REGEXP_REPLACE(cpf, '\\D', '', 'g') = $1 ORDER BY created_at DESC`,
@@ -218,6 +226,7 @@ module.exports = {
   create,
   findAll,
   findByCpf,
+  findByUserId,
   updateStatus,
   assign,
   transfer,

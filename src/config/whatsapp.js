@@ -22,6 +22,9 @@ let isWhatsAppConnected = false;
 let cachedConfig = null;
 let lastConfigCheck = 0;
 
+// Mapa LID (@lid) → JID real (@s.whatsapp.net) preenchido pelo evento contacts.upsert
+const lidToJid = {};
+
 
 // MELHORIA: cache em memória + confirmação no banco para deduplicação robusta
 // O Set em memória é um atalho rápido; o banco garante que reinicializações
@@ -200,6 +203,25 @@ async function connectWhatsApp(onMessage) {
 
   sock.ev.on("creds.update", saveCreds);
 
+  function processContacts(contacts, source) {
+    logger.info(`[${source}] ${contacts.length} contatos`);
+    for (const c of contacts) {
+      if (c.lid && c.id && !c.id.includes("@lid")) {
+        lidToJid[c.lid] = c.id;
+        logger.info(`[lidToJid] ${c.lid} → ${c.id} (via ${source})`);
+      }
+      if (c.id && c.id.includes("@lid") && (c.phone || c.number)) {
+        const phone = (c.phone || c.number).replace(/\D/g, "");
+        lidToJid[c.id] = `${phone}@s.whatsapp.net`;
+        logger.info(`[lidToJid via phone] ${c.id} → ${lidToJid[c.id]} (via ${source})`);
+      }
+    }
+    logger.info(`[lidToJid] mapa total: ${Object.keys(lidToJid).length} entradas`);
+  }
+
+  sock.ev.on("contacts.upsert", contacts => processContacts(contacts, "contacts.upsert"));
+  sock.ev.on("contacts.set",    ({ contacts }) => processContacts(contacts || [], "contacts.set"));
+
   sock.ev.on("connection.update", async ({ connection, lastDisconnect, qr }) => {
     if (qr) {
       logger.info("Escaneie o QR Code abaixo com o WhatsApp");
@@ -328,6 +350,11 @@ async function connectWhatsApp(onMessage) {
 
       const userId = jid;
 
+      // Diagnóstico: logar chave completa para @lid (uma vez por JID)
+      if (jid.includes("@lid") && !lidToJid[jid]) {
+        logger.info(`[msg@lid] key=${JSON.stringify(msg.key)} pushName=${msg.pushName||""}`);
+      }
+
       const contactName =
         msg.pushName ||
         msg.verifiedBizName ||
@@ -372,14 +399,33 @@ async function connectWhatsApp(onMessage) {
 }
 
 async function getProfilePhotoUrl(userId) {
-  if (!sock) return null;
-  try {
-    let jid = String(userId).replace("@lid", "");
-    if (!jid.includes("@s.whatsapp.net")) jid = `${jid}@s.whatsapp.net`;
-    return await sock.profilePictureUrl(jid, "image");
-  } catch {
+  const raw = String(userId);
+  logger.info(`[photo] chamado userId=${raw} sock=${!!sock} mapSize=${Object.keys(lidToJid).length}`);
+
+  if (!sock) {
+    logger.info(`[photo] sock nulo — retornando null`);
     return null;
   }
+
+  const resolvedJid = lidToJid[raw] || raw;
+  logger.info(`[photo] resolvedJid=${resolvedJid}`);
+
+  // Tenta o JID resolvido (pode ser @s.whatsapp.net se lidToJid tiver o mapeamento)
+  if (resolvedJid !== raw) {
+    try {
+      const url = await sock.profilePictureUrl(resolvedJid, "image");
+      if (url) { logger.info(`[photo] OK ${resolvedJid}`); return url; }
+    } catch (e) { logger.info(`[photo] falhou resolvedJid=${resolvedJid}: ${e.message}`); }
+  }
+
+  // Tenta com o JID original (inclusive @lid — para ver qual erro o servidor retorna)
+  try {
+    const url = await sock.profilePictureUrl(raw, "image");
+    if (url) { logger.info(`[photo] OK raw ${raw}`); return url; }
+  } catch (e) { logger.info(`[photo] falhou raw=${raw}: ${e.message}`); }
+
+  logger.info(`[photo] sem foto para ${raw}`);
+  return null;
 }
 
 async function sendMessage(userId, text) {

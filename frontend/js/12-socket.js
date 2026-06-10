@@ -39,12 +39,14 @@ socket.on("online_users", users => {
   });
 
  socket.on("nova_mensagem", (data) => {
+  // Ignora duplicatas por messageId; sem messageId sempre processa
   const alreadyExists =
     data.messageId &&
     allHistory.some(item => item.messageId === data.messageId);
 
   if (!alreadyExists) {
-    allHistory.unshift(data);
+    // Só adiciona ao histórico em memória se for um item completo (com resposta salva)
+    if (data.response) allHistory.unshift(data);
   }
 
   const isCurrentConversation =
@@ -60,7 +62,21 @@ socket.on("online_users", users => {
     if (isCurrentConversation) {
       openConversation(data.userId, false);
     } else {
-      loadConversations();
+      // Recarrega a lista e auto-seleciona a aba correta
+      loadConversations(true).then(() => {
+        const ticket = ticketsByUser[data.userId];
+        const isClosed = ticket?.status === "resolvido" || ticket?.status === "cancelado";
+        const correctFilter = (!ticket || ticket.status === "aberto" || isClosed)
+          ? "pendentes"
+          : ticket.status === "em_andamento"
+          ? "em_andamento"
+          : null;
+
+        if (correctFilter && activeTicketFilter !== correctFilter) {
+          const btn = document.querySelector(`.chat-status-tab[data-filter="${correctFilter}"]`);
+          if (btn) setTicketFilter(correctFilter, btn);
+        }
+      });
     }
   }
 

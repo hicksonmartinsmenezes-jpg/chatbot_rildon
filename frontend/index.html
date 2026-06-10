@@ -22,9 +22,9 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css">
-  <link rel="stylesheet" href="style.css?v=21">
-  <link rel="stylesheet" href="supervisor.css?v=21">
-  <link rel="stylesheet" href="css/09-dashboard.css?v=21">
+  <link rel="stylesheet" href="style.css?v=25">
+  <link rel="stylesheet" href="supervisor.css?v=25">
+  <link rel="stylesheet" href="css/09-dashboard.css?v=25">
 </head>
 
 <body>
@@ -68,11 +68,6 @@
     <a href="#" class="active" onclick="switchTab('dashboard', event)">
       <i class="fa-solid fa-desktop"></i>
       <span class="label">Dashboard</span>
-    </a>
-
-    <a href="#" onclick="switchTab('tickets', event)">
-      <i class="fa-regular fa-comment"></i>
-      <span class="label">Atendimentos</span>
     </a>
 
     <a href="#" onclick="switchTab('conversations', event)">
@@ -187,18 +182,14 @@
 
     <main class="content">
       <!-- Tabs superiores -->
-      <section class="panel">
+      <section class="panel" id="top-tabs-panel">
         <div class="tabs">
           <button class="tab active" onclick="switchTab('dashboard', event)">
-            <i class="fa-solid fa-desktop"></i> PAINEL 
-          </button>
-
-          <button class="tab" onclick="switchTab('tickets', event)">
-            <i class="fa-solid fa-table-cells-large"></i> ATENDIMENTOS
+            <i class="fa-solid fa-desktop"></i> PAINEL
           </button>
 
           <button class="tab" onclick="switchTab('conversations', event)">
-            <i class="fa-brands fa-whatsapp"></i> CONVERSAS
+            <i class="fa-solid fa-headset"></i> ATENDIMENTOS
           </button>
 
           <button class="tab" onclick="switchTab('history', event)">
@@ -355,27 +346,22 @@
 
       <!-- Conversas -->
       <section id="tab-conversations" class="tab-content hidden">
-        <section class="panel conversations-top">
-          <div class="section-title">
-            <div>
-              <h2><i class="fa-brands fa-whatsapp"></i> Conversas</h2>
-              <p>Atenda clientes pelo painel com visual inspirado no WhatsApp.</p>
-            </div>
-            <button class="btn-refresh" onclick="loadConversations()">
-              <i class="fa-solid fa-arrows-rotate"></i> Atualizar
-            </button>
-          </div>
-        </section>
-
         <div class="whatsapp-panel">
           <aside class="chat-sidebar">
-            <div class="chat-sidebar-header">
-              <div>
-                <strong>Mensagens</strong>
-                <span id="chat-total">0 conversas</span>
-              </div>
-              <button onclick="loadConversations()" title="Atualizar">
-                <i class="fa-solid fa-rotate-right"></i>
+            <div class="chat-status-tabs">
+              <button class="chat-status-tab active" data-filter="pendentes" onclick="setTicketFilter('pendentes', this)">
+                <i class="fa-solid fa-clock"></i>
+                <span class="tab-label">Pendentes</span>
+                <span id="badge-pendentes" class="chat-status-badge">0</span>
+              </button>
+              <button class="chat-status-tab" data-filter="em_andamento" onclick="setTicketFilter('em_andamento', this)">
+                <i class="fa-solid fa-headset"></i>
+                <span class="tab-label">Ativos</span>
+                <span id="badge-em_andamento" class="chat-status-badge">0</span>
+              </button>
+              <button class="chat-status-tab" data-filter="fechados" onclick="setTicketFilter('fechados', this)">
+                <i class="fa-solid fa-circle-check"></i>
+                <span class="tab-label">Fechados</span>
               </button>
             </div>
 
@@ -1310,7 +1296,7 @@ Como podemos ajudar você hoje?
 
   <!-- JS modularizado -->
   <script src="js/00-core.js"></script>
-  <script src="js/01-utils.js"></script>
+  <script src="js/01-utils.js?v=2"></script>
   <script src="js/02-auth.js"></script>
   <script src="js/03-navigation.js"></script>
   <script src="js/04-history.js"></script>

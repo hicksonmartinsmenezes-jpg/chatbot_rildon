@@ -4,6 +4,7 @@ const { enqueue }     = require("./queue.service");
 const { getSession }  = require("./session.service");
 const { getBotConfig } = require("./botConfig.service");
 const { emitEvent }   = require("./socket.service");
+const { reopenTicketIfClosed } = require("./ticket.service");
 const logger          = require("../utils/logger");
 
 // ─── Rate Limiting ───────────────────────────────────────────────────────────
@@ -79,18 +80,31 @@ async function processMessage({ userId, contactName, message }) {
     return "⚠️ Muitas mensagens em pouco tempo. Aguarde alguns segundos e tente novamente.";
   }
 
+  // Reabre ticket fechado para que o cliente apareça em Pendentes novamente
+  try { await reopenTicketIfClosed(userId); } catch (e) { logger.warn(`Erro ao reabrir ticket: ${e.message}`); }
+
+  // Emite imediatamente para o frontend saber que o cliente mandou mensagem
+  emitEvent("nova_mensagem", {
+    userId,
+    contactName,
+    message,
+    response: null,
+    sector: null,
+    createdAt: new Date()
+  });
+
   return enqueue(userId, async () => {
     logger.info(`Mensagem recebida de ${userId}: ${message}`);
 
     const response = await mainFlow({ userId, message });
 
+    const session = getSession(userId) || {};
+    const sector = session.sector || "main";
+
     if (!response) {
       logger.warn(`Fluxo sem resposta para ${userId}`);
       return "";
     }
-
-    const session = getSession(userId) || {};
-    const sector = session.sector || "main";
 
     try {
       await saveHistory({
@@ -101,6 +115,7 @@ async function processMessage({ userId, contactName, message }) {
         sector
       });
 
+      // Emite de novo com a resposta do bot já salva
       emitEvent("nova_mensagem", {
         userId,
         contactName,

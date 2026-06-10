@@ -84,7 +84,11 @@ app.post("/api/auth/login", loginLimiter);
 app.use(logger.httpLogger);
 
 // ── Arquivos estáticos do painel ─────────────────────────────────────────────
-app.use(express.static(path.join(__dirname, "../frontend")));
+app.use(express.static(path.join(__dirname, "../frontend"), {
+  etag: false,
+  lastModified: false,
+  setHeaders: (res) => res.setHeader("Cache-Control", "no-store")
+}));
 
 // ── Rotas da API ──────────────────────────────────────────────────────────────
 app.use("/api", authRouter);

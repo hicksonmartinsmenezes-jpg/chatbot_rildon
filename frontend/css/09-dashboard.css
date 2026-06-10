@@ -97,21 +97,24 @@
 
 .executive-card {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  background: #161d2e;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 18px;
-  padding: 20px 22px 18px;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  background: #161d2e !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  border-radius: 18px !important;
+  padding: 20px 22px 18px !important;
   min-height: 170px;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
   transition: transform 0.18s ease, box-shadow 0.18s ease;
   cursor: default;
 }
 
 .executive-card:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+  transform: translateY(-3px) !important;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4) !important;
+  border-color: rgba(255, 255, 255, 0.11) !important;
 }
 
 /* Ícone colorido — pequeno, canto superior esquerdo */
@@ -136,9 +139,9 @@
 
 /* Número grande */
 .executive-card strong {
-  display: block;
-  font-size: 54px;
-  color: #fff;
+  display: block !important;
+  font-size: 54px !important;
+  color: #fff !important;
   line-height: 1;
   font-weight: 900;
   letter-spacing: -2px;

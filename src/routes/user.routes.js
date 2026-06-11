@@ -1,5 +1,6 @@
 const express      = require("express");
 const asyncHandler = require("../utils/asyncHandler");
+const pool         = require("../database/postgres");
 
 const {
   getUsers,
@@ -66,6 +67,12 @@ router.delete("/users/:id", asyncHandler(async (req, res) => {
   }
 
   await deactivateUser(req.params.id);
+
+  // Invalida imediatamente todas as sessões ativas do usuário desativado
+  await pool.query(
+    `DELETE FROM auth_sessions WHERE user_data::jsonb->>'id' = $1`,
+    [String(req.params.id)]
+  );
 
   await auditLog({
     user:    req.user,

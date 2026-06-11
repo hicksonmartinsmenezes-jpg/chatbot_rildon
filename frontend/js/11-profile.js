@@ -48,18 +48,13 @@ async function previewProfilePhoto(event) {
       const user = getCurrentUser();
 
       if (user) {
-
         user.foto = data.foto;
 
-        sessionStorage.setItem(
-          "current_user",
-          JSON.stringify(user)
-        );
+        sessionStorage.setItem("current_user", JSON.stringify(user));
+        localStorage.setItem(`profile_${user.usuario || user.id}`, JSON.stringify(user));
 
-        localStorage.setItem(
-          `profile_${user.usuario || user.id}`,
-          JSON.stringify(user)
-        );
+        // Atualiza avatar no topo da página imediatamente
+        applyUserProfileVisual(user);
       }
 
       showToast("✅ Foto atualizada!");

@@ -26,7 +26,7 @@ async function loadCampaigns() {
   const failed = Number(campaign.failed_count || 0);
   const processed = sent + failed;
 
-  const progress = total > 0
+  const progress = total > 0 && !isNaN(processed)
     ? Math.min(100, Math.round((processed / total) * 100))
     : 0;
 

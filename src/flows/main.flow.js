@@ -9,8 +9,9 @@ const logger                                                = require("../utils/
 const MSG                                                   = require("./messages");
 const pool                                                  = require("../database/postgres");
 
-const vendasFlow    = require("./vendas.flow");
-const crediarioFlow = require("./crediario.flow");
+const vendasFlow      = require("./vendas.flow");
+const crediarioFlow   = require("./crediario.flow");
+const financeiroFlow  = require("./financeiro.flow");
 
 // ── Palavras-chave de navegação ────────────────────────────────────────────────
 const PALAVRAS_MENU = new Set([
@@ -46,7 +47,8 @@ function menuPrincipal(nome) {
     "1 - Orçamento / Falar com atendente\n" +
     "2 - Crediário\n" +
     "3 - Falar com a Equipe\n" +
-    "4 - Horário e Localização\n\n" +
+    "4 - Horário e Localização\n" +
+    "5 - Financeiro\n\n" +
     "_Digite o número da opção desejada._"
   );
 }
@@ -316,6 +318,11 @@ async function _mainFlowInterno({ userId, message }) {
     case "3": {
       await updateSession(userId, { sector: "gestao", step: "aguardando_nome" });
       return MSG.gestao.PEDIR_NOME + MSG.ESCAPE_DICA;
+    }
+
+    case "5": {
+      const r5 = await financeiroFlow(message, userId, session);
+      return r5 ?? menuPrincipal(nomeSalvo);
     }
 
     case "4":

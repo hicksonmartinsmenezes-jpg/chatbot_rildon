@@ -156,7 +156,7 @@ function updateStats(stats, tickets = [], liveStats = null) {
   setText("stat-aberto",   aberto);    // Pendentes = aberto (todos, sem filtro de data)
   setText("stat-andamento",andamento); // Ativos    = em_andamento (todos)
   setText("stat-resolvido",resolvido);
-  setText("stat-pendentes",fechados);  // Fechados  = resolvido + cancelado (todos)
+  setText("stat-encerrados",fechados);  // Encerrados = resolvido + cancelado (todos)
   setText("stat-contatos", new Set((tickets || []).map(t => t.userId)).size);
 
   setText("op-aberto",    aberto);

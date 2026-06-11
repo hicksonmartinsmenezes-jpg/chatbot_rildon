@@ -12,7 +12,7 @@ function switchTab(tab, event) {
   if (event) event.preventDefault();
 
   if (tab === "logs")    loadActivityLogs();
-  if (tab === "metrics") { loadTickets(); setTimeout(() => loadMetricsCharts(), 300); }
+  if (tab === "metrics") { loadTickets().finally(() => loadMetricsCharts()); }
   if (tab === "channels") {
     if (typeof loadCampaigns === "function") loadCampaigns();
     if (typeof updateCampaignAudienceCount === "function")

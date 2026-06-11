@@ -35,7 +35,7 @@ setInterval(() => processedMessages.clear(), 5 * 60 * 1000);
 
 function markProcessed(id) {
   if (processedMessages.size >= PROCESSED_MAX) processedMessages.clear();
-  markProcessed(id);
+  processedMessages.add(id);
 }
 
 const MAX_RECONNECT_DELAY_MS = 30_000;

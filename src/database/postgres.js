@@ -12,7 +12,7 @@ const pool = new Pool({
   // Garantir string — DB_PASSWORD undefined causa erro SASL no driver pg
   password: String(process.env.DB_PASSWORD || ""),
   database: process.env.DB_NAME     || "chatbot_rildon",
-  max:      Number(process.env.DB_POOL_MAX)                || 10,
+  max:      Number(process.env.DB_POOL_MAX)                || 20,
   idleTimeoutMillis:       Number(process.env.DB_POOL_IDLE_TIMEOUT)        || 30000,
   connectionTimeoutMillis: Number(process.env.DB_POOL_CONNECTION_TIMEOUT)  || 15000,
   // MELHORIA: suporte a SSL para conexões em produção (ex: Heroku, Railway, Render)

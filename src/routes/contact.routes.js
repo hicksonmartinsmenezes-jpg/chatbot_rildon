@@ -5,14 +5,21 @@ const logger = require("../utils/logger");
 
 const router = express.Router();
 
-// Rate limit simples: máx 30 requisições por userId por minuto
-const _photoRateMap = new Map();
-setInterval(() => _photoRateMap.clear(), 60_000);
+// Rate limit por userId (30/min) e por IP global (200/min)
+const _photoRateUser = new Map();
+const _photoRateIp   = new Map();
+setInterval(() => { _photoRateUser.clear(); _photoRateIp.clear(); }, 60_000);
 
-function photoRateOk(userId) {
-  const count = (_photoRateMap.get(userId) || 0) + 1;
-  _photoRateMap.set(userId, count);
-  return count <= 30;
+function photoRateOk(userId, ip) {
+  const userCount = (_photoRateUser.get(userId) || 0) + 1;
+  _photoRateUser.set(userId, userCount);
+  if (userCount > 30) return false;
+
+  const ipCount = (_photoRateIp.get(ip) || 0) + 1;
+  _photoRateIp.set(ip, ipCount);
+  if (ipCount > 200) return false;
+
+  return true;
 }
 
 router.get("/contacts/photo", async (req, res) => {
@@ -23,7 +30,8 @@ router.get("/contacts/photo", async (req, res) => {
       return res.status(400).json({ error: "userId inválido." });
     }
 
-    if (!photoRateOk(userId)) {
+    const ip = req.ip || req.socket?.remoteAddress || "unknown";
+    if (!photoRateOk(userId, ip)) {
       return res.set("Cache-Control", "no-store").status(429).end();
     }
 

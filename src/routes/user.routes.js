@@ -40,6 +40,11 @@ router.post("/users", asyncHandler(async (req, res) => {
     return res.status(400).json({ error: "Nome, usuário e senha são obrigatórios." });
   }
 
+  // Apenas admin pode criar outro admin
+  if (perfil === "admin" && req.user?.perfil !== "admin") {
+    return res.status(403).json({ error: "Apenas administradores podem criar outros administradores." });
+  }
+
   const user = await createUser({ nome, usuario, senha, perfil, sector, ativo });
 
   await auditLog({

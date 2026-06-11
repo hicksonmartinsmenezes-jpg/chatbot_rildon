@@ -206,12 +206,29 @@ async function authSession(req, res, next) {
       return res.status(401).json({ error: "Sessão inválida ou expirada. Faça login novamente." });
     }
 
+    // Revalida se o usuário ainda está ativo no banco (detecta desativação/promoção em tempo real)
+    if (session.user?.id && session.user.id !== "api") {
+      const dbUser = await pool.query(
+        `SELECT id, ativo, perfil FROM usuarios WHERE id = $1 LIMIT 1`,
+        [session.user.id]
+      );
+      const row = dbUser.rows[0];
+      if (!row || row.ativo === false) {
+        await removerSessao(provided);
+        res.clearCookie(COOKIE_NAME, { path: "/" });
+        return res.status(401).json({ error: "Usuário inativo. Faça login novamente." });
+      }
+      // Atualiza perfil na sessão caso tenha mudado
+      if (row.perfil !== session.user.perfil) {
+        session.user.perfil = row.perfil;
+      }
+    }
+
     // Renova sessão apenas quando restar menos de 10 min (evita escrita a cada req)
     const RENEW_THRESHOLD = 10 * 60 * 1000;
     if (session.expiresAt - Date.now() < RENEW_THRESHOLD) {
       const newExpiry = Date.now() + SESSION_MS;
       await salvarSessao(provided, { user: session.user, expiresAt: newExpiry });
-      // Renova o cookie também
       res.cookie(COOKIE_NAME, provided, COOKIE_OPTIONS);
     }
 

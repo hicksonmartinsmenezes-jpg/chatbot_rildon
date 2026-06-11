@@ -30,9 +30,13 @@ const lidToJid = {};
 // O Set em memória é um atalho rápido; o banco garante que reinicializações
 // não causem reprocessamento de mensagens recentes.
 const processedMessages = new Set();
-setInterval(() => {
-  processedMessages.clear();
-}, 5 * 60 * 1000);
+const PROCESSED_MAX = 10_000;
+setInterval(() => processedMessages.clear(), 5 * 60 * 1000);
+
+function markProcessed(id) {
+  if (processedMessages.size >= PROCESSED_MAX) processedMessages.clear();
+  markProcessed(id);
+}
 
 const MAX_RECONNECT_DELAY_MS = 30_000;
 
@@ -120,7 +124,7 @@ async function marcarMensagemProcessada(messageId) {
     );
     // Se nenhuma linha foi inserida → já existia → duplicata
     if (res.rowCount === 0) {
-      processedMessages.add(messageId);
+      markProcessed(messageId);
       return true;
     }
   } catch (err) {
@@ -129,7 +133,7 @@ async function marcarMensagemProcessada(messageId) {
   );
 }
 
-  processedMessages.add(messageId);
+  markProcessed(messageId);
 
 return false;
 }
@@ -173,11 +177,17 @@ async function connectWhatsApp(onMessage) {
     throw new Error("connectWhatsApp precisa receber processMessage.");
   }
 
-  const { state, saveCreds } = await useMultiFileAuthState(
-    path.join(__dirname, "../../auth_info")
-  );
-
-  const { version } = await fetchLatestBaileysVersion();
+  let state, saveCreds, version;
+  try {
+    ({ state, saveCreds } = await useMultiFileAuthState(
+      path.join(__dirname, "../../auth_info")
+    ));
+    ({ version } = await fetchLatestBaileysVersion());
+  } catch (err) {
+    logger.error(`[WhatsApp] Falha ao inicializar: ${err.message}`);
+    emitEvent("whatsapp_status", { status: "error", message: err.message });
+    throw err;
+  }
 
   if (sock?.ev) {
     sock.ev.removeAllListeners("messages.upsert");

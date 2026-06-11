@@ -1,35 +1,25 @@
 const logger = require("../utils/logger");
 
-/**
- * Fila por usuário — garante que mensagens do mesmo usuário
- * sejam processadas em sequência, sem paralelismo.
- *
- * MELHORIA: o .catch() anterior engolia o retorno de task(), então um erro
- * silencioso não chegava ao enviarComRetry() e a mensagem ficava sem resposta.
- * Agora o erro é logado E relançado para o chamador poder tratar.
- */
+// Fila por usuário — garante processamento sequencial sem paralelismo
 const queues = {};
 
 async function enqueue(userId, task) {
-    const current = queues[userId] || Promise.resolve();
+  const current = queues[userId] || Promise.resolve();
+  const next    = current.then(() => task());
 
-    const next = current.then(() => task());
+  const queued = next.catch(err => {
+    logger.error(`❌ Erro na fila [${userId}]: ${err.message}`);
+    throw err;
+  });
 
-    // Registra na fila SEM silenciar o erro — o chamador (whatsapp.js) faz o tratamento
-    queues[userId] = next.catch(err => {
-      logger.error(`❌ Erro na fila [${userId}]: ${err.message}`);
-      throw err;
-    });
+  queues[userId] = queued;
 
-    next.finally(() => {
-        setTimeout(() => {
-            if (queues[userId] === next) {
-                delete queues[userId];
-            }
-        }, 5000);
-    });
+  // Remove a entrada somente após a promise atual completar
+  queued.finally(() => {
+    if (queues[userId] === queued) delete queues[userId];
+  });
 
-    return next;
+  return next;
 }
 
 module.exports = { enqueue };

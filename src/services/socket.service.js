@@ -30,9 +30,12 @@ function getOnlineUsers() {
 }
 
 function initSocket(server) {
+  const allowedOrigin = process.env.CORS_ORIGIN || "http://localhost:3000";
   io = new Server(server, {
     cors: {
-      origin: "*"
+      origin: allowedOrigin,
+      methods: ["GET", "POST"],
+      credentials: true
     }
   });
 

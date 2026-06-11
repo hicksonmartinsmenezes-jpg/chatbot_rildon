@@ -1,6 +1,10 @@
 const ticketRepository = require("../repositories/ticket.repository");
 const logger = require("../utils/logger");
 
+// Cooldown de reabertura: evita reabrir o mesmo ticket múltiplas vezes em rajada
+const _reopenCooldown = new Map();
+setInterval(() => _reopenCooldown.clear(), 5 * 60 * 1000);
+
 // Mapeamento type → sector. "atendente_humano" agora mapeado explicitamente.
 const TYPE_TO_SECTOR = {
   duvida_financeira:   "financeiro",
@@ -66,11 +70,15 @@ async function getTicketsByCPF(cpf) {
 }
 
 async function reopenTicketIfClosed(userId) {
+  const lastReopen = _reopenCooldown.get(userId);
+  if (lastReopen && Date.now() - lastReopen < 60_000) return false;
+
   const tickets = await ticketRepository.findByUserId(userId);
   if (!tickets.length) return false;
   const latest = tickets[0]; // já ordenado DESC
   if (latest.status === "resolvido" || latest.status === "cancelado") {
     await ticketRepository.updateStatus(latest.id, "aberto");
+    _reopenCooldown.set(userId, Date.now());
     logger.info(`Ticket #${latest.protocolo} reaberto para ${userId}`);
     return true;
   }

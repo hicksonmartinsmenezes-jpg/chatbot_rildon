@@ -42,16 +42,19 @@ const storage = multer.diskStorage({
   }
 });
 
+const ALLOWED_IMAGE_EXTS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp"]);
+
 const upload = multer({
   storage,
-  limits: {
-    fileSize: 5 * 1024 * 1024
-  },
+  limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     if (!file.mimetype.startsWith("image/")) {
       return cb(new Error("Apenas imagens são permitidas."));
     }
-
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (!ALLOWED_IMAGE_EXTS.has(ext)) {
+      return cb(new Error("Extensão de arquivo não permitida."));
+    }
     cb(null, true);
   }
 });
@@ -82,10 +85,16 @@ router.post("/broadcasts/upload", upload.single("image"), async (req, res) => {
       return res.status(400).json({ error: "Nenhuma imagem enviada." });
     }
 
-    res.json({
-      url: `/uploads/campaigns/${req.file.filename}`
-    });
+    // Validação adicional: extensão real do arquivo salvo no disco
+    const savedExt = path.extname(req.file.filename).toLowerCase();
+    if (!ALLOWED_IMAGE_EXTS.has(savedExt)) {
+      fs.unlink(req.file.path, () => {});
+      return res.status(400).json({ error: "Tipo de arquivo não permitido." });
+    }
+
+    res.json({ url: `/uploads/campaigns/${req.file.filename}` });
   } catch (err) {
+    if (req.file?.path) fs.unlink(req.file.path, () => {});
     res.status(400).json({ error: err.message });
   }
 });

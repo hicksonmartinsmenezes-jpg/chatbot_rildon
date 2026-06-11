@@ -113,11 +113,11 @@ function promptResetPassword(id) {
   showInputModal({
     title:       "Alterar senha",
     label:       "Nova senha",
-    placeholder: "Mínimo 4 caracteres",
+    placeholder: "Mínimo 8 caracteres",
     type:        "password",
     confirmText: "Salvar senha",
     onConfirm:   async (novaSenha) => {
-      if (novaSenha.length < 4) { showToast("A senha deve ter pelo menos 4 caracteres."); return; }
+      if (novaSenha.length < 8) { showToast("A senha deve ter pelo menos 8 caracteres."); return; }
       try {
         const res = await apiFetch(`${BASE}/api/users/${id}/password`, {
           method: "PATCH",

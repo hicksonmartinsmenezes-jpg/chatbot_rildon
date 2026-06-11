@@ -14,7 +14,7 @@ const pool = new Pool({
   database: process.env.DB_NAME     || "chatbot_rildon",
   max:      Number(process.env.DB_POOL_MAX)                || 10,
   idleTimeoutMillis:       Number(process.env.DB_POOL_IDLE_TIMEOUT)        || 30000,
-  connectionTimeoutMillis: Number(process.env.DB_POOL_CONNECTION_TIMEOUT)  || 5000,
+  connectionTimeoutMillis: Number(process.env.DB_POOL_CONNECTION_TIMEOUT)  || 15000,
   // MELHORIA: suporte a SSL para conexões em produção (ex: Heroku, Railway, Render)
   ssl: process.env.DB_SSL === "true" ? { rejectUnauthorized: false } : false
 });
@@ -57,9 +57,15 @@ async function garantirTabelaDedup() {
         ON processed_messages (processed_at)
     `);
 
-    logger.info("[PostgreSQL] Tabela processed_messages pronta.");
+    // Índices para queries do dashboard (status, data, setor)
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets (status)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_tickets_created_at ON tickets (created_at)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_tickets_user_id ON tickets (user_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_tickets_status_created ON tickets (status, created_at)`);
+
+    logger.info("[PostgreSQL] Tabela processed_messages e índices prontos.");
   } catch (err) {
-    logger.warn(`[PostgreSQL] Não foi possível criar tabela de dedup: ${err.message}`);
+    logger.warn(`[PostgreSQL] Não foi possível criar tabela/índices: ${err.message}`);
   }
 }
 

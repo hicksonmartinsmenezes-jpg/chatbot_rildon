@@ -230,20 +230,39 @@ body.tab-fullscreen #tab-conversations {
   line-height: 1;
 }
 
-/* ─── Badge de status no item ─────────── */
-.conv-ticket-badge {
-  display: inline-block;
+/* ─── Pill de status e tag de setor no item ─── */
+.conv-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   font-size: 10px;
   font-weight: 700;
   padding: 2px 7px;
   border-radius: 999px;
-  margin-top: 4px;
 }
 
-.conv-ticket-badge.status-aberto      { background: rgba(245,158,11,0.15); color: #fbbf24; }
-.conv-ticket-badge.status-em_andamento{ background: rgba(37,99,235,0.15);  color: #93c5fd; }
-.conv-ticket-badge.status-resolvido   { background: rgba(34,197,94,0.15);  color: #86efac; }
-.conv-ticket-badge.status-cancelado   { background: rgba(239,68,68,0.12);  color: #fca5a5; }
+.conv-status-pill.status-aberto       { background: rgba(186,117,23,0.12); color: #BA7517; }
+.conv-status-pill.status-em_andamento { background: rgba(24,95,165,0.12);  color: #185FA5; }
+.conv-status-pill.status-resolvido    { background: rgba(30,132,97,0.12);  color: #1D9E75; }
+.conv-status-pill.status-cancelado    { background: rgba(163,45,45,0.12);  color: #A32D2D; }
+
+.conv-sector-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 9px;
+  color: #64748b;
+  background: rgba(255,255,255,0.04);
+  padding: 1px 6px;
+  border-radius: 999px;
+}
+
+.chat-item-row3 {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 3px;
+}
 
 /* ─── Referência do ticket no header ─── */
 .chat-ticket-ref {
@@ -330,15 +349,16 @@ body.tab-fullscreen #tab-conversations {
 }
 
 .chat-item.active {
-   transform: translateX(4px);
-
-    background: rgba(255,255,255,.07);
-
-    border: 1px solid rgba(255,255,255,.10);
-
-    box-shadow: inset 3px 0 0 rgba(255,255,255,.30);
-    
+  transform: translateX(4px);
+  background: rgba(255,255,255,.07);
+  border: 1px solid rgba(255,255,255,.10);
+  border-left: 3px solid rgba(255,255,255,.35);
 }
+
+.chat-item.ci-status-aberto.active       { border-left-color: #BA7517; }
+.chat-item.ci-status-em_andamento.active { border-left-color: #185FA5; }
+.chat-item.ci-status-resolvido.active    { border-left-color: #1D9E75; }
+.chat-item.ci-status-cancelado.active    { border-left-color: #A32D2D; }
 
 /* ─── Avatar de conversa ─────────────── */
 .chat-avatar {

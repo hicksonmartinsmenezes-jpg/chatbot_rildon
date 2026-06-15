@@ -24,12 +24,14 @@ const PALAVRAS_ENCERRAR = new Set([
 ]);
 
 // Sectors gerenciados — qualquer outro é inválido e deve ser resetado
-const SECTORS_VALIDOS = new Set(["vendas", "crediario", "gestao", "atendente"]);
+// "financeiro" adicionado: financeiro.flow.js usa session.sector = "financeiro"
+const SECTORS_VALIDOS = new Set(["vendas", "crediario", "gestao", "atendente", "financeiro"]);
 
 // ── Steps válidos por sector ───────────────────────────────────────────────────
 const STEPS_POR_SECTOR = {
-  gestao:    ["aguardando_nome", "aguardando_motivo_gestao"],
-  atendente: ["aguardando_motivo_atendente"],
+  gestao:     ["aguardando_nome", "aguardando_motivo_gestao"],
+  atendente:  ["aguardando_motivo_atendente"],
+  financeiro: ["menu_financeiro", "aguardando_nome", "aguardando_duvida"],
 };
 
 // ── Menu principal ─────────────────────────────────────────────────────────────
@@ -38,8 +40,8 @@ function menuPrincipal(nome) {
   const status       = aberto ? "🟢 Atendimento aberto" : "🔴 *Fora do horário de atendimento*";
   const primeiroNome = nome ? nome.trim().split(" ")[0] : null;
   const saudacao     = primeiroNome
-    ? `Olá, *${primeiroNome}*! Seja bem-vindo de volta à *Rildon Eletropeças*. 😊`
-    : "Olá! Seja bem-vindo à *Rildon Eletropeças*. 😊";
+    ? `Olá, *${primeiroNome}*! Seja bem-vindo de volta à *Rildon Eletropeças*. ⚡`
+    : "Olá! Seja bem-vindo à *Rildon Eletropeças*. ⚡";
 
   return (
     `${status}\n\n${saudacao}\n\n` +
@@ -90,7 +92,8 @@ async function _buscarNomeCliente(userId) {
       [userId]
     );
     return histRes.rows[0]?.contact_name || null;
-  } catch {
+  } catch (err) {
+    logger.warn(`[_buscarNomeCliente] ${err.message}`);
     return null;
   }
 }
@@ -151,7 +154,7 @@ async function mainFlow({ userId, message }) {
     return await _mainFlowInterno({ userId, message });
   } catch (err) {
     logger.error(`[mainFlow] Erro inesperado para ${userId}: ${err.message}\n${err.stack}`);
-    try { await clearSession(userId); } catch {}
+    try { await clearSession(userId); } catch (err) { logger.warn(`[mainFlow] Erro ao limpar sessão: ${err.message}`); }
     return _msgFallback(null);
   }
 }
@@ -193,7 +196,13 @@ async function _mainFlowInterno({ userId, message }) {
   }
 
   // ── Voltar ao menu principal ─────────────────────────────────────────────────
-  if (PALAVRAS_MENU.has(msgNorm) || PALAVRAS_MENU.has(msgSemPontuacao)) {
+  // Também detecta saudações com texto extra: "bom dia amigo", "boa tarde!" etc.
+  const eSaudacaoOuMenu =
+    PALAVRAS_MENU.has(msgNorm) ||
+    PALAVRAS_MENU.has(msgSemPontuacao) ||
+    ["bom dia", "boa tarde", "boa noite"].some(s => msgNorm.startsWith(s));
+
+  if (eSaudacaoOuMenu) {
     await clearSession(userId);
     return menuPrincipal(nomeSalvo);
   }
@@ -414,6 +423,11 @@ async function _mainFlowInterno({ userId, message }) {
       if (intencao === "gestao") {
         await updateSession(userId, { sector: "gestao", step: "aguardando_nome", aiHistorico: novoHistorico, _iaFalhas: 0 });
         return resposta + "\n\n" + MSG.gestao.PEDIR_NOME + MSG.ESCAPE_DICA;
+      }
+
+      if (intencao === "financeiro") {
+        await updateSession(userId, { sector: "financeiro", step: "menu_financeiro", aiHistorico: novoHistorico, _iaFalhas: 0 });
+        return resposta + "\n\n" + MSG.financeiro.MENU();
       }
 
       // Intenção "chat" — resposta livre da IA, sem menu forçado

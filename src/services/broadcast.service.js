@@ -2,7 +2,8 @@ const pool = require("../database/postgres");
 const logger = require("../utils/logger");
 const {
   sendMessage,
-  sendMedia
+  sendMedia,
+  resolveLid
 } = require("../config/whatsapp");
 
 const path = require("path");
@@ -123,37 +124,23 @@ async function getBroadcastRecipients(broadcastId) {
 }
 
 async function startBroadcast(broadcastId) {
-  const broadcastRes = await pool.query(
-    `SELECT * FROM broadcasts WHERE id = $1`,
+  // UPDATE atômico: só muda de 'pending' para 'sending', evitando race condition
+  const updateRes = await pool.query(
+    `UPDATE broadcasts SET status = 'sending', started_at = NOW()
+     WHERE id = $1 AND status = 'pending'
+     RETURNING *`,
     [broadcastId]
   );
 
-  const broadcast = broadcastRes.rows[0];
-
-  if (!broadcast) {
-    throw new Error("Transmissão não encontrada.");
+  if (updateRes.rowCount === 0) {
+    const check = await pool.query(`SELECT status FROM broadcasts WHERE id = $1`, [broadcastId]);
+    const b = check.rows[0];
+    if (!b) throw new Error("Transmissão não encontrada.");
+    if (b.status === "sending")   throw new Error("Esta transmissão já está em andamento.");
+    if (b.status === "finished")  throw new Error("Esta transmissão já foi finalizada.");
+    if (b.status === "cancelled") throw new Error("Esta transmissão foi cancelada.");
+    throw new Error("Esta transmissão não pode ser iniciada.");
   }
-
-  if (broadcast.status === "sending") {
-    throw new Error("Esta transmissão já está em andamento.");
-  }
-
-  if (broadcast.status === "finished") {
-    throw new Error("Esta transmissão já foi finalizada.");
-  }
-
-  if (broadcast.status === "cancelled") {
-    throw new Error("Esta transmissão foi cancelada.");
-  }
-
-  await pool.query(
-    `
-    UPDATE broadcasts
-    SET status = 'sending', started_at = NOW()
-    WHERE id = $1
-    `,
-    [broadcastId]
-  );
 
   processBroadcastQueue(broadcastId).catch(err => {
     logger.error(`[Broadcast] Erro geral: ${err.message}`);
@@ -207,75 +194,58 @@ async function processBroadcastQueue(broadcastId) {
     }
 
     try {
-     if (broadcast.image_url) {
-  // MELHORIA: proteção contra path traversal — usa apenas o basename do valor
-  // gravado no banco, resolvido dentro do diretório canônico de campanhas.
-  const safeName  = path.basename(broadcast.image_url);
-  const imagePath = path.join(CAMPAIGNS_DIR, safeName);
+      // Resolve JID @lid → número real (necessário para contatos via Linked Device)
+      let targetUserId = recipient.user_id;
+      if (targetUserId.endsWith("@lid")) {
+        const resolved = resolveLid(targetUserId);
+        if (resolved) {
+          logger.info(`[Broadcast] LID resolvido: ${targetUserId} → ${resolved}`);
+          targetUserId = resolved;
+        } else {
+          throw new Error(`Contato ${recipient.contact_name || targetUserId} usa Linked Device — aguarde ele enviar uma mensagem para o bot primeiro.`);
+        }
+      }
 
-  // Garante que o path resolvido ainda está dentro do diretório permitido
-  if (!imagePath.startsWith(CAMPAIGNS_DIR + path.sep) && imagePath !== CAMPAIGNS_DIR) {
-    throw new Error(`Path de imagem inválido: ${broadcast.image_url}`);
-  }
+      if (broadcast.image_url) {
+        const safeName  = path.basename(broadcast.image_url);
+        const imagePath = path.join(CAMPAIGNS_DIR, safeName);
 
-  if (!fs.existsSync(imagePath)) {
-    throw new Error(`Arquivo de imagem não encontrado: ${safeName}`);
-  }
+        if (!imagePath.startsWith(CAMPAIGNS_DIR + path.sep) && imagePath !== CAMPAIGNS_DIR) {
+          throw new Error(`Path de imagem inválido: ${broadcast.image_url}`);
+        }
+        if (!fs.existsSync(imagePath)) {
+          throw new Error(`Arquivo de imagem não encontrado: ${safeName}`);
+        }
 
-  await sendMedia(
-    recipient.user_id,
-    imagePath,
-    broadcast.message
-  );
+        await sendMedia(targetUserId, imagePath, broadcast.message);
+      } else {
+        await sendMessage(targetUserId, broadcast.message);
+      }
 
-} else {
-
-  await sendMessage(
-    recipient.user_id,
-    broadcast.message
-  );
-
-}
+      logger.info(`[Broadcast] ✓ Enviado para ${recipient.contact_name || targetUserId} (${broadcastId})`);
 
       await pool.query(
-        `
-        UPDATE broadcast_recipients
-        SET status = 'sent', sent_at = NOW(), error = NULL
-        WHERE id = $1
-        `,
+        `UPDATE broadcast_recipients SET status = 'sent', sent_at = NOW(), error = NULL WHERE id = $1`,
         [recipient.id]
       );
 
       sentCount++;
-
       await pool.query(
-        `
-        UPDATE broadcasts
-        SET sent_count = $1, failed_count = $2
-        WHERE id = $3
-        `,
+        `UPDATE broadcasts SET sent_count = $1, failed_count = $2 WHERE id = $3`,
         [sentCount, failedCount, broadcastId]
       );
 
       await sleep(5000);
     } catch (err) {
       failedCount++;
+      logger.warn(`[Broadcast] ✗ Falha para ${recipient.contact_name || recipient.user_id}: ${err.message}`);
 
       await pool.query(
-        `
-        UPDATE broadcast_recipients
-        SET status = 'failed', error = $1
-        WHERE id = $2
-        `,
+        `UPDATE broadcast_recipients SET status = 'failed', error = $1 WHERE id = $2`,
         [err.message, recipient.id]
       );
-
       await pool.query(
-        `
-        UPDATE broadcasts
-        SET sent_count = $1, failed_count = $2
-        WHERE id = $3
-        `,
+        `UPDATE broadcasts SET sent_count = $1, failed_count = $2 WHERE id = $3`,
         [sentCount, failedCount, broadcastId]
       );
 
@@ -292,12 +262,13 @@ async function processBroadcastQueue(broadcastId) {
     [broadcastId]
   );
 
-  logger.success(`[Broadcast] Transmissão ${broadcastId} finalizada.`);
+  logger.info(`[Broadcast] Transmissão ${broadcastId} finalizada.`);
 }
 
 
-async function getBroadcastAudience(type) {
+async function getBroadcastAudience(type, { tag = "", atendenteId = "" } = {}) {
   let query = "";
+  let params = [];
 
   if (type === "all_clients") {
     query = `
@@ -336,11 +307,29 @@ SELECT
     `;
   }
 
+  if (type === "contacts") {
+    const where = ["status = 'ativo'", "whatsapp IS NOT NULL"];
+    if (tag) {
+      params.push(tag);
+      where.push(`$${params.length} = ANY(tags)`);
+    }
+    if (atendenteId) {
+      params.push(atendenteId);
+      where.push(`atendente_id = $${params.length}::uuid`);
+    }
+    query = `
+      SELECT whatsapp AS user_id, nome AS contact_name
+      FROM contacts
+      WHERE ${where.join(" AND ")}
+      ORDER BY lower(nome)
+    `;
+  }
+
   if (!query) {
     throw new Error("Tipo de público inválido.");
   }
 
-  const res = await pool.query(query);
+  const res = await pool.query(query, params);
 
   return res.rows.map(item => ({
     userId: item.user_id,
@@ -372,12 +361,73 @@ async function getBroadcastStats() {
   };
 }
 
+async function deleteBroadcast(broadcastId) {
+  const res = await pool.query(
+    `DELETE FROM broadcasts WHERE id = $1 AND status <> 'sending' RETURNING id`,
+    [broadcastId]
+  );
+  if (res.rowCount === 0) {
+    throw new Error("Campanha não encontrada ou está em envio e não pode ser excluída.");
+  }
+  logger.info(`[Broadcast] Transmissão ${broadcastId} excluída.`);
+  return { ok: true };
+}
+
+async function retryFailedRecipients(broadcastId) {
+  const broadcastRes = await pool.query(
+    `SELECT * FROM broadcasts WHERE id = $1`,
+    [broadcastId]
+  );
+  const broadcast = broadcastRes.rows[0];
+  if (!broadcast) throw new Error("Transmissão não encontrada.");
+  if (broadcast.status === "sending") throw new Error("Transmissão já está em andamento.");
+
+  const failedRes = await pool.query(
+    `SELECT COUNT(*) FROM broadcast_recipients WHERE broadcast_id = $1 AND status = 'failed'`,
+    [broadcastId]
+  );
+  const failedCount = Number(failedRes.rows[0].count);
+  if (failedCount === 0) throw new Error("Nenhum destinatário com falha encontrado.");
+
+  // Reset failed recipients para pending
+  await pool.query(
+    `UPDATE broadcast_recipients SET status = 'pending', error = NULL, sent_at = NULL
+     WHERE broadcast_id = $1 AND status = 'failed'`,
+    [broadcastId]
+  );
+
+  // Recalcula total e zera contador de falhas
+  const totalRes = await pool.query(
+    `SELECT COUNT(*) FROM broadcast_recipients WHERE broadcast_id = $1`,
+    [broadcastId]
+  );
+
+  await pool.query(
+    `UPDATE broadcasts
+     SET status = 'sending', started_at = NOW(),
+         total_recipients = $2,
+         sent_count = (SELECT COUNT(*) FROM broadcast_recipients WHERE broadcast_id = $1 AND status = 'sent'),
+         failed_count = 0
+     WHERE id = $1`,
+    [broadcastId, Number(totalRes.rows[0].count)]
+  );
+
+  processBroadcastQueue(broadcastId).catch(err =>
+    logger.error(`[Broadcast] Erro retry: ${err.message}`)
+  );
+
+  logger.info(`[Broadcast] Retry de ${failedCount} destinatários para transmissão ${broadcastId}.`);
+  return { ok: true, message: `Reenviando para ${failedCount} destinatário(s) com falha.` };
+}
+
 module.exports = {
   createBroadcast,
   listBroadcasts,
   getBroadcastRecipients,
   startBroadcast,
   cancelBroadcast,
+  deleteBroadcast,
+  retryFailedRecipients,
   getBroadcastAudience,
   getBroadcastStats
 };

@@ -2,6 +2,13 @@
    10-history.css — Histórico de atendimentos
 ========================================== */
 
+/* ─── Layout da aba ──────────────────── */
+#tab-history {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
 /* ─── Hero do histórico ───────────────── */
 .history-hero {
   background:
@@ -20,8 +27,8 @@
 /* ─── Filtros do histórico ────────────── */
 .history-filters {
   display: grid;
-  grid-template-columns: minmax(280px, 1fr) 180px 180px auto;
-  gap: 14px;
+  grid-template-columns: minmax(280px, 1fr) 160px 160px auto auto;
+  gap: 10px;
   align-items: end;
 }
 
@@ -114,161 +121,186 @@
   line-height: 1;
 }
 
-/* ─── Timeline ────────────────────────── */
-.history-timeline {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
+/* ─── Tabela de histórico ─────────────── */
+.history-timeline { /* wrapper do container dinâmico */ }
 
-.history-card {
-  position: relative;
+.history-table {
   background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 22px;
-  padding: 20px;
-  overflow: hidden;
-  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.22);
-  transition: var(--transition-normal);
-}
-
-.history-card:hover {
-  transform: translateY(-2px);
-  border-color: rgba(29, 108, 245, 0.45);
-  box-shadow: 0 22px 55px rgba(0, 0, 0, 0.30);
-}
-
-.history-card-marker {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 5px;
-  background: linear-gradient(180deg, #22c55e, #1d6cf5);
-}
-
-/* ─── Cabeçalho do card ───────────────── */
-.history-card-header {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin-bottom: 16px;
-}
-
-.history-avatar {
-  width: 48px;
-  height: 48px;
+  border: 1px solid rgba(255,255,255,.08);
   border-radius: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(34, 197, 94, 0.12);
-  color: #4ade80;
-  font-size: 23px;
-  flex-shrink: 0;
+  overflow: hidden;
 }
 
-.history-client-info {
-  flex: 1;
+/* Colunas: cliente | setor | atend. | data | ações */
+.hrow {
+  display: grid;
+  grid-template-columns: 2.2fr 1fr 0.6fr 1.4fr auto;
+  align-items: center;
+  gap: 0 12px;
+  padding: 0 16px;
+  min-height: 52px;
+  border-bottom: 1px solid rgba(255,255,255,.04);
+  transition: background .12s;
+}
+
+/* Centraliza setor (col 2), atend. (col 3) e data (col 4) */
+.hrow > span:nth-child(2),
+.hrow > span:nth-child(3),
+.hrow > span:nth-child(4) {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center !important;
+}
+
+.hrow:last-child { border-bottom: none; }
+
+.hrow:not(.hrow-head):hover { background: rgba(255,255,255,.03); }
+
+/* Cabeçalho */
+.hrow-head {
+  min-height: 38px;
+  background: rgba(255,255,255,.03);
+  border-bottom: 1px solid rgba(255,255,255,.08) !important;
+}
+
+.hrow-head span {
+  font-size: 10px;
+  font-weight: 900;
+  color: #334155;
+  text-transform: uppercase;
+  letter-spacing: .8px;
+}
+
+/* Coluna: cliente */
+.hrow-client {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   min-width: 0;
 }
 
-.history-client-info strong {
+/* Redimensiona o avatar padrão para caber na linha da tabela */
+.hrow-client .chat-avatar {
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  flex: 0 0 34px;
+  font-size: 12px;
+}
+
+/* Remove bolha de status online — não faz sentido no histórico */
+.hrow-client .chat-avatar::after {
+  display: none;
+}
+
+/* Alinha cabeçalho "CLIENTE" com o texto dos dados (descontando avatar + gap) */
+.hrow-head .hrow-client {
+  padding-left: calc(34px + 10px);
+}
+
+.hrow-info {
+  min-width: 0;
+}
+
+.hrow-info strong {
   display: block;
-  color: #fff;
-  font-size: 16px;
+  color: #f1f5f9;
+  font-size: 13px;
+  font-weight: 700;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.history-client-info span {
+.hrow-info small {
   display: block;
-  color: #94a3b8;
-  font-size: 13px;
-  margin-top: 3px;
+  color: #334155;
+  font-size: 10px;
+  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.history-card-meta {
+/* Coluna: setor */
+.hrow-sector {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
-  color: #94a3b8;
-  font-size: 12px;
-  text-align: right;
+  justify-content: center;
+  text-align: center;
 }
 
 .history-sector {
-  background: rgba(29, 108, 245, 0.14);
-  color: #bfdbfe;
-  padding: 5px 10px;
-  border-radius: var(--radius-full);
-  font-size: 11px;
+  display: inline-block;
+  background: rgba(29,108,245,.10);
+  color: #93c5fd;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 9px;
   font-weight: 900;
   text-transform: uppercase;
+  letter-spacing: .6px;
+  border: 1px solid rgba(29,108,245,.20);
 }
 
-/* ─── Grid de mensagens ───────────────── */
-.history-message-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-}
-
-.history-message-box {
-  border-radius: 18px;
-  padding: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  min-height: 116px;
-}
-
-.history-message-box span {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #cbd5e1;
+/* Coluna: atendimentos */
+.hrow-count {
   font-size: 12px;
-  font-weight: 900;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  margin-bottom: 10px;
-}
-
-.history-message-box p {
-  color: #e5e7eb;
-  line-height: 1.55;
-  font-size: 14px;
-  white-space: pre-line;
-}
-
-.client-msg { background: rgba(34, 197, 94, 0.08); }
-.bot-msg    { background: rgba(29, 108, 245, 0.08); }
-
-/* ─── Ações do card ───────────────────── */
-.history-card-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 16px;
-}
-
-.history-card-actions button {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--panel);
-  color: #e5e7eb;
-  padding: 10px 13px;
+  font-weight: 700;
+  color: #475569;
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-family: inherit;
-  font-weight: 900;
-  cursor: pointer;
+  justify-content: center;
+  text-align: center;
+  gap: 5px;
 }
 
-.history-card-actions button:hover { background: #2563eb; }
+.hrow-count i { font-size: 10px; }
+
+/* Coluna: data */
+.hrow-date {
+  font-size: 11px;
+  color: #475569;
+  white-space: nowrap;
+  text-align: center;
+}
+
+/* Coluna: ações */
+.hrow-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.hrow-actions button {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,.07);
+  background: rgba(255,255,255,.03);
+  color: #475569;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  cursor: pointer;
+  transition: .12s ease;
+  font-family: inherit;
+}
+
+.hrow-actions button:first-child {
+  background: rgba(29,108,245,.10);
+  border-color: rgba(29,108,245,.22);
+  color: #93c5fd;
+}
+
+.hrow-actions button:hover { filter: brightness(1.3); }
+
+.btn-export-txt {
+  background: rgba(30,132,97,.10) !important;
+  border-color: rgba(30,132,97,.22) !important;
+  color: #34d399 !important;
+}
 
 /* ─── Estados vazios ─────────────────── */
 .history-empty,

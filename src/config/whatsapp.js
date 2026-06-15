@@ -26,16 +26,30 @@ let lastConfigCheck = 0;
 const lidToJid = {};
 
 
-// MELHORIA: cache em memória + confirmação no banco para deduplicação robusta
-// O Set em memória é um atalho rápido; o banco garante que reinicializações
-// não causem reprocessamento de mensagens recentes.
-const processedMessages = new Set();
-const PROCESSED_MAX = 10_000;
-setInterval(() => processedMessages.clear(), 5 * 60 * 1000);
+// Map com TTL por entrada: evita clear abrupto que abriria janela de duplicatas
+const processedMessages = new Map(); // id → timestamp
+const PROCESSED_TTL_MS  = 5 * 60 * 1000; // 5 min
+const PROCESSED_MAX     = 10_000;
 
 function markProcessed(id) {
-  if (processedMessages.size >= PROCESSED_MAX) processedMessages.clear();
-  processedMessages.add(id);
+  processedMessages.set(id, Date.now());
+  // Limpeza incremental: remove entradas expiradas quando mapa fica grande
+  if (processedMessages.size > PROCESSED_MAX) {
+    const cutoff = Date.now() - PROCESSED_TTL_MS;
+    for (const [msgId, ts] of processedMessages) {
+      if (ts < cutoff) processedMessages.delete(msgId);
+    }
+  }
+}
+
+function isProcessed(id) {
+  const ts = processedMessages.get(id);
+  if (!ts) return false;
+  if (Date.now() - ts > PROCESSED_TTL_MS) {
+    processedMessages.delete(id);
+    return false;
+  }
+  return true;
 }
 
 const MAX_RECONNECT_DELAY_MS = 30_000;
@@ -111,7 +125,7 @@ async function marcarMensagemProcessada(messageId) {
   if (!messageId) return false;
 
   // Camada 1: memória
-  if (processedMessages.has(messageId)) return true;
+  if (isProcessed(messageId)) return true;
 
   // Camada 2: banco
   try {
@@ -128,14 +142,11 @@ async function marcarMensagemProcessada(messageId) {
       return true;
     }
   } catch (err) {
-  logger.warn(
-    `[Dedup] Erro ao checar banco: ${err.message}`
-  );
-}
+    logger.warn(`[Dedup] Erro ao checar banco: ${err.message}`);
+  }
 
   markProcessed(messageId);
-
-return false;
+  return false;
 }
 
 async function limparSocketAntigo(oldSock) {
@@ -160,7 +171,7 @@ async function enviarComRetry(userId, response) {
       await currentSock.sendMessage(userId, { text: response });
       // Garante que o flag fica sincronizado
       if (!isWhatsAppConnected) isWhatsAppConnected = true;
-      logger.success(`Resposta enviada com sucesso. Tentativa ${i + 1}`);
+      logger.info(`[WhatsApp] ✓ Resposta enviada. Tentativa ${i + 1}`);
       return true;
     } catch (err) {
       logger.warn(`Tentativa ${i + 1} falhou: ${err.message}`);
@@ -298,23 +309,17 @@ async function connectWhatsApp(onMessage) {
         return;
       }
 
-        logger.warn(
-      "Sessão encerrada. Novo QR Code será necessário."
-    );
+      logger.warn("Sessão encerrada. Novo QR Code será necessário.");
       emitEvent("whatsapp_status", { status: "logged_out" });
     }
 
     if (connection === "open") {
-  reconnectAttempts = 0;
-  reconnecting      = false;
-  isWhatsAppConnected = true;
-
-  logger.success("WhatsApp conectado com sucesso!");
-
-  emitEvent("whatsapp_status", {
-    status: "connected"
-  });
-}
+      reconnectAttempts = 0;
+      reconnecting      = false;
+      isWhatsAppConnected = true;
+      logger.info("[WhatsApp] ✓ Conectado com sucesso!");
+      emitEvent("whatsapp_status", { status: "connected" });
+    }
   });
 
   sock.ev.on("presence.update", update => {
@@ -359,11 +364,15 @@ async function connectWhatsApp(onMessage) {
         continue;
       }
 
-      const userId = jid;
-
-      // Diagnóstico: logar chave completa para @lid (uma vez por JID)
-      if (jid.includes("@lid") && !lidToJid[jid]) {
-        logger.info(`[msg@lid] key=${JSON.stringify(msg.key)} pushName=${msg.pushName||""}`);
+      // Resolve LID → JID real (número de telefone) quando disponível
+      let userId = jid;
+      if (jid.includes("@lid")) {
+        if (lidToJid[jid]) {
+          userId = lidToJid[jid];
+          logger.info(`[LID→JID] ${jid} → ${userId}`);
+        } else {
+          logger.info(`[msg@lid sem resolução] key=${JSON.stringify(msg.key)} pushName=${msg.pushName || ""}`);
+        }
       }
 
       const contactName =
@@ -371,6 +380,16 @@ async function connectWhatsApp(onMessage) {
         msg.verifiedBizName ||
         msg.notifyName ||
         "";
+
+      // Auto-registro: salva o contato na tabela contacts se ainda não existir
+      if (userId.endsWith("@s.whatsapp.net")) {
+        const phone = userId.replace("@s.whatsapp.net", "");
+        pool.query(
+          `INSERT INTO contacts (nome, whatsapp)
+           SELECT $1, $2 WHERE NOT EXISTS (SELECT 1 FROM contacts WHERE whatsapp = $2)`,
+          [contactName || phone, phone]
+        ).catch(err => logger.warn(`[AutoContact] ${err.message}`));
+      }
 
       const text = getTextMessage(msg).trim();
 
@@ -432,113 +451,65 @@ async function getProfilePhotoUrl(userId) {
 }
 
 async function sendMessage(userId, text) {
+  if (!sock) throw new Error("WhatsApp não inicializado.");
+  if (!isWhatsAppConnected) throw new Error("WhatsApp não autenticado. Escaneie o QR Code no painel.");
+
   try {
-
-    if (
-  !sock ||
-  !isWhatsAppConnected ||
-  sock.ws?.readyState !== 1
-) {
-  throw new Error("WhatsApp não conectado.");
-}
-
-    const sent = await sock.sendMessage(
-      userId,
-      { text }
-    );
-
-    logger.success(
-      `Mensagem enviada para ${userId}`
-    );
-
-    return {
-      id: sent.key.id,
-      remoteJid: sent.key.remoteJid,
-      fromMe: sent.key.fromMe
-    };
-
-  } catch (err) {
-
-    logger.error(
-      `Falha ao enviar mensagem: ${err.message}`
-    );
-
-    if (
-      err.message?.includes("Connection Closed") ||
-      err.output?.statusCode === 428
-    ) {
-
-      logger.warn(
-        "WhatsApp desconectado. Ignorando envio."
-      );
-
-      return {
-        id: null,
-        remoteJid: userId,
-        fromMe: true
-      };
+    const [check] = await sock.onWhatsApp(userId.replace(/@.+/, "")).catch(() => [null]);
+    if (!check?.exists) {
+      throw new Error(`Número ${userId.replace(/@.+/, "")} não está registrado no WhatsApp.`);
+    }
+    const resolvedJid = check.jid || userId;
+    if (resolvedJid !== userId) {
+      logger.info(`[sendMessage] JID normalizado: ${userId} → ${resolvedJid}`);
     }
 
+    const sent = await sock.sendMessage(resolvedJid, { text });
+    logger.info(`[sendMessage] ✓ Enviado para ${resolvedJid}`);
+
+    return { id: sent.key.id, remoteJid: sent.key.remoteJid, fromMe: sent.key.fromMe };
+
+  } catch (err) {
+    logger.error(`Falha ao enviar mensagem: ${err.message}`);
+    if (err.message?.includes("Connection Closed") || err.output?.statusCode === 428) {
+      logger.warn("WhatsApp desconectado. Ignorando envio.");
+      return { id: null, remoteJid: userId, fromMe: true };
+    }
     throw err;
   }
 }
-async function sendMedia(userId, filePath, caption = "") {
 
- if (
-  !sock ||
-  !isWhatsAppConnected ||
-  sock.ws?.readyState !== 1
-) {
-  throw new Error("WhatsApp não está conectado.");
-}
+async function sendMedia(userId, filePath, caption = "") {
+  if (!sock) throw new Error("WhatsApp não inicializado.");
+  if (!isWhatsAppConnected) throw new Error("WhatsApp não autenticado. Escaneie o QR Code no painel.");
 
   try {
+    const [check] = await sock.onWhatsApp(userId.replace(/@.+/, "")).catch(() => [null]);
+    if (!check?.exists) {
+      throw new Error(`Número ${userId.replace(/@.+/, "")} não está registrado no WhatsApp.`);
+    }
+    const resolvedJid = check.jid || userId;
 
-    const sent = await sock.sendMessage(
-      userId,
-      {
-        image: {
-          url: filePath
-        },
-        caption
-      }
-    );
+    const sent = await sock.sendMessage(resolvedJid, { image: { url: filePath }, caption });
+    logger.info(`[WhatsApp] ✓ Imagem enviada para ${resolvedJid}`);
 
-    logger.success(
-      `Imagem enviada para ${userId}`
-    );
-
-    return {
-      id: sent.key.id,
-      remoteJid: sent.key.remoteJid,
-      fromMe: sent.key.fromMe
-    };
+    return { id: sent.key.id, remoteJid: sent.key.remoteJid, fromMe: sent.key.fromMe };
 
   } catch (err) {
-
-    logger.error(
-      `Erro ao enviar mídia: ${err.message}`
-    );
-
-    return {
-      id: null,
-      remoteJid: userId,
-      fromMe: true
-    };
+    logger.error(`Erro ao enviar mídia: ${err.message}`);
+    throw err;
   }
 }
 function getSocket() {
   return sock;
 }
 
-async function sendTypingPresence(userId) {
-  if (
-  !sock ||
-  !isWhatsAppConnected ||
-  sock.ws?.readyState !== 1
-) {
-  return;
+function resolveLid(lid) {
+  return lidToJid[lid] || null;
 }
+
+async function sendTypingPresence(userId) {
+  if (!sock || !isWhatsAppConnected) return;
 
   try {
     await sock.presenceSubscribe(userId);
@@ -595,6 +566,7 @@ module.exports = {
   sendMedia,
   getProfilePhotoUrl,
   getSocket,
+  resolveLid,
   sendTypingPresence,
   isConnected
 };

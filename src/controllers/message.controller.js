@@ -18,6 +18,10 @@ async function sendManualMessage(req, res) {
       return res.status(400).json({ error: "message deve ser uma string não vazia." });
     }
 
+    if (message.length > 4096) {
+      return res.status(400).json({ error: "Mensagem muito longa (máx. 4096 caracteres)." });
+    }
+
     const sent = await sendMessage(userId, message.trim());
 
     const historyItem = await saveHistory({

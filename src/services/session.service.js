@@ -146,7 +146,7 @@ function resetTimer(userId) {
     }
 
     const aviso = setTimeout(async () => {
-      if (!_sendMessage) return;
+      if (!_sendMessage || !sessions[userId]) return;
 
       try {
         if (!(await isBotAtivo())) {
@@ -164,7 +164,7 @@ function resetTimer(userId) {
     }, avisoMs);
 
     const fim = setTimeout(async () => {
-      if (!_sendMessage) return;
+      if (!_sendMessage || !sessions[userId]) return;
 
       try {
         if (!(await isBotAtivo())) {

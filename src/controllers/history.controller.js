@@ -3,7 +3,7 @@ const logger = require("../utils/logger");
 
 async function getHistoryHandler(req, res) {
   try {
-    const { userId } = req.query;
+    const { userId, q, from, to } = req.query;
 
     const page = Math.max(
       parseInt(req.query.page || "1", 10),
@@ -20,7 +20,10 @@ async function getHistoryHandler(req, res) {
     const result = await listHistory({
       userId,
       limit,
-      offset
+      offset,
+      q:    q    || undefined,
+      from: from || undefined,
+      to:   to   || undefined,
     });
 
     res.json({

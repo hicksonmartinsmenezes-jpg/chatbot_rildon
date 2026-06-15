@@ -209,7 +209,7 @@ async function authSession(req, res, next) {
     // Revalida se o usuário ainda está ativo no banco (detecta desativação/promoção em tempo real)
     if (session.user?.id && session.user.id !== "api") {
       const dbUser = await pool.query(
-        `SELECT id, ativo, perfil FROM usuarios WHERE id = $1 LIMIT 1`,
+        `SELECT id, ativo, perfil FROM users WHERE id = $1 LIMIT 1`,
         [session.user.id]
       );
       const row = dbUser.rows[0];
@@ -262,4 +262,4 @@ setInterval(async () => {
   try { await limparSessoesExpiradas(); } catch (_) {}
 }, 5 * 60 * 1000);
 
-module.exports = { router, authSession, requireAdmin, requireRole };
+module.exports = { router, authSession, requireAdmin, requireRole, buscarSessao };

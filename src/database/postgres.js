@@ -31,7 +31,7 @@ async function verificarConexao() {
   const client = await pool.connect();
   try {
     const res = await client.query("SELECT NOW() AS agora");
-    logger.success(`[PostgreSQL] Conectado — servidor: ${res.rows[0].agora}`);
+    logger.info(`[PostgreSQL] ✓ Conectado — servidor: ${res.rows[0].agora}`);
   } finally {
     client.release();
   }
@@ -51,11 +51,39 @@ async function garantirTabelaDedup() {
       )
     `);
 
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key        TEXT PRIMARY KEY,
+        value      TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
     // Índice para limpeza periódica eficiente
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_processed_messages_at
         ON processed_messages (processed_at)
     `);
+
+    // Tabela de contatos (migration 009)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS contacts (
+        id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        nome         VARCHAR(255) NOT NULL,
+        whatsapp     VARCHAR(30)  NOT NULL,
+        estado       VARCHAR(2),
+        status       VARCHAR(20)  NOT NULL DEFAULT 'ativo',
+        tags         TEXT[]       NOT NULL DEFAULT '{}',
+        atendente_id UUID REFERENCES users(id) ON DELETE SET NULL,
+        departamento VARCHAR(100),
+        created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+        updated_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_contacts_whatsapp ON contacts(whatsapp)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_contacts_status   ON contacts(status)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_contacts_nome     ON contacts(lower(nome))`);
 
     // Índices para queries do dashboard (status, data, setor)
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets (status)`);
@@ -63,7 +91,7 @@ async function garantirTabelaDedup() {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_tickets_user_id ON tickets (user_id)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_tickets_status_created ON tickets (status, created_at)`);
 
-    logger.info("[PostgreSQL] Tabela processed_messages e índices prontos.");
+    logger.info("[PostgreSQL] Tabelas e índices prontos.");
   } catch (err) {
     logger.warn(`[PostgreSQL] Não foi possível criar tabela/índices: ${err.message}`);
   }

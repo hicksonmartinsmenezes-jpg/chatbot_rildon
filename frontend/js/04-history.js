@@ -51,50 +51,122 @@ function renderHistoryEmpty(container, message = "Nenhum histórico encontrado."
   `;
 }
 
-function renderHistoryCard(item) {
-  const userId      = item.userId || item.user_id || "";
-  const phone       = formatPhone(userId);
-  const contactName = item.contactName || item.contact_name || "Cliente";
-  const message     = item.message  || "—";
-  const response    = item.response || "—";
-  const sector      = item.sector   || "geral";
+// Detecta se é um telefone BR real ou um ID interno do WhatsApp (LID)
+function isBRPhone(formatted) {
+  return /^\(\d{2}\)\s\d{4,5}-\d{4}$/.test(formatted);
+}
+
+function renderHistoryRow({ latest, count }) {
+  const userId      = latest.userId || latest.user_id || "";
+  const phoneRaw    = formatPhone(userId);
+  const isPhone     = isBRPhone(phoneRaw);
+  const contactName = latest.contactName || latest.contact_name || "Cliente";
+  const nameDisplay = contactName !== "Cliente" ? contactName : phoneRaw;
+  const sector      = latest.sector || "geral";
+  const ident       = isPhone ? phoneRaw : "ID WhatsApp";
 
   return `
-    <article class="history-card">
-      <div class="history-card-marker"></div>
-      <div class="history-card-header">
-        <div class="history-avatar">
-          <i class="fa-brands fa-whatsapp"></i>
-        </div>
-        <div class="history-client-info">
-          <strong>${safe(contactName === "Cliente" ? phone : contactName)}</strong>
-          <span>${safe(phone)}</span>
-        </div>
-        <div class="history-card-meta">
-          <span class="history-sector">${safe(sector)}</span>
-          <small>${safe(formatDate(item.createdAt))}</small>
-        </div>
-      </div>
-      <div class="history-message-grid">
-        <div class="history-message-box client-msg">
-          <span><i class="fa-solid fa-user"></i> Cliente</span>
-          <p>${safe(cutText(message, 260))}</p>
-        </div>
-        <div class="history-message-box bot-msg">
-          <span><i class="fa-solid fa-robot"></i> Resposta enviada</span>
-          <p>${safe(cutText(response, 320))}</p>
-        </div>
-      </div>
-      <div class="history-card-actions">
-        <button onclick="openHistoryConversation('${escapeAttr(userId)}')">
-          <i class="fa-solid fa-comments"></i> Abrir conversa
+    <div class="hrow">
+      <span class="hrow-client">
+        ${avatarHtml(userId, nameDisplay)}
+        <span class="hrow-info">
+          <strong>${safe(nameDisplay)}</strong>
+          <small>${safe(ident)}</small>
+        </span>
+      </span>
+      <span class="hrow-sector" style="display:flex;align-items:center;justify-content:center;">
+        <span class="history-sector">${safe(sector)}</span>
+      </span>
+      <span class="hrow-count" style="display:flex;align-items:center;justify-content:center;gap:5px;">
+        ${count > 1 ? `<i class="fa-solid fa-clock-rotate-left"></i> ${count}` : `<span style="color:#334155">1</span>`}
+      </span>
+      <span class="hrow-date" style="display:flex;align-items:center;justify-content:center;">${safe(formatDate(latest.createdAt))}</span>
+      <span class="hrow-actions">
+        <button title="Ver conversa" onclick="openHistoryConversation('${escapeAttr(userId)}')">
+          <i class="fa-solid fa-eye"></i>
         </button>
-        <button onclick="copyHistoryPhone('${escapeAttr(phone)}')">
-          <i class="fa-regular fa-copy"></i> Copiar número
+        <button title="Exportar TXT" class="btn-export-txt" onclick="exportHistoryTxt('${escapeAttr(userId)}', '${escapeAttr(nameDisplay)}')">
+          <i class="fa-solid fa-file-arrow-down"></i>
         </button>
-      </div>
-    </article>
+        <button title="Copiar identificador" onclick="copyHistoryPhone('${escapeAttr(phoneRaw)}')">
+          <i class="fa-regular fa-copy"></i>
+        </button>
+      </span>
+    </div>
   `;
+}
+
+// Mantém nome antigo como alias para não quebrar chamadas externas
+const renderHistoryCard = renderHistoryRow;
+
+async function exportHistoryTxt(userId, clientName) {
+  try {
+    showToast("Gerando arquivo...");
+    const params = new URLSearchParams({ userId, limit: 200 });
+    const res = await apiFetch(`${BASE}/api/history?${params}`);
+    if (!res?.ok) { showToast("Erro ao exportar histórico."); return; }
+
+    const raw   = await res.json();
+    const items = (Array.isArray(raw) ? raw : raw.data || [])
+      .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+    if (!items.length) { showToast("Nenhum histórico encontrado."); return; }
+
+    const phone = formatPhone(userId);
+    const sep   = "─".repeat(50);
+    const lines = [
+      "=".repeat(52),
+      `  HISTÓRICO DE CONVERSA`,
+      "=".repeat(52),
+      `  Cliente  : ${clientName}`,
+      `  WhatsApp : ${phone}`,
+      `  Registros: ${items.length}`,
+      `  Exportado: ${new Date().toLocaleString("pt-BR")}`,
+      "=".repeat(52),
+      "",
+    ];
+
+    for (const item of items) {
+      const date = item.createdAt
+        ? new Date(item.createdAt).toLocaleString("pt-BR")
+        : "Data desconhecida";
+      lines.push(`[${date}]  Setor: ${item.sector || "geral"}`);
+      lines.push(sep);
+      if (item.message)  lines.push(`  CLIENTE : ${item.message}`);
+      if (item.response) lines.push(`  BOT     : ${item.response}`);
+      lines.push("");
+    }
+
+    const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = `historico_${clientName.replace(/\s+/g, "_")}_${new Date().toISOString().slice(0, 10)}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast("Histórico exportado com sucesso!");
+  } catch (err) {
+    console.error("Erro ao exportar:", err);
+    showToast("Erro ao exportar histórico.");
+  }
+}
+
+function groupHistoryByClient(history) {
+  const map = {};
+  for (const item of history) {
+    const uid = item.userId || item.user_id || "";
+    if (!uid) continue;
+    if (!map[uid]) map[uid] = [];
+    map[uid].push(item);
+  }
+  return Object.values(map)
+    .map(items => {
+      items.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      return { latest: items[0], count: items.length };
+    })
+    .sort((a, b) => new Date(b.latest.createdAt) - new Date(a.latest.createdAt));
 }
 
 // ─── loadHistory com filtros server-side (paginação futura via cursor) ────────
@@ -152,12 +224,25 @@ async function loadHistory(render = true) {
       if (!history.length) {
         renderHistoryEmpty(container);
       } else {
-        container.innerHTML = history.map(renderHistoryCard).join("");
+        const groups = groupHistoryByClient(history);
+        container.innerHTML = `
+          <div class="history-table">
+            <div class="hrow hrow-head">
+              <span class="hrow-client">Cliente</span>
+              <span class="hrow-sector" style="display:flex;align-items:center;justify-content:center;">Setor</span>
+              <span class="hrow-count" style="display:flex;align-items:center;justify-content:center;">Atend.</span>
+              <span class="hrow-date" style="display:flex;align-items:center;justify-content:center;">Última interação</span>
+              <span class="hrow-actions">Ações</span>
+            </div>
+            ${groups.map(renderHistoryRow).join("")}
+          </div>
+        `;
       }
     }
 
     return history;
   } catch (err) {
+    console.error("[loadHistory]", err);
     updateHistorySummary([]);
     if (render && container) renderHistoryEmpty(container, "Erro ao carregar histórico.");
     return [];
@@ -165,19 +250,18 @@ async function loadHistory(render = true) {
 }
 
 function clearHistoryFilters() {
-  setValue("search-history",     "");
-  setValue("history-date-start", "");
-  setValue("history-date-end",   "");
+  ["search-history", "history-date-start", "history-date-end"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  });
   loadHistory(true);
 }
 
-function openHistoryConversation(userId) {
+async function openHistoryConversation(userId) {
   if (!userId) { showToast("Não foi possível abrir a conversa."); return; }
   switchTab("conversations");
-  setTimeout(async () => {
-    await loadConversations();
-    openConversation(userId);
-  }, 350);
+  await loadConversations();
+  openConversation(userId);
 }
 
 async function copyHistoryPhone(phone) {

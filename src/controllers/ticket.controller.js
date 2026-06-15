@@ -10,7 +10,7 @@ const {
 
 // CORRIGIDO: "atendimento" adicionado — mainFlow cria tickets com esse setor
 const SETORES_VALIDOS = [
-  "suporte", "vendas", "financeiro", "garantia", "geral", "atendimento"
+  "suporte", "vendas", "financeiro", "garantia", "geral", "atendimento", "gestao"
 ];
 
 const STATUS_VALIDOS = ["aberto", "em_andamento", "resolvido", "cancelado"];

@@ -1,251 +1,1552 @@
-.campaigns-hero {
+/* ==========================================
+   11-campaigns.css — Central de Campanhas
+========================================== */
+
+/* ─── Aba raiz ──────────────────────────── */
+#tab-channels {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ─── Hero bar ──────────────────────────── */
+.campaigns-hero-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
+  padding-bottom: 4px;
 }
 
-.campaigns-layout {
+.campaigns-hero-bar h2 {
+  color: #fff;
+  font-size: 22px;
+  font-weight: 900;
+  margin: 0 0 4px;
+  display: flex;
+  align-items: center;
+}
+
+.campaigns-hero-sub {
+  color: #64748b;
+  font-size: 13px;
+  margin: 0;
+  font-weight: 700;
+}
+
+/* ─── Grid de estatísticas ──────────────── */
+.campaign-stats-grid {
   display: grid;
-  grid-template-columns: minmax(320px, 520px) 1fr;
-  gap: 18px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
 }
 
-.campaign-form-card,
-.campaign-list-card {
-  border-radius: 18px;
+.campaign-stat-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 18px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  position: relative;
+  overflow: hidden;
+  transition: border-color .15s;
 }
 
+.campaign-stat-card::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+}
+
+.campaign-stat-card .csc-icon {
+  font-size: 16px;
+  margin-bottom: 6px;
+}
+
+.campaign-stat-card span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+}
+
+.campaign-stat-card strong {
+  display: block;
+  color: var(--text);
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1;
+  margin-top: 2px;
+}
+
+/* Variantes de cor */
+.csc-blue::before  { background: var(--primary); }
+.csc-green::before { background: #22c55e; }
+.csc-red::before   { background: #ef4444; }
+.csc-purple::before{ background: #a855f7; }
+
+.csc-blue  .csc-icon { color: #60a5fa; }
+.csc-green .csc-icon { color: #4ade80; }
+.csc-red   .csc-icon { color: #f87171; }
+.csc-purple .csc-icon{ color: #c084fc; }
+
+/* ─── Layout unificado: form + lista ────── */
+/* layout antigo removido — substituído por tabela + modal */
+
+/* ─── Card de formulário ─────────────────── */
 .campaign-form-card {
   display: flex;
   flex-direction: column;
+  gap: 16px;
+}
+
+.camp-form-title {
+  display: flex;
+  align-items: flex-start;
   gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(255,255,255,.06);
 }
 
-.campaign-form-card h3,
-.campaign-list-card h3 {
-  color: #fff;
-  margin-bottom: 4px;
+.camp-form-title > i {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgba(29,108,245,.15);
+  border: 1px solid rgba(29,108,245,.25);
+  color: #60a5fa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+  margin-top: 2px;
 }
 
-.campaign-form-card label {
-  color: var(--muted);
-  font-size: 13px;
+.camp-form-title h3 {
+  color: #f1f5f9;
+  font-size: 15px;
+  margin: 0 0 2px;
+}
+
+.camp-form-title p {
+  color: #64748b;
+  font-size: 12px;
+  margin: 0;
+}
+
+/* Grupo de campo */
+.camp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.campaign-form-card label,
+.camp-modal-body label {
+  color: #94a3b8;
+  font-size: 12px;
   font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .5px;
 }
 
-.campaign-form-card input,
-.campaign-form-card textarea {
+.camp-label-opt {
+  text-transform: none;
+  letter-spacing: 0;
+  color: #475569;
+  font-weight: 700;
+  font-size: 11px;
+}
+
+.campaign-form-card input[type="text"],
+.campaign-form-card input[type="file"],
+.campaign-form-card textarea,
+.camp-modal-body input[type="text"],
+.camp-modal-body input[type="file"],
+.camp-modal-body textarea {
   width: 100%;
   border: 1px solid var(--border);
   outline: none;
   border-radius: 12px;
   background: var(--panel-2);
   color: var(--text);
-  padding: 13px 14px;
+  padding: 12px 14px;
   font-family: inherit;
+  font-size: 13px;
+  transition: border-color .15s, box-shadow .15s;
 }
 
-.campaign-form-card textarea {
-  min-height: 120px;
+.campaign-form-card input[type="file"],
+.camp-modal-body input[type="file"] {
+  padding: 10px 14px;
+  cursor: pointer;
+  color: #64748b;
+}
+
+.campaign-form-card textarea,
+.camp-modal-body textarea {
+  min-height: 110px;
   resize: vertical;
+  line-height: 1.6;
 }
 
 #campaign-recipients {
-  min-height: 95px;
+  min-height: 90px;
 }
 
-.campaign-form-card input:focus,
-.campaign-form-card textarea:focus {
+.campaign-form-card input[type="text"]:focus,
+.campaign-form-card textarea:focus,
+.camp-modal-body input[type="text"]:focus,
+.camp-modal-body textarea:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 4px rgba(29,108,245,.14);
+  box-shadow: 0 0 0 3px rgba(29,108,245,.14);
 }
 
-.campaign-list-header p {
-  color: var(--muted);
-}
-
-.campaign-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-
-  padding: 16px;
-  border-radius: 14px;
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  margin-bottom: 12px;
-}
-
-.campaign-item strong {
-  display: block;
-  color: #fff;
-  margin-bottom: 4px;
-}
-
-.campaign-item span,
-.campaign-item small {
-  display: block;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.campaign-item button {
-  border: none;
-  border-radius: 12px;
-  padding: 10px 14px;
-  background: var(--primary);
-  color: #fff;
-  font-weight: 900;
-  cursor: pointer;
-}
-
-@media (max-width: 900px) {
-  .campaigns-hero {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .campaigns-layout {
-    grid-template-columns: 1fr;
-  }
-}
-
+/* ─── Opções de público ──────────────────── */
 .campaign-audience-options {
-  display: grid;
-  gap: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .campaign-radio {
   display: flex;
   align-items: center;
   gap: 10px;
-
-  padding: 12px 14px;
-  border-radius: 12px;
-
+  padding: 10px 13px;
+  border-radius: 11px;
   background: var(--panel-2);
   border: 1px solid var(--border);
-
-  color: var(--text);
-  font-weight: 800;
-
+  color: #cbd5e1;
+  font-size: 13px;
+  font-weight: 700;
   cursor: pointer;
+  transition: border-color .12s, background .12s;
 }
 
 .campaign-radio:hover {
-  border-color: var(--primary);
-  background: var(--panel);
+  border-color: rgba(29,108,245,.35);
+  background: rgba(29,108,245,.06);
 }
 
-.campaign-radio input {
-  width: auto;
-  min-width: 16px;
+.campaign-radio input[type="radio"] {
+  width: 15px;
+  min-width: 15px;
+  accent-color: var(--primary);
 }
 
-.campaign-radio span {
-  flex: 1;
+.campaign-radio i {
+  color: #475569;
+  font-size: 12px;
+  width: 14px;
+  text-align: center;
 }
 
+.campaign-radio span { flex: 1; }
+
+/* Público selecionado */
 .campaign-audience-count {
-  margin-top: 4px;
-
-  padding: 14px;
-  border-radius: 12px;
-
-  background: rgba(37,99,235,.12);
-  border: 1px solid rgba(37,99,235,.25);
-
+  padding: 12px 14px;
+  border-radius: 11px;
+  background: rgba(29,108,245,.08);
+  border: 1px solid rgba(29,108,245,.20);
   color: #93c5fd;
   font-size: 13px;
   font-weight: 800;
 }
 
-#campaign-image {
-  width: 100%;
-}
-
-#campaign-image-preview {
-  margin-top: 12px;
-}
-
+/* ─── Preview de imagem ──────────────────── */
 #campaign-preview-img {
   width: 100%;
-  max-height: 220px;
-
+  max-height: 200px;
   object-fit: cover;
-
-  border-radius: 14px;
-
+  border-radius: 12px;
   border: 1px solid rgba(255,255,255,.08);
 }
 
-.campaign-thumb{
-  width:60px;
-  height:60px;
-  object-fit:cover;
-  border-radius:12px;
-  margin-bottom:10px;
-  border:1px solid rgba(255,255,255,.08);
+/* ─── Card da lista ──────────────────────── */
+.campaign-list-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-height: 300px;
+}
+
+.campaign-list-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.campaign-list-header h3 {
+  color: #f1f5f9;
+  font-size: 15px;
+  margin: 0 0 3px;
+}
+
+.campaign-list-header p {
+  color: #64748b;
+  font-size: 12px;
+  margin: 0;
+}
+
+.campaign-monitor-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.campaign-status-filter-select {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  padding: 8px 28px 8px 11px;
+  font-size: 12px;
+  font-family: inherit;
+  font-weight: 800;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2364748b'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+  transition: border-color .12s;
+}
+
+.campaign-status-filter-select:focus { border-color: var(--primary); }
+
+/* ─── Item de campanha ───────────────────── */
+.campaign-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(15,23,42,.6);
+  border: 1px solid rgba(255,255,255,.07);
+  margin-bottom: 10px;
+  transition: border-color .15s, background .15s;
+}
+
+.campaign-item:hover {
+  border-color: rgba(29,108,245,.25);
+  background: rgba(15,23,42,.85);
+}
+
+.campaign-item:last-child { margin-bottom: 0; }
+
+.campaign-item-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.campaign-thumb {
+  width: 54px;
+  height: 54px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,.08);
+  flex-shrink: 0;
+}
+
+.campaign-item-info { flex: 1; min-width: 0; }
+
+.campaign-item-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 5px;
+}
+
+.campaign-item-header strong {
+  color: #f1f5f9;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.campaign-meta {
+  display: block;
+  color: #475569;
+  font-size: 11px;
+  margin-bottom: 5px;
+}
+
+.campaign-creator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 700;
+}
+
+.campaign-msg-preview {
+  font-size: 12px;
+  color: #475569;
+  margin-bottom: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  font-style: italic;
 }
 
 .campaign-progress-info {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 10px;
-  color: var(--muted);
-  font-size: 12px;
+  margin-top: 8px;
+  color: #64748b;
+  font-size: 11px;
   font-weight: 800;
 }
 
 .campaign-progress {
   width: 100%;
-  height: 8px;
-  margin-top: 6px;
+  height: 6px;
+  margin-top: 5px;
   border-radius: 999px;
   overflow: hidden;
-  background: rgba(255,255,255,.08);
+  background: rgba(255,255,255,.06);
 }
 
 .campaign-progress div {
   height: 100%;
   border-radius: inherit;
-  background: var(--primary);
-  transition: width .35s ease;
+  transition: width .4s ease;
 }
 
-.campaign-tabs {
+.campaign-eta {
+  display: inline;
+  font-size: 11px;
+  color: #60a5fa;
+  font-weight: 700;
+}
+
+/* ─── Status badges ─────────────────────── */
+.campaign-status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  white-space: nowrap;
+  border: 1px solid;
+}
+
+.cs-pending  { background: rgba(234,179,8,.10);   color: #fbbf24; border-color: rgba(234,179,8,.25); }
+.cs-sending  { background: rgba(29,108,245,.12);   color: #60a5fa; border-color: rgba(29,108,245,.28);
+               animation: badge-pulse 1.5s ease-in-out infinite; }
+.cs-finished { background: rgba(34,197,94,.10);   color: #4ade80; border-color: rgba(34,197,94,.25); }
+.cs-cancelled{ background: rgba(148,163,184,.08);  color: #94a3b8; border-color: rgba(148,163,184,.20); }
+
+@keyframes badge-pulse {
+  0%,100% { opacity: 1; }
+  50%      { opacity: .55; }
+}
+
+/* ─── Ações do item ─────────────────────── */
+.campaign-item-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.ci-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 9px;
+  padding: 7px 11px;
+  background: rgba(255,255,255,.04);
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: filter .12s;
+  font-family: inherit;
+}
+
+.ci-btn:hover { filter: brightness(1.3); }
+.ci-btn-icon  { padding: 7px 9px; }
+
+.ci-btn-start  { background: rgba(29,108,245,.14);  border-color: rgba(29,108,245,.28); color: #93c5fd; }
+.ci-btn-cancel { background: rgba(239,68,68,.12);   border-color: rgba(239,68,68,.25);  color: #fca5a5; }
+.ci-btn-retry  { background: rgba(234,179,8,.10);   border-color: rgba(234,179,8,.22);  color: #fbbf24; }
+.ci-btn-clone  { background: rgba(99,102,241,.10);  border-color: rgba(99,102,241,.22); color: #a5b4fc; }
+.ci-btn-delete { background: rgba(239,68,68,.07);   border-color: rgba(239,68,68,.16);  color: #f87171; }
+
+/* ─── Modal de confirmação ──────────────── */
+.campaign-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  backdrop-filter: blur(5px);
+}
+
+.campaign-confirm-modal {
+  width: 100%;
+  max-width: 460px;
+  border-radius: 20px !important;
+  padding: 26px !important;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.campaign-confirm-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #fff;
+}
+
+.campaign-confirm-header i   { font-size: 18px; color: var(--primary); }
+.campaign-confirm-header h3  { font-size: 16px; margin: 0; }
+.campaign-confirm-header i.text-danger  { color: #f87171; }
+.campaign-confirm-header i.text-warning { color: #fbbf24; }
+
+.campaign-confirm-info { color: #94a3b8; font-size: 14px; margin: 0; }
+.campaign-confirm-info strong { color: #f1f5f9; }
+
+.campaign-confirm-preview {
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.07);
+  border-radius: 12px;
+  padding: 13px;
+}
+
+.campaign-confirm-preview span {
+  display: block;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .7px;
+  color: #475569;
+  margin-bottom: 7px;
+}
+
+.campaign-confirm-preview p {
+  color: #cbd5e1;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+}
+
+.campaign-confirm-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+/* ─── Botão de perigo ───────────────────── */
+.btn-outline-danger {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 17px;
+  border-radius: 11px;
+  border: 1px solid rgba(239,68,68,.4);
+  background: rgba(239,68,68,.12);
+  color: #f87171;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background .12s, border-color .12s;
+}
+
+.btn-outline-danger:hover {
+  background: rgba(239,68,68,.22);
+  border-color: rgba(239,68,68,.6);
+}
+
+/* ─── Empty / loading state ─────────────── */
+.campaign-empty-state,
+.campaign-loading {
+  text-align: center;
+  padding: 52px 24px;
+  color: #475569;
+}
+
+.campaign-empty-state i,
+.campaign-loading i {
+  font-size: 38px;
+  display: block;
+  margin-bottom: 14px;
+  opacity: .25;
+}
+
+.campaign-empty-state p,
+.campaign-loading p {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 5px;
+  color: #94a3b8;
+}
+
+.campaign-empty-state small { font-size: 12px; opacity: .7; }
+
+/* ─── Responsivo ────────────────────────── */
+@media (max-width: 1100px) {
+  .campaign-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 960px) {
+  .campaigns-unified-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .campaign-stats-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .campaign-item {
+    flex-direction: column;
+  }
+
+  .campaign-item-actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+    width: 100%;
+  }
+}
+
+/* ─── Filtros de contatos cadastrados ──────── */
+.contacts-filters-box {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-top: 2px;
+}
+
+.contacts-filters-box label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  margin-bottom: 8px;
+  display: block;
+}
+
+.contacts-filters-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.contacts-filters-row .contacts-filter-select {
+  flex: 1;
+  min-width: 140px;
+}
+
+/* ─── Preview de contatos no modal de confirmação ── */
+.cc-contacts-preview {
+  margin: 8px 0 12px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.cc-contacts-preview summary {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--primary, #1d6cf5);
+  background: var(--surface, #f8f9fb);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cc-contacts-preview summary::-webkit-details-marker { display: none; }
+.cc-contacts-preview summary::before {
+  content: "\f078";
+  font-family: "Font Awesome 6 Free";
+  font-weight: 900;
+  font-size: 11px;
+  transition: transform .2s;
+}
+.cc-contacts-preview[open] summary::before { transform: rotate(-180deg); }
+
+.cc-contacts-list {
+  list-style: none;
+  margin: 0;
+  padding: 8px 0;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.cc-contacts-list li {
+  padding: 4px 14px;
+  font-size: 13px;
+  color: var(--text, #1e293b);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.cc-contacts-list li i {
+  color: var(--muted, #94a3b8);
+  font-size: 11px;
+}
+
+.cc-list-more {
+  color: var(--muted, #64748b) !important;
+  font-style: italic;
+  font-size: 12px !important;
+}
+
+/* ─── Contact Picker (lista personalizada) ──── */
+.camp-picker {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--panel);
+}
+
+.camp-picker-search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.camp-picker-search-wrap i {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.camp-picker-search {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.camp-picker-search::placeholder { color: var(--muted); }
+
+.camp-contact-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.camp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--primary, #1d6cf5);
+  color: #fff;
+  border-radius: 20px;
+  padding: 3px 10px 3px 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.camp-chip button {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,.8);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0;
+  margin-left: 2px;
+}
+
+.camp-chip button:hover { color: #fff; }
+
+.camp-contact-results {
+  max-height: 260px;
+  overflow-y: auto;
+  background: var(--panel);
+}
+
+.camp-picker-hint {
+  padding: 18px 14px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.cp-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  cursor: pointer;
+  transition: background .15s;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.cp-item:last-child  { border-bottom: none; }
+.cp-item:hover       { background: var(--panel-2); }
+.cp-item.cp-selected { background: rgba(29,108,245,.12); }
+
+/* Avatar com foto de perfil sobreposta */
+.cp-avatar {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.cp-avatar-ini {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--primary, #1d6cf5);
+  color: #fff;
+  font-weight: 700;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cp-avatar-img {
+  position: absolute;
+  inset: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: none;
+}
+
+.cp-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.cp-info strong {
+  display: block;
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cp-info small {
+  color: var(--muted);
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 1px;
+}
+
+.cp-tag {
+  background: var(--panel-2);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.cp-check-off { color: var(--border); font-size: 18px; }
+.cp-check-on  { color: var(--primary, #1d6cf5); font-size: 18px; }
+
+/* ─── Toolbar do picker ──────────────────────── */
+.camp-picker-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-2);
+  min-height: 36px;
+  gap: 8px;
+}
+
+.camp-picker-sel-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--primary, #1d6cf5);
+  min-width: 120px;
+}
+
+.camp-picker-toolbar-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.cp-toolbar-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: background .15s, color .15s;
+}
+
+.cp-toolbar-btn:hover { background: var(--panel); }
+
+.cp-toolbar-btn-clear { color: var(--muted); }
+.cp-toolbar-btn-clear:hover { color: var(--text); }
+
+/* ─── Page header ────────────────────────── */
+.camp-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.camp-page-title {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.camp-page-title > i {
+  font-size: 22px;
+  color: var(--primary, #1d6cf5);
+  opacity: .85;
+}
+
+.camp-page-title h2 {
+  font-size: 20px;
+  font-weight: 900;
+  color: var(--text);
+  margin: 0 0 2px;
+}
+
+.camp-page-title p {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0;
+}
+
+.camp-page-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.camp-refresh-icon {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: color .15s, background .15s;
+  flex-shrink: 0;
+}
+
+.camp-refresh-icon:hover { color: var(--text); background: var(--panel); }
+
+.camp-new-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px;
+  background: var(--primary, #1d6cf5);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity .15s;
+}
+
+.camp-new-btn:hover { opacity: .88; }
+
+/* ─── Tabela de campanhas ────────────────── */
+.camp-table-card { padding: 0; overflow: hidden; }
+
+.camp-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.camp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.camp-table thead tr {
+  border-bottom: 1px solid var(--border);
+}
+
+.camp-table th {
+  padding: 12px 14px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--muted);
+  white-space: nowrap;
+  background: var(--panel-2);
+}
+
+.camp-th-num     { width: 40px;  text-align: center; }
+.camp-th-actions { width: 160px; text-align: center; }
+
+.camp-tr {
+  border-bottom: 1px solid var(--border);
+  transition: background .12s;
+}
+
+.camp-tr:last-child { border-bottom: none; }
+.camp-tr:hover      { background: var(--panel-2); }
+
+.camp-table td {
+  padding: 12px 14px;
+  color: var(--text);
+  vertical-align: middle;
+}
+
+.camp-td-num    { text-align: center; color: var(--muted); font-size: 12px; }
+.camp-td-date   { white-space: nowrap; color: var(--muted); font-size: 12px; }
+.camp-td-sent   { color: #4ade80; }
+.camp-td-failed { color: #f87171; font-weight: 700; }
+
+.camp-title-cell {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-.campaign-tab {
-  border: none;
-  border-radius: 12px;
-  padding: 11px 14px;
-  background: var(--panel);
+.camp-title-cell strong {
+  display: block;
+  font-size: 13px;
   color: var(--text);
-  font-weight: 900;
+}
+
+.camp-title-cell small {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 2px;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.camp-thumb-sm {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+}
+
+.camp-td-progress { min-width: 120px; }
+
+.camp-prog-wrap {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.camp-prog-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--panel-2);
+  border-radius: 99px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.camp-prog-bar div {
+  height: 100%;
+  border-radius: 99px;
+  transition: width .3s;
+}
+
+.camp-prog-wrap span {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  min-width: 50px;
+}
+
+.camp-td-actions {
+  white-space: nowrap;
+  text-align: right;
+}
+
+.camp-td-actions .ci-btn {
+  display: inline-flex;
+}
+
+/* garante que os botões ficam na mesma linha */
+.camp-tr td.camp-td-actions {
+  display: table-cell;
+}
+
+.camp-td-actions-inner {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  flex-wrap: nowrap;
+}
+
+.camp-empty {
+  text-align: center;
+  padding: 48px 20px;
+  color: var(--muted);
+}
+
+.camp-empty i    { font-size: 28px; opacity: .35; margin-bottom: 12px; display: block; }
+.camp-empty p    { margin: 0; font-size: 14px; }
+.camp-empty strong { color: var(--text); }
+
+/* ─── Modal Nova Campanha ────────────────── */
+.camp-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.65);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.camp-modal-overlay.hidden { display: none; }
+
+.camp-modal {
+  width: 100%;
+  max-width: 900px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 18px;
+}
+
+.camp-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 22px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.camp-modal-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+}
+
+.camp-modal-title i  { font-size: 16px; color: var(--primary, #1d6cf5); }
+.camp-modal-title h3 { font-size: 16px; font-weight: 800; margin: 0; }
+
+.camp-modal-close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 18px;
   cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: color .12s, background .12s;
 }
 
-.campaign-tab.active {
-  background: var(--primary);
+.camp-modal-close:hover { color: var(--text); background: var(--panel-2); }
+
+.camp-modal-body {
+  overflow-y: auto;
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
-#campaign-panel-create {
-  max-width: 540px;
-   margin-top: 18px;
+.camp-modal-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
 }
 
-#campaign-panel-create .campaign-form-card {
-  margin-top: 18px;
+.camp-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 22px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--panel);
+  border-radius: 0 0 18px 18px;
 }
 
-#campaign-panel-monitor {
-  margin-top: 18px;
+/* ─── Modal duas colunas (form + preview) ──── */
+.camp-modal-cols {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 0;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
+.camp-modal-cols .camp-modal-body {
+  border-right: 1px solid var(--border);
+  min-height: 0;
+}
+
+/* ─── Audience grid 2 colunas ──────────────── */
+.camp-audience-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+/* ─── File label customizado ───────────────── */
+.camp-file-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+  transition: border-color .15s, color .15s;
+}
+.camp-file-label:hover { border-color: var(--primary, #1d6cf5); color: var(--text); }
+.camp-file-label i { font-size: 15px; }
+
+/* ─── Botão remover imagem ──────────────────── */
+.camp-img-remove {
+  background: none;
+  border: none;
+  color: #ef4444;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: background .12s;
+}
+.camp-img-remove:hover { background: rgba(239,68,68,.12); }
+
+/* ─── Contador de caracteres ───────────────── */
+.camp-label-opt {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+  margin-left: 6px;
+}
+
+/* ─── WhatsApp preview panel ───────────────── */
+.camp-wa-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 20px 18px 20px;
+  gap: 14px;
+  background: #0d1117;
+  overflow-y: auto;
+  position: relative;
+}
+
+.camp-wa-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #4ade80;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.camp-wa-label i { font-size: 14px; }
+
+/* ── mockup de celular ── */
+.camp-wa-phone {
+  width: 260px;
+  border-radius: 36px;
+  border: 8px solid #1f2937;
+  box-shadow:
+    0 0 0 1px #374151,
+    0 20px 60px rgba(0,0,0,.7),
+    inset 0 0 0 1px rgba(255,255,255,.04);
+  overflow: hidden;
+  background: #111827;
+  flex-shrink: 0;
+  position: relative;
+}
+
+/* entalhe superior do celular */
+.camp-wa-phone::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 50%;
+  transform: translateX(-50%);
+  width: 70px; height: 22px;
+  background: #1f2937;
+  border-radius: 0 0 14px 14px;
+  z-index: 10;
+}
+
+.camp-wa-screen {
+  display: flex;
+  flex-direction: column;
+  height: 460px;
+}
+
+/* ── barra de status do celular ── */
+.camp-wa-statusbar {
+  height: 24px;
+  background: #075e54;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 0 10px 3px;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.camp-wa-statusbar i {
+  font-size: 8px;
+  color: rgba(255,255,255,.85);
+}
+
+/* ── header verde WhatsApp ── */
+.camp-wa-header {
+  background: #075e54;
+  padding: 7px 10px 9px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+}
+
+.camp-wa-back {
+  color: rgba(255,255,255,.8);
+  font-size: 14px;
+  margin-right: -2px;
+}
+
+.camp-wa-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(135deg,#128c7e,#25d366);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 14px;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 2px rgba(255,255,255,.15);
+}
+
+.camp-wa-contact { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.camp-wa-contact strong { color: #fff; font-size: 13px; font-weight: 700; line-height: 1.2; }
+.camp-wa-contact small  { color: #25d366; font-size: 10px; font-weight: 500; }
+
+.camp-wa-header-actions {
+  display: flex;
+  gap: 12px;
+  color: rgba(255,255,255,.7);
+  font-size: 13px;
+}
+
+/* ── corpo (fundo chat WA) ── */
+.camp-wa-body {
+  flex: 1;
+  padding: 10px 8px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 6px;
+  /* padrão sutil do fundo do WhatsApp */
+  background-color: #e5ddd5;
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(0,0,0,.04) 1px, transparent 0);
+  background-size: 20px 20px;
+}
+
+/* ── bolha de mensagem ── */
+.camp-wa-bubble {
+  background: #d9fdd3;
+  border-radius: 10px 10px 2px 10px;
+  padding: 7px 9px 5px;
+  max-width: 92%;
+  box-shadow: 0 1px 3px rgba(0,0,0,.18);
+  align-self: flex-end;
+  position: relative;
+  transition: box-shadow .2s;
+}
+
+/* rabinho da bolha */
+.camp-wa-bubble::after {
+  content: "";
+  position: absolute;
+  bottom: 0; right: -6px;
+  width: 0; height: 0;
+  border-left: 7px solid #d9fdd3;
+  border-bottom: 7px solid transparent;
+}
+
+.camp-wa-bubble-img {
+  border-radius: 7px;
+  overflow: hidden;
+  margin-bottom: 5px;
+  max-height: 140px;
+}
+.camp-wa-bubble-img img {
+  width: 100%;
+  display: block;
+  border-radius: 7px;
+  object-fit: cover;
+  max-height: 140px;
+}
+.camp-wa-bubble-img.hidden { display: none; }
+
+#camp-wa-text {
+  font-size: 13px;
+  color: #111;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.camp-wa-text-placeholder {
+  color: #888 !important;
+  font-style: italic;
+  font-size: 12px !important;
+}
+
+.camp-wa-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  margin-top: 4px;
+}
+
+.camp-wa-meta span { font-size: 10px; color: #667781; }
+.camp-wa-check     { font-size: 11px; color: #53bdeb; }
+
+/* ── barra de input (decorativa) ── */
+.camp-wa-inputbar {
+  background: #f0f2f5;
+  padding: 5px 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  border-top: 1px solid #e0e0e0;
+}
+
+.camp-wa-inputbar-field {
+  flex: 1;
+  background: #fff;
+  border-radius: 20px;
+  padding: 5px 10px;
+  font-size: 11px;
+  color: #aaa;
+  border: none;
+  outline: none;
+  pointer-events: none;
+}
+
+.camp-wa-inputbar i {
+  font-size: 16px;
+  color: #919191;
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+  .camp-modal-cols { grid-template-columns: 1fr; }
+  .camp-wa-preview { display: none; }
+  .camp-modal { max-width: 560px; }
+}
+
+@media (max-width: 640px) {
+  .camp-modal-grid { grid-template-columns: 1fr; }
+  .camp-page-actions { width: 100%; justify-content: flex-end; }
+  .camp-table th, .camp-table td { padding: 10px 10px; }
+  .camp-audience-grid { grid-template-columns: 1fr; }
+}

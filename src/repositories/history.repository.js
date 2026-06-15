@@ -1,4 +1,5 @@
-const pool = require("../database/postgres");
+const pool   = require("../database/postgres");
+const logger = require("../utils/logger");
 
 function mapHistory(row) {
   return {
@@ -45,13 +46,33 @@ async function create(data) {
   return mapHistory(result.rows[0]);
 }
 
-async function findAll({ userId, limit = 50, offset = 0 } = {}) {
+async function findAll({ userId, limit = 50, offset = 0, q, from, to } = {}) {
   const values = [];
   const where = [];
 
   if (userId) {
     values.push(userId);
     where.push(`user_id = $${values.length}`);
+  }
+
+  if (q) {
+    const pattern = `%${q}%`;
+    values.push(pattern); const i1 = values.length;
+    values.push(pattern); const i2 = values.length;
+    values.push(pattern); const i3 = values.length;
+    values.push(pattern); const i4 = values.length;
+    where.push(`(user_id ILIKE $${i1} OR contact_name ILIKE $${i2} OR message ILIKE $${i3} OR response ILIKE $${i4})`);
+  }
+
+  const tz = process.env.TZ_NEGOCIO || "America/Maceio";
+  if (from) {
+    values.push(from);
+    where.push(`(created_at AT TIME ZONE '${tz}')::date >= $${values.length}::date`);
+  }
+
+  if (to) {
+    values.push(to);
+    where.push(`(created_at AT TIME ZONE '${tz}')::date <= $${values.length}::date`);
   }
 
   values.push(Number(limit) || 50);
@@ -76,13 +97,13 @@ async function findAll({ userId, limit = 50, offset = 0 } = {}) {
 }
 
 async function updateMessageStatus(messageId, status) {
+  if (!messageId) {
+    logger.warn("[History] updateMessageStatus: messageId vazio, ignorado.");
+    return null;
+  }
+
   const result = await pool.query(
-    `
-    UPDATE history
-    SET status = $1
-    WHERE message_id = $2
-    RETURNING *
-    `,
+    `UPDATE history SET status = $1 WHERE message_id = $2 RETURNING *`,
     [status, messageId]
   );
 

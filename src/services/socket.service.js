@@ -4,6 +4,13 @@ const logger = require("../utils/logger");
 let io = null;
 const onlineUsers = new Map();
 
+const COOKIE_NAME = "rildon_sid";
+
+function extractTokenFromCookie(cookieHeader = "") {
+  const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${COOKIE_NAME}=([^;]+)`));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 function setUserOnline(userId, socketId) {
   onlineUsers.set(userId, {
     socketId,
@@ -39,8 +46,28 @@ function initSocket(server) {
     }
   });
 
+  // Autenticação via cookie de sessão — rejeita conexões sem sessão válida
+  io.use(async (socket, next) => {
+    try {
+      const cookieHeader = socket.handshake.headers.cookie || "";
+      const token = extractTokenFromCookie(cookieHeader);
+      if (!token) return next(new Error("Não autenticado."));
+
+      // Importação lazy para evitar dependência circular na inicialização
+      const { buscarSessao } = require("../routes/auth.routes");
+      const session = await buscarSessao(token);
+      if (!session) return next(new Error("Sessão inválida ou expirada."));
+
+      socket.user = session.user;
+      next();
+    } catch (err) {
+      logger.error(`[Socket] Erro na autenticação: ${err.message}`);
+      next(new Error("Erro de autenticação."));
+    }
+  });
+
   io.on("connection", socket => {
-    logger.info(`Painel conectado em tempo real: ${socket.id}`);
+    logger.info(`Painel conectado: ${socket.id} (user: ${socket.user?.usuario || socket.user?.nome || "?"})`);
 
     socket.on("user_online", user => {
       if (!user?.id) return;

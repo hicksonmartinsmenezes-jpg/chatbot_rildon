@@ -29,11 +29,14 @@ async function loadConversations(silent = false) {
 
   try {
     const [histRes, ticketRes] = await Promise.all([
-      apiFetch(`${BASE}/api/history?limit=200`),
-      apiFetch(`${BASE}/api/tickets?limit=500`)
+      apiFetch(`${BASE}/api/history?limit=200`).catch(() => null),
+      apiFetch(`${BASE}/api/tickets?limit=500`).catch(() => null)
     ]);
 
-    if (!histRes) return;
+    if (!histRes?.ok) {
+      if (list) list.innerHTML = `<p class="empty chat-empty">❌ Erro ao carregar conversas.</p>`;
+      return;
+    }
 
     const raw = await histRes.json();
     allHistory = Array.isArray(raw) ? raw : raw.data || [];
@@ -90,9 +93,12 @@ async function loadConversations(silent = false) {
     } else if (activeTicketFilter === "em_andamento") {
       users = users.filter(uid => ticketsByUser[uid]?.status === "em_andamento");
     } else if (activeTicketFilter === "fechados") {
+      const hoje = new Date().toDateString();
       users = users.filter(uid => {
-        const s = ticketsByUser[uid]?.status;
-        return s === "resolvido" || s === "cancelado";
+        const t = ticketsByUser[uid];
+        if (!t) return false;
+        if (t.status !== "resolvido" && t.status !== "cancelado") return false;
+        return t.updatedAt && new Date(t.updatedAt).toDateString() === hoje;
       });
     }
     // "todos" → sem filtro adicional
@@ -131,12 +137,17 @@ async function loadConversations(silent = false) {
       const unread  = unreadMessages[userId] || 0;
       const time    = shortTime(last?.createdAt);
       const ticket  = ticketsByUser[userId];
-      const statusBadge = ticket
-        ? `<span class="conv-ticket-badge status-${ticket.status}">${statusLabel(ticket.status)}</span>`
+      const statusPill = ticket
+        ? `<span class="conv-status-pill status-${ticket.status}">${statusLabel(ticket.status)}</span>`
         : "";
+      const sectorTag = ticket?.sector
+        ? `<span class="conv-sector-tag">${safe(ticket.sector)}</span>`
+        : "";
+      const statusClass = ticket ? `ci-status-${ticket.status}` : "";
+      const unreadBg = { aberto: "#BA7517", em_andamento: "#185FA5", resolvido: "#1D9E75", cancelado: "#A32D2D" }[ticket?.status] || "#22c55e";
 
       return `
-        <button class="chat-item" data-user="${escapeAttr(userId)}" onclick="openConversation('${escapeAttr(userId)}')">
+        <button class="chat-item ${statusClass}" data-user="${escapeAttr(userId)}" onclick="openConversation('${escapeAttr(userId)}')">
           ${avatarHtml(userId, name)}
           <span class="chat-item-body">
             <span class="chat-item-top">
@@ -145,9 +156,9 @@ async function loadConversations(silent = false) {
             </span>
             <span class="chat-item-bottom">
               <span>${safe(preview)}</span>
-              ${unread > 0 ? `<span class="chat-unread">${unread}</span>` : ""}
+              ${unread > 0 ? `<span class="chat-unread" style="background:${unreadBg}">${unread}</span>` : ""}
             </span>
-            ${statusBadge}
+            ${(statusPill || sectorTag) ? `<span class="chat-item-row3">${statusPill}${sectorTag}</span>` : ""}
           </span>
         </button>
       `;
@@ -164,7 +175,9 @@ async function loadConversations(silent = false) {
 }
 
 function getLastHistoryItem(userId) {
-  return allHistory
+  // Snapshot para evitar race se allHistory for substituído durante iteração
+  const snap = allHistory;
+  return snap
     .filter(item => item.userId === userId)
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0] || null;
 }
@@ -246,7 +259,9 @@ function openConversation(userId, updateActive = true) {
     document.querySelector(`.chat-item[data-user="${cssEscape(userId)}"]`)?.classList.add("active");
   }
 
-  const messages = allHistory.filter(item => item.userId === userId).reverse();
+  // Snapshot local para evitar race condition se allHistory for substituído durante render
+  const historySnapshot = allHistory;
+  const messages = historySnapshot.filter(item => item.userId === userId).reverse();
 
   if (!messagesBox) return;
 
@@ -445,9 +460,13 @@ async function sendConversationMessage() {
     }
 
     showToast("✅ Mensagem enviada!");
-    await loadHistory(false);
-    await loadConversations();
-    if (selectedConversationUser) openConversation(selectedConversationUser);
+    // O evento socket nova_mensagem disparado pelo backend já atualiza a conversa.
+    // Só recarregamos se o socket não estiver conectado (fallback).
+    if (!socket?.connected) {
+      await loadHistory(false);
+      await loadConversations();
+      if (selectedConversationUser) openConversation(selectedConversationUser);
+    }
 
   } catch (err) {
     showToast(`❌ Erro ao enviar: ${err.message}`);

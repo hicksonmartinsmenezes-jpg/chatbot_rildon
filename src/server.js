@@ -53,7 +53,7 @@ initSocket(server);
     // 5. Subir servidor HTTP
     await new Promise((resolve) => {
       server.listen(PORT, "0.0.0.0", () => {
-        logger.success(`Servidor rodando na porta ${PORT}`);
+        logger.info(`✓ Servidor rodando na porta ${PORT}`);
         logger.info(`Painel: http://localhost:${PORT}`);
         logger.info(`Tickets: http://localhost:${PORT}/api/tickets`);
         resolve();

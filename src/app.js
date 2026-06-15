@@ -143,9 +143,11 @@ app.get("/uploads/*", authSession, (req, res) => {
 
 // ── Global error handler ──────────────────────────────────────────────────────
 app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
-  logger.error(`[Express] ${req.method} ${req.path} — ${err.message}`);
   const status = err.status || err.statusCode || 500;
-  res.status(status).json({ error: err.message || "Erro interno do servidor." });
+  logger.error(`[Express] ${req.method} ${req.path} ${status} — ${err.message}`);
+  // Erros 500 nunca expõem detalhes internos ao cliente
+  const message = status >= 500 ? "Erro interno do servidor." : (err.message || "Erro desconhecido.");
+  res.status(status).json({ error: message });
 });
 
 module.exports = app;

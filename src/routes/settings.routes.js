@@ -23,7 +23,7 @@ router.put("/settings", async (req, res) => {
 
     const settings = await saveSettings(req.body || {});
 
-    logger.success("Configurações salvas");
+    logger.info("Configurações salvas.");
 
     res.json(settings);
   } catch (error) {

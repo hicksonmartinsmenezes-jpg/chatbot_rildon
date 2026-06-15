@@ -85,6 +85,46 @@ const MSG = {
       `Posso ajudar com mais alguma coisa? Digite *0* para o menu.`,
   },
 
+  financeiro: {
+    MENU: () =>
+      "💰 *Financeiro*\n\n" +
+      "Como posso ajudar?\n\n" +
+      "1 - Tirar dúvida financeira / consultar CPF ou CNPJ\n" +
+      "2 - Formas de pagamento\n" +
+      "3 - Falar com o financeiro\n" +
+      "0 - Voltar ao menu principal",
+
+    PEDIR_NOME:   "📝 Para continuar, informe seu *nome completo*:",
+    PEDIR_DUVIDA: "💬 Informe sua *dúvida financeira* ou seu *CPF/CNPJ* para consulta:",
+
+    DOCUMENTO_INVALIDO:
+      "⚠️ Documento inválido. Por favor, informe um *CPF* (11 dígitos) ou *CNPJ* (14 dígitos) válido, ou descreva sua dúvida financeira.",
+
+    FORMAS_PAGAMENTO:
+      "💳 *Formas de Pagamento*\n\n" +
+      "✅ Dinheiro\n" +
+      "✅ PIX\n" +
+      "✅ Cartão de débito\n" +
+      "✅ Cartão de crédito (parcelamento disponível)\n" +
+      "✅ Crediário próprio\n\n" +
+      "_Para solicitar crediário, volte ao menu e escolha a opção *2*._\n\n" +
+      "_Digite *0* para voltar ao menu._",
+
+    DUVIDA_REGISTRADA: (ticket, documento, _msg) =>
+      `✅ *Dúvida financeira registrada!*\n\n` +
+      `👤 Nome: ${ticket.customerName}\n` +
+      `🎫 Protocolo: *#${ticket.protocolo}*\n` +
+      (documento ? `🪪 Documento: ${documento}\n` : "") +
+      `\nNossa equipe financeira entrará em contato em breve.\n` +
+      `Horário: Seg–Sex 07:50–17:50 | Sáb 08:00–12:00\n\n` +
+      `Posso ajudar com mais alguma coisa? Digite *0* para o menu.`,
+
+    ATENDENTE: (ticket) =>
+      `👤 Um atendente do financeiro entrará em contato!\n\n` +
+      `🎫 Protocolo: *#${ticket.protocolo}*\n\n` +
+      `Posso ajudar com mais alguma coisa? Digite *0* para o menu.`,
+  },
+
   main: {
     PEDIR_MOTIVO_ATENDENTE:
       "💬 Certo! Para agilizar seu atendimento, descreva brevemente o que precisa:\n" +

@@ -5,8 +5,16 @@
 let socket = null;
 
 if (typeof io !== "undefined") {
-  
-  socket = io(BASE, { autoConnect: true });
+
+  socket = io(BASE, { autoConnect: true, withCredentials: true });
+
+  // Trata falha de autenticação no socket (sessão expirada)
+  socket.on("connect_error", (err) => {
+    if (err.message === "Não autenticado." || err.message === "Sessão inválida ou expirada.") {
+      socket.disconnect();
+      showToast("⚠️ Sessão expirada. Faça login novamente.");
+    }
+  });
 
 socket.on("connect", () => {
 
@@ -24,8 +32,13 @@ socket.on("connect", () => {
 });
 
   socket.on("disconnect", () => {
-  setOffline();
-});
+    setOffline();
+    // Cancela reloads pendentes para evitar requisições órfãs após desconexão
+    clearTimeout(_convReloadTimer);
+    clearTimeout(_histReloadTimer);
+    clearTimeout(_ticketReloadTimer);
+    _convReloadTimer = _histReloadTimer = _ticketReloadTimer = null;
+  });
 
 socket.on("online_users", users => {
   window.onlineUsers = Array.isArray(users) ? users : [];
@@ -46,7 +59,30 @@ socket.on("online_users", users => {
     if (status === "connected") setOnline(); else setOffline();
   });
 
- socket.on("nova_mensagem", (data) => {
+// Debounce timers para evitar múltiplos reloads simultâneos por rajada de eventos
+let _convReloadTimer   = null;
+let _histReloadTimer   = null;
+let _ticketReloadTimer = null;
+
+function _scheduleConvReload(userId) {
+  clearTimeout(_convReloadTimer);
+  _convReloadTimer = setTimeout(() => {
+    loadConversations(true).then(() => {
+      if (!userId) return;
+      const ticket = ticketsByUser[userId];
+      const isClosed = ticket?.status === "resolvido" || ticket?.status === "cancelado";
+      const correctFilter = (!ticket || ticket.status === "aberto" || isClosed)
+        ? "pendentes"
+        : ticket.status === "em_andamento" ? "em_andamento" : null;
+      if (correctFilter && activeTicketFilter !== correctFilter) {
+        const btn = document.querySelector(`.chat-status-tab[data-filter="${correctFilter}"]`);
+        if (btn) setTicketFilter(correctFilter, btn);
+      }
+    });
+  }, 400);
+}
+
+socket.on("nova_mensagem", (data) => {
   // Valida estrutura mínima
   if (!data?.userId || typeof data.userId !== "string") return;
 
@@ -72,39 +108,26 @@ socket.on("online_users", users => {
     if (isCurrentConversation) {
       openConversation(data.userId, false);
     } else {
-      // Recarrega a lista e auto-seleciona a aba correta
-      loadConversations(true).then(() => {
-        const ticket = ticketsByUser[data.userId];
-        const isClosed = ticket?.status === "resolvido" || ticket?.status === "cancelado";
-        const correctFilter = (!ticket || ticket.status === "aberto" || isClosed)
-          ? "pendentes"
-          : ticket.status === "em_andamento"
-          ? "em_andamento"
-          : null;
-
-        if (correctFilter && activeTicketFilter !== correctFilter) {
-          const btn = document.querySelector(`.chat-status-tab[data-filter="${correctFilter}"]`);
-          if (btn) setTicketFilter(correctFilter, btn);
-        }
-      });
+      _scheduleConvReload(data.userId);
     }
   }
 
   if (currentTab === "history") {
-    loadHistory(true);
+    clearTimeout(_histReloadTimer);
+    _histReloadTimer = setTimeout(() => loadHistory(true), 400);
   }
 
   if (currentTab === "dashboard" || currentTab === "tickets") {
-    loadTickets();
+    clearTimeout(_ticketReloadTimer);
+    _ticketReloadTimer = setTimeout(() => loadTickets(), 400);
   }
 
   if (currentTab === "metrics") {
     loadMetricsCharts();
   }
 
-  playAlertSound("message");
-
-  if ((!data.response || data.message) && !isCurrentConversation) {
+  if (!data.response && !isCurrentConversation) {
+    playAlertSound("message");
     showToast("💬 Nova mensagem recebida!");
   }
 });

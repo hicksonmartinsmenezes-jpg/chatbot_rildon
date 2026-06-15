@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
@@ -22,9 +22,20 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css">
-  <link rel="stylesheet" href="style.css?v=25">
+  <link rel="stylesheet" href="style.css?v=33">
   <link rel="stylesheet" href="supervisor.css?v=25">
   <link rel="stylesheet" href="css/09-dashboard.css?v=25">
+  <style>
+    /* Centraliza colunas da tabela de histórico */
+    .hrow-sector,
+    .hrow-count,
+    .hrow-date {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      text-align: center !important;
+    }
+  </style>
 </head>
 
 <body>
@@ -97,6 +108,11 @@
     <a href="#" onclick="switchTab('leads', event)" style="display:none;" aria-hidden="true">
       <i class="fa-solid fa-list"></i>
       <span class="label">Gestão de Lead</span>
+    </a>
+
+    <a href="#" onclick="switchTab('contacts', event)">
+      <i class="fa-solid fa-address-book"></i>
+      <span class="label">Contatos</span>
     </a>
 
     <a href="#" onclick="switchTab('channels', event)">
@@ -408,20 +424,7 @@
 
       <!-- Histórico -->
       <section id="tab-history" class="tab-content hidden">
-        <section class="history-hero panel">
-          <div class="section-title history-title-row">
-            <div>
-              <span class="section-kicker">Auditoria de atendimento</span>
-              <h2><i class="fa-solid fa-clock-rotate-left"></i> Histórico de Conversas</h2>
-              <p>Consulte mensagens, respostas enviadas, clientes atendidos e acesse rapidamente a conversa.</p>
-            </div>
-
-            <button class="btn-refresh" onclick="loadHistory(true)">
-              <i class="fa-solid fa-arrows-rotate"></i> Atualizar
-            </button>
-          </div>
-
-          <div class="history-filters">
+        <div class="history-filters">
             <div class="history-search-field">
               <i class="fa-solid fa-magnifying-glass"></i>
               <input
@@ -446,8 +449,11 @@
             <button class="history-clear-btn" onclick="clearHistoryFilters()">
               <i class="fa-solid fa-eraser"></i> Limpar
             </button>
+
+            <button class="history-clear-btn" onclick="loadHistory(true)">
+              <i class="fa-solid fa-arrows-rotate"></i>
+            </button>
           </div>
-        </section>
 
         <section class="history-summary-grid">
           <div class="history-summary-card">
@@ -483,151 +489,445 @@
         </div>
       </section>
 
-      <section id="tab-channels" class="tab-content hidden">
+      <!-- ── CONTATOS ─────────────────────────────────────────────────────── -->
+      <section id="tab-contacts" class="tab-content hidden">
 
-  <div class="panel campaigns-hero">
-    <div>
-      <span class="section-kicker">
-        <i class="fa-solid fa-bullhorn"></i>
-        Central de campanhas
-      </span>
-
-      <h2>Transmissões para clientes</h2>
-      <p>Crie campanhas e acompanhe envios com controle e histórico.</p>
-    </div>
-
-    <div class="campaign-tabs">
-      <button class="campaign-tab active" onclick="switchCampaignPanel('create', event)">
-        <i class="fa-solid fa-plus"></i>
-        Criar campanha
-      </button>
-
-      <button class="campaign-tab supervisor-only" onclick="switchCampaignPanel('monitor', event)">
-        <i class="fa-solid fa-chart-line"></i>
-        Acompanhar
-      </button>
-    </div>
-  </div>
-
-  <!-- PAINEL: CRIAR CAMPANHA -->
-  <div id="campaign-panel-create">
-
-    <div class="panel campaign-form-card">
-      <h3>Nova campanha</h3>
-
-      <label>Título</label>
-      <input id="campaign-title" type="text" placeholder="Ex: Promoção de baterias">
-
-      <label>Mensagem</label>
-      <textarea id="campaign-message" placeholder="Digite a mensagem que será enviada aos clientes..."></textarea>
-
-      <label>Imagem da campanha (opcional)</label>
-      <input
-        type="file"
-        id="campaign-image"
-        accept="image/*"
-        onchange="previewCampaignImage(event)"
-      >
-
-      <div id="campaign-image-preview" class="hidden">
-        <img id="campaign-preview-img">
-      </div>
-
-      <label>Destinatários</label>
-
-      <div class="campaign-audience-options">
-
-        <label class="campaign-radio">
-          <input type="radio" name="campaign-audience" value="all_clients" checked onchange="toggleCustomRecipients()">
-          <span>Todos os clientes</span>
-        </label>
-
-        <label class="campaign-radio">
-          <input type="radio" name="campaign-audience" value="with_tickets" onchange="toggleCustomRecipients()">
-          <span>Clientes com ticket</span>
-        </label>
-
-        <label class="campaign-radio">
-          <input type="radio" name="campaign-audience" value="last_30_days" onchange="toggleCustomRecipients()">
-          <span>Últimos 30 dias</span>
-        </label>
-
-        <label class="campaign-radio">
-          <input type="radio" name="campaign-audience" value="custom" onchange="toggleCustomRecipients()">
-          <span>Lista personalizada</span>
-        </label>
-
-      </div>
-
-      <div id="campaign-audience-count" class="campaign-audience-count">
-        Selecione um público para calcular os destinatários.
-      </div>
-
-      <div id="custom-recipients-box" class="hidden">
-        <label>Números personalizados</label>
-
-        <textarea
-          id="campaign-recipients"
-          oninput="updateCampaignAudienceCount()"
-          placeholder="Digite um número por linha. Ex:
-557999999999
-557988888888"
-        ></textarea>
-      </div>
-
-      <button class="send-btn" onclick="createCampaign()">
-        <i class="fa-solid fa-paper-plane"></i>
-        Criar campanha
-      </button>
-    </div>
-
-  </div>
-
-  <!-- PAINEL: ACOMPANHAR CAMPANHAS -->
-  <div id="campaign-panel-monitor" class="hidden supervisor-only">
-
-    <div class="campaign-stats-grid">
-
-      <div class="campaign-stat-card">
-        <span>Campanhas</span>
-        <strong id="campaign-stat-total">0</strong>
-      </div>
-
-      <div class="campaign-stat-card">
-        <span>Mensagens enviadas</span>
-        <strong id="campaign-stat-sent">0</strong>
-      </div>
-
-      <div class="campaign-stat-card">
-        <span>Falhas</span>
-        <strong id="campaign-stat-failed">0</strong>
-      </div>
-
-      <div class="campaign-stat-card">
-        <span>Taxa de sucesso</span>
-        <strong id="campaign-stat-success">0%</strong>
-      </div>
-
-    </div>
-
-    <div class="panel campaign-list-card">
-      <div class="campaign-list-header">
-        <div>
-          <h3>Campanhas criadas</h3>
-          <p>Acompanhe status, envios e falhas.</p>
+        <!-- Bulk bar -->
+        <div id="contacts-bulk-bar" class="contacts-bulk-bar">
+          <span id="contacts-bulk-label">0 selecionados</span>
+          <button class="ci-btn ci-btn-delete" onclick="bulkDeleteContacts()">
+            <i class="fa-solid fa-trash"></i> Excluir selecionados
+          </button>
+          <button class="ci-btn" onclick="toggleContactSelectAll(false)">
+            <i class="fa-solid fa-xmark"></i> Limpar seleção
+          </button>
         </div>
 
-        <button class="btn-refresh" onclick="loadCampaigns()">
-          <i class="fa-solid fa-rotate"></i>
-          Atualizar
+        <div class="panel">
+          <!-- Header -->
+          <div class="contacts-header">
+            <div class="contacts-title">
+              <h2><i class="fa-solid fa-address-book" style="color:var(--primary);margin-right:8px;"></i>Contatos</h2>
+              <span class="contacts-count-badge" id="contacts-count-badge">0</span>
+            </div>
+            <div class="contacts-toolbar">
+              <div class="contacts-search-wrap">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input class="contacts-search" id="contacts-search" type="text"
+                  placeholder="Buscar nome ou número..."
+                  oninput="contactsSearch(this.value)">
+              </div>
+              <select class="contacts-filter-select" id="contacts-filter-tag" onchange="contactsFilterTag(this.value)">
+                <option value="">Todas as etiquetas</option>
+              </select>
+              <select class="contacts-filter-select" onchange="contactsFilterStatus(this.value)">
+                <option value="">Todos os status</option>
+                <option value="ativo">Ativo</option>
+                <option value="inativo">Inativo</option>
+                <option value="bloqueado">Bloqueado</option>
+              </select>
+              <span class="ct-toolbar-sep"></span>
+              <button class="ct-btn-add" onclick="openContactModal()">
+                <i class="fa-solid fa-plus"></i> Adicionar
+              </button>
+              <button class="ct-btn-secondary" onclick="importContactsCSV()">
+                <i class="fa-solid fa-file-import"></i> Importar
+              </button>
+              <button class="ct-btn-secondary" onclick="exportContactsCSV()">
+                <i class="fa-solid fa-file-export"></i> Exportar
+              </button>
+            </div>
+          </div>
+
+          <!-- Table -->
+          <div class="contacts-table-wrap">
+            <table class="contacts-table">
+              <colgroup>
+                <col><col><col><col><col><col><col><col><col>
+              </colgroup>
+              <thead>
+                <tr>
+                  <th width="44"><input type="checkbox" id="contacts-check-all" onchange="toggleContactSelectAll(this.checked)"></th>
+                  <th width="250">Nome</th>
+                  <th width="210">WhatsApp</th>
+                  <th width="90">Estado</th>
+                  <th width="110">Status</th>
+                  <th width="180">Tags</th>
+                  <th width="210">Atendente vinculado</th>
+                  <th width="180">Departamento</th>
+                  <th width="120">Ações</th>
+                </tr>
+              </thead>
+              <tbody id="contacts-tbody">
+                <tr><td colspan="9"><div class="contacts-empty"><i class="fa-solid fa-users-slash"></i>Nenhum contato.</div></td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Footer -->
+          <div class="contacts-footer">
+            <span class="contacts-showing" id="contacts-showing">0 contatos</span>
+            <div class="contacts-pagination">
+              <button class="ct-page-btn" id="contacts-prev" onclick="contactsPagePrev()" disabled>
+                <i class="fa-solid fa-chevron-left"></i>
+              </button>
+              <span class="ct-page-info" id="contacts-page-info">1 / 1</span>
+              <button class="ct-page-btn" id="contacts-next" onclick="contactsPageNext()" disabled>
+                <i class="fa-solid fa-chevron-right"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Add/Edit modal -->
+        <div id="contact-modal-overlay" class="contacts-modal-overlay hidden" onclick="if(event.target===this)closeContactModal()">
+          <div class="panel contacts-modal">
+            <div class="contacts-modal-header">
+              <h3 id="contact-modal-title">Novo Contato</h3>
+              <button onclick="closeContactModal()"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="contacts-form-grid">
+              <div class="full">
+                <label>Nome *</label>
+                <input id="contact-nome" type="text" placeholder="Nome completo">
+              </div>
+              <div>
+                <label>WhatsApp *</label>
+                <input id="contact-whatsapp" type="text" placeholder="5579999999999">
+              </div>
+              <div>
+                <label>Estado (UF)</label>
+                <select id="contact-estado">
+                  <option value="">—</option>
+                  <option>AC</option><option>AL</option><option>AP</option><option>AM</option>
+                  <option>BA</option><option>CE</option><option>DF</option><option>ES</option>
+                  <option>GO</option><option>MA</option><option>MT</option><option>MS</option>
+                  <option>MG</option><option>PA</option><option>PB</option><option>PR</option>
+                  <option>PE</option><option>PI</option><option>RJ</option><option>RN</option>
+                  <option>RS</option><option>RO</option><option>RR</option><option>SC</option>
+                  <option>SP</option><option>SE</option><option>TO</option>
+                </select>
+              </div>
+              <div>
+                <label>Status</label>
+                <select id="contact-status">
+                  <option value="ativo">Ativo</option>
+                  <option value="inativo">Inativo</option>
+                  <option value="bloqueado">Bloqueado</option>
+                </select>
+              </div>
+              <div>
+                <label>Departamento</label>
+                <input id="contact-departamento" type="text" placeholder="Ex: Vendas">
+              </div>
+              <div>
+                <label>Atendente vinculado</label>
+                <select id="contact-atendente">
+                  <option value="">Nenhum</option>
+                </select>
+              </div>
+              <div class="full">
+                <label>Tags (separadas por vírgula)</label>
+                <input id="contact-tags" type="text" placeholder="Ex: vip, cliente, lead">
+              </div>
+            </div>
+            <div class="contacts-modal-actions">
+              <button class="btn-refresh" onclick="closeContactModal()">Cancelar</button>
+              <button class="send-btn" onclick="saveContact()">Salvar</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Delete confirm modal -->
+        <div id="contact-delete-overlay" class="contacts-modal-overlay hidden" onclick="if(event.target===this)closeDeleteContactModal()">
+          <div class="panel contacts-modal contacts-delete-modal">
+            <div class="contacts-modal-header">
+              <h3>Excluir contato</h3>
+              <button onclick="closeDeleteContactModal()"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <p>Tem certeza que deseja excluir <strong id="contact-delete-name"></strong>? Esta ação não pode ser desfeita.</p>
+            <div class="contacts-modal-actions">
+              <button class="btn-refresh" onclick="closeDeleteContactModal()">Cancelar</button>
+              <button class="send-btn" style="background:rgba(239,68,68,.8);" onclick="doDeleteContact()">
+                <i class="fa-solid fa-trash"></i> Excluir
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+      <section id="tab-channels" class="tab-content hidden">
+
+  <!-- HEADER -->
+  <div class="camp-page-header">
+    <div class="camp-page-title">
+      <i class="fa-solid fa-bullhorn"></i>
+      <div>
+        <h2>Campanhas</h2>
+        <p>Crie e acompanhe disparos em massa para seus clientes.</p>
+      </div>
+    </div>
+    <div class="camp-page-actions">
+      <select id="campaign-status-filter" class="campaign-status-filter-select" onchange="filterCampaigns(this.value)">
+        <option value="all">Todos os status</option>
+        <option value="pending">Aguardando</option>
+        <option value="sending">Enviando</option>
+        <option value="finished">Finalizado</option>
+        <option value="cancelled">Cancelado</option>
+      </select>
+      <button class="camp-refresh-icon" onclick="loadCampaigns()" title="Atualizar lista">
+        <i class="fa-solid fa-rotate"></i>
+      </button>
+      <button class="camp-new-btn" onclick="openCampaignModal()">
+        <i class="fa-solid fa-plus"></i> Nova Campanha
+      </button>
+    </div>
+  </div>
+
+  <!-- ESTATÍSTICAS -->
+  <div class="campaign-stats-grid">
+    <div class="campaign-stat-card csc-blue">
+      <i class="fa-solid fa-bullhorn csc-icon"></i>
+      <span>Campanhas</span>
+      <strong id="campaign-stat-total">0</strong>
+    </div>
+    <div class="campaign-stat-card csc-green">
+      <i class="fa-solid fa-paper-plane csc-icon"></i>
+      <span>Mensagens enviadas</span>
+      <strong id="campaign-stat-sent">0</strong>
+    </div>
+    <div class="campaign-stat-card csc-red">
+      <i class="fa-solid fa-triangle-exclamation csc-icon"></i>
+      <span>Falhas</span>
+      <strong id="campaign-stat-failed">0</strong>
+    </div>
+    <div class="campaign-stat-card csc-purple">
+      <i class="fa-solid fa-chart-pie csc-icon"></i>
+      <span>Taxa de sucesso</span>
+      <strong id="campaign-stat-success">0%</strong>
+    </div>
+  </div>
+
+  <!-- TABELA DE CAMPANHAS -->
+  <div class="panel camp-table-card">
+    <div class="camp-table-wrap">
+      <table class="camp-table">
+        <thead>
+          <tr>
+            <th class="camp-th-num">#</th>
+            <th>Campanha</th>
+            <th>Data</th>
+            <th>Status</th>
+            <th>Total</th>
+            <th>Enviados</th>
+            <th>Falhas</th>
+            <th>Progresso</th>
+            <th class="camp-th-actions">Ações</th>
+          </tr>
+        </thead>
+        <tbody id="campaign-list">
+          <tr><td colspan="9" class="camp-empty">
+            <i class="fa-solid fa-bullhorn"></i>
+            <p>Nenhuma campanha ainda. Clique em <strong>Nova Campanha</strong> para começar.</p>
+          </td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- MODAL: NOVA CAMPANHA -->
+  <div id="camp-modal-overlay" class="camp-modal-overlay hidden" onclick="if(event.target===this)closeCampaignModal()">
+    <div class="camp-modal panel">
+
+      <div class="camp-modal-header">
+        <div class="camp-modal-title">
+          <i class="fa-solid fa-bullhorn"></i>
+          <h3>Nova Campanha</h3>
+        </div>
+        <button class="camp-modal-close" onclick="closeCampaignModal()">
+          <i class="fa-solid fa-xmark"></i>
         </button>
       </div>
 
-      <div id="campaign-list">
-        <div class="empty">Nenhuma campanha carregada.</div>
-      </div>
-    </div>
+      <div class="camp-modal-cols">
 
+        <!-- COLUNA ESQUERDA: FORMULÁRIO -->
+        <div class="camp-modal-body">
+
+          <div class="camp-field">
+            <label>Título da campanha</label>
+            <input id="campaign-title" type="text" placeholder="Ex: Promoção de Janeiro"
+              oninput="updateCampaignPreview()">
+          </div>
+
+          <div class="camp-field">
+            <label>Mensagem <span id="camp-msg-counter" class="camp-label-opt">0 / 1024</span></label>
+            <textarea id="campaign-message" maxlength="1024"
+              placeholder="Digite a mensagem que será enviada..."
+              oninput="updateCampaignPreview(); updateMsgCounter()"></textarea>
+          </div>
+
+          <div class="camp-field">
+            <label>Imagem <span class="camp-label-opt">(opcional)</span></label>
+            <label class="camp-file-label" for="campaign-image">
+              <i class="fa-solid fa-image"></i>
+              <span id="camp-file-name">Escolher imagem...</span>
+            </label>
+            <input type="file" id="campaign-image" accept="image/*"
+              onchange="previewCampaignImage(event)" style="display:none">
+            <div id="campaign-image-preview" class="hidden" style="margin-top:8px;">
+              <img id="campaign-preview-img">
+              <button class="camp-img-remove" onclick="removeCampaignImage()" title="Remover imagem">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+          </div>
+
+          <div class="camp-field">
+            <label>Destinatários</label>
+            <div class="campaign-audience-options camp-audience-grid">
+              <label class="campaign-radio">
+                <input type="radio" name="campaign-audience" value="all_clients" checked onchange="toggleCustomRecipients()">
+                <i class="fa-solid fa-users"></i>
+                <span>Todos os clientes</span>
+              </label>
+              <label class="campaign-radio">
+                <input type="radio" name="campaign-audience" value="with_tickets" onchange="toggleCustomRecipients()">
+                <i class="fa-solid fa-ticket"></i>
+                <span>Com ticket</span>
+              </label>
+              <label class="campaign-radio">
+                <input type="radio" name="campaign-audience" value="last_30_days" onchange="toggleCustomRecipients()">
+                <i class="fa-solid fa-calendar-days"></i>
+                <span>Últimos 30 dias</span>
+              </label>
+              <label class="campaign-radio">
+                <input type="radio" name="campaign-audience" value="contacts" onchange="toggleCustomRecipients()">
+                <i class="fa-solid fa-address-book"></i>
+                <span>Contatos</span>
+              </label>
+              <label class="campaign-radio">
+                <input type="radio" name="campaign-audience" value="custom" onchange="toggleCustomRecipients()">
+                <i class="fa-solid fa-list"></i>
+                <span>Personalizada</span>
+              </label>
+            </div>
+          </div>
+
+          <div id="contacts-filters-box" class="hidden camp-field contacts-filters-box">
+            <label>Filtrar contatos</label>
+            <div class="contacts-filters-row">
+              <select id="camp-filter-tag" class="contacts-filter-select" onchange="updateCampaignAudienceCount()">
+                <option value="">Todas as etiquetas</option>
+              </select>
+              <select id="camp-filter-atendente" class="contacts-filter-select" onchange="updateCampaignAudienceCount()">
+                <option value="">Todos os atendentes</option>
+              </select>
+            </div>
+          </div>
+
+          <div id="campaign-audience-count" class="campaign-audience-count">
+            Selecione um público para calcular os destinatários.
+          </div>
+
+          <div id="custom-recipients-box" class="hidden camp-field">
+            <label>Selecionar contatos</label>
+            <div class="camp-picker">
+              <div class="camp-picker-search-wrap">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input type="text" id="camp-contact-search" class="camp-picker-search"
+                  placeholder="Buscar por nome ou número..."
+                  oninput="searchCampContacts(this.value)" autocomplete="off">
+              </div>
+              <div class="camp-picker-toolbar">
+                <span id="camp-picker-sel-count" class="camp-picker-sel-count"></span>
+                <div class="camp-picker-toolbar-actions">
+                  <button class="cp-toolbar-btn" onclick="campSelectAll()">
+                    <i class="fa-solid fa-check-double"></i> Todos
+                  </button>
+                  <button class="cp-toolbar-btn cp-toolbar-btn-clear" onclick="campClearAll()">
+                    <i class="fa-solid fa-xmark"></i> Limpar
+                  </button>
+                </div>
+              </div>
+              <div id="camp-contact-chips" class="camp-contact-chips hidden"></div>
+              <div id="camp-contact-results" class="camp-contact-results">
+                <div class="camp-picker-hint"><i class="fa-solid fa-spinner fa-spin"></i> Carregando...</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- COLUNA DIREITA: PREVIEW WHATSAPP -->
+        <div class="camp-wa-preview">
+          <div class="camp-wa-label">
+            <i class="fa-brands fa-whatsapp"></i> Preview no WhatsApp
+          </div>
+          <div class="camp-wa-phone">
+            <div class="camp-wa-screen">
+
+              <!-- Barra de status do celular -->
+              <div class="camp-wa-statusbar">
+                <i class="fa-solid fa-signal"></i>
+                <i class="fa-solid fa-wifi"></i>
+                <i class="fa-solid fa-battery-full"></i>
+              </div>
+
+              <!-- Header do chat -->
+              <div class="camp-wa-header">
+                <i class="fa-solid fa-arrow-left camp-wa-back"></i>
+                <div class="camp-wa-avatar">
+                  <i class="fa-solid fa-robot"></i>
+                </div>
+                <div class="camp-wa-contact">
+                  <strong>Bot</strong>
+                  <small>online</small>
+                </div>
+                <div class="camp-wa-header-actions">
+                  <i class="fa-solid fa-video"></i>
+                  <i class="fa-solid fa-phone"></i>
+                  <i class="fa-solid fa-ellipsis-vertical"></i>
+                </div>
+              </div>
+
+              <!-- Corpo da conversa -->
+              <div class="camp-wa-body">
+                <div class="camp-wa-bubble" id="camp-wa-bubble">
+                  <div class="camp-wa-bubble-img hidden" id="camp-wa-img-wrap">
+                    <img id="camp-wa-img" src="" alt="">
+                  </div>
+                  <p id="camp-wa-text" class="camp-wa-text-placeholder">Sua mensagem aparecerá aqui...</p>
+                  <div class="camp-wa-meta">
+                    <span id="camp-wa-time">--:--</span>
+                    <i class="fa-solid fa-check-double camp-wa-check"></i>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Barra de input decorativa -->
+              <div class="camp-wa-inputbar">
+                <i class="fa-regular fa-face-smile"></i>
+                <div class="camp-wa-inputbar-field">Mensagem</div>
+                <i class="fa-solid fa-microphone"></i>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- FOOTER fixo fora das colunas — sempre visível -->
+      <div class="camp-modal-footer">
+        <button class="history-clear-btn" onclick="closeCampaignModal()">Cancelar</button>
+        <button id="campaign-submit-btn" class="send-btn" onclick="createCampaign()">
+          <i class="fa-solid fa-paper-plane"></i> Criar campanha
+        </button>
+      </div>
+
+    </div>
   </div>
 
 </section>
@@ -1298,19 +1598,20 @@ Como podemos ajudar você hoje?
   <script src="js/00-core.js"></script>
   <script src="js/01-utils.js?v=3"></script>
   <script src="js/02-auth.js"></script>
-  <script src="js/03-navigation.js?v=2"></script>
-  <script src="js/04-history.js"></script>
+  <script src="js/03-navigation.js?v=3"></script>
+  <script src="js/04-history.js?v=4"></script>
   <script src="js/05-metrics.js"></script>
   <script src="js/06-tickets.js?v=3"></script>
-  <script src="js/07-conversations.js?v=8"></script>
+  <script src="js/07-conversations.js?v=9"></script>
   <script src="js/08-settings.js"></script>
   <script src="js/09-users.js"></script>
   <script src="js/10-logs.js"></script>
   <script src="js/11-profile.js?v=2"></script>
-  <script src="js/12-socket.js?v=2"></script>
-  <script src="js/13-campaigns.js?v=2"></script>
+  <script src="js/12-socket.js?v=5"></script>
+  <script src="js/13-campaigns.js?v=16"></script>
   <script src="js/14-charts.js"></script>
   <script src="js/15-modal.js"></script>
+  <script src="js/16-contacts.js?v=4"></script>
   <script src="js/13-main.js?v=2"></script>
 
 

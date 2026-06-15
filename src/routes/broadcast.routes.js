@@ -9,6 +9,8 @@ const {
   getBroadcastRecipients,
   startBroadcast,
   cancelBroadcast,
+  deleteBroadcast,
+  retryFailedRecipients,
   getBroadcastAudience,
   getBroadcastStats
 } = require("../services/broadcast.service");
@@ -101,7 +103,8 @@ router.post("/broadcasts/upload", upload.single("image"), async (req, res) => {
 
 router.get("/broadcasts/audience/:type", async (req, res) => {
   try {
-    const audience = await getBroadcastAudience(req.params.type);
+    const { tag, atendenteId } = req.query;
+    const audience = await getBroadcastAudience(req.params.type, { tag, atendenteId });
     res.json(audience);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -137,7 +140,6 @@ router.post("/broadcasts/:id/start", async (req, res) => {
   }
 });
 
-// MELHORIA: rota de cancelamento de transmissão
 router.post("/broadcasts/:id/cancel", async (req, res) => {
   try {
     const result = await cancelBroadcast(req.params.id);
@@ -147,6 +149,22 @@ router.post("/broadcasts/:id/cancel", async (req, res) => {
   }
 });
 
+router.post("/broadcasts/:id/retry", async (req, res) => {
+  try {
+    const result = await retryFailedRecipients(req.params.id);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
 
+router.delete("/broadcasts/:id", async (req, res) => {
+  try {
+    const result = await deleteBroadcast(req.params.id);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
 
 module.exports = router;

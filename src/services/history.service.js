@@ -15,7 +15,7 @@ async function saveHistory({
     contactName: contactName || "",
     message: message || null,
     response: response || null,
-    sector: sector || "main",
+    sector: sector || "geral",
     messageId: messageId || null,
     // CORRIGIDO: status vazio → null (alinhado ao schema corrigido)
     status: status || null,
@@ -23,11 +23,14 @@ async function saveHistory({
   });
 }
 
-async function listHistory({ userId, limit, offset } = {}) {
+async function listHistory({ userId, limit, offset, q, from, to } = {}) {
   return historyRepository.findAll({
     userId,
     limit: limit || 50,
-    offset: offset || 0
+    offset: offset || 0,
+    q,
+    from,
+    to
   });
 }
 

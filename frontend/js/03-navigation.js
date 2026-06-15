@@ -18,6 +18,11 @@ function switchTab(tab, event) {
     if (typeof updateCampaignAudienceCount === "function")
       setTimeout(() => updateCampaignAudienceCount(), 100);
   }
+  if (tab === "contacts") {
+    if (typeof loadContacts === "function") loadContacts();
+    if (typeof loadContactsTags === "function") loadContactsTags();
+    if (typeof loadContactsAtendenteOptions === "function") loadContactsAtendenteOptions();
+  }
 
   currentTab = tab;
 

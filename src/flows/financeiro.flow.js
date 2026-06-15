@@ -37,11 +37,11 @@ async function financeiroFlow(message, userId, session) {
   if (session.sector === "financeiro") {
     if (session.step === "aguardando_nome") {
       if (!validarNome(sanitizarTexto(message))) {
-        return MSG.NOME_INVALIDO;
+        return MSG.NOME_INVALIDO + MSG.ESCAPE_DICA;
       }
 
       await updateSession(userId, {
-        nome: sanitizarTexto(message),
+        customerName: sanitizarTexto(message),
         step: "aguardando_duvida"
       });
 
@@ -49,7 +49,7 @@ async function financeiroFlow(message, userId, session) {
     }
 
     if (session.step === "aguardando_duvida") {
-      const nomeCliente = session.nome || MSG.NAO_INFORMADO;
+      const nomeCliente = session.customerName || MSG.NAO_INFORMADO;
       const documento = validarDocumento(msg);
       const somenteNumero = /^\d+$/.test(msg.replace(/[\s.\-\/]/g, ""));
 
@@ -76,6 +76,10 @@ async function financeiroFlow(message, userId, session) {
         description: documento ? "Consulta financeira" : sanitizarTexto(message)
       });
 
+      if (!ticket) {
+        return "⚠️ Não consegui registrar sua dúvida no momento. Por favor, ligue: *(79) 99135-3569*" + MSG.ESCAPE_DICA;
+      }
+
       notificarAtendente(ticket);
       await clearSession(userId);
 
@@ -96,7 +100,7 @@ async function financeiroFlow(message, userId, session) {
           return mensagemForaDeHorario();
         }
 
-        const nomeCliente = session.nome || MSG.NAO_INFORMADO;
+        const nomeCliente = session.customerName || MSG.NAO_INFORMADO;
 
         const ticket = await createTicket({
           userId,
@@ -105,6 +109,11 @@ async function financeiroFlow(message, userId, session) {
           customerName: nomeCliente,
           description: "Cliente solicitou atendente do financeiro."
         });
+
+        if (!ticket) {
+          await clearSession(userId);
+          return "⚠️ Não consegui registrar seu atendimento agora.\n\nPor favor, ligue diretamente: *(79) 99135-3569*\n\n_Digite *0* para voltar ao menu._";
+        }
 
         notificarAtendente(ticket);
         await clearSession(userId);

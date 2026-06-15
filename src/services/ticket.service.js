@@ -73,16 +73,26 @@ async function reopenTicketIfClosed(userId) {
   const lastReopen = _reopenCooldown.get(userId);
   if (lastReopen && Date.now() - lastReopen < 60_000) return false;
 
-  const tickets = await ticketRepository.findByUserId(userId);
-  if (!tickets.length) return false;
-  const latest = tickets[0]; // já ordenado DESC
-  if (latest.status === "resolvido" || latest.status === "cancelado") {
-    await ticketRepository.updateStatus(latest.id, "aberto");
-    _reopenCooldown.set(userId, Date.now());
-    logger.info(`Ticket #${latest.protocolo} reaberto para ${userId}`);
-    return true;
+  // Marca antes do await para bloquear requests simultâneos (guard otimista)
+  _reopenCooldown.set(userId, Date.now());
+
+  try {
+    const tickets = await ticketRepository.findByUserId(userId);
+    if (!tickets.length) { _reopenCooldown.delete(userId); return false; }
+
+    const latest = tickets[0]; // já ordenado DESC
+    if (latest.status === "resolvido" || latest.status === "cancelado") {
+      await ticketRepository.updateStatus(latest.id, "aberto");
+      logger.info(`Ticket #${latest.protocolo} reaberto para ${userId}`);
+      return true;
+    }
+
+    _reopenCooldown.delete(userId);
+    return false;
+  } catch (err) {
+    _reopenCooldown.delete(userId); // libera em caso de erro para não bloquear forever
+    throw err;
   }
-  return false;
 }
 
 async function assignTicket(id, user) {

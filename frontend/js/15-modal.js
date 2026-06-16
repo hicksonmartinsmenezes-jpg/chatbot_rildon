@@ -75,6 +75,48 @@ function showInputModal({ title, label, placeholder = "", type = "text", confirm
   input.addEventListener("keydown", e => { if (e.key === "Enter") doConfirm(); });
 }
 
+// ─── Modal de Seleção (dropdown) ─────────────────────────────────────────────
+/**
+ * @param {object} opts
+ * @param {string}   opts.title
+ * @param {string}   opts.label
+ * @param {{value:string,label:string}[]} opts.options
+ * @param {string}   [opts.confirmText]
+ * @param {Function} opts.onConfirm — recebe o value selecionado
+ */
+function showSelectModal({ title, label, options = [], confirmText = "Confirmar", onConfirm }) {
+  const opts = options
+    .map(o => `<option value="${safe(String(o.value))}">${safe(o.label)}</option>`)
+    .join("");
+
+  _openModal(`
+    <div class="modal-header">
+      <strong>${safe(title)}</strong>
+      <button class="modal-close-btn" onclick="_closeModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <label class="modal-label">${safe(label)}</label>
+      <select id="_modal-select" class="modal-input">
+        <option value="">— Selecione —</option>
+        ${opts}
+      </select>
+    </div>
+    <div class="modal-footer">
+      <button class="modal-btn modal-btn-secondary" onclick="_closeModal()">Cancelar</button>
+      <button class="modal-btn modal-btn-primary" id="_modal-confirm-btn">${safe(confirmText)}</button>
+    </div>
+  `);
+
+  const select = document.getElementById("_modal-select");
+  select.focus();
+
+  document.getElementById("_modal-confirm-btn").addEventListener("click", () => {
+    if (!select.value) { select.classList.add("modal-input-error"); return; }
+    _closeModal();
+    onConfirm?.(select.value);
+  });
+}
+
 // ─── Internos ─────────────────────────────────────────────────────────────────
 function _openModal(innerHtml) {
   let overlay = document.getElementById("_global-modal-overlay");
@@ -155,6 +197,20 @@ function _closeModal() {
     }
     .modal-input:focus { border-color: var(--primary, #1d6cf5); }
     .modal-input.modal-input-error { border-color: #e53e3e; animation: _shake .2s; }
+    select.modal-input {
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2394a3b8' stroke-width='1.8' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      padding-right: 36px;
+      cursor: pointer;
+    }
+    select.modal-input option {
+      background: var(--color-sidebar, #1a1f2e);
+      color: var(--color-text, #e2e8f0);
+      padding: 8px 12px;
+    }
     @keyframes _shake {
       0%,100%{ transform: translateX(0); }
       25%    { transform: translateX(-4px); }

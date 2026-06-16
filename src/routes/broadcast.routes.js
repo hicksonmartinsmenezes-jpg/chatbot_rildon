@@ -38,25 +38,36 @@ if (!fs.existsSync(uploadDir)) {
 const storage = multer.diskStorage({
   destination: uploadDir,
   filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    const name = `campaign-${Date.now()}${ext}`;
-    cb(null, name);
+    const ext      = path.extname(file.originalname);
+    const baseName = path.basename(file.originalname, ext)
+      .replace(/[^a-zA-Z0-9_\-. ]/g, "")   // remove caracteres perigosos
+      .trim()
+      .replace(/\s+/g, "_")
+      .slice(0, 80) || "arquivo";
+    cb(null, `${baseName}-${Date.now()}${ext}`);
   }
 });
 
-const ALLOWED_IMAGE_EXTS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp"]);
+const ALLOWED_MEDIA = {
+  image: new Set([".jpg", ".jpeg", ".png", ".gif", ".webp"]),
+  pdf:   new Set([".pdf"]),
+  audio: new Set([".mp3", ".ogg", ".m4a", ".wav", ".aac", ".opus"]),
+};
+
+function detectMediaType(file) {
+  const ext = path.extname(file.originalname).toLowerCase();
+  if (ALLOWED_MEDIA.image.has(ext) || file.mimetype.startsWith("image/")) return "image";
+  if (ALLOWED_MEDIA.pdf.has(ext)   || file.mimetype === "application/pdf")  return "pdf";
+  if (ALLOWED_MEDIA.audio.has(ext) || file.mimetype.startsWith("audio/"))   return "audio";
+  return null;
+}
 
 const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: 100 * 1024 * 1024 }, // 100 MB — PDFs e áudios podem ser grandes
   fileFilter: (req, file, cb) => {
-    if (!file.mimetype.startsWith("image/")) {
-      return cb(new Error("Apenas imagens são permitidas."));
-    }
-    const ext = path.extname(file.originalname).toLowerCase();
-    if (!ALLOWED_IMAGE_EXTS.has(ext)) {
-      return cb(new Error("Extensão de arquivo não permitida."));
-    }
+    const type = detectMediaType(file);
+    if (!type) return cb(new Error("Tipo de arquivo não permitido. Use imagem, PDF ou áudio."));
     cb(null, true);
   }
 });
@@ -64,13 +75,14 @@ const upload = multer({
 
 router.post("/broadcasts", async (req, res) => {
   try {
-    const { title, message, recipients, imageUrl } = req.body;
+    const { title, message, recipients, imageUrl, mediaType } = req.body;
 
     const broadcast = await createBroadcast({
       title,
       message,
       recipients,
       imageUrl,
+      mediaType: mediaType || (imageUrl ? "image" : null),
       createdBy: req.user?.nome || req.user?.usuario || null
     });
 
@@ -81,24 +93,33 @@ router.post("/broadcasts", async (req, res) => {
 });
 
 
-router.post("/broadcasts/upload", upload.single("image"), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: "Nenhuma imagem enviada." });
+router.post("/broadcasts/upload", (req, res) => {
+  upload.single("media")(req, res, async (err) => {
+    if (err) {
+      if (req.file?.path) fs.unlink(req.file.path, () => {});
+      const msg = err.code === "LIMIT_FILE_SIZE"
+        ? "Arquivo muito grande. Máximo permitido: 100 MB."
+        : err.message || "Erro ao processar arquivo.";
+      return res.status(400).json({ error: msg });
     }
 
-    // Validação adicional: extensão real do arquivo salvo no disco
-    const savedExt = path.extname(req.file.filename).toLowerCase();
-    if (!ALLOWED_IMAGE_EXTS.has(savedExt)) {
-      fs.unlink(req.file.path, () => {});
-      return res.status(400).json({ error: "Tipo de arquivo não permitido." });
-    }
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "Nenhum arquivo enviado." });
+      }
 
-    res.json({ url: `/uploads/campaigns/${req.file.filename}` });
-  } catch (err) {
-    if (req.file?.path) fs.unlink(req.file.path, () => {});
-    res.status(400).json({ error: err.message });
-  }
+      const mediaType = detectMediaType(req.file);
+      if (!mediaType) {
+        fs.unlink(req.file.path, () => {});
+        return res.status(400).json({ error: "Tipo de arquivo não permitido." });
+      }
+
+      res.json({ url: `/uploads/campaigns/${req.file.filename}`, mediaType });
+    } catch (e) {
+      if (req.file?.path) fs.unlink(req.file.path, () => {});
+      res.status(500).json({ error: e.message });
+    }
+  });
 });
 
 router.get("/broadcasts/audience/:type", async (req, res) => {

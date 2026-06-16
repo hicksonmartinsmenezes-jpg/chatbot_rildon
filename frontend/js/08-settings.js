@@ -216,8 +216,9 @@ let quickRepliesCache = [];
 async function loadQuickReplies() {
   try {
     const res = await apiFetch(`${BASE}/api/quick-replies`);
-    if (!res) return;
-    quickRepliesCache = await res.json();
+    if (!res?.ok) return;
+    const raw = await res.json();
+    quickRepliesCache = Array.isArray(raw) ? raw : [];
     renderQuickReplies();
   } catch {
     showToast("❌ Erro ao carregar respostas rápidas.");

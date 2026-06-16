@@ -455,13 +455,18 @@ async function sendMessage(userId, text) {
   if (!isWhatsAppConnected) throw new Error("WhatsApp não autenticado. Escaneie o QR Code no painel.");
 
   try {
-    const [check] = await sock.onWhatsApp(userId.replace(/@.+/, "")).catch(() => [null]);
-    if (!check?.exists) {
-      throw new Error(`Número ${userId.replace(/@.+/, "")} não está registrado no WhatsApp.`);
-    }
-    const resolvedJid = check.jid || userId;
-    if (resolvedJid !== userId) {
-      logger.info(`[sendMessage] JID normalizado: ${userId} → ${resolvedJid}`);
+    let resolvedJid = userId;
+
+    // JIDs @lid são identificadores de dispositivo — não passam por onWhatsApp()
+    if (!userId.endsWith("@lid")) {
+      const [check] = await sock.onWhatsApp(userId.replace(/@.+/, "")).catch(() => [null]);
+      if (!check?.exists) {
+        throw new Error(`Número ${userId.replace(/@.+/, "")} não está registrado no WhatsApp.`);
+      }
+      resolvedJid = check.jid || userId;
+      if (resolvedJid !== userId) {
+        logger.info(`[sendMessage] JID normalizado: ${userId} → ${resolvedJid}`);
+      }
     }
 
     const sent = await sock.sendMessage(resolvedJid, { text });
@@ -479,19 +484,45 @@ async function sendMessage(userId, text) {
   }
 }
 
-async function sendMedia(userId, filePath, caption = "") {
+async function sendMedia(userId, filePath, caption = "", mediaType = "image") {
   if (!sock) throw new Error("WhatsApp não inicializado.");
   if (!isWhatsAppConnected) throw new Error("WhatsApp não autenticado. Escaneie o QR Code no painel.");
 
   try {
-    const [check] = await sock.onWhatsApp(userId.replace(/@.+/, "")).catch(() => [null]);
-    if (!check?.exists) {
-      throw new Error(`Número ${userId.replace(/@.+/, "")} não está registrado no WhatsApp.`);
-    }
-    const resolvedJid = check.jid || userId;
+    let resolvedJid = userId;
 
-    const sent = await sock.sendMessage(resolvedJid, { image: { url: filePath }, caption });
-    logger.info(`[WhatsApp] ✓ Imagem enviada para ${resolvedJid}`);
+    if (!userId.endsWith("@lid")) {
+      const [check] = await sock.onWhatsApp(userId.replace(/@.+/, "")).catch(() => [null]);
+      if (!check?.exists) {
+        throw new Error(`Número ${userId.replace(/@.+/, "")} não está registrado no WhatsApp.`);
+      }
+      resolvedJid = check.jid || userId;
+    }
+
+    let msgContent;
+    const fileData = { url: filePath };
+    const path = require("path");
+    const fileName = path.basename(filePath);
+
+    if (mediaType === "pdf") {
+      msgContent = {
+        document: fileData,
+        mimetype: "application/pdf",
+        fileName,
+        caption: caption || undefined,
+      };
+    } else if (mediaType === "audio") {
+      msgContent = {
+        audio: fileData,
+        mimetype: "audio/mpeg",
+        ptt: false,
+      };
+    } else {
+      msgContent = { image: fileData, caption: caption || undefined };
+    }
+
+    const sent = await sock.sendMessage(resolvedJid, msgContent);
+    logger.info(`[WhatsApp] ✓ Mídia (${mediaType}) enviada para ${resolvedJid}`);
 
     return { id: sent.key.id, remoteJid: sent.key.remoteJid, fromMe: sent.key.fromMe };
 

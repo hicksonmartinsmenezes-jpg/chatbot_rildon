@@ -11,7 +11,7 @@ const pool                                                  = require("../databa
 
 const vendasFlow      = require("./vendas.flow");
 const crediarioFlow   = require("./crediario.flow");
-const financeiroFlow  = require("./financeiro.flow");
+const suporteFlow     = require("./suporte.flow");
 
 // ── Palavras-chave de navegação ────────────────────────────────────────────────
 const PALAVRAS_MENU = new Set([
@@ -24,14 +24,15 @@ const PALAVRAS_ENCERRAR = new Set([
 ]);
 
 // Sectors gerenciados — qualquer outro é inválido e deve ser resetado
-// "financeiro" adicionado: financeiro.flow.js usa session.sector = "financeiro"
-const SECTORS_VALIDOS = new Set(["vendas", "crediario", "gestao", "atendente", "financeiro"]);
+const SECTORS_VALIDOS = new Set(["vendas", "crediario", "gestao", "atendente", "suporte"]);
 
 // ── Steps válidos por sector ───────────────────────────────────────────────────
 const STEPS_POR_SECTOR = {
   gestao:     ["aguardando_nome", "aguardando_motivo_gestao"],
   atendente:  ["aguardando_motivo_atendente"],
-  financeiro: ["menu_financeiro", "aguardando_nome", "aguardando_duvida"],
+  crediario:  ["aguardando_nome_cred", "aguardando_cpf", "aguardando_motivo_cred", "aguardando_nome_consulta_cred", "aguardando_cpf_consulta"],
+  vendas:     ["aguardando_nome", "aguardando_veiculo", "aguardando_orcamento"],
+  suporte:    ["aguardando_problema", "aguardando_nome", "aguardando_cpf", "aguardando_cpf_consulta"],
 };
 
 // ── Menu principal ─────────────────────────────────────────────────────────────
@@ -50,7 +51,7 @@ function menuPrincipal(nome) {
     "2 - Crediário\n" +
     "3 - Falar com a Equipe\n" +
     "4 - Horário e Localização\n" +
-    "5 - Financeiro\n\n" +
+    "5 - Suporte Técnico\n\n" +
     "_Digite o número da opção desejada._"
   );
 }
@@ -235,6 +236,11 @@ async function _mainFlowInterno({ userId, message }) {
     return resp ?? menuPrincipal(nomeSalvo);
   }
 
+  if (session.sector === "suporte") {
+    const resp = await suporteFlow(message, userId, session);
+    return resp ?? menuPrincipal(nomeSalvo);
+  }
+
   // ── Fluxo de gestão ──────────────────────────────────────────────────────────
   if (session.sector === "gestao") {
     if (PALAVRAS_MENU.has(msgNorm)) {
@@ -253,7 +259,7 @@ async function _mainFlowInterno({ userId, message }) {
       const ticket = await _criarTicket({
         userId,
         type:         "atendimento_gestao",
-        sector:       "gestao",
+        sector:       "geral",
         customerName: session.customerName || MSG.NAO_INFORMADO,
         description:  sanitizarTexto(message),
       });
@@ -329,11 +335,6 @@ async function _mainFlowInterno({ userId, message }) {
       return MSG.gestao.PEDIR_NOME + MSG.ESCAPE_DICA;
     }
 
-    case "5": {
-      const r5 = await financeiroFlow(message, userId, session);
-      return r5 ?? menuPrincipal(nomeSalvo);
-    }
-
     case "4":
       return (
         "🕐 *Horário de Atendimento*\n\n" +
@@ -344,6 +345,11 @@ async function _mainFlowInterno({ userId, message }) {
         `${estaEmHorarioDeAtendimento() ? "✅ Estamos *abertos* agora!" : "⏰ No momento estamos *fechados*."}\n\n` +
         MSG.VOLTAR_MENU
       );
+
+    case "5": {
+      const r5 = await suporteFlow(message, userId, session);
+      return r5 ?? menuPrincipal(nomeSalvo);
+    }
 
     // ── Default: IA responde ─────────────────────────────────────────────────
     default: {
@@ -425,9 +431,9 @@ async function _mainFlowInterno({ userId, message }) {
         return resposta + "\n\n" + MSG.gestao.PEDIR_NOME + MSG.ESCAPE_DICA;
       }
 
-      if (intencao === "financeiro") {
-        await updateSession(userId, { sector: "financeiro", step: "menu_financeiro", aiHistorico: novoHistorico, _iaFalhas: 0 });
-        return resposta + "\n\n" + MSG.financeiro.MENU();
+      if (intencao === "suporte") {
+        await updateSession(userId, { sector: "suporte", aiHistorico: novoHistorico, _iaFalhas: 0 });
+        return resposta + "\n\n" + MSG.suporte.MENU();
       }
 
       // Intenção "chat" — resposta livre da IA, sem menu forçado

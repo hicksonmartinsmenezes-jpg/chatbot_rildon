@@ -99,8 +99,8 @@ async function assignTicket(id, user) {
   return ticketRepository.assign(id, user);
 }
 
-async function transferTicket(id, sector) {
-  return ticketRepository.transfer(id, sector);
+async function transferTicket(id, sector, targetUser = null) {
+  return ticketRepository.transfer(id, sector, targetUser);
 }
 
 module.exports = {

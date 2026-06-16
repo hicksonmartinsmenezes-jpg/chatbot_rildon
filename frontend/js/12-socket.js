@@ -95,7 +95,7 @@ socket.on("nova_mensagem", (data) => {
         Math.abs(new Date(item.createdAt) - new Date(data.createdAt)) < 3000
       );
 
-  if (!alreadyExists && data.response) allHistory.unshift(data);
+  if (!alreadyExists) allHistory.unshift(data);
 
   const isCurrentConversation = selectedConversationUser === data.userId;
 
@@ -152,8 +152,11 @@ socket.on("typing", data => {
       item.messageId === data.messageId ? { ...item, status: data.status } : item
     );
 
-    if (currentTab === "conversations" && selectedConversationUser) {
-      openConversation(selectedConversationUser, false);
+    // Atualiza só o ícone de status no DOM — sem re-render completo nem chamada API
+    if (data.messageId && currentTab === "conversations") {
+      document.querySelectorAll(`.bubble[data-msg-id="${data.messageId}"] .msg-status`).forEach(el => {
+        el.innerHTML = renderMessageStatus(data.status);
+      });
     }
   });
 

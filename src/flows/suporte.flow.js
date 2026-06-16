@@ -36,14 +36,15 @@ async function suporteFlow(message, userId, session) {
       const ticket = await createTicket({
         userId,
         type:         "suporte_tecnico",
+        sector:       "suporte",
         customerName: session.customerName,
         cpf:          formatarCPF(msg),
         description:  session.problemDescription,
       });
 
-      notificarAtendente(ticket);
       await clearSession(userId);
-
+      if (!ticket) return "⚠️ Não consegui registrar seu chamado agora.\n\nPor favor, ligue: *(79) 99135-3569*\n\n_Digite *0* para voltar ao menu._";
+      notificarAtendente(ticket);
       return MSG.suporte.CHAMADO_ABERTO(ticket);
     }
 
@@ -73,11 +74,13 @@ async function suporteFlow(message, userId, session) {
         const ticket = await createTicket({
           userId,
           type:         "suporte_humano",
+          sector:       "suporte",
           customerName: session.customerName || MSG.NAO_INFORMADO,
-          description:  "Cliente solicitou suporte humano.",
+          description:  "Cliente solicitou suporte técnico com atendente.",
         });
-        notificarAtendente(ticket);
         await clearSession(userId);
+        if (!ticket) return "⚠️ Não consegui registrar sua solicitação agora.\n\nPor favor, ligue: *(79) 99135-3569*\n\n_Digite *0* para voltar ao menu._";
+        notificarAtendente(ticket);
         return MSG.suporte.TECNICO_HUMANO(ticket);
       }
 

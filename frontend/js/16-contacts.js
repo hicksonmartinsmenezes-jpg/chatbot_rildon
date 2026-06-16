@@ -236,7 +236,7 @@ function contactsPageNext() {
 
 async function loadContactsTags() {
   try {
-    const tags = await apiFetch("/api/contacts/tags").then(r => r.json());
+    const tags = await apiFetch("/api/contacts/tags").then(r => r.ok ? r.json() : []);
     const sel  = document.getElementById("contacts-filter-tag");
     if (!sel) return;
     const current = sel.value;

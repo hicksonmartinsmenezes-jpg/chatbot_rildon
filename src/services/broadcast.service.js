@@ -32,7 +32,7 @@ function normalizeUserId(userId) {
   return `${digits}@s.whatsapp.net`;
 }
 
-async function createBroadcast({ title, message, recipients, createdBy, imageUrl }) {
+async function createBroadcast({ title, message, recipients, createdBy, imageUrl, mediaType }) {
   if (!title || !message) {
     throw new Error("Título e mensagem são obrigatórios.");
   }
@@ -66,11 +66,11 @@ const cleanedRecipients = Array.from(recipientMap.values());
     const broadcastRes = await client.query(
       `
      INSERT INTO broadcasts
-      (title, message, total_recipients, created_by, image_url)
-      VALUES ($1, $2, $3, $4, $5)
+      (title, message, total_recipients, created_by, image_url, media_type)
+      VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *
       `,
-      [title, message, cleanedRecipients.length, createdBy || null, imageUrl || null]
+      [title, message, cleanedRecipients.length, createdBy || null, imageUrl || null, mediaType || null]
     );
 
     const broadcast = broadcastRes.rows[0];
@@ -207,17 +207,18 @@ async function processBroadcastQueue(broadcastId) {
       }
 
       if (broadcast.image_url) {
-        const safeName  = path.basename(broadcast.image_url);
-        const imagePath = path.join(CAMPAIGNS_DIR, safeName);
+        const safeName   = path.basename(broadcast.image_url);
+        const mediaPath  = path.join(CAMPAIGNS_DIR, safeName);
 
-        if (!imagePath.startsWith(CAMPAIGNS_DIR + path.sep) && imagePath !== CAMPAIGNS_DIR) {
-          throw new Error(`Path de imagem inválido: ${broadcast.image_url}`);
+        if (!mediaPath.startsWith(CAMPAIGNS_DIR + path.sep) && mediaPath !== CAMPAIGNS_DIR) {
+          throw new Error(`Path de mídia inválido: ${broadcast.image_url}`);
         }
-        if (!fs.existsSync(imagePath)) {
-          throw new Error(`Arquivo de imagem não encontrado: ${safeName}`);
+        if (!fs.existsSync(mediaPath)) {
+          throw new Error(`Arquivo não encontrado: ${safeName}`);
         }
 
-        await sendMedia(targetUserId, imagePath, broadcast.message);
+        const mediaType = broadcast.media_type || "image";
+        await sendMedia(targetUserId, mediaPath, broadcast.message, mediaType);
       } else {
         await sendMessage(targetUserId, broadcast.message);
       }

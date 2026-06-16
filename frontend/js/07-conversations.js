@@ -29,7 +29,7 @@ async function loadConversations(silent = false) {
 
   try {
     const [histRes, ticketRes] = await Promise.all([
-      apiFetch(`${BASE}/api/history?limit=200`).catch(() => null),
+      apiFetch(`${BASE}/api/history/conversations`).catch(() => null),
       apiFetch(`${BASE}/api/tickets?limit=500`).catch(() => null)
     ]);
 
@@ -190,7 +190,11 @@ function lastMessage(userId) {
 }
 
 // ─── Abre conversa com header de ações de ticket ──────────────────────────────
-function openConversation(userId, updateActive = true) {
+let _openConvSeq = 0;
+
+async function openConversation(userId, updateActive = true) {
+  const seq = ++_openConvSeq;
+
   selectedConversationUser = userId;
   const hadUnread = unreadMessages[userId] > 0;
   unreadMessages[userId] = 0;
@@ -230,7 +234,13 @@ function openConversation(userId, updateActive = true) {
           <i class="fa-solid fa-xmark"></i> Fechar
         </button>
       `;
-    } else if (!ticket || ticket.status === "resolvido" || ticket.status === "cancelado") {
+    } else if (!ticket) {
+      actionButtons = `
+        <button class="conv-action-btn conv-btn-aceitar" onclick="reabrirTicketConv('${userId}')">
+          <i class="fa-solid fa-plus"></i> Iniciar Atendimento
+        </button>
+      `;
+    } else if (ticket.status === "resolvido" || ticket.status === "cancelado") {
       actionButtons = `
         <button class="conv-action-btn conv-btn-aceitar" onclick="reabrirTicketConv('${userId}')">
           <i class="fa-solid fa-rotate-left"></i> Reabrir
@@ -259,9 +269,21 @@ function openConversation(userId, updateActive = true) {
     document.querySelector(`.chat-item[data-user="${cssEscape(userId)}"]`)?.classList.add("active");
   }
 
-  // Snapshot local para evitar race condition se allHistory for substituído durante render
-  const historySnapshot = allHistory;
-  const messages = historySnapshot.filter(item => item.userId === userId).reverse();
+  // Busca histórico completo do usuário via API para exibir todas as mensagens
+  let userHistory = allHistory.filter(item => item.userId === userId);
+  try {
+    const r = await apiFetch(`${BASE}/api/history?userId=${encodeURIComponent(userId)}&limit=500`);
+    if (seq !== _openConvSeq) return; // chamada mais nova já assumiu o controle
+    if (r?.ok) {
+      const raw = await r.json();
+      const rows = Array.isArray(raw) ? raw : raw.data || [];
+      if (rows.length) userHistory = rows;
+    }
+  } catch (_) {}
+
+  if (seq !== _openConvSeq) return; // verificação final antes de renderizar
+
+  const messages = [...userHistory].reverse();
 
   if (!messagesBox) return;
 
@@ -292,9 +314,9 @@ function openConversation(userId, updateActive = true) {
     if (item.response) {
       html.push(`
         <div class="bubble-row bot-row">
-          <div class="bubble bot">
+          <div class="bubble bot"${item.messageId ? ` data-msg-id="${safe(item.messageId)}"` : ""}>
             <p>${safe(item.response)}</p>
-            <small>${safe(shortTime(item.createdAt))} ${renderMessageStatus(item.status)}</small>
+            <small>${safe(shortTime(item.createdAt))} <span class="msg-status">${renderMessageStatus(item.status)}</span></small>
           </div>
         </div>
       `);
@@ -376,29 +398,44 @@ async function fecharTicketConv(id) {
 }
 
 async function transferirTicketConv(id) {
-  showInputModal({
-    title:       "Transferir atendimento",
-    label:       "Para qual setor?",
-    placeholder: "vendas, financeiro, suporte, garantia",
-    confirmText: "Transferir",
-    onConfirm:   async (sector) => {
-      if (!sector) return;
-      const sectorNorm = sector.trim().toLowerCase();
-      try {
-        const res = await apiFetch(`${BASE}/api/tickets/${id}/transfer`, {
-          method: "PATCH",
-          body:   JSON.stringify({ sector: sectorNorm })
-        });
-        if (!res?.ok) throw new Error("Erro ao transferir.");
-        showToast("✅ Transferido!");
-        await loadConversations();
-        if (selectedConversationUser) openConversation(selectedConversationUser);
-        if (currentTab === "metrics") loadMetricsCharts();
-      } catch (err) {
-        showToast(`❌ ${err.message}`);
-      }
+  try {
+    const r     = await apiFetch(`${BASE}/api/atendentes`);
+    const users = r?.ok ? await r.json() : [];
+
+    if (!users.length) {
+      showToast("❌ Nenhum atendente cadastrado encontrado.");
+      return;
     }
-  });
+
+    const options = users.map(u => ({
+      value: u.id,
+      label: `${u.nome} (${u.perfil}${u.sector && u.sector !== "geral" ? " · " + u.sector : ""})`
+    }));
+
+    showSelectModal({
+      title:       "Transferir atendimento",
+      label:       "Para qual atendente?",
+      options,
+      confirmText: "Transferir",
+      onConfirm:   async (toUserId) => {
+        try {
+          const res = await apiFetch(`${BASE}/api/tickets/${id}/transfer`, {
+            method: "PATCH",
+            body:   JSON.stringify({ toUserId })
+          });
+          if (!res?.ok) throw new Error("Erro ao transferir.");
+          showToast("✅ Transferido!");
+          await loadConversations();
+          if (selectedConversationUser) openConversation(selectedConversationUser);
+          if (currentTab === "metrics") loadMetricsCharts();
+        } catch (err) {
+          showToast(`❌ ${err.message}`);
+        }
+      }
+    });
+  } catch (err) {
+    showToast(`❌ Erro ao carregar atendentes.`);
+  }
 }
 
 // ─── Envio de mensagem ────────────────────────────────────────────────────────
@@ -439,14 +476,15 @@ async function sendConversationMessage() {
   input.value = "";
   resetTextareaHeight(input);
 
-  try {
-    await fetch(`${BASE}/api/messages/typing`, {
-      credentials: "include",
-      method:  "POST",
-      headers: apiHeaders(),
-      body:    JSON.stringify({ userId: selectedConversationUser })
-    });
+  // Typing indicator: fire-and-forget — falha aqui nunca bloqueia o envio
+  fetch(`${BASE}/api/messages/typing`, {
+    credentials: "include",
+    method:  "POST",
+    headers: apiHeaders(),
+    body:    JSON.stringify({ userId: selectedConversationUser })
+  }).catch(() => {});
 
+  try {
     const res = await apiFetch(`${BASE}/api/messages/send`, {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
@@ -470,7 +508,8 @@ async function sendConversationMessage() {
 
   } catch (err) {
     showToast(`❌ Erro ao enviar: ${err.message}`);
-    if (input) input.value = finalMessage;
+    // Só restaura se o usuário não digitou nada novo enquanto aguardava
+    if (input && !input.value.trim()) input.value = finalMessage;
   } finally {
     sendingConversationMessage = false;
     if (sendBtn) { sendBtn.disabled = false; sendBtn.style.opacity = ""; }

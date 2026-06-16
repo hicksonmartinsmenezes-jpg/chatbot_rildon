@@ -10,8 +10,10 @@ const MSG = {
 
   vendas: {
     MENU: () =>
-      "🛒 *Orçamento / Falar com atendente*\n\n" +
-      "Vou te ajudar a solicitar um orçamento e um atendente entrará em contato! 😊",
+      "🛒 *Orçamento / Atendimento*\n\n" +
+      "Como posso te ajudar?\n\n" +
+      "1 - Solicitar orçamento de peça ou serviço\n" +
+      "0 - Voltar ao menu principal",
 
     PEDIR_NOME:     "📝 Para solicitar orçamento, informe seu *nome completo*:",
     PEDIR_VEICULO:  "🚗 Informe o *veículo* (marca, modelo e ano):\n_Ex: VW Gol G5 2012 ou Fiat Uno 2015_\n\n_Digite *pular* se não souber ou não se aplicar._",
@@ -51,7 +53,6 @@ const MSG = {
       "Oferecemos crediário próprio para nossos clientes!\n\n" +
       "1 - Solicitar crediário\n" +
       "2 - Consultar situação do meu crediário\n" +
-      "3 - Falar com o financeiro\n" +
       "0 - Voltar ao menu principal",
 
     PEDIR_NOME:  "📝 Para continuar, informe seu *nome completo*:",
@@ -62,12 +63,12 @@ const MSG = {
       `✅ *Solicitação de crediário registrada!*\n\n` +
       `👤 Nome: ${ticket.customerName}\n` +
       `🎫 Protocolo: *#${ticket.protocolo}*\n\n` +
-      `Nossa equipe financeira entrará em contato para dar continuidade.\n` +
+      `Nossa equipe entrará em contato para dar continuidade.\n` +
       `Horário: Seg–Sex 07:50–17:50 | Sáb 08:00–12:00\n\n` +
       `Posso ajudar com mais alguma coisa? Digite *0* para o menu ou continue conversando.`,
 
     ATENDENTE: (ticket) =>
-      `👤 Um atendente do financeiro entrará em contato!\n\n` +
+      `👤 Um atendente entrará em contato em breve!\n\n` +
       `🎫 Protocolo: *#${ticket.protocolo}*\n\n` +
       `Posso ajudar com mais alguma coisa? Digite *0* para o menu.`,
   },
@@ -85,46 +86,6 @@ const MSG = {
       `Posso ajudar com mais alguma coisa? Digite *0* para o menu.`,
   },
 
-  financeiro: {
-    MENU: () =>
-      "💰 *Financeiro*\n\n" +
-      "Como posso ajudar?\n\n" +
-      "1 - Tirar dúvida financeira / consultar CPF ou CNPJ\n" +
-      "2 - Formas de pagamento\n" +
-      "3 - Falar com o financeiro\n" +
-      "0 - Voltar ao menu principal",
-
-    PEDIR_NOME:   "📝 Para continuar, informe seu *nome completo*:",
-    PEDIR_DUVIDA: "💬 Informe sua *dúvida financeira* ou seu *CPF/CNPJ* para consulta:",
-
-    DOCUMENTO_INVALIDO:
-      "⚠️ Documento inválido. Por favor, informe um *CPF* (11 dígitos) ou *CNPJ* (14 dígitos) válido, ou descreva sua dúvida financeira.",
-
-    FORMAS_PAGAMENTO:
-      "💳 *Formas de Pagamento*\n\n" +
-      "✅ Dinheiro\n" +
-      "✅ PIX\n" +
-      "✅ Cartão de débito\n" +
-      "✅ Cartão de crédito (parcelamento disponível)\n" +
-      "✅ Crediário próprio\n\n" +
-      "_Para solicitar crediário, volte ao menu e escolha a opção *2*._\n\n" +
-      "_Digite *0* para voltar ao menu._",
-
-    DUVIDA_REGISTRADA: (ticket, documento, _msg) =>
-      `✅ *Dúvida financeira registrada!*\n\n` +
-      `👤 Nome: ${ticket.customerName}\n` +
-      `🎫 Protocolo: *#${ticket.protocolo}*\n` +
-      (documento ? `🪪 Documento: ${documento}\n` : "") +
-      `\nNossa equipe financeira entrará em contato em breve.\n` +
-      `Horário: Seg–Sex 07:50–17:50 | Sáb 08:00–12:00\n\n` +
-      `Posso ajudar com mais alguma coisa? Digite *0* para o menu.`,
-
-    ATENDENTE: (ticket) =>
-      `👤 Um atendente do financeiro entrará em contato!\n\n` +
-      `🎫 Protocolo: *#${ticket.protocolo}*\n\n` +
-      `Posso ajudar com mais alguma coisa? Digite *0* para o menu.`,
-  },
-
   main: {
     PEDIR_MOTIVO_ATENDENTE:
       "💬 Certo! Para agilizar seu atendimento, descreva brevemente o que precisa:\n" +
@@ -138,6 +99,64 @@ const MSG = {
       "🕐 Um atendente entrará em contato em breve.\n\n" +
       "Horário: Seg–Sex 07:50–17:50 | Sáb 08:00–12:00\n\n" +
       "Posso ajudar com mais alguma coisa? Digite *0* para o menu.",
+  },
+
+  suporte: {
+    MENU: () =>
+      "🔧 *Suporte Técnico*\n\n" +
+      "Como posso te ajudar?\n\n" +
+      "1 - Abrir chamado de suporte\n" +
+      "2 - Consultar chamado existente\n" +
+      "3 - Falar com técnico\n" +
+      "0 - Voltar ao menu principal",
+
+    PEDIR_PROBLEMA:
+      "📋 Descreva o problema que está enfrentando:\n" +
+      "_Ex: Alternador com barulho, sensor com defeito, lâmpada que não acende..._",
+
+    PEDIR_NOME: "📝 Informe seu *nome completo*:",
+
+    PEDIR_CPF: "🪪 Informe seu *CPF* (somente números):",
+
+    PEDIR_CPF_CONSULTA:
+      "🪪 Para consultar seus chamados, informe seu *CPF* (somente números):",
+
+    NENHUM_CHAMADO:
+      "🔍 Nenhum chamado encontrado com esse CPF.\n\n" +
+      "Para abrir um novo chamado, escolha a opção *1*.\n\n" +
+      "_Digite *0* para voltar ao menu._",
+
+    CONSULTA_RESULTADO: (tickets) => {
+      const statusLabel = {
+        aberto:       "🟡 Aguardando",
+        em_andamento: "🔵 Em andamento",
+        resolvido:    "✅ Resolvido",
+        cancelado:    "❌ Cancelado",
+      };
+      const linhas = tickets.slice(0, 5).map(
+        t => `• *#${t.protocolo}* — ${statusLabel[t.status] || t.status}`
+      );
+      return (
+        `🎫 *Seus chamados:*\n\n${linhas.join("\n")}\n\n` +
+        `_Para mais informações, digite *3* para falar com um técnico._\n` +
+        `_Digite *0* para voltar ao menu._`
+      );
+    },
+
+    CHAMADO_ABERTO: (ticket) =>
+      `✅ *Chamado de suporte aberto!*\n\n` +
+      `👤 Nome: ${ticket.customerName}\n` +
+      `🎫 Protocolo: *#${ticket.protocolo}*\n\n` +
+      `Nossa equipe técnica entrará em contato em breve.\n` +
+      `Horário: Seg–Sex 07:50–17:50\n\n` +
+      `_Digite *0* para voltar ao menu._`,
+
+    TECNICO_HUMANO: (ticket) =>
+      `✅ *Solicitação registrada!*\n\n` +
+      `🎫 Protocolo: *#${ticket.protocolo}*\n\n` +
+      `Um técnico entrará em contato em breve.\n` +
+      `Horário: Seg–Sex 07:50–17:50\n\n` +
+      `_Digite *0* para voltar ao menu._`,
   },
 };
 

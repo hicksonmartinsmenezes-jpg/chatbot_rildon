@@ -10,7 +10,7 @@ const {
 
 // CORRIGIDO: "atendimento" adicionado — mainFlow cria tickets com esse setor
 const SETORES_VALIDOS = [
-  "suporte", "vendas", "financeiro", "garantia", "geral", "atendimento", "gestao"
+  "suporte", "vendas", "financeiro", "garantia", "geral", "atendimento", "gestao", "crediario"
 ];
 
 const STATUS_VALIDOS = ["aberto", "em_andamento", "resolvido", "cancelado"];
@@ -100,8 +100,11 @@ async function assumirTicket(req, res) {
 
     const ticket = await assignTicket(id, req.user);
 
-    if (!ticket) {
+    if (!ticket || ticket.notFound) {
       return res.status(404).json({ error: "Ticket não encontrado." });
+    }
+    if (ticket.alreadyAssigned) {
+      return res.status(409).json({ error: "Ticket já foi assumido por outro atendente." });
     }
 
     res.json({ ok: true, ticket });
@@ -114,19 +117,28 @@ async function assumirTicket(req, res) {
 async function transferirTicket(req, res) {
   try {
     const id = req.params.id;
-    const { sector } = req.body || {};
+    const { sector, toUserId } = req.body || {};
 
-    if (!sector) {
-      return res.status(400).json({ error: "Setor é obrigatório." });
+    let targetUser = null;
+
+    if (toUserId) {
+      const userRepository = require("../repositories/user.repository");
+      targetUser = await userRepository.findById(toUserId);
+      if (!targetUser) {
+        return res.status(404).json({ error: "Atendente não encontrado." });
+      }
+    } else {
+      if (!sector) {
+        return res.status(400).json({ error: "Informe toUserId ou sector." });
+      }
+      if (!SETORES_VALIDOS.includes(sector.toLowerCase())) {
+        return res.status(400).json({
+          error: `Setor inválido. Use: ${SETORES_VALIDOS.join(", ")}`
+        });
+      }
     }
 
-    if (!SETORES_VALIDOS.includes(sector.toLowerCase())) {
-      return res.status(400).json({
-        error: `Setor inválido. Use: ${SETORES_VALIDOS.join(", ")}`
-      });
-    }
-
-    const ticket = await transferTicket(id, sector.toLowerCase());
+    const ticket = await transferTicket(id, targetUser?.sector || sector?.toLowerCase() || "geral", targetUser);
 
     if (!ticket) {
       return res.status(404).json({ error: "Ticket não encontrado." });

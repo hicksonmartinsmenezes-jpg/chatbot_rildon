@@ -769,17 +769,53 @@
           </div>
 
           <div class="camp-field">
-            <label>Imagem <span class="camp-label-opt">(opcional)</span></label>
-            <label class="camp-file-label" for="campaign-image">
-              <i class="fa-solid fa-image"></i>
-              <span id="camp-file-name">Escolher imagem...</span>
-            </label>
-            <input type="file" id="campaign-image" accept="image/*"
-              onchange="previewCampaignImage(event)" style="display:none">
+            <label>Mídia <span class="camp-label-opt">(opcional)</span></label>
+            <div class="camp-media-tabs">
+              <button type="button" class="camp-media-tab active" onclick="setCampaignMediaType('none', this)">
+                <i class="fa-solid fa-ban"></i> Nenhuma
+              </button>
+              <button type="button" class="camp-media-tab" onclick="setCampaignMediaType('image', this)">
+                <i class="fa-solid fa-image"></i> Imagem
+              </button>
+              <button type="button" class="camp-media-tab" onclick="setCampaignMediaType('pdf', this)">
+                <i class="fa-solid fa-file-pdf"></i> PDF
+              </button>
+              <button type="button" class="camp-media-tab" onclick="setCampaignMediaType('audio', this)">
+                <i class="fa-solid fa-music"></i> Áudio
+              </button>
+            </div>
+
+            <div id="camp-media-upload" class="hidden" style="margin-top:8px;">
+              <label class="camp-file-label" for="campaign-media-file">
+                <i class="fa-solid fa-paperclip" id="camp-file-icon"></i>
+                <span id="camp-file-name">Escolher arquivo...</span>
+              </label>
+              <input type="file" id="campaign-media-file" style="display:none"
+                onchange="previewCampaignMedia(event)">
+            </div>
+
+            <!-- Preview imagem -->
             <div id="campaign-image-preview" class="hidden" style="margin-top:8px;">
-              <img id="campaign-preview-img">
-              <button class="camp-img-remove" onclick="removeCampaignImage()" title="Remover imagem">
+              <img id="campaign-preview-img" style="max-width:100%;border-radius:8px;">
+              <button class="camp-img-remove" onclick="removeCampaignMedia()" title="Remover">
                 <i class="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+
+            <!-- Preview PDF -->
+            <div id="campaign-pdf-preview" class="hidden" style="margin-top:8px;display:flex;align-items:center;gap:8px;padding:10px;background:rgba(255,255,255,.06);border-radius:8px;">
+              <i class="fa-solid fa-file-pdf" style="font-size:24px;color:#ef4444;"></i>
+              <span id="campaign-pdf-name" style="font-size:13px;color:var(--color-text);">—</span>
+              <button class="camp-img-remove" onclick="removeCampaignMedia()" title="Remover" style="margin-left:auto;">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+
+            <!-- Preview áudio -->
+            <div id="campaign-audio-preview" class="hidden" style="margin-top:8px;">
+              <audio id="campaign-preview-audio" controls style="width:100%;border-radius:8px;"></audio>
+              <button class="camp-img-remove" onclick="removeCampaignMedia()" title="Remover" style="margin-top:4px;">
+                <i class="fa-solid fa-xmark"></i> Remover
               </button>
             </div>
           </div>

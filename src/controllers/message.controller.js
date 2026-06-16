@@ -24,26 +24,43 @@ async function sendManualMessage(req, res) {
 
     const sent = await sendMessage(userId, message.trim());
 
-    const historyItem = await saveHistory({
-      userId,
-      contactName: "",
-      message: null,
-      response: message.trim(),
-      sector: "manual",
-      messageId: sent?.id || null,
-      status: "sent"
-    });
+    // Busca nome do contato no histórico para não deixar em branco
+    let contactName = "";
+    try {
+      const pool = require("../database/postgres");
+      const r = await pool.query(
+        `SELECT contact_name FROM history WHERE user_id = $1 AND contact_name IS NOT NULL AND contact_name <> '' ORDER BY created_at DESC LIMIT 1`,
+        [userId]
+      );
+      contactName = r.rows[0]?.contact_name || "";
+    } catch (_) {}
 
-    emitEvent("nova_mensagem", {
-      userId,
-      contactName: "",
-      message: null,
-      response: message.trim(),
-      sector: "manual",
-      messageId: sent?.id || null,
-      status: "sent",
-      createdAt: new Date()
-    });
+    // Salva histórico separado do envio — falha aqui não afeta a resposta ao frontend
+    let historyItem = null;
+    try {
+      historyItem = await saveHistory({
+        userId,
+        contactName,
+        message: null,
+        response: message.trim(),
+        sector: "manual",
+        messageId: sent?.id || null,
+        status: "sent"
+      });
+
+      emitEvent("nova_mensagem", {
+        userId,
+        contactName,
+        message: null,
+        response: message.trim(),
+        sector: "manual",
+        messageId: sent?.id || null,
+        status: "sent",
+        createdAt: new Date()
+      });
+    } catch (histErr) {
+      logger.warn(`[sendManualMessage] Histórico não salvo: ${histErr.message}`);
+    }
 
     res.json({
       success: true,
@@ -54,7 +71,6 @@ async function sendManualMessage(req, res) {
     });
 
   } catch (error) {
-    // CORRIGIDO: console.error → logger.error
     logger.error(`[sendManualMessage] ${error.message}`);
     res.status(500).json({ error: "Erro ao enviar mensagem." });
   }

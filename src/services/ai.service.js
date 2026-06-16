@@ -34,8 +34,8 @@ const MAX_TENTATIVAS  = 2;
 // Temperature mais baixa = respostas mais consistentes e menos "criativas"
 // Para atendimento ao cliente, 0.45 é o ideal: natural mas previsível
 const TEMPERATURE = 0.45;
-// Máximo de tokens por resposta — WhatsApp pede respostas curtas
-const MAX_TOKENS  = 380;
+// Máximo de tokens por resposta — 512 permite respostas completas sem truncar
+const MAX_TOKENS  = 512;
 
 // ─── Rate limiter por provedor ─────────────────────────────────────────────────
 let _ultimaRequisicao = 0;
@@ -199,7 +199,8 @@ intencao DEVE SER:
 • "vendas"    → cliente quer comprar, verificar preço ou disponibilidade de peça específica: "preciso de X", "tem X para Y?", "quanto custa", "vocês trabalham com X?", "tem filtro/alternador/sensor para [carro]?"
 • "crediario" → menciona crediário, financiamento ou parcelamento explicitamente
 • "atendente" → pede EXPLICITAMENTE falar com humano/atendente/vendedor agora
-• "gestao"    → reclamação, insatisfação forte, produto com defeito, ou pede gerente/responsável
+• "suporte"   → relata problema técnico com produto adquirido, defeito em peça comprada, dúvida de funcionamento de produto já instalado
+• "gestao"    → reclamação sobre atendimento, insatisfação grave, pede falar com gerente/responsável
 • "chat"      → PADRÃO: saudações, dúvidas técnicas sem intenção de compra imediata, informações gerais sobre a loja`,
     };
     _promptBaseCacheAt = agora;
@@ -301,7 +302,7 @@ function _extrairTextoResposta(provedor, data) {
 }
 
 // ─── Intenções válidas ─────────────────────────────────────────────────────────
-const INTENCOES_VALIDAS = new Set(["vendas", "crediario", "atendente", "gestao", "chat"]);
+const INTENCOES_VALIDAS = new Set(["vendas", "crediario", "atendente", "gestao", "suporte", "chat"]);
 
 // ─── Função principal ──────────────────────────────────────────────────────────
 async function perguntarIA(mensagem, { nomeCliente, historico = [], contexto = {} } = {}) {

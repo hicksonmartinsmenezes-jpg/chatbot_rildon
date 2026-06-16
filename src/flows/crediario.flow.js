@@ -79,7 +79,7 @@ async function crediarioFlow(message, userId, session) {
     const ticket = await _criarTicketCrediario({
       userId,
       type:         "crediario",
-      sector:       "financeiro",
+      sector:       "geral",
       customerName: session.customerName || MSG.NAO_INFORMADO,
       description:  sanitizarTexto(message),
     });
@@ -109,9 +109,9 @@ async function crediarioFlow(message, userId, session) {
     const ticket = await _criarTicketCrediario({
       userId,
       type:         "consulta_crediario",
-      sector:       "financeiro",
+      sector:       "geral",
       customerName: session.customerName || MSG.NAO_INFORMADO,
-      description:  `Consulta de situação de crediário`,
+      description:  `Consulta de situação de crediário — CPF: ${cpfNumeros}`,
     });
     await clearSession(userId);
     if (!ticket) return MSG_TICKET_FALHOU;
@@ -129,20 +129,6 @@ async function crediarioFlow(message, userId, session) {
     case "2": {
       await updateSession(userId, { step: "aguardando_nome_consulta_cred" });
       return MSG.crediario.PEDIR_NOME + MSG.ESCAPE_DICA;
-    }
-
-    case "3": {
-      const ticket = await _criarTicketCrediario({
-        userId,
-        type:         "atendente_financeiro",
-        sector:       "financeiro",
-        customerName: session.customerName || MSG.NAO_INFORMADO,
-        description:  "Cliente solicitou falar com o financeiro",
-      });
-      await clearSession(userId);
-      if (!ticket) return MSG_TICKET_FALHOU;
-      notificarAtendente(ticket);
-      return MSG.crediario.ATENDENTE(ticket);
     }
 
     default:

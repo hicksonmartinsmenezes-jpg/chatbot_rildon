@@ -1537,6 +1537,39 @@
   color: #919191;
 }
 
+/* ─── Tabs de tipo de mídia ─────────────────────────────────────── */
+.camp-media-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.camp-media-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.04);
+  color: var(--color-text-muted, #94a3b8);
+  cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s;
+}
+
+.camp-media-tab:hover {
+  background: rgba(255,255,255,.09);
+  color: var(--color-text, #e2e8f0);
+}
+
+.camp-media-tab.active {
+  background: rgba(29,108,245,.18);
+  border-color: var(--primary, #1d6cf5);
+  color: var(--primary, #1d6cf5);
+}
+
 /* Responsive */
 @media (max-width: 900px) {
   .camp-modal-cols { grid-template-columns: 1fr; }

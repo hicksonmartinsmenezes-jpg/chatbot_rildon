@@ -1,6 +1,4 @@
 const express = require("express");
-const { sendTypingPresence } = require("../config/whatsapp");
-const { emitEvent } = require("../services/socket.service");
 
 const {
     sendManualMessage,

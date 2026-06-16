@@ -24,7 +24,8 @@ const ticketRoutes   = require("./routes/ticket.routes");
 const historyRoutes  = require("./routes/history.routes");
 const messageRoutes  = require("./routes/message.routes");
 const contactRoutes  = require("./routes/contact.routes");
-const settingsRoutes = require("./routes/settings.routes");
+const settingsRoutes    = require("./routes/settings.routes");
+const atendenteRoutes   = require("./routes/atendentes.routes");
 
 const app = express();
 
@@ -96,6 +97,7 @@ app.use(express.static(path.join(__dirname, "../frontend"), {
 app.use("/api", authRouter);
 
 // Rotas autenticadas (qualquer usuário logado)
+app.use("/api", authSession, atendenteRoutes);
 app.use("/api", authSession, contactRoutes);
 app.use("/api", authSession, ticketRoutes);
 app.use("/api", authSession, historyRoutes);

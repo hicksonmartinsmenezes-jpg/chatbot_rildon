@@ -116,6 +116,7 @@ async function loadCampaigns() {
 
   try {
     const res  = await apiFetch("/api/broadcasts?limit=100");
+    if (!res.ok) { list.innerHTML = `<tr><td colspan="9" class="camp-empty">Erro ao carregar campanhas.</td></tr>`; return; }
     const data = await res.json();
 
     _campaigns = Array.isArray(data) ? data : [];
@@ -233,13 +234,13 @@ async function _doCreateCampaign(title, message, recipients) {
   setLoading(true);
 
   try {
-    let imageUrl = null;
-    const imageInput = document.getElementById("campaign-image");
-    const previewImg = document.getElementById("campaign-preview-img");
+    let imageUrl  = null;
+    let mediaType = null;
+    const mediaInput = document.getElementById("campaign-media-file");
 
-    if (imageInput?.files?.length) {
+    if (_campMediaType !== "none" && mediaInput?.files?.length) {
       const formData = new FormData();
-      formData.append("image", imageInput.files[0]);
+      formData.append("media", mediaInput.files[0]);
 
       const uploadRes  = await fetch("/api/broadcasts/upload", {
         method: "POST",
@@ -249,20 +250,18 @@ async function _doCreateCampaign(title, message, recipients) {
       const uploadData = await uploadRes.json();
 
       if (!uploadRes.ok) {
-        showToast(uploadData.error || "Erro ao enviar imagem.");
+        showToast(uploadData.error || "Erro ao enviar arquivo.");
         return;
       }
 
-      imageUrl = uploadData.url;
-
-      // Revoga blob URL do preview
-      if (previewImg?.src?.startsWith("blob:")) URL.revokeObjectURL(previewImg.src);
+      imageUrl  = uploadData.url;
+      mediaType = uploadData.mediaType || _campMediaType;
     }
 
     const res  = await apiFetch("/api/broadcasts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, message, recipients, imageUrl })
+      body: JSON.stringify({ title, message, recipients, imageUrl, mediaType })
     });
     const data = await res.json();
 
@@ -280,11 +279,7 @@ async function _doCreateCampaign(title, message, recipients) {
     if (campSearch) campSearch.value = "";
     const campResults = document.getElementById("camp-contact-results");
     if (campResults) campResults.innerHTML = `<div class="camp-picker-hint"><i class="fa-solid fa-arrow-up"></i> Digite para buscar contatos</div>`;
-    if (imageInput) imageInput.value = "";
-
-    const previewBox = document.getElementById("campaign-image-preview");
-    if (previewBox) previewBox.classList.add("hidden");
-    if (previewImg) previewImg.src = "";
+    setCampaignMediaType("none", document.querySelector(".camp-media-tab"));
 
     updateCampaignAudienceCount();
     loadCampaignStats();
@@ -451,27 +446,115 @@ function cloneCampaign(id) {
   showToast("Formulário preenchido com os dados da campanha.");
 }
 
-// ─── Preview de imagem ────────────────────────────────────────────────────────
+// ─── Seletor de tipo de mídia ─────────────────────────────────────────────────
 
-function previewCampaignImage(event) {
-  const file = event.target.files[0];
-  const img = document.getElementById("campaign-preview-img");
-  const container = document.getElementById("campaign-image-preview");
+let _campMediaType = "none"; // "none" | "image" | "pdf" | "audio"
 
-  if (!file || !img || !container) return;
+function setCampaignMediaType(type, btn) {
+  _campMediaType = type;
 
-  if (img.src?.startsWith("blob:")) {
-    URL.revokeObjectURL(img.src);
+  // Atualiza tabs
+  document.querySelectorAll(".camp-media-tab").forEach(b => b.classList.remove("active"));
+  if (btn) btn.classList.add("active");
+
+  const uploadBox = document.getElementById("camp-media-upload");
+  const fileInput = document.getElementById("campaign-media-file");
+  const fileIcon  = document.getElementById("camp-file-icon");
+  const fileName  = document.getElementById("camp-file-name");
+
+  removeCampaignMedia(); // limpa preview anterior
+
+  if (type === "none") {
+    uploadBox?.classList.add("hidden");
+    return;
   }
 
-  img.src = URL.createObjectURL(file);
-  container.classList.remove("hidden");
+  uploadBox?.classList.remove("hidden");
+
+  if (type === "image") {
+    fileInput.accept = "image/*";
+    if (fileIcon) fileIcon.className = "fa-solid fa-image";
+    if (fileName) fileName.textContent = "Escolher imagem...";
+  } else if (type === "pdf") {
+    fileInput.accept = ".pdf,application/pdf";
+    if (fileIcon) fileIcon.className = "fa-solid fa-file-pdf";
+    if (fileName) fileName.textContent = "Escolher PDF...";
+  } else if (type === "audio") {
+    fileInput.accept = "audio/*,.mp3,.ogg,.m4a,.wav,.aac,.opus";
+    if (fileIcon) fileIcon.className = "fa-solid fa-music";
+    if (fileName) fileName.textContent = "Escolher áudio...";
+  }
+}
+
+function previewCampaignMedia(event) {
+  const file = event.target.files[0];
+  if (!file) return;
 
   const fileName = document.getElementById("camp-file-name");
   if (fileName) fileName.textContent = file.name;
 
+  // Esconde todos os previews
+  ["campaign-image-preview", "campaign-pdf-preview", "campaign-audio-preview"]
+    .forEach(id => document.getElementById(id)?.classList.add("hidden"));
+
+  if (_campMediaType === "image") {
+    const img = document.getElementById("campaign-preview-img");
+    if (img) {
+      if (img.src?.startsWith("blob:")) URL.revokeObjectURL(img.src);
+      img.src = URL.createObjectURL(file);
+    }
+    document.getElementById("campaign-image-preview")?.classList.remove("hidden");
+  } else if (_campMediaType === "pdf") {
+    const nameEl = document.getElementById("campaign-pdf-name");
+    if (nameEl) nameEl.textContent = file.name;
+    const box = document.getElementById("campaign-pdf-preview");
+    if (box) box.classList.remove("hidden");
+    // display:flex overrides hidden via inline style
+    if (box) box.style.display = "flex";
+  } else if (_campMediaType === "audio") {
+    const audio = document.getElementById("campaign-preview-audio");
+    if (audio) {
+      if (audio.src?.startsWith("blob:")) URL.revokeObjectURL(audio.src);
+      audio.src = URL.createObjectURL(file);
+    }
+    document.getElementById("campaign-audio-preview")?.classList.remove("hidden");
+  }
+
   updateCampaignPreview();
 }
+
+function removeCampaignMedia() {
+  const fileInput = document.getElementById("campaign-media-file");
+  const img       = document.getElementById("campaign-preview-img");
+  const audio     = document.getElementById("campaign-preview-audio");
+
+  if (img?.src?.startsWith("blob:"))   URL.revokeObjectURL(img.src);
+  if (audio?.src?.startsWith("blob:")) URL.revokeObjectURL(audio.src);
+
+  if (fileInput) fileInput.value = "";
+  if (img)       img.src = "";
+  if (audio)     audio.src = "";
+
+  const pdfBox = document.getElementById("campaign-pdf-preview");
+  if (pdfBox) { pdfBox.classList.add("hidden"); pdfBox.style.display = ""; }
+
+  document.getElementById("campaign-image-preview")?.classList.add("hidden");
+  document.getElementById("campaign-audio-preview")?.classList.add("hidden");
+
+  const nameEl = document.getElementById("camp-file-name");
+  if (nameEl) {
+    nameEl.textContent =
+      _campMediaType === "image" ? "Escolher imagem..."  :
+      _campMediaType === "pdf"   ? "Escolher PDF..."     :
+      _campMediaType === "audio" ? "Escolher áudio..."   : "Escolher arquivo...";
+  }
+
+  updateCampaignPreview();
+}
+
+// Mantém compatibilidade com referências antigas
+function removeCampaignImage() { removeCampaignMedia(); }
+function previewCampaignImage(event) { previewCampaignMedia(event); }
 
 // ─── Destinatários customizados ───────────────────────────────────────────────
 
@@ -704,8 +787,8 @@ async function updateCampaignAudienceCount() {
     }
     const qs  = params.toString() ? `?${params}` : "";
     const res  = await apiFetch(`/api/broadcasts/audience/${audienceType}${qs}`);
-    const data = await res.json();
     if (!res.ok) { countBox.innerHTML = "Não foi possível calcular o público."; return; }
+    const data = await res.json();
     countBox.innerHTML = `${data.length} destinatário(s) encontrado(s).`;
   } catch {
     countBox.innerHTML = "Erro ao calcular destinatários.";
@@ -718,8 +801,8 @@ async function loadCampaignStats() {
   if (!getCurrentUser()) return;
   try {
     const res  = await apiFetch("/api/broadcasts/stats");
-    const data = await res.json();
     if (!res.ok) return;
+    const data = await res.json();
     const el = id => document.getElementById(id);
     if (el("campaign-stat-total"))   el("campaign-stat-total").textContent   = data.campaigns   || 0;
     if (el("campaign-stat-sent"))    el("campaign-stat-sent").textContent    = data.sent        || 0;
@@ -748,7 +831,7 @@ function closeCampaignModal() {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
-  removeCampaignImage();
+  setCampaignMediaType("none", document.querySelector(".camp-media-tab"));
 
   // Reset audiência para padrão
   const defaultRadio = document.querySelector("input[name='campaign-audience'][value='all_clients']");
@@ -771,11 +854,11 @@ function switchCampaignPanel(panel, event) {
 // ─── Preview WhatsApp (Nova Campanha) ─────────────────────────────────────────
 
 function updateCampaignPreview() {
-  const msg    = document.getElementById("campaign-message")?.value || "";
-  const textEl = document.getElementById("camp-wa-text");
+  const msg     = document.getElementById("campaign-message")?.value || "";
+  const textEl  = document.getElementById("camp-wa-text");
   const imgWrap = document.getElementById("camp-wa-img-wrap");
-  const waImg  = document.getElementById("camp-wa-img");
-  const timeEl = document.getElementById("camp-wa-time");
+  const waImg   = document.getElementById("camp-wa-img");
+  const timeEl  = document.getElementById("camp-wa-time");
 
   if (textEl) {
     if (msg.trim()) {
@@ -792,12 +875,32 @@ function updateCampaignPreview() {
     timeEl.textContent = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   }
 
-  const previewImg = document.getElementById("campaign-preview-img");
+  // Atualiza área de mídia do preview WhatsApp
   if (imgWrap && waImg) {
-    if (previewImg?.src && !previewImg.src.endsWith("#") && !previewImg.src.endsWith("/")) {
+    const previewImg   = document.getElementById("campaign-preview-img");
+    const mediaInput   = document.getElementById("campaign-media-file");
+    const hasFile      = mediaInput?.files?.length > 0;
+
+    if (_campMediaType === "image" && previewImg?.src && !previewImg.src.endsWith("#") && !previewImg.src.endsWith("/")) {
       waImg.src = previewImg.src;
+      waImg.style.display = "";
+      imgWrap.innerHTML = `<img id="camp-wa-img" src="${previewImg.src}" alt="" style="width:100%;border-radius:6px 6px 0 0;">`;
+      imgWrap.classList.remove("hidden");
+    } else if (_campMediaType === "pdf" && hasFile) {
+      const fname = mediaInput.files[0].name;
+      imgWrap.innerHTML = `<div style="display:flex;align-items:center;gap:8px;padding:10px;background:rgba(255,255,255,.1);border-radius:6px 6px 0 0;">
+        <i class="fa-solid fa-file-pdf" style="font-size:22px;color:#ef4444;"></i>
+        <span style="font-size:12px;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${safe(fname)}</span>
+      </div>`;
+      imgWrap.classList.remove("hidden");
+    } else if (_campMediaType === "audio" && hasFile) {
+      imgWrap.innerHTML = `<div style="display:flex;align-items:center;gap:8px;padding:10px;background:rgba(255,255,255,.1);border-radius:6px 6px 0 0;">
+        <i class="fa-solid fa-music" style="font-size:22px;color:#1d6cf5;"></i>
+        <span style="font-size:12px;color:#e2e8f0;">Áudio</span>
+      </div>`;
       imgWrap.classList.remove("hidden");
     } else {
+      imgWrap.innerHTML = `<img id="camp-wa-img" src="" alt="">`;
       imgWrap.classList.add("hidden");
     }
   }

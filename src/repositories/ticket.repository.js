@@ -126,6 +126,14 @@ async function updateStatus(id, status) {
 }
 
 async function assign(id, user) {
+  // Verifica se o ticket existe antes de tentar assumir
+  const exists = await pool.query(
+    `SELECT id, assigned_to FROM tickets WHERE id::text = $1 OR protocolo = $1`,
+    [String(id)]
+  );
+  if (!exists.rows[0]) return { notFound: true };
+  if (exists.rows[0].assigned_to) return { alreadyAssigned: true };
+
   const result = await pool.query(
     `
    UPDATE tickets
@@ -145,22 +153,27 @@ async function assign(id, user) {
     ]
   );
 
-  return result.rows[0] ? mapTicket(result.rows[0]) : null;
+  return result.rows[0] ? mapTicket(result.rows[0]) : { alreadyAssigned: true };
 }
 
-async function transfer(id, sector) {
+async function transfer(id, sector, targetUser = null) {
+  const newSector      = targetUser?.sector || sector;
+  const assignedTo     = targetUser?.id     || null;
+  const assignedToName = targetUser ? (targetUser.nome || targetUser.usuario) : null;
+  const newStatus      = targetUser ? "em_andamento" : "aberto";
+
   const result = await pool.query(
     `
     UPDATE tickets
-    SET sector = $1,
-        assigned_to = NULL,
-        assigned_to_name = NULL,
-        status = 'aberto',
-        updated_at = NOW()
-    WHERE id::text = $2 OR protocolo = $2
+    SET sector           = $1,
+        assigned_to      = $2,
+        assigned_to_name = $3,
+        status           = $4,
+        updated_at       = NOW()
+    WHERE id::text = $5 OR protocolo = $5
     RETURNING *
     `,
-    [sector, String(id)]
+    [newSector, assignedTo, assignedToName, newStatus, String(id)]
   );
 
   return result.rows[0] ? mapTicket(result.rows[0]) : null;

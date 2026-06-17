@@ -11,20 +11,45 @@ const pool                                                  = require("../databa
 
 const vendasFlow      = require("./vendas.flow");
 const crediarioFlow   = require("./crediario.flow");
-const suporteFlow     = require("./suporte.flow");
 
 // ── Palavras-chave de navegação ────────────────────────────────────────────────
+// PALAVRAS_MENU: usado dentro dos fluxos de sector (gestao/atendente) para sair do fluxo
 const PALAVRAS_MENU = new Set([
   "0", "menu", "inicio", "voltar", "home", "cancelar",
   "oi", "ola", "opa", "bom dia", "boa tarde", "boa noite",
 ]);
+
+// PALAVRAS_NAV: apenas navegação explícita — para o check de topo (não inclui saudações)
+const PALAVRAS_NAV = new Set([
+  "0", "menu", "inicio", "voltar", "home", "cancelar",
+]);
+
+// Complementos sociais que ainda contam como saudação pura ("bom dia tudo bem?")
+const COMPLEMENTOS_SAUDACAO = new Set([
+  "", "tudo bem", "td bem", "tudo bom", "blz", "beleza",
+  "pessoal", "amigo", "amiga", "gente", "a todos", "pra voce", "pra vc",
+]);
+
+// Detecta saudação PURA — apenas cumprimento, sem pedido real embutido.
+// "bom dia" → true | "bom dia, quero um alternador" → false (vai para a IA)
+function ehSaudacaoPura(msgNorm, msgSemPontuacao) {
+  if (["oi", "ola", "opa", "eai", "e ai"].includes(msgSemPontuacao)) return true;
+  for (const s of ["bom dia", "boa tarde", "boa noite"]) {
+    if (msgNorm === s || msgSemPontuacao === s) return true;
+    if (msgSemPontuacao.startsWith(s)) {
+      const resto = msgSemPontuacao.slice(s.length).trim();
+      if (COMPLEMENTOS_SAUDACAO.has(resto)) return true;
+    }
+  }
+  return false;
+}
 
 const PALAVRAS_ENCERRAR = new Set([
   "encerrar", "encerramento", "fechar", "finalizar", "sair", "tchau", "bye",
 ]);
 
 // Sectors gerenciados — qualquer outro é inválido e deve ser resetado
-const SECTORS_VALIDOS = new Set(["vendas", "crediario", "gestao", "atendente", "suporte"]);
+const SECTORS_VALIDOS = new Set(["vendas", "crediario", "gestao", "atendente"]);
 
 // ── Steps válidos por sector ───────────────────────────────────────────────────
 const STEPS_POR_SECTOR = {
@@ -32,7 +57,6 @@ const STEPS_POR_SECTOR = {
   atendente:  ["aguardando_motivo_atendente"],
   crediario:  ["aguardando_nome_cred", "aguardando_cpf", "aguardando_motivo_cred", "aguardando_nome_consulta_cred", "aguardando_cpf_consulta"],
   vendas:     ["aguardando_nome", "aguardando_veiculo", "aguardando_orcamento"],
-  suporte:    ["aguardando_problema", "aguardando_nome", "aguardando_cpf", "aguardando_cpf_consulta"],
 };
 
 // ── Menu principal ─────────────────────────────────────────────────────────────
@@ -50,8 +74,21 @@ function menuPrincipal(nome) {
     "1 - Orçamento / Falar com atendente\n" +
     "2 - Crediário\n" +
     "3 - Falar com a Equipe\n" +
-    "4 - Horário e Localização\n" +
-    "5 - Suporte Técnico\n\n" +
+    "4 - Horário e Localização\n\n" +
+    "_Digite o número da opção desejada._"
+  );
+}
+
+// ── Menu compacto (após resposta da IA — sem saudação e sem "Como posso ajudar") ─
+function menuCompacto() {
+  const aberto = estaEmHorarioDeAtendimento();
+  const status = aberto ? "🟢 Atendimento aberto" : "🔴 *Fora do horário de atendimento*";
+  return (
+    `${status}\n\n` +
+    "1 - Orçamento / Falar com atendente\n" +
+    "2 - Crediário\n" +
+    "3 - Falar com a Equipe\n" +
+    "4 - Horário e Localização\n\n" +
     "_Digite o número da opção desejada._"
   );
 }
@@ -196,16 +233,43 @@ async function _mainFlowInterno({ userId, message }) {
     );
   }
 
-  // ── Voltar ao menu principal ─────────────────────────────────────────────────
-  // Também detecta saudações com texto extra: "bom dia amigo", "boa tarde!" etc.
-  const eSaudacaoOuMenu =
-    PALAVRAS_MENU.has(msgNorm) ||
-    PALAVRAS_MENU.has(msgSemPontuacao) ||
-    ["bom dia", "boa tarde", "boa noite"].some(s => msgNorm.startsWith(s));
+  // ── Navegação explícita (0, menu, voltar...) → menu direto ──────────────────
+  const eNavegacao =
+    PALAVRAS_NAV.has(msgNorm) ||
+    PALAVRAS_NAV.has(msgSemPontuacao);
 
-  if (eSaudacaoOuMenu) {
+  if (eNavegacao) {
     await clearSession(userId);
     return menuPrincipal(nomeSalvo);
+  }
+
+  // ── Saudações puras ("oi", "bom dia"...) ────────────────────────────────────
+  // Saudação COM pedido embutido ("bom dia, quero alternador") NÃO entra aqui —
+  // cai no default e a IA interpreta a intenção real.
+  const eSaudacao = ehSaudacaoPura(msgNorm, msgSemPontuacao);
+
+  if (eSaudacao) {
+    if (session.sector && session.sector !== "main") {
+      // Mid-flow → sai do fluxo e volta ao menu
+      await clearSession(userId);
+      return menuPrincipal(nomeSalvo);
+    }
+    // Sem fluxo ativo → greeting personalizado, sem chamar IA
+    await clearSession(userId);
+    if (nomeSalvo) {
+      const primeiroNome = nomeSalvo.trim().split(" ")[0];
+      return (
+        `Olá, *${primeiroNome}*! Bem-vindo de volta à *Rildon Eletropeças*! ⚡\n\n` +
+        "Como posso te ajudar hoje?\n\n" +
+        menuCompacto()
+      );
+    }
+    // Cliente novo — exibe menu direto (nome será capturado no fluxo escolhido)
+    return (
+      "Bem-vindo à *Rildon Eletropeças*! ⚡\n\n" +
+      "Como posso te ajudar?\n\n" +
+      menuCompacto()
+    );
   }
 
   // ── Sanitização de sector inválido / step corrompido ─────────────────────────
@@ -233,11 +297,6 @@ async function _mainFlowInterno({ userId, message }) {
 
   if (session.sector === "crediario") {
     const resp = await crediarioFlow(message, userId, session);
-    return resp ?? menuPrincipal(nomeSalvo);
-  }
-
-  if (session.sector === "suporte") {
-    const resp = await suporteFlow(message, userId, session);
     return resp ?? menuPrincipal(nomeSalvo);
   }
 
@@ -346,11 +405,6 @@ async function _mainFlowInterno({ userId, message }) {
         MSG.VOLTAR_MENU
       );
 
-    case "5": {
-      const r5 = await suporteFlow(message, userId, session);
-      return r5 ?? menuPrincipal(nomeSalvo);
-    }
-
     // ── Default: IA responde ─────────────────────────────────────────────────
     default: {
       const botConfig = await getBotConfig();
@@ -405,19 +459,21 @@ async function _mainFlowInterno({ userId, message }) {
       ].slice(-20);
 
       // ── Roteamento por intenção ────────────────────────────────────────────
+
+      // Vendas: vai direto para o formulário, sem submenu intermediário
       if (intencao === "vendas") {
-        await updateSession(userId, { sector: "vendas", aiHistorico: novoHistorico, _iaFalhas: 0 });
-        if (session.sector === "vendas") {
-          return resposta + "\n\n_Para solicitar orçamento, escolha a opção *1*. Digite *0* para o menu._";
+        if (nomeSalvo) {
+          const primeiroNome = nomeSalvo.trim().split(" ")[0];
+          await updateSession(userId, { sector: "vendas", step: "aguardando_veiculo", customerName: nomeSalvo, aiHistorico: novoHistorico, _iaFalhas: 0 });
+          return resposta + "\n\n" + `Certo, *${primeiroNome}*! ` + MSG.vendas.PEDIR_VEICULO + MSG.ESCAPE_DICA;
         }
-        return resposta + "\n\n" + MSG.vendas.MENU();
+        await updateSession(userId, { sector: "vendas", step: "aguardando_nome", aiHistorico: novoHistorico, _iaFalhas: 0 });
+        return resposta + "\n\n" + MSG.vendas.PEDIR_NOME + MSG.ESCAPE_DICA;
       }
 
+      // Crediário: mostra o submenu (tem 2 opções: solicitar ou consultar)
       if (intencao === "crediario") {
         await updateSession(userId, { sector: "crediario", aiHistorico: novoHistorico, _iaFalhas: 0 });
-        if (session.sector === "crediario") {
-          return resposta + "\n\n_Use as opções do menu acima ou *0* para voltar._";
-        }
         return resposta + "\n\n" + MSG.crediario.MENU();
       }
 
@@ -426,19 +482,14 @@ async function _mainFlowInterno({ userId, message }) {
         return resposta + "\n\n" + MSG.main.PEDIR_MOTIVO_ATENDENTE;
       }
 
-      if (intencao === "gestao") {
+      if (intencao === "gestao" || intencao === "suporte") {
         await updateSession(userId, { sector: "gestao", step: "aguardando_nome", aiHistorico: novoHistorico, _iaFalhas: 0 });
         return resposta + "\n\n" + MSG.gestao.PEDIR_NOME + MSG.ESCAPE_DICA;
       }
 
-      if (intencao === "suporte") {
-        await updateSession(userId, { sector: "suporte", aiHistorico: novoHistorico, _iaFalhas: 0 });
-        return resposta + "\n\n" + MSG.suporte.MENU();
-      }
-
-      // Intenção "chat" — resposta livre da IA, sem menu forçado
+      // Intenção "chat" — saudações ou mensagem não reconhecida: resposta + menu compacto
       await updateSession(userId, { aiHistorico: novoHistorico, _iaFalhas: 0 });
-      return resposta;
+      return resposta + "\n\n" + menuCompacto();
     }
   }
 }

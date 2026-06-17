@@ -96,8 +96,7 @@ async function processMessage({ userId, contactName, message }) {
   } catch (e) { logger.warn(`Erro ao emitir nova_mensagem: ${e.message}`); }
 
   return enqueue(userId, async () => {
-    logger.info(`Mensagem recebida de ${userId}: ${message}`);
-
+    // Log de recebimento já feito em whatsapp.js (ponto de entrada) — evita linha duplicada
     const response = await mainFlow({ userId, message });
 
     const session = getSession(userId) || {};

@@ -29,6 +29,17 @@ async function getAuditLogs() {
 }
 
 async function auditLog({ user, action, target, details }) {
+  try { await pool.query(`CREATE TABLE IF NOT EXISTS audit_logs (
+    id         SERIAL PRIMARY KEY,
+    user_id    TEXT,
+    user_name  TEXT,
+    user_role  TEXT,
+    action     TEXT NOT NULL,
+    target     TEXT,
+    details    JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`); } catch (_) {}
+
   const result = await pool.query(
     `
     INSERT INTO audit_logs (

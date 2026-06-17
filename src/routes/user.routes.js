@@ -46,7 +46,12 @@ router.post("/users", asyncHandler(async (req, res) => {
     return res.status(403).json({ error: "Apenas administradores podem criar outros administradores." });
   }
 
-  const user = await createUser({ nome, usuario, senha, perfil, sector, ativo });
+  let user;
+  try {
+    user = await createUser({ nome, usuario, senha, perfil, sector, ativo });
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
 
   await auditLog({
     user:    req.user,

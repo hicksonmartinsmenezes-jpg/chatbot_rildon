@@ -31,6 +31,26 @@ const processedMessages = new Map(); // id → timestamp
 const PROCESSED_TTL_MS  = 5 * 60 * 1000; // 5 min
 const PROCESSED_MAX     = 10_000;
 
+// Dedup secundário por conteúdo — captura duplicatas de @lid com IDs diferentes
+// que Baileys entrega dentro da mesma janela de tempo
+const recentContent = new Map(); // `userId:text` → timestamp
+const CONTENT_TTL_MS = 8_000; // 8 segundos
+
+function isDuplicateContent(userId, text) {
+  const key = `${userId}:${text}`;
+  const ts  = recentContent.get(key);
+  if (ts && Date.now() - ts < CONTENT_TTL_MS) return true;
+  recentContent.set(key, Date.now());
+  // Limpeza incremental
+  if (recentContent.size > 500) {
+    const cutoff = Date.now() - CONTENT_TTL_MS;
+    for (const [k, t] of recentContent) {
+      if (t < cutoff) recentContent.delete(k);
+    }
+  }
+  return false;
+}
+
 function markProcessed(id) {
   processedMessages.set(id, Date.now());
   // Limpeza incremental: remove entradas expiradas quando mapa fica grande
@@ -370,8 +390,13 @@ async function connectWhatsApp(onMessage) {
         if (lidToJid[jid]) {
           userId = lidToJid[jid];
           logger.info(`[LID→JID] ${jid} → ${userId}`);
+        } else if (msg.key.senderPn) {
+          // senderPn contém o número real mesmo quando o mapa lidToJid ainda não foi populado
+          userId = msg.key.senderPn;
+          lidToJid[jid] = userId; // cacheia para as próximas mensagens
+          logger.info(`[LID→senderPn] ${jid} → ${userId}`);
         } else {
-          logger.info(`[msg@lid sem resolução] key=${JSON.stringify(msg.key)} pushName=${msg.pushName || ""}`);
+          logger.warn(`[msg@lid sem resolução] key=${JSON.stringify(msg.key)} pushName=${msg.pushName || ""}`);
         }
       }
 
@@ -416,6 +441,12 @@ async function connectWhatsApp(onMessage) {
         continue;
       }
 
+      // Dedup secundário: mesma mensagem entregue duas vezes pelo Baileys com IDs diferentes (@lid)
+      if (isDuplicateContent(userId, text)) {
+        logger.debug?.(`[Dedup-conteúdo] Ignorada: ${userId} → "${text}"`);
+        continue;
+      }
+
       try {
         logger.info(`Mensagem recebida de ${userId}: ${text}`);
         const response = await onMessage({ userId, contactName, message: text });
@@ -455,17 +486,23 @@ async function sendMessage(userId, text) {
   if (!isWhatsAppConnected) throw new Error("WhatsApp não autenticado. Escaneie o QR Code no painel.");
 
   try {
-    let resolvedJid = userId;
+    // Resolve @lid → JID real (telefone) usando o mapa populado no recebimento.
+    // Sem isso, mensagens manuais do painel para um @lid falham na entrega ("Aguardando mensagem").
+    let resolvedJid = lidToJid[userId] || userId;
+    if (resolvedJid !== userId) {
+      logger.info(`[sendMessage] @lid resolvido via mapa: ${userId} → ${resolvedJid}`);
+    }
 
     // JIDs @lid são identificadores de dispositivo — não passam por onWhatsApp()
-    if (!userId.endsWith("@lid")) {
-      const [check] = await sock.onWhatsApp(userId.replace(/@.+/, "")).catch(() => [null]);
+    if (!resolvedJid.endsWith("@lid")) {
+      const numero = resolvedJid.replace(/@.+/, "");
+      const [check] = await sock.onWhatsApp(numero).catch(() => [null]);
       if (!check?.exists) {
-        throw new Error(`Número ${userId.replace(/@.+/, "")} não está registrado no WhatsApp.`);
+        throw new Error(`Número ${numero} não está registrado no WhatsApp.`);
       }
-      resolvedJid = check.jid || userId;
-      if (resolvedJid !== userId) {
-        logger.info(`[sendMessage] JID normalizado: ${userId} → ${resolvedJid}`);
+      if (check.jid && check.jid !== resolvedJid) {
+        logger.info(`[sendMessage] JID normalizado: ${resolvedJid} → ${check.jid}`);
+        resolvedJid = check.jid;
       }
     }
 
@@ -489,14 +526,16 @@ async function sendMedia(userId, filePath, caption = "", mediaType = "image") {
   if (!isWhatsAppConnected) throw new Error("WhatsApp não autenticado. Escaneie o QR Code no painel.");
 
   try {
-    let resolvedJid = userId;
+    // Resolve @lid → JID real via mapa (mesma lógica de sendMessage)
+    let resolvedJid = lidToJid[userId] || userId;
 
-    if (!userId.endsWith("@lid")) {
-      const [check] = await sock.onWhatsApp(userId.replace(/@.+/, "")).catch(() => [null]);
+    if (!resolvedJid.endsWith("@lid")) {
+      const numero = resolvedJid.replace(/@.+/, "");
+      const [check] = await sock.onWhatsApp(numero).catch(() => [null]);
       if (!check?.exists) {
-        throw new Error(`Número ${userId.replace(/@.+/, "")} não está registrado no WhatsApp.`);
+        throw new Error(`Número ${numero} não está registrado no WhatsApp.`);
       }
-      resolvedJid = check.jid || userId;
+      resolvedJid = check.jid || resolvedJid;
     }
 
     let msgContent;

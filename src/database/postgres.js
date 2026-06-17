@@ -85,6 +85,21 @@ async function garantirTabelaDedup() {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_contacts_status   ON contacts(status)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_contacts_nome     ON contacts(lower(nome))`);
 
+    // Tabela de auditoria
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS audit_logs (
+        id         SERIAL PRIMARY KEY,
+        user_id    TEXT,
+        user_name  TEXT,
+        user_role  TEXT,
+        action     TEXT NOT NULL,
+        target     TEXT,
+        details    JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs (created_at DESC)`);
+
     // Índices para queries do dashboard (status, data, setor)
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets (status)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_tickets_created_at ON tickets (created_at)`);

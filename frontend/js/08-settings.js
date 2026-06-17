@@ -67,7 +67,9 @@ function applyPanelSettings(settings = {}) {
   if (aparencia.corPrincipal) document.documentElement.style.setProperty("--primary", aparencia.corPrincipal);
   if (aparencia.corSucesso)   document.documentElement.style.setProperty("--green",   aparencia.corSucesso);
 
-  document.body.classList.toggle("light-theme", aparencia.tema === "light");
+  // Preferência local do usuário (botão de tema) tem prioridade sobre o tema global do admin
+  const localTheme = (typeof getStoredTheme === "function") ? getStoredTheme() : null;
+  applyTheme(localTheme || (aparencia.tema === "light" ? "light" : "dark"));
 
   if (aparencia.nomePainel) document.title = aparencia.nomePainel;
 

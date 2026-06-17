@@ -209,7 +209,6 @@ async function openConversation(userId, updateActive = true) {
 
   if (header) {
     const name     = getContactName(userId) || formatPhone(userId);
-    const isOnline = window.onlineUsers?.some(u => u.userId === userId);
     const ticket   = ticketsByUser[userId];
 
     let actionButtons = "";
@@ -253,7 +252,6 @@ async function openConversation(userId, updateActive = true) {
         ${avatarHtml(userId, name, true)}
         <div class="chat-header-info">
           <strong class="chat-contact-name">${safe(name)}</strong>
-          <span class="chat-contact-status ${isOnline ? "online" : "offline"}">${isOnline ? "Online" : "Offline"}</span>
           ${ticket ? `<span class="chat-ticket-ref">#${safe(ticket.protocolo || ticket.id)} · ${safe(ticket.sector || "geral")}</span>` : ""}
           <div id="chat-typing-status"></div>
         </div>

@@ -22,7 +22,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css">
-  <link rel="stylesheet" href="style.css?v=33">
+  <link rel="stylesheet" href="style.css?v=34">
   <link rel="stylesheet" href="supervisor.css?v=25">
   <link rel="stylesheet" href="css/09-dashboard.css?v=25">
   <style>
@@ -160,6 +160,10 @@
       <div class="top-actions">
         <button class="icon-btn" title="Atualizar" onclick="refreshAll()">
           <i class="fa-solid fa-arrows-rotate"></i>
+        </button>
+
+        <button class="icon-btn" id="theme-toggle" title="Alternar tema claro/escuro" onclick="toggleTheme()">
+          <i class="fa-solid fa-moon"></i>
         </button>
 
         <button class="icon-btn notification" title="Notificações">

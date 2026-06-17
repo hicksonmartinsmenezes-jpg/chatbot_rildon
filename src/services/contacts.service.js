@@ -116,28 +116,74 @@ async function deleteContacts(ids) {
 }
 
 async function importContacts(rows) {
-  let inserted = 0;
-  let skipped  = 0;
+  const totalRows = Array.isArray(rows) ? rows.length : 0;
+  if (!totalRows) return { inserted: 0, skipped: 0 };
 
+  // 1. Normaliza e valida
+  const normalized = [];
   for (const row of rows) {
     const digits = String(row.whatsapp || "").replace(/\D/g, "");
-    if (!row.nome || !digits) { skipped++; continue; }
-
-    const exists = await pool.query(`SELECT id FROM contacts WHERE whatsapp = $1`, [digits]);
-    if (exists.rows.length) { skipped++; continue; }
-
-    await pool.query(
-      `INSERT INTO contacts (nome, whatsapp, estado, status, tags, departamento)
-       VALUES ($1,$2,$3,$4,$5,$6)`,
-      [row.nome.trim(), digits, row.estado || null, row.status || "ativo",
-       row.tags ? row.tags.split(";").map(t => t.trim()).filter(Boolean) : [],
-       row.departamento || null]
-    );
-    inserted++;
+    if (!row.nome || !digits) continue;
+    normalized.push({
+      nome:         String(row.nome).trim(),
+      whatsapp:     digits,
+      estado:       row.estado || null,
+      status:       row.status || "ativo",
+      tags:         row.tags ? String(row.tags).split(";").map(t => t.trim()).filter(Boolean) : [],
+      departamento: row.departamento || null,
+    });
   }
+  if (!normalized.length) return { inserted: 0, skipped: totalRows };
 
-  logger.info(`[Contacts] Import: ${inserted} inseridos, ${skipped} ignorados.`);
-  return { inserted, skipped };
+  // 2. Dedup dentro do próprio arquivo (mantém o primeiro de cada whatsapp)
+  const byPhone = new Map();
+  for (const r of normalized) if (!byPhone.has(r.whatsapp)) byPhone.set(r.whatsapp, r);
+  const unique = [...byPhone.values()];
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // 3. Descobre quais já existem no banco — uma única query
+    const phones   = unique.map(r => r.whatsapp);
+    const existRes = await client.query(
+      `SELECT whatsapp FROM contacts WHERE whatsapp = ANY($1::text[])`,
+      [phones]
+    );
+    const existing = new Set(existRes.rows.map(r => r.whatsapp));
+    const toInsert = unique.filter(r => !existing.has(r.whatsapp));
+
+    // 4. Inserção em lote, em chunks (limite de ~65k parâmetros do PostgreSQL)
+    const CHUNK = 500;
+    for (let i = 0; i < toInsert.length; i += CHUNK) {
+      const slice  = toInsert.slice(i, i + CHUNK);
+      const values = [];
+      const params = [];
+      slice.forEach((r, j) => {
+        const b = j * 6;
+        values.push(`($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6})`);
+        params.push(r.nome, r.whatsapp, r.estado, r.status, r.tags, r.departamento);
+      });
+      await client.query(
+        `INSERT INTO contacts (nome, whatsapp, estado, status, tags, departamento)
+         VALUES ${values.join(",")}`,
+        params
+      );
+    }
+
+    await client.query("COMMIT");
+
+    const inserted = toInsert.length;
+    const skipped  = totalRows - inserted;
+    logger.info(`[Contacts] Import: ${inserted} inseridos, ${skipped} ignorados.`);
+    return { inserted, skipped };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    logger.error(`[Contacts] Import falhou (rollback): ${err.message}`);
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 async function getAllTags() {

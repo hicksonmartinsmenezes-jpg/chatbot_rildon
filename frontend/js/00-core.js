@@ -24,6 +24,33 @@ const AppState = {
   }
 };
 
+// ─── Tema claro/escuro (preferência por navegador, por usuário) ───────────────
+// Funciona para qualquer perfil (não depende de /api/settings, que é admin-only)
+// e persiste no localStorage do navegador.
+function applyTheme(theme) {
+  const isLight = theme === "light";
+  document.body.classList.toggle("light-theme", isLight);
+  const icon = document.querySelector("#theme-toggle i");
+  if (icon) icon.className = isLight ? "fa-solid fa-sun" : "fa-solid fa-moon";
+}
+
+function getStoredTheme() {
+  try { return localStorage.getItem("panel_theme"); } catch (_) { return null; }
+}
+
+function toggleTheme() {
+  const next = document.body.classList.contains("light-theme") ? "dark" : "light";
+  try { localStorage.setItem("panel_theme", next); } catch (_) {}
+  applyTheme(next);
+}
+
+// Aplica imediatamente o tema salvo (00-core roda no fim do <body>, então
+// document.body e o botão já existem — sem flash perceptível).
+(function initTheme() {
+  const stored = getStoredTheme();
+  if (stored) applyTheme(stored);
+})();
+
 // Compatibilidade com código legado que usa variáveis soltas
 Object.defineProperties(window, {
   currentTab:               { get: () => AppState.currentTab,               set: v => AppState.currentTab = v,               enumerable: true },

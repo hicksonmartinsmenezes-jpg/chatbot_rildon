@@ -37,10 +37,12 @@ function getOnlineUsers() {
 }
 
 function initSocket(server) {
-  const allowedOrigin = process.env.CORS_ORIGIN || "http://localhost:3000";
+  // Suporta múltiplas origens separadas por vírgula (consistente com app.js)
+  const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:3000")
+    .split(",").map(s => s.trim()).filter(Boolean);
   io = new Server(server, {
     cors: {
-      origin: allowedOrigin,
+      origin: allowedOrigins,
       methods: ["GET", "POST"],
       credentials: true
     }

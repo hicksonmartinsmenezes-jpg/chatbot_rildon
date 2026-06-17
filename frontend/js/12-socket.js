@@ -43,16 +43,6 @@ socket.on("connect", () => {
 socket.on("online_users", users => {
   window.onlineUsers = Array.isArray(users) ? users : [];
   renderPanelUsers();
-
-  // Atualiza status online/offline na conversa aberta em tempo real
-  if (selectedConversationUser) {
-    const statusEl = document.querySelector(".chat-contact-status");
-    if (statusEl) {
-      const isOnline = window.onlineUsers.some(u => u.userId === selectedConversationUser);
-      statusEl.textContent = isOnline ? "Online" : "Offline";
-      statusEl.className = `chat-contact-status ${isOnline ? "online" : "offline"}`;
-    }
-  }
 });
 
   socket.on("whatsapp_status", ({ status }) => {

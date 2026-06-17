@@ -1,4 +1,5 @@
 const logger = require("../utils/logger");
+const humanMode = require("../services/humanMode.service");
 const {
   createTicket,
   listTickets,
@@ -87,6 +88,11 @@ async function patchTicket(req, res) {
       return res.status(404).json({ error: "Ticket não encontrado." });
     }
 
+    // Ticket fechado → bot volta a responder este cliente
+    if (status === "resolvido" || status === "cancelado") {
+      humanMode.desativar(ticket.userId, "ticket_fechado");
+    }
+
     res.json({ message: "Status atualizado.", ticket });
   } catch (err) {
     logger.error(`[patchTicket] ${err.message}`);
@@ -106,6 +112,12 @@ async function assumirTicket(req, res) {
     if (ticket.alreadyAssigned) {
       return res.status(409).json({ error: "Ticket já foi assumido por outro atendente." });
     }
+
+    // Atendente assumiu → pausa o bot para este cliente até o ticket fechar
+    humanMode.ativar(ticket.userId, {
+      agentName: req.user?.nome || req.user?.usuario || "",
+      protocolo: ticket.protocolo
+    });
 
     res.json({ ok: true, ticket });
   } catch (err) {

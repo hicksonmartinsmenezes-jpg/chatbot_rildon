@@ -272,6 +272,17 @@ body.tab-fullscreen #tab-conversations {
   margin-top: 1px;
 }
 
+/* ─── Indicador "bot pausado / atendente no controle" ─── */
+.chat-bot-paused {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #f59e0b;
+  margin-top: 2px;
+}
+
 /* ─── Botões de ação no header ─────────── */
 .conv-action-btn {
   display: inline-flex;

@@ -109,6 +109,20 @@ async function garantirTabelaDedup() {
       )
     `);
 
+    // Sessões de atendimento humano (bot pausado) — persiste entre restarts
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS human_mode_sessions (
+        user_id          TEXT PRIMARY KEY,
+        ticket_id        INTEGER,
+        ticket_protocolo TEXT,
+        agent_name       TEXT NOT NULL DEFAULT '',
+        since            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_activity    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    // Tabela pode existir de uma migration antiga sem last_activity
+    await pool.query(`ALTER TABLE human_mode_sessions ADD COLUMN IF NOT EXISTS last_activity TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+
     // Índices para queries do dashboard (status, data, setor)
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets (status)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_tickets_created_at ON tickets (created_at)`);

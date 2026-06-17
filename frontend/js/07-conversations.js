@@ -3,6 +3,7 @@
 // ─── Estado local ─────────────────────────────────────────────────────────────
 let activeTicketFilter = "pendentes";
 let ticketsByUser      = {}; // userId → ticket mais recente
+let humanModeUsers     = new Set(); // userIds em atendimento humano (bot pausado)
 let _searchDebounceTimer = null;
 
 function debouncedSearch() {
@@ -28,10 +29,17 @@ async function loadConversations(silent = false) {
   if (!silent && list) list.innerHTML = `<p class="loading chat-loading">Carregando...</p>`;
 
   try {
-    const [histRes, ticketRes] = await Promise.all([
+    const [histRes, ticketRes, hmRes] = await Promise.all([
       apiFetch(`${BASE}/api/history/conversations`).catch(() => null),
-      apiFetch(`${BASE}/api/tickets?limit=500`).catch(() => null)
+      apiFetch(`${BASE}/api/tickets?limit=500`).catch(() => null),
+      apiFetch(`${BASE}/api/messages/humanmode`).catch(() => null)
     ]);
+
+    // Conjunto de clientes em atendimento humano (bot pausado)
+    humanModeUsers = new Set();
+    if (hmRes?.ok) {
+      try { const hm = await hmRes.json(); (hm.users || []).forEach(u => humanModeUsers.add(u)); } catch (_) {}
+    }
 
     if (!histRes?.ok) {
       if (list) list.innerHTML = `<p class="empty chat-empty">❌ Erro ao carregar conversas.</p>`;
@@ -247,12 +255,21 @@ async function openConversation(userId, updateActive = true) {
       `;
     }
 
+    // Botão "Devolver ao bot" quando o atendimento humano está ativo
+    if (humanModeUsers.has(userId)) {
+      actionButtons += `
+        <button class="conv-action-btn conv-btn-refresh" onclick="releaseToBot('${escapeAttr(userId)}')" title="Reativar o bot para este cliente">
+          <i class="fa-solid fa-robot"></i> Devolver ao bot
+        </button>`;
+    }
+
     header.innerHTML = `
       <div class="chat-header-profile">
         ${avatarHtml(userId, name, true)}
         <div class="chat-header-info">
           <strong class="chat-contact-name">${safe(name)}</strong>
           ${ticket ? `<span class="chat-ticket-ref">#${safe(ticket.protocolo || ticket.id)} · ${safe(ticket.sector || "geral")}</span>` : ""}
+          ${humanModeUsers.has(userId) ? `<span class="chat-bot-paused"><i class="fa-solid fa-headset"></i> Você atendendo · bot pausado</span>` : ""}
           <div id="chat-typing-status"></div>
         </div>
       </div>
@@ -324,6 +341,24 @@ async function openConversation(userId, updateActive = true) {
   messagesBox.innerHTML = html.join("");
   // Aguarda render antes de rolar para garantir altura correta
   requestAnimationFrame(() => { messagesBox.scrollTop = messagesBox.scrollHeight; });
+}
+
+// ─── Devolver atendimento ao bot ─────────────────────────────────────────────
+async function releaseToBot(userId) {
+  try {
+    const res = await apiFetch(`${BASE}/api/messages/humanmode/release`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ userId })
+    });
+    if (!res?.ok) throw new Error("falhou");
+    humanModeUsers.delete(userId);
+    showToast("🤖 Bot reativado para este cliente.");
+    await loadConversations();
+    if (selectedConversationUser) openConversation(selectedConversationUser);
+  } catch (_) {
+    showToast("❌ Não consegui devolver ao bot.");
+  }
 }
 
 // ─── Ações de ticket na conversa ─────────────────────────────────────────────
@@ -496,6 +531,8 @@ async function sendConversationMessage() {
     }
 
     showToast("✅ Mensagem enviada!");
+    // Atendente respondeu → bot pausado para este cliente (atualização otimista da UI)
+    if (selectedConversationUser) humanModeUsers.add(selectedConversationUser);
     // O evento socket nova_mensagem disparado pelo backend já atualiza a conversa.
     // Só recarregamos se o socket não estiver conectado (fallback).
     if (!socket?.connected) {

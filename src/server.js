@@ -16,6 +16,7 @@ const {
 } = require("./database/postgres");
 
 const { startAutoBackup }      = require("./services/backup.service");
+const { carregar: carregarHumanMode } = require("./services/humanMode.service");
 const { connectWhatsApp, sendMessage } = require("./config/whatsapp");
 const { processMessage }       = require("./services/message.service");
 const { setSendMessage }       = require("./services/session.service");
@@ -43,6 +44,9 @@ initSocket(server);
 
     // 2. MELHORIA: criar tabela de deduplicação se não existir
     await garantirTabelaDedup();
+
+    // 2b. Restaura sessões de atendimento humano (bot pausado) do banco
+    await carregarHumanMode();
 
     // 3. MELHORIA: agendar limpeza periódica da tabela de deduplicação (a cada 6h)
     setInterval(limparMensagensProcessadas, 6 * 60 * 60 * 1000);

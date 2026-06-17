@@ -5,6 +5,7 @@ const { getSession }  = require("./session.service");
 const { getBotConfig } = require("./botConfig.service");
 const { emitEvent }   = require("./socket.service");
 const { reopenTicketIfClosed } = require("./ticket.service");
+const humanMode       = require("./humanMode.service");
 const logger          = require("../utils/logger");
 
 // ─── Rate Limiting ───────────────────────────────────────────────────────────
@@ -94,6 +95,18 @@ async function processMessage({ userId, contactName, message }) {
       createdAt: new Date()
     });
   } catch (e) { logger.warn(`Erro ao emitir nova_mensagem: ${e.message}`); }
+
+  // ── Takeover humano: atendente assumiu → bot fica em silêncio ──────────────
+  // A mensagem do cliente já foi emitida ao painel acima; aqui só persistimos
+  // o histórico e NÃO acionamos o fluxo do bot.
+  if (humanMode.estaAtivo(userId)) {
+    try {
+      await saveHistory({ userId, contactName, message, response: null, sector: "humano" });
+    } catch (err) {
+      logger.warn(`Erro ao salvar histórico (modo humano): ${err.message}`);
+    }
+    return "";
+  }
 
   return enqueue(userId, async () => {
     // Log de recebimento já feito em whatsapp.js (ponto de entrada) — evita linha duplicada

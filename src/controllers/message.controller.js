@@ -1,6 +1,7 @@
 const { sendMessage, sendTypingPresence } = require("../config/whatsapp");
 const { saveHistory } = require("../services/history.service");
 const { emitEvent }   = require("../services/socket.service");
+const humanMode       = require("../services/humanMode.service");
 const logger          = require("../utils/logger");
 
 async function sendManualMessage(req, res) {
@@ -23,6 +24,9 @@ async function sendManualMessage(req, res) {
     }
 
     const sent = await sendMessage(userId, message.trim());
+
+    // Atendente enviou mensagem → assume a conversa e pausa o bot para este cliente
+    humanMode.ativar(userId, { agentName: req.user?.nome || req.user?.usuario || "" });
 
     // Busca nome do contato no histórico para não deixar em branco
     let contactName = "";
@@ -97,7 +101,22 @@ async function sendTyping(req, res) {
   }
 }
 
+// Lista os clientes atualmente em atendimento humano (bot pausado)
+function listHumanMode(req, res) {
+  res.json({ users: humanMode.listar() });
+}
+
+// "Devolver ao bot" — reativa o bot para um cliente
+async function releaseHumanMode(req, res) {
+  const { userId } = req.body || {};
+  if (!userId) return res.status(400).json({ error: "userId obrigatório." });
+  humanMode.desativar(userId, "painel");
+  return res.json({ ok: true });
+}
+
 module.exports = {
   sendManualMessage,
-  sendTyping
+  sendTyping,
+  listHumanMode,
+  releaseHumanMode
 };

@@ -23,7 +23,33 @@ let cachedConfig = null;
 let lastConfigCheck = 0;
 
 // Mapa LID (@lid) → JID real (@s.whatsapp.net) preenchido pelo evento contacts.upsert
+// e pelas mensagens recebidas (senderPn). Leitura é sempre em memória; a escrita
+// no banco é assíncrona e só ocorre quando o valor muda — sem latência no envio.
 const lidToJid = {};
+let _lidMapCarregado = false;
+
+function setLidMapping(lid, jid, source = "") {
+  if (!lid || !jid || lidToJid[lid] === jid) return;
+  lidToJid[lid] = jid;
+  logger.info(`[lidToJid] ${lid} → ${jid}${source ? ` (via ${source})` : ""}`);
+  pool.query(
+    `INSERT INTO lid_map (lid, jid, updated_at) VALUES ($1, $2, NOW())
+     ON CONFLICT (lid) DO UPDATE SET jid = EXCLUDED.jid, updated_at = NOW()`,
+    [lid, jid]
+  ).catch(err => logger.warn(`[lidToJid] persistência falhou: ${err.message}`));
+}
+
+async function carregarLidMap() {
+  if (_lidMapCarregado) return;       // carrega uma única vez (sobrevive a reconexões)
+  _lidMapCarregado = true;
+  try {
+    const res = await pool.query(`SELECT lid, jid FROM lid_map`);
+    for (const row of res.rows) lidToJid[row.lid] = row.jid;
+    if (res.rowCount) logger.info(`[lidToJid] ${res.rowCount} mapeamento(s) restaurado(s) do banco`);
+  } catch (err) {
+    logger.warn(`[lidToJid] Falha ao restaurar do banco: ${err.message}`);
+  }
+}
 
 
 // Map com TTL por entrada: evita clear abrupto que abriria janela de duplicatas
@@ -208,6 +234,9 @@ async function connectWhatsApp(onMessage) {
     throw new Error("connectWhatsApp precisa receber processMessage.");
   }
 
+  // Restaura o mapa @lid → JID do banco (uma vez) para sobreviver a restarts
+  await carregarLidMap();
+
   let state, saveCreds, version;
   try {
     ({ state, saveCreds } = await useMultiFileAuthState(
@@ -250,13 +279,11 @@ async function connectWhatsApp(onMessage) {
     logger.info(`[${source}] ${contacts.length} contatos`);
     for (const c of contacts) {
       if (c.lid && c.id && !c.id.includes("@lid")) {
-        lidToJid[c.lid] = c.id;
-        logger.info(`[lidToJid] ${c.lid} → ${c.id} (via ${source})`);
+        setLidMapping(c.lid, c.id, source);
       }
       if (c.id && c.id.includes("@lid") && (c.phone || c.number)) {
         const phone = (c.phone || c.number).replace(/\D/g, "");
-        lidToJid[c.id] = `${phone}@s.whatsapp.net`;
-        logger.info(`[lidToJid via phone] ${c.id} → ${lidToJid[c.id]} (via ${source})`);
+        setLidMapping(c.id, `${phone}@s.whatsapp.net`, `${source}/phone`);
       }
     }
     logger.info(`[lidToJid] mapa total: ${Object.keys(lidToJid).length} entradas`);
@@ -393,8 +420,7 @@ async function connectWhatsApp(onMessage) {
         } else if (msg.key.senderPn) {
           // senderPn contém o número real mesmo quando o mapa lidToJid ainda não foi populado
           userId = msg.key.senderPn;
-          lidToJid[jid] = userId; // cacheia para as próximas mensagens
-          logger.info(`[LID→senderPn] ${jid} → ${userId}`);
+          setLidMapping(jid, userId, "senderPn"); // cacheia e persiste para as próximas mensagens
         } else {
           logger.warn(`[msg@lid sem resolução] key=${JSON.stringify(msg.key)} pushName=${msg.pushName || ""}`);
         }

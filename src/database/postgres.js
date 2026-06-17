@@ -100,6 +100,15 @@ async function garantirTabelaDedup() {
     `);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs (created_at DESC)`);
 
+    // Mapa @lid → JID real (persistido para sobreviver a restarts e garantir entrega)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS lid_map (
+        lid        TEXT PRIMARY KEY,
+        jid        TEXT NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
     // Índices para queries do dashboard (status, data, setor)
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets (status)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_tickets_created_at ON tickets (created_at)`);

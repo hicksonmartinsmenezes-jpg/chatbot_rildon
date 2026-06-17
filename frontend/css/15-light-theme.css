@@ -125,6 +125,32 @@ body.light-theme .chat-input-area textarea:focus {
 }
 body.light-theme .chat-start h3 { color: #374151; }
 
+/* ─── Dropdown de notificações ─────────────────────────────────────────── */
+body.light-theme .notif-dropdown {
+  background: #ffffff;
+  border-color: rgba(0,0,0,.10);
+  box-shadow: 0 20px 60px rgba(0,0,0,.15);
+}
+body.light-theme .notif-dropdown-header { border-bottom-color: rgba(0,0,0,.08); }
+body.light-theme .notif-dropdown-header strong { color: #111827; }
+body.light-theme .notif-dropdown-header button { color: #6b7280; }
+body.light-theme .notif-dropdown-header button:hover { background: rgba(0,0,0,.05); color: #111827; }
+body.light-theme .notif-list li { border-bottom-color: rgba(0,0,0,.06); }
+body.light-theme .notif-list li:hover { background: rgba(0,0,0,.03); }
+body.light-theme .notif-list li.notif-empty { color: #9ca3af; }
+body.light-theme .notif-body strong { color: #111827; }
+body.light-theme .notif-body span { color: #6b7280; }
+
+/* ─── Textarea desabilitada (sem conversa selecionada) ─────────────────── */
+body.light-theme .chat-input-area textarea:disabled {
+  background: #e5e7eb;
+  border-color: rgba(0,0,0,.08);
+}
+
+/* ─── Estado vazio do header de conversa ───────────────────────────────── */
+body.light-theme .chat-selected-empty { color: #9ca3af; }
+body.light-theme .chat-selected-empty i { color: #cbd5e1; }
+
 /* ─── Tabelas (contatos) e cards de campanha — herdam de .panel/var(),
        mas garantimos texto escuro nos títulos fortes ──────────────────── */
 body.light-theme .ct-nome-cell strong,

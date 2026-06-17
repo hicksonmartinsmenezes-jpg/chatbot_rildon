@@ -294,10 +294,13 @@ function playAlertSound(type = "ticket") {
   } catch (_) {}
 }
 
-function showNewTicketAlert() {
+function showNewTicketAlert(userId, name) {
   document.querySelector(".notification")?.classList.add("has-alert");
   playAlertSound("ticket");
   showToast("🎫 Novo atendimento recebido!");
+  if (typeof pushNotification === "function") {
+    pushNotification("ticket", `Novo atendimento${name ? ": " + name : ""}`, userId);
+  }
 }
 
 // ─── Assumir / Transferir Ticket ─────────────────────────────────────────────

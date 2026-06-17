@@ -411,18 +411,29 @@ async function connectWhatsApp(onMessage) {
         continue;
       }
 
-      // Resolve LID → JID real (número de telefone) quando disponível
+      // Resolve LID → JID real (número de telefone) quando disponível.
+      // sendTo = JID usado para ENVIAR a resposta (mantemos @lid quando possível,
+      //          pois a sessão Signal foi estabelecida com esse JID).
+      // userId = JID normalizado (número) usado para histórico, contexto e painel.
       let userId = jid;
+      let sendTo = jid; // JID de destino para enviar — começa igual ao recebido
+
       if (jid.includes("@lid")) {
         if (lidToJid[jid]) {
           userId = lidToJid[jid];
-          logger.info(`[LID→JID] ${jid} → ${userId}`);
+          // sendTo permanece @lid: sessão Signal está ativa com esse JID,
+          // responder ao número causaria novo handshake → "Aguardando mensagem"
+          logger.info(`[LID→JID] ${jid} → ${userId} (resposta via @lid)`);
         } else if (msg.key.senderPn) {
-          // senderPn contém o número real mesmo quando o mapa lidToJid ainda não foi populado
-          userId = msg.key.senderPn;
-          setLidMapping(jid, userId, "senderPn"); // cacheia e persiste para as próximas mensagens
+          // Normaliza senderPn para JID completo
+          const rawPn = String(msg.key.senderPn).replace(/[^\d]/g, "");
+          userId = `${rawPn}@s.whatsapp.net`;
+          setLidMapping(jid, userId, "senderPn");
+          // Aqui não temos sessão com o número — usamos o @lid mesmo
+          logger.info(`[senderPn] ${jid} → ${userId} (resposta via @lid)`);
         } else {
-          logger.warn(`[msg@lid sem resolução] key=${JSON.stringify(msg.key)} pushName=${msg.pushName || ""}`);
+          logger.warn(`[msg@lid ignorada - sem resolução] jid=${jid} pushName=${msg.pushName || ""}`);
+          continue;
         }
       }
 
@@ -477,7 +488,7 @@ async function connectWhatsApp(onMessage) {
         logger.info(`Mensagem recebida de ${userId}: ${text}`);
         const response = await onMessage({ userId, contactName, message: text });
         if (!response) { logger.warn("Nenhuma resposta retornada."); continue; }
-        await enviarComRetry(userId, response);
+        await enviarComRetry(sendTo, response);
       } catch (err) {
         logger.error(`Erro ao processar mensagem: ${err.message}`);
       }
@@ -656,6 +667,18 @@ async function getBotConfigCached() {
   return cachedConfig;
 }
 
+// Encerra a sessão atual para forçar geração de novo QR Code
+async function forceReconnect() {
+  logger.warn("[WhatsApp] Reconexão forçada solicitada pelo painel.");
+  isWhatsAppConnected = false;
+  const oldSock = sock;
+  sock = null;
+  await limparSocketAntigo(oldSock);
+  // O evento connection.close com shouldReconnect já cuida de chamar connectWhatsApp novamente.
+  // Aqui apenas fechamos — a reconexão acontece pelo handler existente.
+  try { oldSock?.end?.(new Error("forced_reconnect")); } catch (_) {}
+}
+
 module.exports = {
   connectWhatsApp,
   sendMessage,
@@ -664,5 +687,6 @@ module.exports = {
   getSocket,
   resolveLid,
   sendTypingPresence,
-  isConnected
+  isConnected,
+  forceReconnect
 };

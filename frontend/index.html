@@ -166,10 +166,23 @@
           <i class="fa-solid fa-moon"></i>
         </button>
 
-        <button class="icon-btn notification" title="Notificações">
-          <i class="fa-regular fa-bell"></i>
-          <span id="notification-dot"></span>
-        </button>
+        <div class="notif-wrap">
+          <button class="icon-btn notification" id="btn-notifications" title="Notificações" onclick="toggleNotifDropdown()" aria-haspopup="true" aria-expanded="false">
+            <i class="fa-regular fa-bell"></i>
+            <span id="notification-dot"></span>
+          </button>
+          <div id="notif-dropdown" class="notif-dropdown hidden" role="menu">
+            <div class="notif-dropdown-header">
+              <strong>Notificações</strong>
+              <button onclick="clearNotifications()" title="Limpar todas">
+                <i class="fa-solid fa-check-double"></i>
+              </button>
+            </div>
+            <ul id="notif-list" class="notif-list">
+              <li class="notif-empty">Nenhuma notificação</li>
+            </ul>
+          </div>
+        </div>
 
        <div class="avatar-wrap" onclick="openProfileModal()">
 
@@ -368,6 +381,15 @@
       <section id="tab-conversations" class="tab-content hidden">
         <div class="whatsapp-panel">
           <aside class="chat-sidebar">
+            <div class="chat-sidebar-header">
+              <div>
+                <strong>Conversas</strong>
+                <span id="chat-total">0 conversas</span>
+              </div>
+              <button onclick="loadConversations()" title="Atualizar lista">
+                <i class="fa-solid fa-arrows-rotate"></i>
+              </button>
+            </div>
             <div class="chat-status-tabs">
               <button class="chat-status-tab active" data-filter="pendentes" onclick="setTicketFilter('pendentes', this)">
                 <i class="fa-solid fa-clock"></i>
@@ -412,10 +434,11 @@
             <div class="chat-input-area">
              <textarea
               id="conversation-message"
-              placeholder="Digite uma mensagem..."
+              placeholder="Selecione uma conversa..."
               onkeydown="handleConversationKeydown(event)"
               oninput="notifyTyping(); autoResizeTextarea(this)"
               rows="1"
+              disabled
               ></textarea>
             
               <button id="btn-send-conversation" onclick="sendConversationMessage()" title="Enviar">
@@ -1228,6 +1251,16 @@ Como podemos ajudar você hoje?
               </span>
               <i class="fa-solid fa-chevron-right"></i>
             </button>
+
+            <button type="button" class="settings-home-card" onclick="openSettingsPanel('whatsapp')">
+              <span class="settings-home-icon bg-green"><i class="fa-brands fa-whatsapp"></i></span>
+              <span>
+                <strong>WhatsApp</strong>
+                <small>Status da conexão e QR Code.</small>
+              </span>
+              <span id="wa-home-badge" class="badge badge-off" style="margin-left:auto;margin-right:8px">●</span>
+              <i class="fa-solid fa-chevron-right"></i>
+            </button>
           </div>
         </section>
 
@@ -1445,6 +1478,53 @@ Como podemos ajudar você hoje?
               </button>
             </div>
           </div>
+
+          <!-- Painel WhatsApp / QR Code -->
+          <div class="settings-card settings-detail-card" data-settings-panel="whatsapp">
+            <div class="settings-card-title">
+              <span class="settings-icon bg-green"><i class="fa-brands fa-whatsapp"></i></span>
+              <div>
+                <h3>Conexão WhatsApp</h3>
+                <p>Status da conexão e reconexão via QR Code.</p>
+              </div>
+            </div>
+
+            <div class="settings-form">
+              <!-- Status atual -->
+              <div class="wa-status-row">
+                <span class="wa-status-label">Status:</span>
+                <span id="wa-status-text" class="badge badge-off">● Desconectado</span>
+              </div>
+
+              <!-- Área do QR Code -->
+              <div id="wa-qr-area" class="wa-qr-area hidden">
+                <p class="wa-qr-hint">
+                  <i class="fa-solid fa-circle-info"></i>
+                  Abra o WhatsApp no celular &rarr; Dispositivos conectados &rarr; Conectar dispositivo
+                </p>
+                <canvas id="wa-qr-canvas" class="wa-qr-canvas"></canvas>
+                <small id="wa-qr-timer" class="wa-qr-timer">QR expira em <strong id="wa-qr-seconds">60</strong>s</small>
+              </div>
+
+              <!-- Mensagem quando conectado -->
+              <div id="wa-connected-area" class="wa-connected-area hidden">
+                <i class="fa-solid fa-circle-check" style="color:#22c55e;font-size:40px"></i>
+                <p>WhatsApp conectado com sucesso!</p>
+              </div>
+
+              <!-- Mensagem aguardando QR -->
+              <div id="wa-waiting-area" class="wa-waiting-area">
+                <i class="fa-brands fa-whatsapp" style="font-size:48px;color:#22c55e;opacity:.4"></i>
+                <p>Aguardando geração do QR Code...</p>
+                <small>O QR aparecerá automaticamente quando o bot precisar reconectar.</small>
+              </div>
+
+              <button class="btn-primary" onclick="requestWaReconnect()" style="margin-top:16px">
+                <i class="fa-solid fa-rotate"></i> Forçar nova conexão
+              </button>
+            </div>
+          </div>
+
         </section>
       </section>
 
@@ -1631,6 +1711,7 @@ Como podemos ajudar você hoje?
     <i class="fa-solid fa-bell" aria-hidden="true"></i>
     <span id="toast-message">Novo atendimento recebido!</span>
   </div>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
@@ -1641,13 +1722,13 @@ Como podemos ajudar você hoje?
   <script src="js/03-navigation.js?v=3"></script>
   <script src="js/04-history.js?v=4"></script>
   <script src="js/05-metrics.js"></script>
-  <script src="js/06-tickets.js?v=3"></script>
-  <script src="js/07-conversations.js?v=9"></script>
+  <script src="js/06-tickets.js?v=4"></script>
+  <script src="js/07-conversations.js?v=10"></script>
   <script src="js/08-settings.js"></script>
   <script src="js/09-users.js"></script>
   <script src="js/10-logs.js"></script>
   <script src="js/11-profile.js?v=2"></script>
-  <script src="js/12-socket.js?v=5"></script>
+  <script src="js/12-socket.js?v=7"></script>
   <script src="js/13-campaigns.js?v=16"></script>
   <script src="js/14-charts.js"></script>
   <script src="js/15-modal.js"></script>

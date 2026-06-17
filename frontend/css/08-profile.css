@@ -75,7 +75,8 @@
   font-weight: 800;
 }
 
-.profile-box input[type="text"] {
+.profile-box input[type="text"],
+.profile-box input[type="tel"] {
   width: 100%;
   height: 52px;
   border: 1px solid var(--border);
@@ -88,7 +89,8 @@
   transition: var(--transition-fast);
 }
 
-.profile-box input[type="text"]:focus {
+.profile-box input[type="text"]:focus,
+.profile-box input[type="tel"]:focus {
   border-color: var(--primary);
   box-shadow: 0 0 0 4px rgba(29, 108, 245, 0.14);
 }
@@ -144,4 +146,67 @@
 .panel-user-actions {
   display: flex;
   gap: 8px;
+}
+
+/* ─── Painel WhatsApp / QR Code ─── */
+.wa-status-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.wa-status-label {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.wa-qr-area,
+.wa-connected-area,
+.wa-waiting-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 24px 16px;
+  border-radius: 16px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  margin-bottom: 8px;
+  text-align: center;
+}
+
+.wa-qr-canvas {
+  border-radius: 12px;
+  border: 6px solid #fff;
+  display: block;
+}
+
+.wa-qr-hint {
+  font-size: 13px;
+  color: var(--muted);
+  max-width: 260px;
+}
+
+.wa-qr-hint i { color: var(--primary); margin-right: 4px; }
+
+.wa-qr-timer {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.wa-qr-timer strong { color: #f59e0b; }
+
+.wa-connected-area p,
+.wa-waiting-area p {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.wa-waiting-area small {
+  color: var(--muted);
+  font-size: 12px;
 }

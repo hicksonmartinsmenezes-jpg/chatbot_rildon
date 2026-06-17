@@ -204,6 +204,8 @@ async function openConversation(userId, updateActive = true) {
   const seq = ++_openConvSeq;
 
   selectedConversationUser = userId;
+  const textarea = document.getElementById("conversation-message");
+  if (textarea) { textarea.disabled = false; textarea.placeholder = "Digite uma mensagem..."; }
   const hadUnread = unreadMessages[userId] > 0;
   unreadMessages[userId] = 0;
   updateSidebarUnreadBadge();
@@ -627,6 +629,75 @@ function notifyTyping() {
     body:    JSON.stringify({ userId: selectedConversationUser })
   }).catch(() => {});
 }
+
+// ─── Notificações (dropdown topbar) ──────────────────────────────────────────
+const _notifItems = []; // { type, text, time, userId? }
+
+function pushNotification(type, text, userId) {
+  _notifItems.unshift({ type, text, time: new Date(), userId });
+  if (_notifItems.length > 30) _notifItems.pop();
+  renderNotifDropdown();
+}
+
+function renderNotifDropdown() {
+  const list = document.getElementById("notif-list");
+  if (!list) return;
+  if (!_notifItems.length) {
+    list.innerHTML = `<li class="notif-empty">Nenhuma notificação</li>`;
+    return;
+  }
+  list.innerHTML = _notifItems.map((n, i) => {
+    const iconClass = n.type === "ticket" ? "ticket" : "message";
+    const icon = n.type === "ticket" ? "fa-ticket" : "fa-message";
+    const ago = _notifTimeAgo(n.time);
+    const onclick = n.userId ? `onclick="closeNotifDropdown(); switchTab('conversations'); setTimeout(()=>openConversation('${escapeAttr(n.userId)}'),200)"` : "";
+    return `<li ${onclick}>
+      <span class="notif-icon ${iconClass}"><i class="fa-solid ${icon}"></i></span>
+      <div class="notif-body">
+        <strong>${safe(n.text)}</strong>
+        <span>${ago}</span>
+      </div>
+    </li>`;
+  }).join("");
+}
+
+function _notifTimeAgo(date) {
+  const diff = Math.floor((Date.now() - date) / 1000);
+  if (diff < 60)  return "agora";
+  if (diff < 3600) return `${Math.floor(diff/60)}min atrás`;
+  return `${Math.floor(diff/3600)}h atrás`;
+}
+
+function toggleNotifDropdown() {
+  const btn      = document.getElementById("btn-notifications");
+  const dropdown = document.getElementById("notif-dropdown");
+  if (!dropdown) return;
+  const isOpen = !dropdown.classList.contains("hidden");
+  if (isOpen) {
+    closeNotifDropdown();
+  } else {
+    dropdown.classList.remove("hidden");
+    btn?.setAttribute("aria-expanded", "true");
+    // Limpa o dot ao abrir
+    document.querySelector(".notification")?.classList.remove("has-alert");
+  }
+}
+
+function closeNotifDropdown() {
+  document.getElementById("notif-dropdown")?.classList.add("hidden");
+  document.getElementById("btn-notifications")?.setAttribute("aria-expanded", "false");
+}
+
+function clearNotifications() {
+  _notifItems.length = 0;
+  renderNotifDropdown();
+}
+
+// Fecha o dropdown ao clicar fora dele
+document.addEventListener("click", (e) => {
+  const wrap = e.target.closest(".notif-wrap");
+  if (!wrap) closeNotifDropdown();
+});
 
 function updateSidebarUnreadBadge() {
   const badge = document.getElementById("sidebar-unread-count");

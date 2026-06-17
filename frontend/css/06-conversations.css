@@ -513,6 +513,21 @@ body.tab-fullscreen #tab-conversations {
   background: #0d0d0d;
 }
 
+/* ─── Estado vazio (nenhuma conversa selecionada) ─ */
+.chat-selected-empty {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #4b5563;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.chat-selected-empty i {
+  font-size: 20px;
+  color: #374151;
+}
+
 /* ─── Header da janela ────────────────── */
 .chat-window-header {
   height: 72px;
@@ -771,6 +786,11 @@ body.tab-fullscreen #tab-conversations {
 .chat-input-area textarea:focus {
   border-color: rgba(255,255,255,.20);
   box-shadow: 0 0 0 3px rgba(255,255,255,.06);
+}
+
+.chat-input-area textarea:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .chat-input-area button {

@@ -1,6 +1,86 @@
 // 12-socket.js
 // Arquivo modularizado automaticamente a partir do app.js original.
 
+// ─── Painel WhatsApp / QR Code ────────────────────────────────────────────────
+let _waQrTimer = null;
+
+function renderWaQr(qr) {
+  const canvas   = document.getElementById("wa-qr-canvas");
+  const area     = document.getElementById("wa-qr-area");
+  const waiting  = document.getElementById("wa-waiting-area");
+  const connArea = document.getElementById("wa-connected-area");
+  if (!canvas) return;
+
+  if (typeof QRCode === "undefined") return;
+
+  QRCode.toCanvas(canvas, qr, { width: 220, margin: 2 }, (err) => {
+    if (err) return;
+    area?.classList.remove("hidden");
+    waiting?.classList.add("hidden");
+    connArea?.classList.add("hidden");
+  });
+
+  // Contagem regressiva de 60s (QR expira)
+  clearInterval(_waQrTimer);
+  let secs = 60;
+  const secEl = document.getElementById("wa-qr-seconds");
+  if (secEl) secEl.textContent = secs;
+  _waQrTimer = setInterval(() => {
+    secs--;
+    if (secEl) secEl.textContent = secs;
+    if (secs <= 0) {
+      clearInterval(_waQrTimer);
+      area?.classList.add("hidden");
+      waiting?.classList.remove("hidden");
+    }
+  }, 1000);
+}
+
+function updateWaStatusPanel(status) {
+  const statusText = document.getElementById("wa-status-text");
+  const homeBadge  = document.getElementById("wa-home-badge");
+  const topBadge   = document.getElementById("status-badge");
+  const area       = document.getElementById("wa-qr-area");
+  const connArea   = document.getElementById("wa-connected-area");
+  const waiting    = document.getElementById("wa-waiting-area");
+
+  if (status === "connected") {
+    if (statusText) { statusText.textContent = "● Conectado"; statusText.className = "badge badge-on"; }
+    if (homeBadge)  { homeBadge.textContent  = "●"; homeBadge.className = "badge badge-on"; }
+    if (topBadge)   { topBadge.textContent   = "● Online"; topBadge.className = "badge badge-on"; }
+    area?.classList.add("hidden");
+    connArea?.classList.remove("hidden");
+    waiting?.classList.add("hidden");
+    clearInterval(_waQrTimer);
+  } else {
+    if (statusText) { statusText.textContent = "● Desconectado"; statusText.className = "badge badge-off"; }
+    if (homeBadge)  { homeBadge.textContent  = "●"; homeBadge.className = "badge badge-off"; }
+    if (topBadge)   { topBadge.textContent   = "● Offline"; topBadge.className = "badge badge-off"; }
+    if (status !== "qr") {
+      area?.classList.add("hidden");
+      connArea?.classList.add("hidden");
+      waiting?.classList.remove("hidden");
+    }
+  }
+}
+
+async function requestWaReconnect() {
+  try {
+    const res = await apiFetch(`${BASE}/api/whatsapp/reconnect`, { method: "POST" });
+    if (res?.ok) {
+      showToast("🔄 Reconexão solicitada. Aguarde o QR Code...");
+      const area    = document.getElementById("wa-qr-area");
+      const waiting = document.getElementById("wa-waiting-area");
+      const conn    = document.getElementById("wa-connected-area");
+      area?.classList.add("hidden");
+      conn?.classList.add("hidden");
+      waiting?.classList.remove("hidden");
+    } else {
+      showToast("❌ Falha ao solicitar reconexão.");
+    }
+  } catch { showToast("❌ Erro ao conectar."); }
+}
+
 // ─── Socket.IO ────────────────────────────────────────────────────────────────
 let socket = null;
 
@@ -44,10 +124,6 @@ socket.on("online_users", users => {
   window.onlineUsers = Array.isArray(users) ? users : [];
   renderPanelUsers();
 });
-
-  socket.on("whatsapp_status", ({ status }) => {
-    if (status === "connected") setOnline(); else setOffline();
-  });
 
 // Debounce timers para evitar múltiplos reloads simultâneos por rajada de eventos
 let _convReloadTimer   = null;
@@ -119,6 +195,10 @@ socket.on("nova_mensagem", (data) => {
   if (!data.response && !isCurrentConversation) {
     playAlertSound("message");
     showToast("💬 Nova mensagem recebida!");
+    if (typeof pushNotification === "function") {
+      const nome = data.contactName || formatPhone(data.userId);
+      pushNotification("message", `${nome}: ${(data.message || "").slice(0, 60)}`, data.userId);
+    }
   }
 });
 socket.on("typing", data => {
@@ -154,6 +234,12 @@ socket.on("typing", data => {
   socket.on("qr_code", ({ qr }) => {
     const badge = document.getElementById("status-badge");
     if (badge) { badge.textContent = "⏳ Aguardando QR"; badge.className = "badge badge-off"; }
-    showToast("📱 Escaneie o QR Code no terminal para conectar o WhatsApp.");
+    showToast("📱 QR Code disponível em Configurações → WhatsApp.");
+    renderWaQr(qr);
+  });
+
+  socket.on("whatsapp_status", ({ status }) => {
+    if (status === "connected") setOnline(); else setOffline();
+    updateWaStatusPanel(status);
   });
 }

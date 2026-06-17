@@ -1,0 +1,534 @@
+[2026-05-26T16:11:04.446Z] [ERROR] Erro ao enviar mensagem de encerramento:
+[2026-05-27T12:47:08.759Z] [ERROR] Erro ao salvar histórico: coluna "message_id" da relação "history" não existe
+[2026-05-27T12:52:50.110Z] [ERROR] Erro ao salvar histórico: coluna "message_id" da relação "history" não existe
+[2026-05-27T12:52:53.559Z] [ERROR] Erro ao salvar histórico: coluna "message_id" da relação "history" não existe
+[2026-05-27T14:41:18.498Z] [ERROR] Erro ao salvar histórico: relation "history" does not exist
+[2026-05-28T11:32:27.771Z] [ERROR] ❌ Erro na fila [187368216723551@lid]:
+[2026-05-28T13:29:12.394Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-05-28T13:54:22.446Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-05-28T14:27:44.539Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-05-28T14:42:05.817Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-05-28T14:45:28.204Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-05-28T14:45:28.212Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-05-28T14:54:22.760Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-05-28T14:54:22.765Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-05-28T15:09:32.233Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-05-28T15:15:16.418Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-05-28T15:15:16.426Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-05-28T15:18:50.754Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-05-28T15:19:45.289Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-05-28T15:20:07.344Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-05-28T15:20:07.351Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-05-28T15:20:46.782Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-05-28T15:20:46.790Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-05-28T15:21:51.773Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-05-28T15:23:01.928Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-05-28T15:24:40.616Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-05-28T15:49:21.585Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-05-28T16:05:43.934Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-05-29T17:21:36.231Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-05-29T17:21:36.236Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-05-29T17:44:03.197Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-05-29T17:46:10.519Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-05-29T17:50:26.558Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-05-29T17:50:26.562Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-05-29T17:50:26.573Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-06-01T12:36:29.505Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-06-02T11:18:13.456Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-06-02T16:51:37.246Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-06-02T16:54:11.763Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-06-03T13:55:36.123Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-06-03T19:03:58.732Z] [ERROR] Falha na inicialização: connect ECONNREFUSED 172.19.0.2:5432
+[2026-06-03T19:47:34.614Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-06-03T20:21:13.042Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-06-03T20:44:13.512Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-06-03T22:50:28.856Z] [ERROR] Erro ao salvar histórico: invalid input syntax for type integer: "4f340770-c85a-41e5-aef5-512b34c79c3e"
+[2026-06-03T22:50:40.512Z] [ERROR] Erro ao salvar histórico: invalid input syntax for type integer: "d3c649eb-9b46-483f-bff6-f2da8e37c687"
+[2026-06-03T22:50:50.568Z] [ERROR] Erro ao salvar histórico: invalid input syntax for type integer: "0b57b985-d80f-42c8-914a-0bcf23a7ab87"
+[2026-06-04T00:26:42.717Z] [ERROR] Erro ao salvar histórico: invalid input syntax for type integer: "5d5e2963-6dc4-4bc7-acbd-fb5ad98cc4b7"
+[2026-06-04T00:26:46.382Z] [ERROR] Erro ao salvar histórico: invalid input syntax for type integer: "a6aa5f61-3553-4c01-a8f3-c518690616bc"
+[2026-06-04T00:26:56.903Z] [ERROR] Erro ao salvar histórico: invalid input syntax for type integer: "1d938b7e-a1b0-459e-808b-48317c9da9e6"
+[2026-06-04T01:11:35.114Z] [ERROR] Erro ao salvar histórico: invalid input syntax for type integer: "0e77a29d-c86e-4f62-a0e3-a941e0352d6f"
+[2026-06-04T01:11:36.410Z] [ERROR] Erro ao salvar histórico: invalid input syntax for type integer: "44e17c28-04eb-462f-82fb-3abac2df3944"
+[2026-06-04T01:11:37.054Z] [ERROR] Erro ao salvar histórico: invalid input syntax for type integer: "c7dc2d60-2698-44a3-8de5-1e0faed2c408"
+[2026-06-04T01:11:37.678Z] [ERROR] Erro ao salvar histórico: invalid input syntax for type integer: "2b49db72-cf08-4aae-8bc2-1bb513b5a532"
+[2026-06-04T01:11:38.284Z] [ERROR] Erro ao salvar histórico: invalid input syntax for type integer: "a3ed961a-0907-42fb-bdfd-9207362bf5b1"
+[2026-06-04T01:11:38.879Z] [ERROR] Erro ao salvar histórico: invalid input syntax for type integer: "d83cbd60-c989-4194-a2e0-f7de8115ba6c"
+[2026-06-04T01:11:39.461Z] [ERROR] Erro ao salvar histórico: invalid input syntax for type integer: "c32675a0-6c6c-4207-9f76-327c7da13c51"
+[2026-06-04T01:11:40.038Z] [ERROR] Erro ao salvar histórico: invalid input syntax for type integer: "af0b6eb3-5180-4e5f-a65a-da868e5a5625"
+[2026-06-04T01:11:40.625Z] [ERROR] Erro ao salvar histórico: invalid input syntax for type integer: "fc51e135-e6d8-4795-8e80-ffe0ff0315b1"
+[2026-06-04T01:11:41.204Z] [ERROR] Erro ao salvar histórico: invalid input syntax for type integer: "1603f257-7574-4c9d-83a9-c831ace5d0c0"
+[2026-06-04T02:06:32.332Z] [ERROR] ❌ Erro na fila [152402720215206@lid]: invalid input syntax for type integer: "4d8d68de-cdba-4521-bee3-3d74fbcf7fc5"
+[2026-06-04T02:06:32.339Z] [ERROR] Erro ao processar mensagem: invalid input syntax for type integer: "4d8d68de-cdba-4521-bee3-3d74fbcf7fc5"
+[2026-06-05T03:04:55.177Z] [ERROR] [Express] PATCH /api/auth/me/photo — File too large
+[2026-06-05T03:04:55.192Z] [ERROR] [Express] PATCH /api/auth/me/photo — File too large
+[2026-06-05T03:05:36.589Z] [ERROR] [Express] PATCH /api/auth/me/photo — File too large
+[2026-06-05T03:05:36.609Z] [ERROR] [Express] PATCH /api/auth/me/photo — File too large
+[2026-06-05T03:23:12.481Z] [ERROR] [Express] PATCH /api/auth/me/photo — File too large
+[2026-06-05T03:23:12.496Z] [ERROR] [Express] PATCH /api/auth/me/photo — File too large
+[2026-06-05T13:52:13.950Z] [ERROR] Unhandled Rejection: Error: ENOENT: no such file or directory, open 'C:\Users\marke\OneDrive\Área de Trabalho\PROETO gitHUB\bot\auth_info\creds.json'
+    at async open (node:internal/fs/promises:640:25)
+    at async writeFile (node:internal/fs/promises:1257:14)
+    at async file:///C:/Users/marke/OneDrive/%C3%81rea%20de%20Trabalho/PROETO%20gitHUB/bot/node_modules/@whiskeysockets/baileys/lib/Utils/use-multi-file-auth-state.js:35:17
+[2026-06-05T13:52:14.334Z] [ERROR] Unhandled Rejection: Error: ENOENT: no such file or directory, open 'C:\Users\marke\OneDrive\Área de Trabalho\PROETO gitHUB\bot\auth_info\creds.json'
+    at async open (node:internal/fs/promises:640:25)
+    at async writeFile (node:internal/fs/promises:1257:14)
+    at async file:///C:/Users/marke/OneDrive/%C3%81rea%20de%20Trabalho/PROETO%20gitHUB/bot/node_modules/@whiskeysockets/baileys/lib/Utils/use-multi-file-auth-state.js:35:17
+[2026-06-05T15:22:35.591Z] [ERROR] ❌ Erro na fila [187368216723551@lid]: duplicate key value violates unique constraint "tickets_protocolo_key"
+[2026-06-05T15:22:35.599Z] [ERROR] Erro ao processar mensagem: duplicate key value violates unique constraint "tickets_protocolo_key"
+[2026-06-05T15:22:35.616Z] [ERROR] Unhandled Rejection: error: duplicate key value violates unique constraint "tickets_protocolo_key"
+    at /app/node_modules/pg-pool/index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async Object.create (/app/src/repositories/ticket.repository.js:16:18)
+    at async createTicket (/app/src/services/ticket.service.js:43:18)
+    at async mainFlow (/app/src/flows/main.flow.js:90:22)
+    at async /app/src/services/message.service.js:85:22
+[2026-06-05T15:22:35.632Z] [ERROR] Unhandled Rejection: error: duplicate key value violates unique constraint "tickets_protocolo_key"
+    at /app/node_modules/pg-pool/index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async Object.create (/app/src/repositories/ticket.repository.js:16:18)
+    at async createTicket (/app/src/services/ticket.service.js:43:18)
+    at async mainFlow (/app/src/flows/main.flow.js:90:22)
+    at async /app/src/services/message.service.js:85:22
+[2026-06-05T15:22:58.604Z] [ERROR] ❌ Erro na fila [187368216723551@lid]: duplicate key value violates unique constraint "tickets_protocolo_key"
+[2026-06-05T15:22:58.608Z] [ERROR] Erro ao processar mensagem: duplicate key value violates unique constraint "tickets_protocolo_key"
+[2026-06-05T15:22:58.643Z] [ERROR] Unhandled Rejection: error: duplicate key value violates unique constraint "tickets_protocolo_key"
+    at /app/node_modules/pg-pool/index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async Object.create (/app/src/repositories/ticket.repository.js:16:18)
+    at async createTicket (/app/src/services/ticket.service.js:43:18)
+    at async mainFlow (/app/src/flows/main.flow.js:90:22)
+    at async /app/src/services/message.service.js:85:22
+[2026-06-05T15:22:58.658Z] [ERROR] Unhandled Rejection: error: duplicate key value violates unique constraint "tickets_protocolo_key"
+    at /app/node_modules/pg-pool/index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async Object.create (/app/src/repositories/ticket.repository.js:16:18)
+    at async createTicket (/app/src/services/ticket.service.js:43:18)
+    at async mainFlow (/app/src/flows/main.flow.js:90:22)
+    at async /app/src/services/message.service.js:85:22
+[2026-06-05T15:23:05.711Z] [ERROR] ❌ Erro na fila [187368216723551@lid]: duplicate key value violates unique constraint "tickets_protocolo_key"
+[2026-06-05T15:23:05.717Z] [ERROR] Erro ao processar mensagem: duplicate key value violates unique constraint "tickets_protocolo_key"
+[2026-06-05T15:23:05.747Z] [ERROR] Unhandled Rejection: error: duplicate key value violates unique constraint "tickets_protocolo_key"
+    at /app/node_modules/pg-pool/index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async Object.create (/app/src/repositories/ticket.repository.js:16:18)
+    at async createTicket (/app/src/services/ticket.service.js:43:18)
+    at async mainFlow (/app/src/flows/main.flow.js:90:22)
+    at async /app/src/services/message.service.js:85:22
+[2026-06-05T15:23:05.769Z] [ERROR] Unhandled Rejection: error: duplicate key value violates unique constraint "tickets_protocolo_key"
+    at /app/node_modules/pg-pool/index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async Object.create (/app/src/repositories/ticket.repository.js:16:18)
+    at async createTicket (/app/src/services/ticket.service.js:43:18)
+    at async mainFlow (/app/src/flows/main.flow.js:90:22)
+    at async /app/src/services/message.service.js:85:22
+[2026-06-05T15:51:26.930Z] [ERROR] [Express] PATCH /api/auth/me/photo — Apenas imagens JPEG, PNG, WebP ou GIF são permitidas.
+[2026-06-05T15:51:26.964Z] [ERROR] [Express] PATCH /api/auth/me/photo — Apenas imagens JPEG, PNG, WebP ou GIF são permitidas.
+[2026-06-05T16:00:12.056Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-05T16:00:12.062Z] [ERROR] Erro ao notificar atendente: WhatsApp não conectado.
+[2026-06-05T16:01:27.266Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-05T16:01:27.270Z] [ERROR] Erro ao notificar atendente: WhatsApp não conectado.
+[2026-06-05T16:02:06.529Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-05T16:02:06.536Z] [ERROR] Erro ao notificar atendente: WhatsApp não conectado.
+[2026-06-05T18:11:48.164Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-05T18:11:53.186Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-05T18:25:42.286Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-06-08T11:51:25.441Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-08T11:51:25.490Z] [ERROR] Erro ao enviar aviso de inatividade:
+[2026-06-08T11:53:25.422Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-08T11:53:25.436Z] [ERROR] Erro ao enviar mensagem de encerramento:
+[2026-06-08T11:56:12.376Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-08T11:56:12.386Z] [ERROR] Erro ao notificar atendente: WhatsApp não conectado.
+[2026-06-08T13:00:29.006Z] [ERROR] [IA] Todas as tentativas falharam — retornando null.
+[2026-06-08T13:01:06.194Z] [ERROR] [IA] Todas as tentativas falharam — retornando null.
+[2026-06-08T13:01:23.053Z] [ERROR] [IA] Todas as tentativas falharam — retornando null.
+[2026-06-08T13:01:44.660Z] [ERROR] [IA] Todas as tentativas falharam — retornando null.
+[2026-06-08T13:06:27.356Z] [ERROR] [IA] Todas as tentativas falharam — retornando null.
+[2026-06-08T13:07:05.700Z] [ERROR] [IA] Todas as tentativas falharam — retornando null.
+[2026-06-08T13:07:35.957Z] [ERROR] [IA] Todas as tentativas falharam — retornando null.
+[2026-06-08T13:08:36.831Z] [ERROR] [IA] Todas as tentativas falharam — retornando null.
+[2026-06-08T13:10:01.208Z] [ERROR] [IA] Todas as tentativas falharam — retornando null.
+[2026-06-08T13:12:36.043Z] [ERROR] [IA] Todas as tentativas falharam.
+[2026-06-08T13:13:29.939Z] [ERROR] [IA] Todas as tentativas falharam.
+[2026-06-08T13:34:15.908Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-08T13:34:15.936Z] [ERROR] Erro ao enviar aviso de inatividade:
+[2026-06-08T13:44:12.843Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-08T13:44:12.856Z] [ERROR] Erro ao enviar aviso de inatividade:
+[2026-06-08T13:46:12.832Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-08T13:46:12.848Z] [ERROR] Erro ao enviar mensagem de encerramento:
+[2026-06-08T14:04:26.263Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-08T14:04:26.275Z] [ERROR] Erro ao notificar atendente: WhatsApp não conectado.
+[2026-06-08T14:04:48.171Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-08T14:04:48.184Z] [ERROR] [sendManualMessage] WhatsApp não conectado.
+[2026-06-08T14:05:01.258Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-08T14:05:01.271Z] [ERROR] Erro ao notificar atendente: WhatsApp não conectado.
+[2026-06-08T14:05:10.579Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-08T14:05:10.594Z] [ERROR] [sendManualMessage] WhatsApp não conectado.
+[2026-06-08T14:05:27.873Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-08T14:05:27.886Z] [ERROR] [sendManualMessage] WhatsApp não conectado.
+[2026-06-08T14:07:47.188Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-08T14:07:47.196Z] [ERROR] Erro ao notificar atendente: WhatsApp não conectado.
+[2026-06-08T14:11:16.025Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-08T14:11:16.039Z] [ERROR] Erro ao notificar atendente: WhatsApp não conectado.
+[2026-06-08T14:15:10.485Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-08T14:15:10.498Z] [ERROR] Erro ao enviar aviso de inatividade:
+[2026-06-08T14:17:10.476Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-08T14:17:10.506Z] [ERROR] Erro ao enviar mensagem de encerramento:
+[2026-06-08T16:49:47.693Z] [ERROR] [auth/login] relation "users" does not exist
+[2026-06-08T16:49:50.553Z] [ERROR] [auth/login] relation "users" does not exist
+[2026-06-08T16:49:51.058Z] [ERROR] [auth/login] relation "users" does not exist
+[2026-06-08T16:49:51.398Z] [ERROR] [auth/login] relation "users" does not exist
+[2026-06-08T16:49:51.630Z] [ERROR] [auth/login] relation "users" does not exist
+[2026-06-08T16:49:56.275Z] [ERROR] [auth/login] relation "users" does not exist
+[2026-06-08T16:49:56.788Z] [ERROR] [auth/login] relation "users" does not exist
+[2026-06-08T16:49:56.981Z] [ERROR] [auth/login] relation "users" does not exist
+[2026-06-08T16:49:57.134Z] [ERROR] [auth/login] relation "users" does not exist
+[2026-06-08T16:49:57.291Z] [ERROR] [auth/login] relation "users" does not exist
+[2026-06-08T16:50:52.910Z] [ERROR] [auth/login] relation "users" does not exist
+[2026-06-08T16:51:17.981Z] [ERROR] Unhandled Rejection: error: relation "settings" does not exist
+    at /app/node_modules/pg-pool/index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async Object.get (/app/src/repositories/settings.repository.js:4:18)
+    at async getSettings (/app/src/services/settings.service.js:93:17)
+    at async getBotConfig (/app/src/services/botConfig.service.js:11:20)
+    at async getBotConfigCached (/app/src/config/whatsapp.js:608:18)
+    at async EventEmitter.<anonymous> (/app/src/config/whatsapp.js:342:24)
+[2026-06-08T16:52:11.229Z] [ERROR] Unhandled Rejection: error: relation "settings" does not exist
+    at /app/node_modules/pg-pool/index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async Object.get (/app/src/repositories/settings.repository.js:4:18)
+    at async getSettings (/app/src/services/settings.service.js:93:17)
+    at async getBotConfig (/app/src/services/botConfig.service.js:11:20)
+    at async getBotConfigCached (/app/src/config/whatsapp.js:608:18)
+    at async EventEmitter.<anonymous> (/app/src/config/whatsapp.js:342:24)
+[2026-06-08T17:37:40.006Z] [ERROR] Falha definitiva ao enviar mensagem.
+[2026-06-09T11:02:43.117Z] [ERROR] [Express] POST /api/auth/login — EIO: i/o error, read
+[2026-06-09T11:53:01.155Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-09T11:53:01.206Z] [ERROR] Erro ao enviar aviso de inatividade:
+[2026-06-09T12:00:50.671Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-09T12:00:50.728Z] [ERROR] Erro ao enviar aviso de inatividade:
+[2026-06-09T12:10:12.549Z] [ERROR] Falha na inicialização: password authentication failed for user "postgres"
+[2026-06-09T12:10:16.043Z] [ERROR] Falha na inicialização: password authentication failed for user "postgres"
+[2026-06-09T12:10:18.864Z] [ERROR] Falha na inicialização: password authentication failed for user "postgres"
+[2026-06-09T12:10:21.965Z] [ERROR] Falha na inicialização: password authentication failed for user "postgres"
+[2026-06-09T12:10:25.830Z] [ERROR] Falha na inicialização: password authentication failed for user "postgres"
+[2026-06-09T12:10:30.508Z] [ERROR] Falha na inicialização: password authentication failed for user "postgres"
+[2026-06-09T12:10:36.852Z] [ERROR] Falha na inicialização: password authentication failed for user "postgres"
+[2026-06-09T12:10:46.454Z] [ERROR] Falha na inicialização: password authentication failed for user "postgres"
+[2026-06-09T12:11:02.043Z] [ERROR] Falha na inicialização: password authentication failed for user "postgres"
+[2026-06-09T12:14:00.085Z] [ERROR] [authSession] relation "auth_sessions" does not exist
+[2026-06-09T12:14:00.170Z] [ERROR] [authSession] relation "auth_sessions" does not exist
+[2026-06-09T12:14:02.843Z] [ERROR] [authSession] relation "auth_sessions" does not exist
+[2026-06-09T12:14:02.993Z] [ERROR] [authSession] relation "auth_sessions" does not exist
+[2026-06-09T12:14:03.049Z] [ERROR] [authSession] relation "auth_sessions" does not exist
+[2026-06-09T12:14:03.120Z] [ERROR] [authSession] relation "auth_sessions" does not exist
+[2026-06-09T12:14:05.894Z] [ERROR] [authSession] relation "auth_sessions" does not exist
+[2026-06-09T12:14:08.272Z] [ERROR] [auth/login] relation "users" does not exist
+[2026-06-09T12:14:21.733Z] [ERROR] [auth/login] relation "users" does not exist
+[2026-06-09T12:14:24.050Z] [ERROR] [authSession] relation "auth_sessions" does not exist
+[2026-06-09T12:14:26.558Z] [ERROR] [auth/login] relation "users" does not exist
+[2026-06-09T12:14:27.703Z] [ERROR] [auth/login] relation "users" does not exist
+[2026-06-09T12:14:28.550Z] [ERROR] [auth/login] relation "users" does not exist
+[2026-06-09T12:14:40.006Z] [ERROR] [auth/login] relation "users" does not exist
+[2026-06-09T12:14:46.984Z] [ERROR] [auth/login] relation "users" does not exist
+[2026-06-09T12:14:48.318Z] [ERROR] [auth/login] relation "users" does not exist
+[2026-06-09T12:15:10.068Z] [ERROR] [auth/login] relation "users" does not exist
+[2026-06-09T12:15:27.880Z] [ERROR] [auth/login] relation "users" does not exist
+[2026-06-09T12:15:56.872Z] [ERROR] [authSession] relation "auth_sessions" does not exist
+[2026-06-09T12:16:03.804Z] [ERROR] [auth/login] relation "users" does not exist
+[2026-06-09T12:16:04.531Z] [ERROR] [auth/login] relation "users" does not exist
+[2026-06-09T12:54:51.193Z] [ERROR] Erro removendo auth_info: EBUSY: resource busy or locked, rmdir '/app/auth_info'
+[2026-06-09T12:54:51.302Z] [ERROR] [whatsapp-logout] EBUSY: resource busy or locked, rmdir '/app/auth_info'
+[2026-06-09T13:25:10.580Z] [ERROR] ❌ Erro ao buscar histórico:
+[2026-06-09T13:25:10.988Z] [ERROR] ❌ Erro ao buscar histórico:
+[2026-06-09T13:25:11.356Z] [ERROR] ❌ Erro ao buscar histórico:
+[2026-06-09T13:25:24.245Z] [ERROR] ❌ Erro ao buscar histórico:
+[2026-06-09T13:28:40.600Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-09T13:28:40.642Z] [ERROR] Erro ao enviar aviso de inatividade:
+[2026-06-09T13:33:50.059Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-09T13:33:50.102Z] [ERROR] Erro ao notificar atendente: WhatsApp não conectado.
+[2026-06-09T13:34:38.230Z] [ERROR] [Express] POST /api/users — relation "audit_logs" does not exist
+[2026-06-09T13:34:40.105Z] [ERROR] [Express] POST /api/users — Usuário já existe.
+[2026-06-09T13:34:41.448Z] [ERROR] [Express] POST /api/users — Usuário já existe.
+[2026-06-09T13:34:42.395Z] [ERROR] [Express] POST /api/users — Usuário já existe.
+[2026-06-09T13:36:00.056Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-09T13:36:00.098Z] [ERROR] Erro ao notificar atendente: WhatsApp não conectado.
+[2026-06-09T13:42:37.662Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-09T13:42:37.713Z] [ERROR] Erro ao notificar atendente: WhatsApp não conectado.
+[2026-06-09T13:47:00.762Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-09T13:55:45.111Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-09T13:55:46.558Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-09T13:55:47.613Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-09T14:00:05.026Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-09T14:00:05.070Z] [ERROR] Erro ao enviar aviso de inatividade:
+[2026-06-09T14:01:38.423Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-09T14:01:38.453Z] [ERROR] Erro ao notificar atendente: WhatsApp não conectado.
+[2026-06-09T14:05:05.556Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-09T14:05:05.599Z] [ERROR] Erro ao enviar aviso de inatividade:
+[2026-06-09T14:07:05.548Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-09T14:07:05.574Z] [ERROR] Erro ao enviar mensagem de encerramento:
+[2026-06-09T15:59:12.212Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-09T15:59:12.250Z] [ERROR] Erro ao notificar atendente: WhatsApp não conectado.
+[2026-06-09T16:03:28.224Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-09T16:03:28.249Z] [ERROR] Erro ao notificar atendente: WhatsApp não conectado.
+[2026-06-09T16:10:51.527Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-09T16:10:51.557Z] [ERROR] Erro ao enviar aviso de inatividade:
+[2026-06-09T16:13:42.926Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-09T16:13:42.957Z] [ERROR] Erro ao notificar atendente: WhatsApp não conectado.
+[2026-06-09T16:14:31.670Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-09T16:14:31.765Z] [ERROR] Erro ao notificar atendente: WhatsApp não conectado.
+[2026-06-09T16:18:29.696Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-09T16:18:38.605Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-09T16:18:38.630Z] [ERROR] [sendManualMessage] WhatsApp não conectado.
+[2026-06-09T16:18:52.091Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-09T16:18:52.113Z] [ERROR] [sendManualMessage] WhatsApp não conectado.
+[2026-06-09T16:23:56.608Z] [ERROR] [vendas._criarTicket] Falha ao gerar protocolo: Cannot read properties of undefined (reading 'numero')
+[2026-06-09T16:23:56.612Z] [ERROR] [vendas._criarTicket] Falha ao gerar protocolo: Cannot read properties of undefined (reading 'numero')
+[2026-06-09T16:23:56.614Z] [ERROR] [vendas._criarTicket] Falha ao gerar protocolo: Cannot read properties of undefined (reading 'numero')
+[2026-06-09T16:23:56.621Z] [ERROR] [_criarTicket] Falha ao criar ticket para 5579999999999@test.us: Falha ao gerar protocolo: Cannot read properties of undefined (reading 'numero')
+[2026-06-09T16:23:56.625Z] [ERROR] [_criarTicket] Falha ao criar ticket para 5579999999999@test.us: Falha ao gerar protocolo: Cannot read properties of undefined (reading 'numero')
+[2026-06-09T16:23:56.633Z] [ERROR] [vendas._criarTicket] Falha ao gerar protocolo: Cannot read properties of undefined (reading 'numero')
+[2026-06-09T16:23:56.635Z] [ERROR] [_criarTicket] Falha ao criar ticket para 5579999999999@test.us: Falha ao gerar protocolo: Cannot read properties of undefined (reading 'numero')
+[2026-06-09T16:29:03.860Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-09T16:30:20.341Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-09T16:30:20.377Z] [ERROR] Erro ao notificar atendente: WhatsApp não conectado.
+[2026-06-09T16:33:57.559Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-09T16:33:57.635Z] [ERROR] Erro ao notificar atendente: WhatsApp não conectado.
+[2026-06-09T16:50:05.274Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-09T16:50:05.319Z] [ERROR] Erro ao enviar aviso de inatividade:
+[2026-06-09T16:56:17.482Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-09T16:56:17.498Z] [ERROR] Erro ao notificar atendente: WhatsApp não conectado.
+[2026-06-09T17:34:47.490Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-09T17:34:47.500Z] [ERROR] Erro ao notificar atendente: WhatsApp não conectado.
+[2026-06-09T17:38:36.256Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-09T17:38:36.269Z] [ERROR] Erro ao enviar aviso de inatividade:
+[2026-06-10T11:16:29.801Z] [ERROR] Falha na inicialização: password authentication failed for user "postgres"
+[2026-06-10T11:17:25.190Z] [ERROR] Falha na inicialização: password authentication failed for user "postgres"
+[2026-06-10T11:58:14.927Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-06-10T11:58:14.933Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-06-10T11:58:14.945Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-06-10T11:58:14.955Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-06-10T11:58:14.965Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-06-10T12:14:47.124Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-10T12:14:47.131Z] [ERROR] Erro ao enviar aviso de inatividade:
+[2026-06-10T12:22:47.090Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-10T12:22:47.097Z] [ERROR] Erro ao enviar mensagem de encerramento:
+[2026-06-10T12:23:57.674Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-06-10T12:23:57.679Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-06-10T12:23:57.690Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-06-10T12:23:57.699Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-06-10T12:23:57.708Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-06-10T13:52:03.930Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-10T13:52:03.945Z] [ERROR] Erro ao notificar atendente: WhatsApp não conectado.
+[2026-06-10T16:11:09.985Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-10T16:11:09.993Z] [ERROR] Erro ao enviar aviso de inatividade:
+[2026-06-10T16:19:09.950Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-10T16:19:09.981Z] [ERROR] Erro ao enviar mensagem de encerramento:
+[2026-06-10T16:25:25.785Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-06-10T16:25:25.791Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-06-10T16:25:42.503Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:25:51.962Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:26:01.915Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:26:11.937Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:26:21.919Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:26:31.916Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:26:41.917Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:26:50.603Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:26:58.517Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:27:08.512Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:27:18.526Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:27:28.520Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:27:38.526Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:27:48.529Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:27:58.502Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:28:08.520Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:28:18.527Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:32:34.703Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:32:38.535Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:32:48.537Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:33:14.642Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:33:15.758Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:34:20.511Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:34:27.343Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:34:28.513Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:34:38.527Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:34:48.513Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:34:58.511Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:35:08.517Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:35:18.531Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:35:28.512Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:35:38.518Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:35:48.512Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:35:58.511Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:36:08.513Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:36:18.500Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:36:28.511Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:36:38.496Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:36:48.498Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:36:58.523Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:37:08.534Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:37:18.523Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:37:41.336Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-10T16:37:48.533Z] [ERROR] TypeError: logger.debug is not a function
+[2026-06-11T13:34:10.577Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:10.622Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:10.635Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:14.899Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:14.922Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:16.041Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:16.065Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:16.612Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:16.627Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:17.235Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:18.206Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:18.226Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:18.283Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:19.010Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:19.037Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:19.682Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:19.697Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:20.417Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:21.047Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:21.096Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:22.934Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:22.955Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:24.402Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:26.779Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:26.801Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:27.727Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:29.104Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:29.146Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:29.215Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:30.087Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:30.761Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:30.774Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:32.408Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:32.423Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:32.858Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:32.872Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:33.348Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:33.366Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:33.504Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:33.530Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:34.355Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:34.392Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:35.047Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:35.078Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:56.571Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:56.600Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:58.281Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:34:58.297Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:36:22.269Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:36:22.327Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:36:22.350Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:36:22.383Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:36:23.977Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:36:27.910Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:36:27.954Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:36:27.974Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:36:53.034Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:37:23.053Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:37:53.035Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:38:23.047Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:38:53.055Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:44:15.064Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:44:16.011Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:47:58.626Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:48:03.099Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:48:03.133Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:48:03.162Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:48:03.181Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:48:07.762Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:48:07.787Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:48:07.805Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:48:23.717Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:48:25.873Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:48:25.888Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:48:25.905Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:48:25.934Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:48:30.694Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:48:33.429Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:48:34.512Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:48:35.702Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:48:39.342Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:48:39.368Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:48:39.385Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:48:41.522Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T13:48:41.545Z] [ERROR] [authSession] relation "usuarios" does not exist
+[2026-06-11T15:03:01.396Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-11T15:03:01.403Z] [ERROR] Erro ao enviar aviso de inatividade:
+[2026-06-11T15:11:01.383Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-11T15:11:01.403Z] [ERROR] Erro ao enviar mensagem de encerramento:
+[2026-06-11T15:36:17.341Z] [ERROR] [Express] DELETE /api/users/7db6a4a6-118e-4d86-868c-da1a5ffbf53e — relation "audit_logs" does not exist
+[2026-06-11T15:40:55.054Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-11T15:40:55.059Z] [ERROR] Erro ao enviar aviso de inatividade:
+[2026-06-11T15:48:55.037Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-11T15:48:55.042Z] [ERROR] Erro ao enviar mensagem de encerramento:
+[2026-06-11T15:56:09.677Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-11T15:56:09.682Z] [ERROR] Erro ao notificar atendente: WhatsApp não conectado.
+[2026-06-11T16:10:26.253Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-06-12T15:47:59.950Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-15T11:23:03.807Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-15T11:23:03.831Z] [ERROR] Erro ao enviar aviso de inatividade:
+[2026-06-15T11:35:26.114Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-15T11:56:09.561Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-15T12:48:30.473Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-15T12:54:41.397Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-06-15T12:54:53.694Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-15T13:10:39.812Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-15T13:14:20.714Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-15T13:36:33.658Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-15T13:41:37.604Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-15T13:41:42.620Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-15T13:41:47.637Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-15T16:00:49.957Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-15T16:00:54.971Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-15T16:00:59.990Z] [ERROR] Falha ao enviar mensagem: WhatsApp não conectado.
+[2026-06-15T17:36:53.654Z] [ERROR] [Express] POST /api/broadcasts/upload 500 — Apenas imagens são permitidas.
+[2026-06-15T17:36:57.933Z] [ERROR] [Express] POST /api/broadcasts/upload 500 — Apenas imagens são permitidas.
+[2026-06-15T17:39:21.463Z] [ERROR] [Express] POST /api/broadcasts/upload 500 — Apenas imagens são permitidas.
+[2026-06-15T17:39:23.460Z] [ERROR] [Express] POST /api/broadcasts/upload 500 — Apenas imagens são permitidas.
+[2026-06-15T17:39:25.051Z] [ERROR] [Express] POST /api/broadcasts/upload 500 — Apenas imagens são permitidas.
+[2026-06-15T17:41:41.320Z] [ERROR] Falha ao enviar mensagem: Número 187368216723551 não está registrado no WhatsApp.
+[2026-06-15T17:41:41.326Z] [ERROR] [sendManualMessage] Número 187368216723551 não está registrado no WhatsApp.
+[2026-06-15T17:41:42.979Z] [ERROR] Falha ao enviar mensagem: Número 187368216723551 não está registrado no WhatsApp.
+[2026-06-15T17:41:42.985Z] [ERROR] [sendManualMessage] Número 187368216723551 não está registrado no WhatsApp.
+[2026-06-15T17:41:43.863Z] [ERROR] Falha ao enviar mensagem: Número 187368216723551 não está registrado no WhatsApp.
+[2026-06-15T17:41:43.870Z] [ERROR] [sendManualMessage] Número 187368216723551 não está registrado no WhatsApp.
+[2026-06-15T17:41:44.385Z] [ERROR] Falha ao enviar mensagem: Número 187368216723551 não está registrado no WhatsApp.
+[2026-06-15T17:41:44.391Z] [ERROR] [sendManualMessage] Número 187368216723551 não está registrado no WhatsApp.
+[2026-06-15T17:41:44.758Z] [ERROR] Falha ao enviar mensagem: Número 187368216723551 não está registrado no WhatsApp.
+[2026-06-15T17:41:44.768Z] [ERROR] [sendManualMessage] Número 187368216723551 não está registrado no WhatsApp.
+[2026-06-15T17:41:45.114Z] [ERROR] Falha ao enviar mensagem: Número 187368216723551 não está registrado no WhatsApp.
+[2026-06-15T17:41:45.126Z] [ERROR] [sendManualMessage] Número 187368216723551 não está registrado no WhatsApp.
+[2026-06-15T17:41:45.515Z] [ERROR] Falha ao enviar mensagem: Número 187368216723551 não está registrado no WhatsApp.
+[2026-06-15T17:41:45.523Z] [ERROR] [sendManualMessage] Número 187368216723551 não está registrado no WhatsApp.
+[2026-06-15T18:16:47.734Z] [ERROR] [Express] POST /api/users 500 — relation "audit_logs" does not exist
+[2026-06-15T18:17:13.606Z] [ERROR] [Express] POST /api/users 500 — Usuário já existe.
+[2026-06-15T18:17:26.714Z] [ERROR] [Express] POST /api/users 500 — Usuário já existe.
+[2026-06-15T18:17:31.198Z] [ERROR] [Express] POST /api/users 500 — Usuário já existe.
+[2026-06-15T18:17:50.246Z] [ERROR] [Express] POST /api/users 500 — Usuário já existe.
+[2026-06-15T18:18:34.780Z] [ERROR] [Express] POST /api/users 500 — relation "audit_logs" does not exist
+[2026-06-16T11:48:28.817Z] [ERROR] Falha ao enviar mensagem: Número 187368216723551 não está registrado no WhatsApp.
+[2026-06-16T11:48:28.852Z] [ERROR] [sendManualMessage] Número 187368216723551 não está registrado no WhatsApp.
+[2026-06-16T11:49:40.272Z] [ERROR] Falha ao enviar mensagem: Número 187368216723551 não está registrado no WhatsApp.
+[2026-06-16T11:49:40.278Z] [ERROR] [sendManualMessage] Número 187368216723551 não está registrado no WhatsApp.
+[2026-06-16T11:57:33.838Z] [ERROR] Falha ao enviar mensagem: Número 187368216723551 não está registrado no WhatsApp.
+[2026-06-16T11:57:33.843Z] [ERROR] [sendManualMessage] Número 187368216723551 não está registrado no WhatsApp.
+[2026-06-16T11:57:34.965Z] [ERROR] Falha ao enviar mensagem: Número 187368216723551 não está registrado no WhatsApp.
+[2026-06-16T11:57:34.970Z] [ERROR] [sendManualMessage] Número 187368216723551 não está registrado no WhatsApp.
+[2026-06-16T11:57:35.249Z] [ERROR] Falha ao enviar mensagem: Número 187368216723551 não está registrado no WhatsApp.
+[2026-06-16T11:57:35.255Z] [ERROR] [sendManualMessage] Número 187368216723551 não está registrado no WhatsApp.
+[2026-06-16T11:57:44.179Z] [ERROR] Falha ao enviar mensagem: Número 187368216723551 não está registrado no WhatsApp.
+[2026-06-16T11:57:44.186Z] [ERROR] [sendManualMessage] Número 187368216723551 não está registrado no WhatsApp.
+[2026-06-16T12:10:36.894Z] [ERROR] [Express] POST /api/broadcasts/upload 500 — File too large
+[2026-06-16T12:10:39.732Z] [ERROR] [Express] POST /api/broadcasts/upload 500 — File too large
+[2026-06-16T12:40:50.550Z] [ERROR] [Express] DELETE /api/users/3a952707-ec1a-4113-a856-b1a5bce5c8bf 500 — relation "audit_logs" does not exist
+[2026-06-17T11:13:29.754Z] [ERROR] [Express] POST /api/users 500 — relation "audit_logs" does not exist
+[2026-06-17T11:14:30.175Z] [ERROR] [Express] POST /api/users 500 — Usuário já existe.
+[2026-06-17T11:14:48.796Z] [ERROR] [Express] POST /api/users 500 — Usuário já existe.
+[2026-06-17T16:52:50.078Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-06-17T16:52:50.102Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-06-17T16:52:50.119Z] [ERROR] [getTickets] terminating connection due to administrator command
+[2026-06-17T16:52:50.141Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command
+[2026-06-17T16:52:50.150Z] [ERROR] [PostgreSQL] Erro inesperado no pool: terminating connection due to administrator command

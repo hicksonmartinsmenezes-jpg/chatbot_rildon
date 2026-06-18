@@ -32,8 +32,8 @@ function setSocketOffline(socketId) {
     data.lastSeen = new Date().toISOString();
     data.online = data.sockets.size > 0;
 
-    if (data.online) onlineUsers.set(id, data);
-    else onlineUsers.set(id, data);
+    // Mantém a entrada mesmo offline (preserva lastSeen para exibição)
+    onlineUsers.set(id, data);
 
     return id;
   }

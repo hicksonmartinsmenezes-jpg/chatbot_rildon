@@ -64,9 +64,46 @@ function updateWaStatusPanel(status) {
   }
 }
 
-async function requestWaReconnect() {
+// Busca o estado atual da conexão e renderiza o QR pendente, se houver.
+// O evento socket "qr_code" é efêmero — se o painel for aberto depois dele,
+// esta função recupera o QR que ficou guardado no backend.
+async function loadWaStatus() {
   try {
-    const res = await apiFetch(`${BASE}/api/whatsapp/reconnect`, { method: "POST" });
+    const res = await apiFetch(`${BASE}/api/whatsapp/status`);
+    if (!res?.ok) return;
+    const info = await res.json();
+    if (info.connected) {
+      updateWaStatusPanel("connected");
+    } else if (info.qr) {
+      updateWaStatusPanel("qr");
+      renderWaQr(info.qr);
+    } else {
+      updateWaStatusPanel("disconnected");
+    }
+  } catch (_) {}
+}
+
+async function requestWaReconnect() {
+  // Se já está conectado, gerar um QR novo exige DESCONECTAR a sessão atual.
+  const statusText  = document.getElementById("wa-status-text")?.textContent || "";
+  const isConnected = /conectado/i.test(statusText) && !/desconect/i.test(statusText);
+  let clearSession  = false;
+
+  if (isConnected) {
+    const ok = confirm(
+      "O WhatsApp está conectado.\n\n" +
+      "Gerar um novo QR Code vai DESCONECTAR a sessão atual e você precisará " +
+      "escanear novamente no celular.\n\nDeseja continuar?"
+    );
+    if (!ok) return;
+    clearSession = true;
+  }
+
+  try {
+    const res = await apiFetch(`${BASE}/api/whatsapp/reconnect`, {
+      method: "POST",
+      body: JSON.stringify({ clearSession })
+    });
     if (res?.ok) {
       showToast("🔄 Reconexão solicitada. Aguarde o QR Code...");
       const area    = document.getElementById("wa-qr-area");
@@ -75,6 +112,8 @@ async function requestWaReconnect() {
       area?.classList.add("hidden");
       conn?.classList.add("hidden");
       waiting?.classList.remove("hidden");
+      // Fallback: se o evento socket "qr_code" não chegar, busca o QR pendente.
+      setTimeout(loadWaStatus, 2500);
     } else {
       showToast("❌ Falha ao solicitar reconexão.");
     }

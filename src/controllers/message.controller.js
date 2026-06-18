@@ -6,6 +6,16 @@ const logger          = require("../utils/logger");
 const ticketRepository = require("../repositories/ticket.repository");
 const { canAccessTicket, isPrivileged } = require("../utils/access-control");
 
+// Autorização de conversa: privilegiados (admin/supervisor/api) sempre podem.
+// Atendente só acessa se houver ticket ATIVO atribuído a ele — ou não atribuído
+// no mesmo setor (allowUnassigned). Centraliza a regra antes repetida 3×.
+async function canUserAccessConversation(user, userId) {
+  if (isPrivileged(user)) return true;
+  const tickets = await ticketRepository.findByUserId(userId);
+  const ativos  = tickets.filter(t => t.status === "aberto" || t.status === "em_andamento");
+  return ativos.some(t => canAccessTicket(user, t, { allowUnassigned: true }));
+}
+
 async function sendManualMessage(req, res) {
   try {
     const { userId, message } = req.body || {};
@@ -25,15 +35,9 @@ async function sendManualMessage(req, res) {
       return res.status(400).json({ error: "Mensagem muito longa (máx. 4096 caracteres)." });
     }
 
-    // Segurança: atendente só pode enviar mensagem para conversa/ticket permitido.
-    // Admin/supervisor/API continuam liberados para operação e suporte.
-    if (!isPrivileged(req.user)) {
-      const tickets = await ticketRepository.findByUserId(userId);
-      const activeTickets = tickets.filter(t => t.status === "aberto" || t.status === "em_andamento");
-      const allowed = activeTickets.some(t => canAccessTicket(req.user, t, { allowUnassigned: true }));
-      if (!allowed) {
-        return res.status(403).json({ error: "Você não tem permissão para enviar mensagem para esta conversa." });
-      }
+    // Segurança: atendente só pode enviar mensagem para conversa permitida.
+    if (!(await canUserAccessConversation(req.user, userId))) {
+      return res.status(403).json({ error: "Você não tem permissão para enviar mensagem para esta conversa." });
     }
 
     const sent = await sendMessage(userId, message.trim());
@@ -101,13 +105,8 @@ async function sendTyping(req, res) {
       return res.status(400).json({ error: "userId obrigatório." });
     }
 
-    if (!isPrivileged(req.user)) {
-      const tickets = await ticketRepository.findByUserId(userId);
-      const activeTickets = tickets.filter(t => t.status === "aberto" || t.status === "em_andamento");
-      const allowed = activeTickets.some(t => canAccessTicket(req.user, t, { allowUnassigned: true }));
-      if (!allowed) {
-        return res.status(403).json({ error: "Você não tem permissão para sinalizar digitação nesta conversa." });
-      }
+    if (!(await canUserAccessConversation(req.user, userId))) {
+      return res.status(403).json({ error: "Você não tem permissão para sinalizar digitação nesta conversa." });
     }
 
     emitEvent("typing", { userId, from: "agent" });
@@ -133,13 +132,8 @@ async function releaseHumanMode(req, res) {
   const { userId } = req.body || {};
   if (!userId) return res.status(400).json({ error: "userId obrigatório." });
 
-  if (!isPrivileged(req.user)) {
-    const tickets = await ticketRepository.findByUserId(userId);
-    const activeTickets = tickets.filter(t => t.status === "aberto" || t.status === "em_andamento");
-    const allowed = activeTickets.some(t => canAccessTicket(req.user, t, { allowUnassigned: true }));
-    if (!allowed) {
-      return res.status(403).json({ error: "Você não tem permissão para devolver esta conversa ao bot." });
-    }
+  if (!(await canUserAccessConversation(req.user, userId))) {
+    return res.status(403).json({ error: "Você não tem permissão para devolver esta conversa ao bot." });
   }
 
   humanMode.desativar(userId, "painel");

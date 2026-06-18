@@ -9,7 +9,8 @@ const SETTINGS_PANEL_TITLES = {
   atendimento: "Atendimento humano",
   aparencia: "Aparência",
   notificacoes: "Notificações",
-  historico: "Histórico"
+  historico: "Histórico",
+  whatsapp: "Conexão WhatsApp"
 };
 
 function openSettingsPanel(panelName) {
@@ -35,6 +36,11 @@ function openSettingsPanel(panelName) {
 
   if (panelName === "usuarios" && typeof loadPanelUsers === "function") {
     loadPanelUsers({ silent: panelUsersCache?.length > 0 });
+  }
+
+  // Ao abrir o painel WhatsApp, busca status/QR pendente (evento socket é efêmero)
+  if (panelName === "whatsapp" && typeof loadWaStatus === "function") {
+    loadWaStatus();
   }
 }
 

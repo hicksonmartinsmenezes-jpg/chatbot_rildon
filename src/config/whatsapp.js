@@ -21,6 +21,8 @@ let reconnecting      = false;
 let isWhatsAppConnected = false;
 let cachedConfig = null;
 let lastConfigCheck = 0;
+let messageHandler   = null;  // processMessage — guardado para reconexões forçadas
+let lastQr           = null;  // último QR pendente (até conectar) — permite buscar via API
 
 // Mapa LID (@lid) → JID real (@s.whatsapp.net) preenchido pelo evento contacts.upsert
 // e pelas mensagens recebidas (senderPn). Leitura é sempre em memória; a escrita
@@ -243,6 +245,9 @@ async function connectWhatsApp(onMessage) {
     throw new Error("connectWhatsApp precisa receber processMessage.");
   }
 
+  // Guarda o handler para que forceReconnect() possa reiniciar a conexão sozinho
+  messageHandler = onMessage;
+
   // Restaura o mapa @lid → JID do banco (uma vez) para sobreviver a restarts
   await carregarLidMap();
 
@@ -303,6 +308,7 @@ async function connectWhatsApp(onMessage) {
 
   sock.ev.on("connection.update", async ({ connection, lastDisconnect, qr }) => {
     if (qr) {
+      lastQr = qr; // mantém o QR disponível para quem abrir o painel depois do evento
       logger.info("Escaneie o QR Code abaixo com o WhatsApp");
       qrcode.generate(qr, { small: true });
       emitEvent("qr_code", { qr });
@@ -373,6 +379,7 @@ async function connectWhatsApp(onMessage) {
       reconnectAttempts = 0;
       reconnecting      = false;
       isWhatsAppConnected = true;
+      lastQr            = null; // conectou: não há mais QR pendente
       logger.info("[WhatsApp] ✓ Conectado com sucesso!");
       emitEvent("whatsapp_status", { status: "connected" });
     }
@@ -693,16 +700,46 @@ async function getBotConfigCached() {
   return cachedConfig;
 }
 
-// Encerra a sessão atual para forçar geração de novo QR Code
-async function forceReconnect() {
-  logger.warn("[WhatsApp] Reconexão forçada solicitada pelo painel.");
+// Estado da conexão para o painel: { connected, qr }
+// Permite que o frontend busque um QR pendente mesmo que tenha aberto o painel
+// depois do evento socket "qr_code" (que é efêmero).
+function getConnectionInfo() {
+  return { connected: isWhatsAppConnected, qr: lastQr };
+}
+
+// Encerra a sessão atual e RECONECTA explicitamente para forçar novo QR Code.
+// Importante: limparSocketAntigo() remove todos os listeners (inclusive o
+// connection.update que dispararia a reconexão automática), então precisamos
+// chamar connectWhatsApp() nós mesmos — não dá para confiar no handler de close.
+// clearSession=true apaga auth_info (re-pareamento total: sempre gera QR novo).
+async function forceReconnect(opts = {}) {
+  const { clearSession = false } = opts;
+  logger.warn(`[WhatsApp] Reconexão forçada solicitada pelo painel.${clearSession ? " (limpando sessão)" : ""}`);
+
   isWhatsAppConnected = false;
+  lastQr              = null;
+  reconnecting        = false; // libera para a nova conexão não ser bloqueada
+  reconnectAttempts   = 0;     // zera backoff
+
   const oldSock = sock;
   sock = null;
   await limparSocketAntigo(oldSock);
-  // O evento connection.close com shouldReconnect já cuida de chamar connectWhatsApp novamente.
-  // Aqui apenas fechamos — a reconexão acontece pelo handler existente.
-  try { oldSock?.end?.(new Error("forced_reconnect")); } catch (_) {}
+
+  if (clearSession) {
+    try {
+      fs.rmSync(path.join(__dirname, "../../auth_info"), { recursive: true, force: true });
+      logger.warn("[WhatsApp] Sessão (auth_info) removida — novo QR será gerado.");
+    } catch (err) {
+      logger.error(`[WhatsApp] Erro removendo auth_info: ${err.message}`);
+    }
+  }
+
+  if (typeof messageHandler === "function") {
+    await connectWhatsApp(messageHandler);
+  } else {
+    logger.error("[WhatsApp] messageHandler ausente — não foi possível reconectar.");
+    throw new Error("WhatsApp ainda não foi inicializado.");
+  }
 }
 
 module.exports = {
@@ -714,5 +751,6 @@ module.exports = {
   resolveLid,
   sendTypingPresence,
   isConnected,
-  forceReconnect
+  forceReconnect,
+  getConnectionInfo
 };

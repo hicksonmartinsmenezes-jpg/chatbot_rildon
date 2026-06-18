@@ -31,6 +31,12 @@ const atendenteRoutes   = require("./routes/atendentes.routes");
 
 const app = express();
 
+// Atrás de proxy reverso, defina TRUST_PROXY com o nº de hops para que req.ip
+// reflita o cliente real (rate-limit por IP + auditoria). Sem proxy, mantenha
+// desligado — confiar em X-Forwarded-For permitiria spoof do IP do cliente.
+const TRUST_PROXY = process.env.TRUST_PROXY;
+app.set("trust proxy", TRUST_PROXY == null ? false : (/^\d+$/.test(TRUST_PROXY) ? Number(TRUST_PROXY) : TRUST_PROXY));
+
 // ── Segurança: Helmet com CSP configurada ────────────────────────────────────
 app.use(helmet({
   contentSecurityPolicy: {
@@ -90,6 +96,21 @@ if (FRONTEND_DIR) {
   logger.warn("[Static] Frontend não encontrado. Apenas a API será servida.");
 }
 
+
+// ── Sons opcionais do painel ────────────────────────────────────────────────
+// Se o frontend tentar tocar um som que não existe no pacote, não retorna 404.
+// Isso evita poluição no console; o play() no navegador deve falhar silenciosamente.
+app.get(["/sounds/message.ogg", "/sounds/ticket.ogg"], (req, res) => {
+  res.set("Cache-Control", "public, max-age=300");
+  return res.status(204).end();
+});
+
+// ── Health checks (públicos — registrados ANTES da autenticação) ─────────────
+app.get("/health", healthCheck);
+app.get("/api/health", healthCheck);
+app.get("/api/ready", healthCheck);
+app.get("/api/live", (req, res) => res.json({ status: "ok", uptime: process.uptime(), requestId: req.id }));
+
 // ── Rotas da API ──────────────────────────────────────────────────────────────
 app.use("/api", authRouter);
 
@@ -108,7 +129,7 @@ app.use("/api", authSession, requireAdmin, activityLogRoutes);
 app.use("/api", authSession, requireAdmin, metricsRoutes);
 app.use("/api", authSession, requireAdmin, broadcastRoutes);
 
-// ── Health checks ─────────────────────────────────────────────────────────────
+// ── Health check handler (rotas registradas antes da autenticação) ───────────
 async function healthCheck(req, res) {
   try {
     await pool.query("SELECT 1");
@@ -117,11 +138,6 @@ async function healthCheck(req, res) {
     res.status(503).json({ status: "degraded", db: false, error: "Banco indisponível.", requestId: req.id });
   }
 }
-
-app.get("/health", healthCheck);
-app.get("/api/health", healthCheck);
-app.get("/api/ready", healthCheck);
-app.get("/api/live", (req, res) => res.json({ status: "ok", uptime: process.uptime(), requestId: req.id }));
 
 // ── Uploads autenticados (CORRIGIDO: era express.static público) ──────────────
 // Fotos de perfil e imagens de campanha exigem sessão válida

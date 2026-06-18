@@ -18,16 +18,16 @@ async function loadMetricsCharts() {
     const taxa       = document.getElementById("metric-taxa-resolucao");
     const setorTop   = document.getElementById("metric-setor-top");
 
-    if (total)      total.innerHTML     = data.total     || 0;
-    if (andamento)  andamento.innerHTML = data.andamento  || 0;
-    if (resolvidos) resolvidos.innerHTML= data.resolvidos || 0;
-    if (cancelados) cancelados.innerHTML= data.cancelados || 0;
-    if (hoje)      hoje.innerHTML      = data.hoje || 0;
-    if (pendentes) pendentes.innerHTML = data.pendentes || 0;
-    if (taxa)      taxa.innerHTML      = `${data.taxaResolucao || 0}%`;
+    if (total)      total.textContent     = data.total     || 0;
+    if (andamento)  andamento.textContent = data.andamento  || 0;
+    if (resolvidos) resolvidos.textContent= data.resolvidos || 0;
+    if (cancelados) cancelados.textContent= data.cancelados || 0;
+    if (hoje)      hoje.textContent      = data.hoje || 0;
+    if (pendentes) pendentes.textContent = data.pendentes || 0;
+    if (taxa)      taxa.textContent      = `${data.taxaResolucao || 0}%`;
 
     if (setorTop) {
-      setorTop.innerHTML = data.setorMaisMovimentado
+      setorTop.textContent = data.setorMaisMovimentado
         ? `${data.setorMaisMovimentado.nome} (${data.setorMaisMovimentado.total})`
         : "—";
     }

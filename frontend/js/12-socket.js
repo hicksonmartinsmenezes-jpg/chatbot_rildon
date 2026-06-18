@@ -117,13 +117,51 @@ socket.on("connect", () => {
     clearTimeout(_convReloadTimer);
     clearTimeout(_histReloadTimer);
     clearTimeout(_ticketReloadTimer);
-    _convReloadTimer = _histReloadTimer = _ticketReloadTimer = null;
+    clearTimeout(_contactsReloadTimer);
+    clearTimeout(_broadcastsReloadTimer);
+    _convReloadTimer = _histReloadTimer = _ticketReloadTimer = _contactsReloadTimer = _broadcastsReloadTimer = null;
   });
 
 socket.on("online_users", users => {
   window.onlineUsers = Array.isArray(users) ? users : [];
-  renderPanelUsers();
+  if (currentTab === "settings") renderPanelUsers();
 });
+
+socket.on("users_updated", data => {
+  document.dispatchEvent(new CustomEvent("rildon:users-updated", { detail: data || {} }));
+});
+
+// Atualizações administrativas em tempo real
+let _contactsReloadTimer = null;
+let _broadcastsReloadTimer = null;
+
+socket.on("contacts_updated", (data) => {
+  document.dispatchEvent(new CustomEvent("rildon:contacts-updated", { detail: data || {} }));
+  if (currentTab !== "contacts" && currentTab !== "channels") return;
+
+  clearTimeout(_contactsReloadTimer);
+  _contactsReloadTimer = setTimeout(() => {
+    if (currentTab === "contacts") {
+      if (typeof loadContacts === "function") loadContacts(true);
+      if (typeof loadContactsTags === "function") loadContactsTags();
+    }
+    if (currentTab === "channels" && typeof updateCampaignAudienceCount === "function") {
+      updateCampaignAudienceCount();
+    }
+  }, 350);
+});
+
+socket.on("broadcasts_updated", (data) => {
+  document.dispatchEvent(new CustomEvent("rildon:broadcasts-updated", { detail: data || {} }));
+  if (currentTab !== "channels") return;
+
+  clearTimeout(_broadcastsReloadTimer);
+  _broadcastsReloadTimer = setTimeout(() => {
+    if (typeof loadCampaigns === "function") loadCampaigns();
+    if (typeof loadCampaignStats === "function") loadCampaignStats();
+  }, 350);
+});
+
 
 // Debounce timers para evitar múltiplos reloads simultâneos por rajada de eventos
 let _convReloadTimer   = null;

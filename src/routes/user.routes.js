@@ -4,12 +4,15 @@ const pool         = require("../database/postgres");
 
 const {
   getUsers,
+  getUserById,
+  countActiveAdmins,
   createUser,
   updateUserPassword,
   deactivateUser
 } = require("../services/user.service");
 
 const { auditLog } = require("../services/audit.service");
+const { emitEvent } = require("../services/socket.service");
 
 const router = express.Router();
 
@@ -30,7 +33,8 @@ function sanitizeUser(user) {
 }
 
 router.get("/users", asyncHandler(async (req, res) => {
-  const users = await getUsers();
+  const includeInactive = req.query.includeInactive === "true";
+  const users = await getUsers({ includeInactive });
   res.json(users.map(sanitizeUser));
 }));
 
@@ -60,23 +64,37 @@ router.post("/users", asyncHandler(async (req, res) => {
     details: { nome: user.nome, usuario: user.usuario, perfil: user.perfil, sector: user.sector }
   });
 
+  emitEvent("users_updated", { action: "created", user: sanitizeUser(user) });
+
   res.status(201).json(sanitizeUser(user));
 }));
 
 router.delete("/users/:id", asyncHandler(async (req, res) => {
-  const users        = await getUsers();
-  const userToDelete = users.find(u => u.id === req.params.id);
+  const targetId = String(req.params.id || "");
 
-  if (!userToDelete) {
+  if (String(req.user?.id || "") === targetId) {
+    return res.status(400).json({ error: "Você não pode excluir seu próprio usuário logado." });
+  }
+
+  const userToDelete = await getUserById(targetId);
+
+  if (!userToDelete || userToDelete.ativo === false) {
     return res.status(404).json({ error: "Usuário não encontrado." });
   }
 
-  await deactivateUser(req.params.id);
+  if (userToDelete.perfil === "admin") {
+    const totalAdmins = await countActiveAdmins();
+    if (totalAdmins <= 1) {
+      return res.status(400).json({ error: "Não é possível excluir o último administrador ativo." });
+    }
+  }
+
+  await deactivateUser(targetId);
 
   // Invalida imediatamente todas as sessões ativas do usuário desativado
   await pool.query(
     `DELETE FROM auth_sessions WHERE user_data::jsonb->>'id' = $1`,
-    [String(req.params.id)]
+    [targetId]
   );
 
   await auditLog({
@@ -86,7 +104,9 @@ router.delete("/users/:id", asyncHandler(async (req, res) => {
     details: { nome: userToDelete.nome, usuario: userToDelete.usuario, perfil: userToDelete.perfil }
   });
 
-  res.json({ ok: true });
+  emitEvent("users_updated", { action: "deleted", id: targetId });
+
+  res.json({ ok: true, id: targetId });
 }));
 
 router.patch("/users/:id/password", asyncHandler(async (req, res) => {
@@ -97,10 +117,9 @@ router.patch("/users/:id/password", asyncHandler(async (req, res) => {
     return res.status(400).json({ error: "A senha deve ter pelo menos 8 caracteres." });
   }
 
-  const users      = await getUsers();
-  const targetUser = users.find(u => u.id === req.params.id);
+  const targetUser = await getUserById(req.params.id);
 
-  if (!targetUser) {
+  if (!targetUser || targetUser.ativo === false) {
     return res.status(404).json({ error: "Usuário não encontrado." });
   }
 
@@ -112,6 +131,8 @@ router.patch("/users/:id/password", asyncHandler(async (req, res) => {
     target:  req.params.id,
     details: { usuario: targetUser.usuario }
   });
+
+  emitEvent("users_updated", { action: "password_reset", id: req.params.id });
 
   res.json({ ok: true });
 }));

@@ -24,14 +24,30 @@ async function findById(id) {
   return result.rows[0] ? mapUser(result.rows[0]) : null;
 }
 
-async function findAll() {
-  const result = await pool.query(`
+async function findAll({ includeInactive = false } = {}) {
+  const result = await pool.query(
+    `
     SELECT *
     FROM users
+    WHERE ($1::boolean = true OR ativo = true)
     ORDER BY nome ASC
-  `);
+    `,
+    [includeInactive]
+  );
 
   return result.rows.map(mapUser);
+}
+
+async function countActiveAdmins() {
+  const result = await pool.query(
+    `
+    SELECT COUNT(*)::int AS total
+    FROM users
+    WHERE ativo = true AND perfil = 'admin'
+    `
+  );
+
+  return Number(result.rows[0]?.total || 0);
 }
 
 async function findByUsername(usuario) {
@@ -125,6 +141,7 @@ async function deactivate(id) {
 
 module.exports = {
   findAll,
+  countActiveAdmins,
   findById,
   findByUsername,
   create,

@@ -1,61 +1,6 @@
 // 04-history.js
 // Histórico executivo com filtros server-side, resumo e timeline.
 
-function normalizeHistoryText(value) {
-  return String(value || "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-}
-
-function sameLocalDate(a, b) {
-  if (!a || !b) return false;
-  const da = new Date(a);
-  const db = new Date(b);
-  return (
-    da.getFullYear() === db.getFullYear() &&
-    da.getMonth()    === db.getMonth()    &&
-    da.getDate()     === db.getDate()
-  );
-}
-
-function isHistoryInsideDateRange(item, start, end) {
-  if (!start && !end) return true;
-  if (!item?.createdAt) return false;
-  const itemDate = new Date(item.createdAt);
-  if (start) { const s = new Date(`${start}T00:00:00`); if (itemDate < s) return false; }
-  if (end)   { const e = new Date(`${end}T23:59:59`);   if (itemDate > e) return false; }
-  return true;
-}
-
-function updateHistorySummary(history) {
-  const today   = new Date();
-  const clients = new Set(history.map(item => item.userId).filter(Boolean));
-  const todayCount    = history.filter(item => sameLocalDate(item.createdAt, today)).length;
-  const responseCount = history.filter(item => item.response).length;
-
-  setText("history-total-count",    history.length);
-  setText("history-client-count",   clients.size);
-  setText("history-today-count",    todayCount);
-  setText("history-response-count", responseCount);
-}
-
-function renderHistoryEmpty(container, message = "Nenhum histórico encontrado.") {
-  if (!container) return;
-  container.innerHTML = `
-    <div class="history-empty">
-      <i class="fa-regular fa-comments"></i>
-      <h3>${safe(message)}</h3>
-      <p>Tente limpar os filtros ou atualizar a listagem.</p>
-    </div>
-  `;
-}
-
-// Detecta se é um telefone BR real ou um ID interno do WhatsApp (LID)
-function isBRPhone(formatted) {
-  return /^\(\d{2}\)\s\d{4,5}-\d{4}$/.test(formatted);
-}
-
 function renderHistoryRow({ latest, count }) {
   const userId      = latest.userId || latest.user_id || "";
   const phoneRaw    = formatPhone(userId);
@@ -82,13 +27,13 @@ function renderHistoryRow({ latest, count }) {
       </span>
       <span class="hrow-date" style="display:flex;align-items:center;justify-content:center;">${safe(formatDate(latest.createdAt))}</span>
       <span class="hrow-actions">
-        <button title="Ver conversa" onclick="openHistoryConversation('${escapeAttr(userId)}')">
+        <button type="button" title="Ver conversa" aria-label="Ver conversa" data-history-action="open" data-user-id="${escapeAttr(userId)}">
           <i class="fa-solid fa-eye"></i>
         </button>
-        <button title="Exportar TXT" class="btn-export-txt" onclick="exportHistoryTxt('${escapeAttr(userId)}', '${escapeAttr(nameDisplay)}')">
+        <button type="button" title="Exportar TXT" aria-label="Exportar histórico em TXT" class="btn-export-txt" data-history-action="export" data-user-id="${escapeAttr(userId)}" data-client-name="${escapeAttr(nameDisplay)}">
           <i class="fa-solid fa-file-arrow-down"></i>
         </button>
-        <button title="Copiar identificador" onclick="copyHistoryPhone('${escapeAttr(phoneRaw)}')">
+        <button type="button" title="Copiar identificador" aria-label="Copiar identificador" data-history-action="copy" data-phone="${escapeAttr(phoneRaw)}">
           <i class="fa-regular fa-copy"></i>
         </button>
       </span>
@@ -98,6 +43,23 @@ function renderHistoryRow({ latest, count }) {
 
 // Mantém nome antigo como alias para não quebrar chamadas externas
 const renderHistoryCard = renderHistoryRow;
+
+function initHistoryDelegation() {
+  const container = document.getElementById("history-container");
+  if (!container || container.dataset.delegated === "1") return;
+  container.dataset.delegated = "1";
+  container.addEventListener("click", (event) => {
+    const btn = event.target.closest("[data-history-action]");
+    if (!btn || !container.contains(btn)) return;
+    const action = btn.dataset.historyAction;
+    if (action === "open") openHistoryConversation(btn.dataset.userId || "");
+    if (action === "export") exportHistoryTxt(btn.dataset.userId || "", btn.dataset.clientName || "Cliente");
+    if (action === "copy") copyHistoryPhone(btn.dataset.phone || "");
+  });
+}
+
+document.addEventListener("DOMContentLoaded", initHistoryDelegation);
+
 
 async function exportHistoryTxt(userId, clientName) {
   try {

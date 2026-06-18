@@ -3,6 +3,8 @@ const { saveHistory } = require("../services/history.service");
 const { emitEvent }   = require("../services/socket.service");
 const humanMode       = require("../services/humanMode.service");
 const logger          = require("../utils/logger");
+const ticketRepository = require("../repositories/ticket.repository");
+const { canAccessTicket, isPrivileged } = require("../utils/access-control");
 
 async function sendManualMessage(req, res) {
   try {
@@ -21,6 +23,17 @@ async function sendManualMessage(req, res) {
 
     if (message.length > 4096) {
       return res.status(400).json({ error: "Mensagem muito longa (máx. 4096 caracteres)." });
+    }
+
+    // Segurança: atendente só pode enviar mensagem para conversa/ticket permitido.
+    // Admin/supervisor/API continuam liberados para operação e suporte.
+    if (!isPrivileged(req.user)) {
+      const tickets = await ticketRepository.findByUserId(userId);
+      const activeTickets = tickets.filter(t => t.status === "aberto" || t.status === "em_andamento");
+      const allowed = activeTickets.some(t => canAccessTicket(req.user, t, { allowUnassigned: true }));
+      if (!allowed) {
+        return res.status(403).json({ error: "Você não tem permissão para enviar mensagem para esta conversa." });
+      }
     }
 
     const sent = await sendMessage(userId, message.trim());
@@ -88,6 +101,15 @@ async function sendTyping(req, res) {
       return res.status(400).json({ error: "userId obrigatório." });
     }
 
+    if (!isPrivileged(req.user)) {
+      const tickets = await ticketRepository.findByUserId(userId);
+      const activeTickets = tickets.filter(t => t.status === "aberto" || t.status === "em_andamento");
+      const allowed = activeTickets.some(t => canAccessTicket(req.user, t, { allowUnassigned: true }));
+      if (!allowed) {
+        return res.status(403).json({ error: "Você não tem permissão para sinalizar digitação nesta conversa." });
+      }
+    }
+
     emitEvent("typing", { userId, from: "agent" });
 
     await sendTypingPresence(userId);
@@ -110,6 +132,16 @@ function listHumanMode(req, res) {
 async function releaseHumanMode(req, res) {
   const { userId } = req.body || {};
   if (!userId) return res.status(400).json({ error: "userId obrigatório." });
+
+  if (!isPrivileged(req.user)) {
+    const tickets = await ticketRepository.findByUserId(userId);
+    const activeTickets = tickets.filter(t => t.status === "aberto" || t.status === "em_andamento");
+    const allowed = activeTickets.some(t => canAccessTicket(req.user, t, { allowUnassigned: true }));
+    if (!allowed) {
+      return res.status(403).json({ error: "Você não tem permissão para devolver esta conversa ao bot." });
+    }
+  }
+
   humanMode.desativar(userId, "painel");
   return res.json({ ok: true });
 }

@@ -122,6 +122,23 @@ CREATE TABLE IF NOT EXISTS activity_logs (
 
 CREATE INDEX IF NOT EXISTS idx_activity_logs_created ON activity_logs(created_at);
 
+
+-- Auditoria de ações críticas
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id         SERIAL PRIMARY KEY,
+  user_id    TEXT,
+  user_name  TEXT,
+  user_role  TEXT,
+  action     TEXT NOT NULL,
+  target     TEXT,
+  details    JSONB DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_action  ON audit_logs(action);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_user    ON audit_logs(user_id);
+
 -- Mensagens já processadas (deduplicação)
 CREATE TABLE IF NOT EXISTS processed_messages (
   message_id   TEXT PRIMARY KEY,

@@ -1,5 +1,7 @@
 const logger = require("../utils/logger");
 const humanMode = require("../services/humanMode.service");
+const ticketRepository = require("../repositories/ticket.repository");
+const { canAccessTicket, canManageTicket, canSeeSensitiveDashboard } = require("../utils/access-control");
 const {
   createTicket,
   listTickets,
@@ -82,11 +84,15 @@ async function patchTicket(req, res) {
       });
     }
 
-    const ticket = await updateTicketStatus(id, status);
-
-    if (!ticket) {
+    const atual = await ticketRepository.findByIdOrProtocol(id);
+    if (!atual) {
       return res.status(404).json({ error: "Ticket não encontrado." });
     }
+    if (!canManageTicket(req.user, atual)) {
+      return res.status(403).json({ error: "Você não tem permissão para alterar este ticket." });
+    }
+
+    const ticket = await updateTicketStatus(id, status);
 
     // Ticket fechado → bot volta a responder este cliente
     if (status === "resolvido" || status === "cancelado") {
@@ -103,6 +109,14 @@ async function patchTicket(req, res) {
 async function assumirTicket(req, res) {
   try {
     const id = req.params.id;
+
+    const atual = await ticketRepository.findByIdOrProtocol(id);
+    if (!atual) {
+      return res.status(404).json({ error: "Ticket não encontrado." });
+    }
+    if (!canAccessTicket(req.user, atual, { allowUnassigned: true })) {
+      return res.status(403).json({ error: "Você não tem permissão para assumir este ticket." });
+    }
 
     const ticket = await assignTicket(id, req.user);
 
@@ -130,6 +144,14 @@ async function transferirTicket(req, res) {
   try {
     const id = req.params.id;
     const { sector, toUserId } = req.body || {};
+
+    const atual = await ticketRepository.findByIdOrProtocol(id);
+    if (!atual) {
+      return res.status(404).json({ error: "Ticket não encontrado." });
+    }
+    if (!canManageTicket(req.user, atual)) {
+      return res.status(403).json({ error: "Você não tem permissão para transferir este ticket." });
+    }
 
     let targetUser = null;
 
@@ -167,6 +189,10 @@ async function transferirTicket(req, res) {
 // em vez de carregar todos os tickets em memória e calcular em JS
 async function getTicketDashboard(req, res) {
   try {
+    if (!canSeeSensitiveDashboard(req.user)) {
+      return res.status(403).json({ error: "Acesso permitido apenas para supervisores e administradores." });
+    }
+
     const pool = require("../database/postgres");
     // Timezone configurável via .env para evitar hardcode por região
     const TZ = process.env.TZ_NEGOCIO || "America/Maceio";

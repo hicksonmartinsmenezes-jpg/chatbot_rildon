@@ -881,3 +881,195 @@ button[disabled] {
   cursor: not-allowed;
   pointer-events: none;
 }
+
+
+/* ─── Melhorias adicionais de acessibilidade e responsividade ─────────────── */
+:where(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.45);
+  outline-offset: 2px;
+}
+
+.contacts-table-wrap,
+.campaign-table-wrap,
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.contacts-empty,
+.camp-empty,
+.chat-empty {
+  line-height: 1.5;
+}
+
+.ticket-card,
+.campaign-item,
+.ct-actions button,
+.btn-status {
+  will-change: transform;
+}
+
+@media (max-width: 560px) {
+  .topbar {
+    height: auto;
+    min-height: 66px;
+    padding-block: 10px;
+  }
+
+  .ticket-footer,
+  .ticket-footer-primary,
+  .ct-actions {
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .btn-status,
+  .ct-actions button {
+    min-height: 38px;
+  }
+}
+
+/* v5 — estados vazios/erro mais acionáveis */
+.empty-retry-btn {
+  margin-top: 10px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: var(--primary, #1d6cf5);
+  color: #fff;
+  border-radius: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 12px;
+}
+.empty-retry-btn:hover { filter: brightness(1.08); }
+.contacts-empty small,
+.camp-empty small {
+  color: var(--muted, #94a3b8);
+  line-height: 1.5;
+}
+.campaign-status-badge.cs-unknown {
+  background: rgba(148,163,184,.16);
+  color: var(--muted, #94a3b8);
+}
+
+
+/* v7 — estados reutilizáveis, acessibilidade e qualidade mobile */
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+body.is-offline::before {
+  content: "Sem conexão";
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  z-index: 9998;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(186, 117, 23, .96);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  box-shadow: 0 10px 30px rgba(0,0,0,.28);
+}
+
+.app-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 120px;
+  padding: 18px;
+  text-align: center;
+  color: var(--muted, #94a3b8);
+}
+.app-state i {
+  font-size: 22px;
+  opacity: .8;
+}
+.app-state strong {
+  color: var(--text, #e5e7eb);
+  font-size: 14px;
+}
+.app-state small {
+  max-width: 420px;
+  line-height: 1.5;
+}
+
+button[aria-busy="true"] {
+  cursor: wait;
+}
+
+@media (max-width: 760px) {
+  .content {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  .dashboard-grid,
+  .metrics-grid,
+  .settings-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .chat-shell,
+  .conversations-shell {
+    min-height: calc(100vh - 120px);
+  }
+  .camp-modal,
+  .contacts-modal {
+    width: min(96vw, 560px);
+    max-height: 92vh;
+  }
+}
+
+@media (max-width: 420px) {
+  .topbar-actions,
+  .contact-header-actions,
+  .camp-toolbar {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+  .send-btn,
+  .btn-refresh,
+  .ct-btn-add,
+  .ct-btn-secondary,
+  .camp-new-btn {
+    min-height: 40px;
+  }
+}
+
+
+/* v8: refinamentos de acessibilidade/performance visual */
+.notif-list [data-notif-user] {
+  cursor: pointer;
+}
+.notif-list [data-notif-user]:focus-visible,
+.hrow-actions button:focus-visible,
+.panel-user-actions button:focus-visible,
+.quick-reply-item button:focus-visible {
+  outline: 2px solid var(--primary, #2563eb);
+  outline-offset: 2px;
+}
+.camp-list-limit {
+  font-size: 13px;
+}
+@media (max-width: 620px) {
+  .hrow-actions,
+  .panel-user-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+  .hrow {
+    gap: 10px;
+  }
+}

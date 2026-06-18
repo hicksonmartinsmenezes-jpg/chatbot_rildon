@@ -110,6 +110,14 @@ async function findAll({ status, search, dateStart, dateEnd, limit = 500, offset
   return result.rows.map(mapTicket);
 }
 
+async function findByIdOrProtocol(id) {
+  const result = await pool.query(
+    `SELECT * FROM tickets WHERE id::text = $1 OR protocolo = $1 LIMIT 1`,
+    [String(id)]
+  );
+  return result.rows[0] ? mapTicket(result.rows[0]) : null;
+}
+
 async function updateStatus(id, status) {
   const result = await pool.query(
     `
@@ -247,6 +255,7 @@ module.exports = {
   findAll,
   findByCpf,
   findByUserId,
+  findByIdOrProtocol,
   updateStatus,
   assign,
   transfer,

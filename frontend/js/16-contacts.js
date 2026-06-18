@@ -9,51 +9,21 @@ let _contactsStatus  = "";
 let _contactsSelected = new Set();
 let _contactsPollTimer = null;
 let _contactsEditingId = null;
+let _contactsRequestSeq = 0;
+let _contactsSaving = false;
 
 const ESTADOS_BR = [
   "AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG",
   "PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"
 ];
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function formatContactPhone(num) {
-  const d = String(num || "").replace(/\D/g, "");
-  if (d.length === 13) return `+${d.slice(0,2)} (${d.slice(2,4)}) ${d.slice(4,9)}-${d.slice(9)}`;
-  if (d.length === 11) return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`;
-  if (d.length === 10) return `(${d.slice(0,2)}) ${d.slice(2,6)}-${d.slice(6)}`;
-  return num;
-}
-
-function contactInitials(nome) {
-  const parts = String(nome || "?").trim().split(" ").filter(Boolean);
-  return parts.length >= 2
-    ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
-    : parts[0].slice(0, 2).toUpperCase();
-}
-
-function contactAvatarColor(nome) {
-  const colors = ["#1d6cf5","#7c3aed","#db2777","#059669","#d97706","#0891b2"];
-  let h = 0;
-  for (let i = 0; i < (nome || "").length; i++) h = (h * 31 + nome.charCodeAt(i)) & 0xffff;
-  return colors[h % colors.length];
-}
-
-function contactStatusClass(s) {
-  const map = { ativo: "ct-status-ativo", inativo: "ct-status-inativo", bloqueado: "ct-status-bloqueado" };
-  return map[s] || "ct-status-inativo";
-}
-
-function contactStatusLabel(s) {
-  const map = { ativo: "Ativo", inativo: "Inativo", bloqueado: "Bloqueado" };
-  return map[s] || s;
-}
-
 // ── Load & Render ─────────────────────────────────────────────────────────────
 
 async function loadContacts(silent = false) {
+  const requestId = ++_contactsRequestSeq;
   const tbody = document.getElementById("contacts-tbody");
   if (!tbody) return;
+  bindContactActionDelegation();
 
   if (!silent) tbody.innerHTML = `<tr><td colspan="9" class="contacts-empty"><i class="fa-solid fa-spinner fa-spin"></i><br>Carregando...</td></tr>`;
 
@@ -67,15 +37,25 @@ async function loadContacts(silent = false) {
     });
 
     const res  = await apiFetch(`/api/contacts?${params}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
+    if (requestId !== _contactsRequestSeq) return;
 
     _contactsTotal = data.total || 0;
     renderContactsTable(data.rows || []);
     renderContactsFooter();
     updateContactsBulkBar();
-    document.getElementById("contacts-count-badge").textContent = _contactsTotal;
+    const countBadge = document.getElementById("contacts-count-badge");
+    if (countBadge) countBadge.textContent = _contactsTotal;
   } catch (e) {
-    if (tbody) tbody.innerHTML = `<tr><td colspan="9" class="contacts-empty"><i class="fa-solid fa-triangle-exclamation"></i><br>Erro ao carregar contatos.</td></tr>`;
+    if (requestId !== _contactsRequestSeq) return;
+    if (tbody) tbody.innerHTML = `
+      <tr><td colspan="9" class="contacts-empty">
+        <i class="fa-solid fa-triangle-exclamation"></i><br>
+        Não foi possível carregar os contatos.<br>
+        <small>Verifique a conexão e tente novamente.</small><br>
+        <button type="button" class="empty-retry-btn" data-contact-action="reload">Tentar novamente</button>
+      </td></tr>`;
   }
 }
 
@@ -91,22 +71,22 @@ function renderContactsTable(rows) {
   tbody.innerHTML = rows.map(c => {
     const ini      = contactInitials(c.nome);
     const color    = contactAvatarColor(c.nome);
-    const userId   = c.whatsapp.replace(/\D/g, "") + "@s.whatsapp.net";
+    const userId   = String(c.whatsapp || "").replace(/\D/g, "") + "@s.whatsapp.net";
     const photoUrl = `/api/contacts/photo?userId=${encodeURIComponent(userId)}`;
     const tags     = (c.tags || []).map(t => `<span class="ct-tag">${safe(t)}</span>`).join("");
     const checked  = _contactsSelected.has(c.id) ? "checked" : "";
 
     return `
     <tr class="${_contactsSelected.has(c.id) ? "ct-selected" : ""}" data-id="${escapeAttr(c.id)}">
-      <td><input type="checkbox" class="ct-check" data-id="${escapeAttr(c.id)}" ${checked} onchange="toggleContactSelect('${escapeAttr(c.id)}', this.checked)"></td>
+      <td><input type="checkbox" class="ct-check" data-contact-select="true" data-id="${escapeAttr(c.id)}" ${checked}></td>
       <td>
         <div class="ct-nome-cell">
           <div class="ct-avatar-wrap" style="position:relative;width:36px;height:36px;flex-shrink:0;">
             <div class="ct-avatar-ini" style="width:36px;height:36px;border-radius:50%;background:${color};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:12px;position:absolute;inset:0;">${ini}</div>
-            <img class="ct-avatar-img" src="${photoUrl}"
-              style="width:36px;height:36px;border-radius:50%;object-fit:cover;position:absolute;inset:0;display:none;"
-              onload="this.style.display='block'"
-              onerror="this.style.display='none'">
+            <img class="ct-avatar-img contact-avatar-img" src="${escapeAttr(photoUrl)}"
+              data-avatar-img="true"
+              data-avatar-user="${escapeAttr(userId)}"
+              style="width:36px;height:36px;border-radius:50%;object-fit:cover;position:absolute;inset:0;display:none;">
           </div>
           <div>
             <strong>${safe(c.nome)}</strong>
@@ -116,25 +96,48 @@ function renderContactsTable(rows) {
       </td>
       <td style="white-space:nowrap;">${safe(formatContactPhone(c.whatsapp))}</td>
       <td>${safe(c.estado || "—")}</td>
-      <td><span class="ct-status ${contactStatusClass(c.status)}">${contactStatusLabel(c.status)}</span></td>
+      <td><span class="ct-status ${contactStatusClass(c.status)}">${safe(contactStatusLabel(c.status))}</span></td>
       <td><div class="ct-tags">${tags || '<span style="color:var(--muted);font-size:12px;">—</span>'}</div></td>
       <td>${safe(c.atendente_nome || "—")}</td>
       <td>${safe(c.departamento || "—")}</td>
       <td>
         <div class="ct-actions">
-          <button class="ct-btn ct-btn-msg" title="Enviar mensagem" onclick="contactSendMsg('${escapeAttr(c.whatsapp)}','${escapeAttr(c.nome)}')">
+          <button type="button" class="ct-btn ct-btn-msg" title="Enviar mensagem" data-contact-action="message" data-whatsapp="${escapeAttr(c.whatsapp)}" data-name="${escapeAttr(c.nome)}">
             <i class="fa-solid fa-message"></i>
           </button>
-          <button class="ct-btn ct-btn-edit" title="Editar" onclick="openContactModal('${escapeAttr(c.id)}')">
+          <button type="button" class="ct-btn ct-btn-edit" title="Editar" data-contact-action="edit" data-contact-id="${escapeAttr(c.id)}">
             <i class="fa-solid fa-pen"></i>
           </button>
-          <button class="ct-btn ct-btn-delete" title="Excluir" onclick="confirmDeleteContact('${escapeAttr(c.id)}','${escapeAttr(c.nome)}')">
+          <button type="button" class="ct-btn ct-btn-delete" title="Excluir" data-contact-action="delete" data-contact-id="${escapeAttr(c.id)}" data-name="${escapeAttr(c.nome)}">
             <i class="fa-solid fa-trash"></i>
           </button>
         </div>
       </td>
     </tr>`;
   }).join("");
+}
+
+function bindContactActionDelegation() {
+  const tbody = document.getElementById("contacts-tbody");
+  if (!tbody || tbody.dataset.delegated === "true") return;
+  tbody.dataset.delegated = "true";
+
+  tbody.addEventListener("click", (event) => {
+    const btn = event.target.closest("[data-contact-action]");
+    if (!btn || !tbody.contains(btn)) return;
+
+    const action = btn.dataset.contactAction;
+    if (action === "reload") return loadContacts();
+    if (action === "message") return contactSendMsg(btn.dataset.whatsapp || "", btn.dataset.name || "");
+    if (action === "edit") return openContactModal(btn.dataset.contactId || "");
+    if (action === "delete") return confirmDeleteContact(btn.dataset.contactId || "", btn.dataset.name || "");
+  });
+
+  tbody.addEventListener("change", (event) => {
+    const checkbox = event.target.closest('[data-contact-select="true"]');
+    if (!checkbox || !tbody.contains(checkbox)) return;
+    toggleContactSelect(checkbox.dataset.id || "", checkbox.checked);
+  });
 }
 
 function renderContactsFooter() {
@@ -169,7 +172,7 @@ function toggleContactSelectAll(checked) {
 function toggleContactSelect(id, checked) {
   if (checked) _contactsSelected.add(id);
   else _contactsSelected.delete(id);
-  document.querySelector(`tr[data-id="${id}"]`)?.classList.toggle("ct-selected", checked);
+  document.querySelector(`tr[data-id="${cssEscape(id)}"]`)?.classList.toggle("ct-selected", checked);
   updateContactsBulkBar();
 }
 
@@ -185,30 +188,45 @@ function updateContactsBulkBar() {
 async function bulkDeleteContacts() {
   const ids = [..._contactsSelected];
   if (!ids.length) return;
-  if (!confirm(`Excluir ${ids.length} contato(s)? Esta ação não pode ser desfeita.`)) return;
-  try {
-    const res  = await apiFetch("/api/contacts/bulk", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids })
+
+  const executeDelete = async () => {
+    try {
+      const res  = await apiFetch("/api/contacts/bulk", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids })
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      _contactsSelected.clear();
+      showToast(`${data.deleted} contato(s) excluído(s).`);
+      loadContacts();
+    } catch (e) {
+      showToast("Erro ao excluir: " + e.message, "error");
+    }
+  };
+
+  if (typeof showConfirmModal === "function") {
+    showConfirmModal({
+      title: "Excluir contatos selecionados",
+      message: `Excluir ${ids.length} contato(s)? Esta ação não pode ser desfeita.`,
+      confirmText: "Excluir",
+      danger: true,
+      onConfirm: executeDelete
     });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    _contactsSelected.clear();
-    showToast(`${data.deleted} contato(s) excluído(s).`);
-    loadContacts();
-  } catch (e) {
-    showToast("Erro ao excluir: " + e.message, "error");
+    return;
   }
+
+  showToast("Modal de confirmação indisponível. Recarregue a página e tente novamente.", "error");
 }
 
 // ── Filters & Search ──────────────────────────────────────────────────────────
 
 function contactsSearch(val) {
-  _contactsSearch = val.trim();
+  _contactsSearch = String(val || "").trim();
   _contactsPage   = 1;
   clearTimeout(_contactsPollTimer);
-  _contactsPollTimer = setTimeout(() => loadContacts(), 350);
+  _contactsPollTimer = setTimeout(() => loadContacts(), 450);
 }
 
 function contactsFilterStatus(val) {
@@ -300,8 +318,15 @@ async function saveContact() {
   const tags        = tagsRaw.split(",").map(t => t.trim()).filter(Boolean);
 
   if (!nome || !whatsapp) { showToast("Nome e WhatsApp são obrigatórios.", "error"); return; }
+  const onlyDigits = whatsapp.replace(/\D/g, "");
+  if (onlyDigits.length < 10 || onlyDigits.length > 13) { showToast("Informe um WhatsApp válido com DDD.", "error"); return; }
+  if (_contactsSaving) return;
+  _contactsSaving = true;
 
-  const payload = { nome, whatsapp, estado, status, departamento, atendenteId, tags };
+  const saveBtn = document.querySelector("#contact-modal-overlay .send-btn[data-action='saveContact']");
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = "Salvando..."; }
+
+  const payload = { nome, whatsapp: onlyDigits, estado, status, departamento, atendenteId, tags };
   const url     = _contactsEditingId ? `/api/contacts/${_contactsEditingId}` : "/api/contacts";
   const method  = _contactsEditingId ? "PUT" : "POST";
 
@@ -314,6 +339,9 @@ async function saveContact() {
     loadContactsTags();
   } catch (e) {
     showToast("Erro: " + e.message, "error");
+  } finally {
+    _contactsSaving = false;
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = "Salvar"; }
   }
 }
 
@@ -336,8 +364,9 @@ async function doDeleteContact() {
   const overlay = document.getElementById("contact-delete-overlay");
   const id = overlay?.dataset.deleteId;
   if (!id) return;
+  const safeId = normalizeId(id);
   try {
-    const data = await apiFetch(`/api/contacts/${id}`, { method: "DELETE" }).then(r => r.json());
+    const data = await apiFetch(`/api/contacts/${encodeURIComponent(safeId)}`, { method: "DELETE" }).then(r => r.json());
     if (data.error) throw new Error(data.error);
     closeDeleteContactModal();
     showToast("Contato excluído.");
@@ -392,10 +421,14 @@ async function exportContactsCSV() {
 function contactSendMsg(whatsapp, nome) {
   const modal = document.getElementById("chat-modal");
   if (!modal) return;
+  const digits = String(whatsapp || "").replace(/\D/g, "");
+  if (!digits) { showToast("WhatsApp inválido para este contato.", "error"); return; }
+  currentChatUser = `${digits}@s.whatsapp.net`;
+  modal.dataset.whatsapp = currentChatUser;
   const userEl = document.getElementById("chat-user");
-  if (userEl) userEl.textContent = nome;
-  // Pre-fill the whatsapp target used by enviarMensagemManual if it reads from chat-user
-  modal.dataset.whatsapp = whatsapp;
+  if (userEl) userEl.textContent = `Cliente: ${nome || formatPhone(currentChatUser)}`;
+  const msgEl = document.getElementById("chat-message");
+  if (msgEl) msgEl.value = "";
   modal.classList.remove("hidden");
 }
 

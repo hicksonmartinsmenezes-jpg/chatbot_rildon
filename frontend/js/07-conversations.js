@@ -22,6 +22,10 @@ function setTicketFilter(filter, btn) {
 // ─── Carrega conversas filtradas por status de ticket ─────────────────────────
 // silent=true → atualiza sem limpar a lista (evita piscar em polls automáticos)
 async function loadConversations(silent = false) {
+  return runExclusive("loadConversations", () => _loadConversationsCore(silent));
+}
+
+async function _loadConversationsCore(silent = false) {
   const list   = document.getElementById("chat-list");
   const total  = document.getElementById("chat-total");
   const search = document.getElementById("search-conversations")?.value?.trim().toLowerCase() || "";
@@ -145,17 +149,18 @@ async function loadConversations(silent = false) {
       const unread  = unreadMessages[userId] || 0;
       const time    = shortTime(last?.createdAt);
       const ticket  = ticketsByUser[userId];
+      const ticketStatus = String(ticket?.status || "").replace(/[^a-z0-9_-]/gi, "");
       const statusPill = ticket
-        ? `<span class="conv-status-pill status-${ticket.status}">${statusLabel(ticket.status)}</span>`
+        ? `<span class="conv-status-pill status-${ticketStatus}">${safe(statusLabel(ticket.status))}</span>`
         : "";
       const sectorTag = ticket?.sector
         ? `<span class="conv-sector-tag">${safe(ticket.sector)}</span>`
         : "";
-      const statusClass = ticket ? `ci-status-${ticket.status}` : "";
+      const statusClass = ticketStatus ? `ci-status-${ticketStatus}` : "";
       const unreadBg = { aberto: "#BA7517", em_andamento: "#185FA5", resolvido: "#1D9E75", cancelado: "#A32D2D" }[ticket?.status] || "#22c55e";
 
       return `
-        <button class="chat-item ${statusClass}" data-user="${escapeAttr(userId)}" onclick="openConversation('${escapeAttr(userId)}')">
+        <button type="button" class="chat-item ${statusClass}" data-user="${escapeAttr(userId)}" data-conv-list-action="open">
           ${avatarHtml(userId, name)}
           <span class="chat-item-body">
             <span class="chat-item-top">
@@ -171,6 +176,7 @@ async function loadConversations(silent = false) {
         </button>
       `;
     }).join("");
+    bindConversationListDelegation();
 
     if (selectedConversationUser && users.includes(selectedConversationUser)) {
       openConversation(selectedConversationUser, true);
@@ -182,25 +188,26 @@ async function loadConversations(silent = false) {
   }
 }
 
-function getLastHistoryItem(userId) {
-  // Snapshot para evitar race se allHistory for substituído durante iteração
-  const snap = allHistory;
-  return snap
-    .filter(item => item.userId === userId)
-    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0] || null;
+function bindConversationListDelegation() {
+  const list = document.getElementById("chat-list");
+  if (!list || list.dataset.delegated === "true") return;
+  list.dataset.delegated = "true";
+
+  list.addEventListener("click", (event) => {
+    const item = event.target.closest("[data-conv-list-action='open']");
+    if (!item || !list.contains(item)) return;
+    const userId = item.dataset.user;
+    if (userId) openConversation(userId);
+  });
 }
 
-function lastMessage(userId) {
-  const last   = getLastHistoryItem(userId);
-  const text   = last?.message || last?.response || "Sem mensagens";
-  const prefix = last?.response && !last?.message ? "Você: " : "";
-  return cutText(`${prefix}${text}`, 52);
-}
+// getLastHistoryItem extraído para js/conversations/conversations-utils.js
 
-// ─── Abre conversa com header de ações de ticket ──────────────────────────────
-let _openConvSeq = 0;
+// lastMessage extraído para js/conversations/conversations-utils.js
 
 async function openConversation(userId, updateActive = true) {
+  _openConvAbort?.abort();
+  _openConvAbort = new AbortController();
   const seq = ++_openConvSeq;
 
   selectedConversationUser = userId;
@@ -221,49 +228,7 @@ async function openConversation(userId, updateActive = true) {
     const name     = getContactName(userId) || formatPhone(userId);
     const ticket   = ticketsByUser[userId];
 
-    let actionButtons = "";
-    if (ticket && ticket.status === "aberto") {
-      actionButtons = `
-        <button class="conv-action-btn conv-btn-aceitar" onclick="aceitarTicketConv('${ticket.id}')">
-          <i class="fa-solid fa-check"></i> Aceitar
-        </button>
-        <button class="conv-action-btn conv-btn-transferir" onclick="transferirTicketConv('${ticket.id}')">
-          <i class="fa-solid fa-right-left"></i> Transferir
-        </button>
-        <button class="conv-action-btn conv-btn-fechar" onclick="fecharTicketConv('${ticket.id}')">
-          <i class="fa-solid fa-xmark"></i> Fechar
-        </button>
-      `;
-    } else if (ticket && ticket.status === "em_andamento") {
-      actionButtons = `
-        <button class="conv-action-btn conv-btn-transferir" onclick="transferirTicketConv('${ticket.id}')">
-          <i class="fa-solid fa-right-left"></i> Transferir
-        </button>
-        <button class="conv-action-btn conv-btn-fechar" onclick="fecharTicketConv('${ticket.id}')">
-          <i class="fa-solid fa-xmark"></i> Fechar
-        </button>
-      `;
-    } else if (!ticket) {
-      actionButtons = `
-        <button class="conv-action-btn conv-btn-aceitar" onclick="reabrirTicketConv('${userId}')">
-          <i class="fa-solid fa-plus"></i> Iniciar Atendimento
-        </button>
-      `;
-    } else if (ticket.status === "resolvido" || ticket.status === "cancelado") {
-      actionButtons = `
-        <button class="conv-action-btn conv-btn-aceitar" onclick="reabrirTicketConv('${userId}')">
-          <i class="fa-solid fa-rotate-left"></i> Reabrir
-        </button>
-      `;
-    }
-
-    // Botão "Devolver ao bot" quando o atendimento humano está ativo
-    if (humanModeUsers.has(userId)) {
-      actionButtons += `
-        <button class="conv-action-btn conv-btn-refresh" onclick="releaseToBot('${escapeAttr(userId)}')" title="Reativar o bot para este cliente">
-          <i class="fa-solid fa-robot"></i> Devolver ao bot
-        </button>`;
-    }
+    const actionButtons = buildConversationActionButtons(userId, ticket, humanModeUsers);
 
     header.innerHTML = `
       <div class="chat-header-profile">
@@ -279,6 +244,7 @@ async function openConversation(userId, updateActive = true) {
         ${actionButtons}
       </div>
     `;
+    bindConversationHeaderDelegation();
   }
 
   if (updateActive) {
@@ -289,7 +255,7 @@ async function openConversation(userId, updateActive = true) {
   // Busca histórico completo do usuário via API para exibir todas as mensagens
   let userHistory = allHistory.filter(item => item.userId === userId);
   try {
-    const r = await apiFetch(`${BASE}/api/history?userId=${encodeURIComponent(userId)}&limit=500`);
+    const r = await apiFetch(`${BASE}/api/history?userId=${encodeURIComponent(userId)}&limit=500`, { signal: _openConvAbort.signal });
     if (seq !== _openConvSeq) return; // chamada mais nova já assumiu o controle
     if (r?.ok) {
       const raw = await r.json();
@@ -364,6 +330,27 @@ async function releaseToBot(userId) {
 }
 
 // ─── Ações de ticket na conversa ─────────────────────────────────────────────
+function bindConversationHeaderDelegation() {
+  const header = document.getElementById("chat-window-header");
+  if (!header || header.dataset.delegated === "true") return;
+  header.dataset.delegated = "true";
+
+  header.addEventListener("click", (event) => {
+    const btn = event.target.closest("[data-conv-action]");
+    if (!btn || !header.contains(btn)) return;
+
+    const action = btn.dataset.convAction;
+    const ticketId = btn.dataset.ticketId;
+    const userId = btn.dataset.userId;
+
+    if (action === "aceitar" && ticketId) return aceitarTicketConv(ticketId);
+    if (action === "transferir" && ticketId) return transferirTicketConv(ticketId);
+    if (action === "fechar" && ticketId) return fecharTicketConv(ticketId);
+    if (action === "reabrir" && userId) return reabrirTicketConv(userId);
+    if (action === "release-bot" && userId) return releaseToBot(userId);
+  });
+}
+
 async function aceitarTicketConv(id) {
   try {
     const res = await apiFetch(`${BASE}/api/tickets/${id}/assign`, { method: "PATCH" });
@@ -565,7 +552,9 @@ function fecharChat() {
   document.getElementById("chat-modal").classList.add("hidden");
 }
 
+let _sendingManual = false;
 async function enviarMensagemManual() {
+  if (_sendingManual) return;
   const textarea = document.getElementById("chat-message");
   const message  = textarea?.value?.trim();
 
@@ -574,6 +563,7 @@ async function enviarMensagemManual() {
     return;
   }
 
+  _sendingManual = true;
   try {
     await fetch(`${BASE}/api/messages/typing`, {
       credentials: "include",
@@ -601,21 +591,13 @@ async function enviarMensagemManual() {
     fecharChat();
   } catch (err) {
     showToast(`❌ Erro ao enviar: ${err.message}`);
+  } finally {
+    _sendingManual = false;
   }
 }
 
 // ─── Status de mensagem ───────────────────────────────────────────────────────
-function renderMessageStatus(status) {
-  switch (status) {
-    case "read":      return `<i class="fa-solid fa-check-double" style="color:#53bdeb"></i>`;
-    case "delivered": return `<i class="fa-solid fa-check-double"></i>`;
-    case "sent":      return `<i class="fa-solid fa-check"></i>`;
-    default:          return `<i class="fa-solid fa-check"></i>`;
-  }
-}
-
-// ─── Typing indicator ─────────────────────────────────────────────────────────
-let lastTypingAt = 0;
+// renderMessageStatus extraído para js/conversations/conversations-utils.js
 
 function notifyTyping() {
   if (!selectedConversationUser) return;
@@ -650,8 +632,8 @@ function renderNotifDropdown() {
     const iconClass = n.type === "ticket" ? "ticket" : "message";
     const icon = n.type === "ticket" ? "fa-ticket" : "fa-message";
     const ago = _notifTimeAgo(n.time);
-    const onclick = n.userId ? `onclick="closeNotifDropdown(); switchTab('conversations'); setTimeout(()=>openConversation('${escapeAttr(n.userId)}'),200)"` : "";
-    return `<li ${onclick}>
+    const userAttr = n.userId ? `data-notif-user="${escapeAttr(n.userId)}"` : "";
+    return `<li ${userAttr} ${n.userId ? 'tabindex="0" role="button"' : ''}>
       <span class="notif-icon ${iconClass}"><i class="fa-solid ${icon}"></i></span>
       <div class="notif-body">
         <strong>${safe(n.text)}</strong>
@@ -661,12 +643,7 @@ function renderNotifDropdown() {
   }).join("");
 }
 
-function _notifTimeAgo(date) {
-  const diff = Math.floor((Date.now() - date) / 1000);
-  if (diff < 60)  return "agora";
-  if (diff < 3600) return `${Math.floor(diff/60)}min atrás`;
-  return `${Math.floor(diff/3600)}h atrás`;
-}
+// _notifTimeAgo extraído para js/conversations/conversations-utils.js
 
 function toggleNotifDropdown() {
   const btn      = document.getElementById("btn-notifications");
@@ -711,3 +688,27 @@ function updateSidebarUnreadBadge() {
     badge.classList.add("hidden");
   }
 }
+
+
+function initNotificationDelegation() {
+  const list = document.getElementById("notif-list");
+  if (!list || list.dataset.delegated === "1") return;
+  list.dataset.delegated = "1";
+  const openNotifUser = (item) => {
+    const userId = item?.dataset?.notifUser;
+    if (!userId) return;
+    closeNotifDropdown();
+    switchTab("conversations");
+    setTimeout(() => openConversation(userId), 200);
+  };
+  list.addEventListener("click", (event) => openNotifUser(event.target.closest("[data-notif-user]")));
+  list.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const item = event.target.closest("[data-notif-user]");
+    if (!item) return;
+    event.preventDefault();
+    openNotifUser(item);
+  });
+}
+
+document.addEventListener("DOMContentLoaded", initNotificationDelegation);

@@ -38,7 +38,7 @@ if (!fs.existsSync(uploadDir)) {
 const storage = multer.diskStorage({
   destination: uploadDir,
   filename: (req, file, cb) => {
-    const ext      = path.extname(file.originalname);
+    const ext      = path.extname(file.originalname).toLowerCase();
     const baseName = path.basename(file.originalname, ext)
       .replace(/[^a-zA-Z0-9_\-. ]/g, "")   // remove caracteres perigosos
       .trim()
@@ -49,16 +49,43 @@ const storage = multer.diskStorage({
 });
 
 const ALLOWED_MEDIA = {
-  image: new Set([".jpg", ".jpeg", ".png", ".gif", ".webp"]),
-  pdf:   new Set([".pdf"]),
-  audio: new Set([".mp3", ".ogg", ".m4a", ".wav", ".aac", ".opus"]),
+  image: new Map([
+    [".jpg", "image/jpeg"],
+    [".jpeg", "image/jpeg"],
+    [".png", "image/png"],
+    [".gif", "image/gif"],
+    [".webp", "image/webp"]
+  ]),
+  pdf: new Map([[".pdf", "application/pdf"]]),
+  audio: new Map([
+    [".mp3", "audio/mpeg"],
+    [".ogg", "audio/ogg"],
+    [".m4a", "audio/mp4"],
+    [".wav", "audio/wav"],
+    [".aac", "audio/aac"],
+    [".opus", "audio/ogg"]
+  ])
 };
 
+function mimetypeMatches(expected, received) {
+  if (!expected || !received) return false;
+  if (expected === received) return true;
+  // Alguns navegadores/sistemas enviam WAV como x-wav.
+  if (expected === "audio/wav" && received === "audio/x-wav") return true;
+  // Alguns clientes enviam M4A como x-m4a.
+  if (expected === "audio/mp4" && received === "audio/x-m4a") return true;
+  return false;
+}
+
 function detectMediaType(file) {
-  const ext = path.extname(file.originalname).toLowerCase();
-  if (ALLOWED_MEDIA.image.has(ext) || file.mimetype.startsWith("image/")) return "image";
-  if (ALLOWED_MEDIA.pdf.has(ext)   || file.mimetype === "application/pdf")  return "pdf";
-  if (ALLOWED_MEDIA.audio.has(ext) || file.mimetype.startsWith("audio/"))   return "audio";
+  const ext = path.extname(file.originalname || file.filename || "").toLowerCase();
+  const mime = String(file.mimetype || "").toLowerCase();
+
+  for (const [type, map] of Object.entries(ALLOWED_MEDIA)) {
+    const expected = map.get(ext);
+    if (mimetypeMatches(expected, mime)) return type;
+  }
+
   return null;
 }
 

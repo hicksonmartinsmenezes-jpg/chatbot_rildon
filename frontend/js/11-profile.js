@@ -9,7 +9,7 @@ function openProfileModal() {
   
   document.getElementById("profile-name").value  = user.nome   || "";
   document.getElementById("profile-phone").value = user.numero || "";
- document.getElementById("profile-photo-preview").src =  user.foto || "/assets/default-avatar.png";
+ document.getElementById("profile-photo-preview").src = safeUrl(user.foto, "/assets/default-avatar.png");
   document.getElementById("profile-modal").classList.remove("hidden");
 }
 
@@ -50,7 +50,8 @@ async function previewProfilePhoto(event) {
       if (user) {
         user.foto = data.foto;
 
-        sessionStorage.setItem("current_user", JSON.stringify(user));
+        if (typeof setCurrentUser === "function") setCurrentUser(user);
+        else sessionStorage.setItem("current_user", JSON.stringify(user));
         localStorage.setItem(`profile_${user.usuario || user.id}`, JSON.stringify(user));
 
         // Atualiza avatar no topo da página imediatamente
@@ -88,7 +89,8 @@ async function saveProfile() {
 
     const updatedUser = data.user;
 
-    sessionStorage.setItem("current_user", JSON.stringify(updatedUser));
+    if (typeof setCurrentUser === "function") setCurrentUser(updatedUser);
+    else sessionStorage.setItem("current_user", JSON.stringify(updatedUser));
     localStorage.setItem(`profile_${updatedUser.usuario || updatedUser.id}`, JSON.stringify(updatedUser));
 
   
@@ -101,15 +103,6 @@ async function saveProfile() {
 }
 
 // ─── Permissões ───────────────────────────────────────────────────────────────
-function getCurrentUser() {
-  try {
-    const sessionUser = JSON.parse(sessionStorage.getItem("current_user") || "null");
-    if (!sessionUser) return null;
-    const saved = JSON.parse(localStorage.getItem(`profile_${sessionUser.usuario || sessionUser.id}`) || "null");
-    return saved || sessionUser;
-  } catch { return null; }
-}
-
 function applyUserPermissions() {
   const user = getCurrentUser();
   if (!user) return;
@@ -129,7 +122,7 @@ function applyUserProfileVisual(user) {
   const avatar  = document.getElementById("top-user-avatar");
   if (topName) topName.textContent = name;
   if (avatar) {
-    avatar.innerHTML = user.foto ? `<img src="${user.foto}" alt="Perfil">` : initials(name);
+    avatar.innerHTML = user.foto ? `<img src="${escapeAttr(safeUrl(user.foto))}" alt="Perfil">` : safe(initials(name));
   }
 }
 

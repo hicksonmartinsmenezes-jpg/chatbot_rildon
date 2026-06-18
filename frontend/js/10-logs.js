@@ -29,34 +29,16 @@ async function loadActivityLogs() {
     }
 
     container.innerHTML = logs.map(log => `
-
       <div class="ticket-card">
-
         <div class="ticket-header">
-
-          <span class="ticket-id">
-            ${log.action}
-          </span>
-
+          <span class="ticket-id">${safe(log.action)}</span>
           <span class="status-badge status-em_andamento">
-            ${new Date(log.createdAt)
-              .toLocaleString("pt-BR")}
+            ${safe(new Date(log.createdAt).toLocaleString("pt-BR"))}
           </span>
-
         </div>
-
-        <p>
-          <strong>Usuário:</strong>
-          ${log.userName}
-        </p>
-
-        <p class="desc">
-          <strong>Ação:</strong><br>
-          ${log.description}
-        </p>
-
+        <p><strong>Usuário:</strong> ${safe(log.userName)}</p>
+        <p class="desc"><strong>Ação:</strong><br>${safe(log.description)}</p>
       </div>
-
     `).join("");
 
   } catch (err) {

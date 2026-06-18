@@ -1,21 +1,12 @@
-# ── Ambiente ──────────────────────────────────────────────────
-.env
-
-# ── WhatsApp (credenciais da sessão — NUNCA versionar) ────────
-auth_info/
-
-# ── Dados gerados em runtime ──────────────────────────────────
-src/backups/
-src/logs/
-src/data/
-src/uploads/profiles/
-
-# ── Node.js ───────────────────────────────────────────────────
 node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# ── SO ────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+src/data/*.json
+src/logs/*.log
+src/uploads/**
+!src/uploads/.gitkeep
+!src/uploads/**/.gitkeep
+*.tmp
+*.bak
 .DS_Store
-Thumbs.db

@@ -63,9 +63,12 @@ const envSchema = z.object({
     message: "API_TOKEN deve ter pelo menos 32 caracteres. Gere com: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
   }),
 
-  JWT_SECRET: naoEhPlaceholder("JWT_SECRET").min(32, {
-    message: "JWT_SECRET deve ter pelo menos 32 caracteres. Gere com: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
-  }),
+  // Mantido como opcional para compatibilidade. O sistema atual usa sessão HttpOnly no banco,
+  // não JWT. Só exige valor forte se JWT_SECRET for configurado.
+  JWT_SECRET: z.string().optional().default("").refine(
+    val => !val || (val.length >= 32 && !VALORES_PLACEHOLDER.has(val.trim().toLowerCase())),
+    { message: "JWT_SECRET, se usado, deve ter pelo menos 32 caracteres e não pode ser placeholder." }
+  ),
 
   // ── Banco de dados — todas obrigatórias em produção ──────────────────────────
   DB_HOST:     z.string().min(1, { message: "DB_HOST não pode ser vazio." }).default("localhost"),

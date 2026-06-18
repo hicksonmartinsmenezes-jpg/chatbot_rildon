@@ -32,6 +32,10 @@ function openSettingsPanel(panelName) {
   if (title) {
     title.textContent = SETTINGS_PANEL_TITLES[panelName] || "Configurações";
   }
+
+  if (panelName === "usuarios" && typeof loadPanelUsers === "function") {
+    loadPanelUsers({ silent: panelUsersCache?.length > 0 });
+  }
 }
 
 function backToSettingsHome() {
@@ -242,7 +246,7 @@ function renderQuickReplies() {
         <strong>${safe(reply.shortcut)}</strong>
         <p>${safe(reply.message)}</p>
       </div>
-      <button onclick="deleteQuickReply('${escapeAttr(reply.id)}')" title="Excluir">
+      <button type="button" data-quick-action="delete" data-quick-id="${escapeAttr(reply.id)}" title="Excluir" aria-label="Excluir resposta rápida">
         <i class="fa-solid fa-trash"></i>
       </button>
     </div>
@@ -286,3 +290,17 @@ async function saveQuickReplies() {
     showToast("❌ Erro ao salvar respostas rápidas.");
   }
 }
+
+
+function initQuickRepliesDelegation() {
+  const list = document.getElementById("quick-replies-list");
+  if (!list || list.dataset.delegated === "1") return;
+  list.dataset.delegated = "1";
+  list.addEventListener("click", (event) => {
+    const btn = event.target.closest("[data-quick-action='delete']");
+    if (!btn || !list.contains(btn)) return;
+    deleteQuickReply(btn.dataset.quickId || "");
+  });
+}
+
+document.addEventListener("DOMContentLoaded", initQuickRepliesDelegation);

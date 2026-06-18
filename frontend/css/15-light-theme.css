@@ -155,3 +155,8 @@ body.light-theme .chat-selected-empty i { color: #cbd5e1; }
        mas garantimos texto escuro nos títulos fortes ──────────────────── */
 body.light-theme .ct-nome-cell strong,
 body.light-theme .camp-title-cell strong { color: #111827; }
+
+/* ─── Date picker nativo — segue o tema ───────────────────────────────── */
+body.light-theme input[type="date"],
+body.light-theme input[type="time"],
+body.light-theme input[type="datetime-local"] { color-scheme: light; }

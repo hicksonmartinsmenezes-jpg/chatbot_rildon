@@ -26,16 +26,22 @@ let lastConfigCheck = 0;
 // e pelas mensagens recebidas (senderPn). Leitura é sempre em memória; a escrita
 // no banco é assíncrona e só ocorre quando o valor muda — sem latência no envio.
 const lidToJid = {};
+const jidToLid = {};
 let _lidMapCarregado = false;
 
 function setLidMapping(lid, jid, source = "") {
-  if (!lid || !jid || lidToJid[lid] === jid) return;
-  lidToJid[lid] = jid;
-  logger.info(`[lidToJid] ${lid} → ${jid}${source ? ` (via ${source})` : ""}`);
+  if (!lid || !jid) return;
+  const lidKey = String(lid);
+  const jidKey = String(jid);
+  const changed = lidToJid[lidKey] !== jidKey;
+  lidToJid[lidKey] = jidKey;
+  jidToLid[jidKey] = lidKey;
+  if (!changed) return;
+  logger.info(`[lidToJid] ${lidKey} → ${jidKey}${source ? ` (via ${source})` : ""}`);
   pool.query(
     `INSERT INTO lid_map (lid, jid, updated_at) VALUES ($1, $2, NOW())
      ON CONFLICT (lid) DO UPDATE SET jid = EXCLUDED.jid, updated_at = NOW()`,
-    [lid, jid]
+    [lidKey, jidKey]
   ).catch(err => logger.warn(`[lidToJid] persistência falhou: ${err.message}`));
 }
 
@@ -44,7 +50,10 @@ async function carregarLidMap() {
   _lidMapCarregado = true;
   try {
     const res = await pool.query(`SELECT lid, jid FROM lid_map`);
-    for (const row of res.rows) lidToJid[row.lid] = row.jid;
+    for (const row of res.rows) {
+      lidToJid[row.lid] = row.jid;
+      jidToLid[row.jid] = row.lid;
+    }
     if (res.rowCount) logger.info(`[lidToJid] ${res.rowCount} mapeamento(s) restaurado(s) do banco`);
   } catch (err) {
     logger.warn(`[lidToJid] Falha ao restaurar do banco: ${err.message}`);
@@ -448,7 +457,8 @@ async function connectWhatsApp(onMessage) {
         const phone = userId.replace("@s.whatsapp.net", "");
         pool.query(
           `INSERT INTO contacts (nome, whatsapp)
-           SELECT $1, $2 WHERE NOT EXISTS (SELECT 1 FROM contacts WHERE whatsapp = $2)`,
+           SELECT $1::text, $2::varchar
+           WHERE NOT EXISTS (SELECT 1 FROM contacts WHERE whatsapp = $2::varchar)`,
           [contactName || phone, phone]
         ).catch(err => logger.warn(`[AutoContact] ${err.message}`));
       }
@@ -466,7 +476,7 @@ async function connectWhatsApp(onMessage) {
         if (tipoMidia) {
           try {
             await enviarComRetry(
-              userId,
+              sendTo,
               `⚠️ Recebi seu ${tipoMidia}, mas ainda não consigo processar arquivos.\n\n` +
               `Por favor, descreva sua dúvida em *texto* e será um prazer ajudar! 😊\n\n` +
               `Digite *0* para ver o menu.`
@@ -518,16 +528,28 @@ async function getProfilePhotoUrl(userId) {
   return null;
 }
 
+function resolveSendJid(userId) {
+  const raw = String(userId || "");
+
+  // Quando recebemos mensagem via @lid, o histórico/ticket usa o número real
+  // (@s.whatsapp.net), mas a sessão Signal ativa pode estar associada ao @lid.
+  // Para evitar mensagens no WhatsApp como "Aguardando mensagem", priorizamos o
+  // @lid conhecido para envio manual/respostas, mantendo o número apenas como fallback.
+  if (raw.endsWith("@s.whatsapp.net") && jidToLid[raw]) {
+    return jidToLid[raw];
+  }
+
+  return lidToJid[raw] || raw;
+}
+
 async function sendMessage(userId, text) {
   if (!sock) throw new Error("WhatsApp não inicializado.");
   if (!isWhatsAppConnected) throw new Error("WhatsApp não autenticado. Escaneie o QR Code no painel.");
 
   try {
-    // Resolve @lid → JID real (telefone) usando o mapa populado no recebimento.
-    // Sem isso, mensagens manuais do painel para um @lid falham na entrega ("Aguardando mensagem").
-    let resolvedJid = lidToJid[userId] || userId;
+    let resolvedJid = resolveSendJid(userId);
     if (resolvedJid !== userId) {
-      logger.info(`[sendMessage] @lid resolvido via mapa: ${userId} → ${resolvedJid}`);
+      logger.info(`[sendMessage] destino resolvido: ${userId} → ${resolvedJid}`);
     }
 
     // JIDs @lid são identificadores de dispositivo — não passam por onWhatsApp()
@@ -563,8 +585,8 @@ async function sendMedia(userId, filePath, caption = "", mediaType = "image") {
   if (!isWhatsAppConnected) throw new Error("WhatsApp não autenticado. Escaneie o QR Code no painel.");
 
   try {
-    // Resolve @lid → JID real via mapa (mesma lógica de sendMessage)
-    let resolvedJid = lidToJid[userId] || userId;
+    // Mesma lógica de sendMessage: se o número tem @lid conhecido, envia pelo @lid.
+    let resolvedJid = resolveSendJid(userId);
 
     if (!resolvedJid.endsWith("@lid")) {
       const numero = resolvedJid.replace(/@.+/, "");
@@ -613,6 +635,10 @@ function getSocket() {
 
 function resolveLid(lid) {
   return lidToJid[lid] || null;
+}
+
+function resolveJidToLid(jid) {
+  return jidToLid[jid] || null;
 }
 
 async function sendTypingPresence(userId) {

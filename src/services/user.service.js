@@ -7,8 +7,16 @@ const userRepository =
 
 const SALT_ROUNDS = 10;
 
-async function getUsers() {
-  return userRepository.findAll();
+async function getUsers(options = {}) {
+  return userRepository.findAll(options);
+}
+
+async function getUserById(id) {
+  return userRepository.findById(id);
+}
+
+async function countActiveAdmins() {
+  return userRepository.countActiveAdmins();
 }
 
 async function findUserByUsername(usuario) {
@@ -241,6 +249,8 @@ async function deactivateUser(id) {
 
 module.exports = {
   getUsers,
+  getUserById,
+  countActiveAdmins,
   findUserByUsername,
   validateUser,
   createUser,

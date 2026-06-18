@@ -24,8 +24,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css">
   <link rel="stylesheet" href="style.css?v=34">
   <link rel="stylesheet" href="supervisor.css?v=25">
-  <link rel="stylesheet" href="css/09-dashboard.css?v=25">
-  <style>
+<style>
     /* Centraliza colunas da tabela de histórico */
     .hrow-sector,
     .hrow-count,
@@ -46,12 +45,12 @@
       <h2>Rildon Eletropeças</h2>
       <p>Acesso ao painel administrativo</p>
 
-      <form id="login-form" onsubmit="event.preventDefault(); login()" novalidate>
+      <form id="login-form" data-submit-action="login" novalidate>
         <input type="text" id="login-user" autocomplete="username" aria-label="Usuário" placeholder="Usuário" required>
 
         <div class="password-wrapper">
           <input type="password" id="login-pass" autocomplete="current-password" aria-label="Senha" placeholder="Senha" required>
-          <button type="button" class="toggle-pass" onclick="togglePasswordVisibility()" aria-label="Mostrar/ocultar senha" tabindex="-1">
+          <button type="button" class="toggle-pass" data-action="togglePasswordVisibility" aria-label="Mostrar/ocultar senha" tabindex="-1">
             <i id="toggle-pass-icon" class="fa-solid fa-eye"></i>
           </button>
         </div>
@@ -76,12 +75,12 @@
   <aside class="sidebar" id="sidebar">
     <i class="fa-solid fa-bars burger" id="btn-menu"></i>
 
-    <a href="#" class="active" onclick="switchTab('dashboard', event)">
+    <a href="#" class="active" data-tab="dashboard">
       <i class="fa-solid fa-desktop"></i>
       <span class="label">Dashboard</span>
     </a>
 
-    <a href="#" onclick="switchTab('conversations', event)">
+    <a href="#" data-tab="conversations">
 
   <div class="menu-icon-wrapper">
 
@@ -100,35 +99,34 @@
 
 </a>
 
-    <a href="#" onclick="switchTab('history', event)">
+    <a href="#" data-tab="history">
       <i class="fa-solid fa-clock-rotate-left"></i>
       <span class="label">Histórico</span>
     </a>
 
-    <a href="#" onclick="switchTab('leads', event)" style="display:none;" aria-hidden="true">
+    <a href="#" data-tab="leads" style="display:none;" aria-hidden="true">
       <i class="fa-solid fa-list"></i>
       <span class="label">Gestão de Lead</span>
     </a>
 
-    <a href="#" onclick="switchTab('contacts', event)">
+    <a href="#" data-tab="contacts">
       <i class="fa-solid fa-address-book"></i>
       <span class="label">Contatos</span>
     </a>
 
-    <a href="#" onclick="switchTab('channels', event)">
+    <a href="#" data-tab="channels">
       <i class="fa fa-bullhorn"></i>
       <span class="label">Campanhas</span>
     </a>
 
-    <a href="#" class="admin-only"  onclick="switchTab('chatbot', event)"
+    <a href="#" class="admin-only" data-tab="chatbot"
 >   <i class="fa-solid fa-robot"></i>
       <span class="label">Chatbot</span>
     </a>
 
    <a
   href="#"
-  class="admin-only"
-  onclick="switchTab('settings', event)"
+  class="admin-only" data-tab="settings"
 >
   <i class="fa-solid fa-gear"></i>
   <span class="label">Configurações</span>
@@ -136,8 +134,7 @@
 
 <a
   href="#"
-  class="admin-only"
-  onclick="switchTab('logs', event)"
+  class="admin-only" data-tab="logs"
 >
   <i class="fa-solid fa-clipboard-list"></i>
   <span class="label">Logs</span>
@@ -145,7 +142,7 @@
 
 
 
-<a href="#" class="supervisor-only" onclick="switchTab('metrics', event)">
+<a href="#" class="supervisor-only" data-tab="metrics">
   <i class="fa-solid fa-chart-line"></i>
   <span class="label">Métricas</span>
 </a>
@@ -158,23 +155,23 @@
   <div class="main" id="dashboard">
     <header class="topbar" id="dashboard-header">
       <div class="top-actions">
-        <button class="icon-btn" title="Atualizar" onclick="refreshAll()">
+        <button type="button" class="icon-btn" title="Atualizar" data-action="refreshAll">
           <i class="fa-solid fa-arrows-rotate"></i>
         </button>
 
-        <button class="icon-btn" id="theme-toggle" title="Alternar tema claro/escuro" onclick="toggleTheme()">
+        <button type="button" class="icon-btn" id="theme-toggle" title="Alternar tema claro/escuro" data-action="toggleTheme">
           <i class="fa-solid fa-moon"></i>
         </button>
 
         <div class="notif-wrap">
-          <button class="icon-btn notification" id="btn-notifications" title="Notificações" onclick="toggleNotifDropdown()" aria-haspopup="true" aria-expanded="false">
+          <button type="button" class="icon-btn notification" id="btn-notifications" title="Notificações" data-action="toggleNotifDropdown" aria-haspopup="true" aria-expanded="false">
             <i class="fa-regular fa-bell"></i>
             <span id="notification-dot"></span>
           </button>
           <div id="notif-dropdown" class="notif-dropdown hidden" role="menu">
             <div class="notif-dropdown-header">
               <strong>Notificações</strong>
-              <button onclick="clearNotifications()" title="Limpar todas">
+              <button type="button" data-action="clearNotifications" title="Limpar todas">
                 <i class="fa-solid fa-check-double"></i>
               </button>
             </div>
@@ -184,7 +181,7 @@
           </div>
         </div>
 
-       <div class="avatar-wrap" onclick="openProfileModal()">
+       <div class="avatar-wrap" data-action="openProfileModal" role="button" tabindex="0">
 
       <div
         class="avatar"
@@ -204,7 +201,7 @@
           <i class="fa-solid fa-chevron-down"></i>
         </div>
 
-        <button class="logout-btn" onclick="logout()">
+        <button type="button" class="logout-btn" data-action="logout">
           <i class="fa-solid fa-right-from-bracket"></i>
           Sair
         </button>
@@ -217,25 +214,24 @@
       <!-- Tabs superiores -->
       <section class="panel" id="top-tabs-panel">
         <div class="tabs">
-          <button class="tab active" onclick="switchTab('dashboard', event)">
+          <button type="button" class="tab active" data-tab="dashboard">
             <i class="fa-solid fa-desktop"></i> PAINEL
           </button>
 
-          <button class="tab" onclick="switchTab('conversations', event)">
+          <button type="button" class="tab" data-tab="conversations">
             <i class="fa-solid fa-headset"></i> ATENDIMENTOS
           </button>
 
-          <button class="tab" onclick="switchTab('history', event)">
+          <button type="button" class="tab" data-tab="history">
             <i class="fa-solid fa-magnifying-glass"></i> HISTÓRICO
           </button>
 
-          <button class="tab" onclick="switchTab('leads', event)" style="display:none;" aria-hidden="true">
+          <button type="button" class="tab" data-tab="leads" style="display:none;" aria-hidden="true">
             <i class="fa-solid fa-user-group"></i> RESUMO POR USUÁRIOS
           </button>
 
-          <button
-            class="tab admin-only"
-            onclick="switchTab('chatbot', event)"
+          <button type="button"
+            class="tab admin-only" data-tab="chatbot"
           >
             <i class="fa-solid fa-robot"></i> CHATBOT
           </button>
@@ -252,7 +248,7 @@
           </div>
 
           <div class="dashboard-hero-actions">
-            <button class="btn-refresh" onclick="refreshAll()">
+            <button type="button" class="btn-refresh" data-action="refreshAll">
               <i class="fa-solid fa-arrows-rotate"></i> Atualizar dados
             </button>
             <span class="dashboard-live-badge">
@@ -291,7 +287,7 @@
               <i class="fa-solid fa-chevron-down icon-right"></i>
             </div>
 
-            <button class="btn-refresh" onclick="refreshAll()">
+            <button type="button" class="btn-refresh" data-action="refreshAll">
               <i class="fa-solid fa-arrows-rotate"></i> ATUALIZAR
             </button>
           </div>
@@ -354,7 +350,7 @@
               <h2>Atendimentos</h2>
               <p>Gerencie tickets criados automaticamente pelo chatbot.</p>
             </div>
-            <button class="btn-refresh" onclick="loadTickets()">
+            <button type="button" class="btn-refresh" data-action="loadTickets">
               <i class="fa-solid fa-arrows-rotate"></i> Atualizar
             </button>
           </div>
@@ -362,9 +358,9 @@
           <div class="toolbar">
             <div class="search-wrap">
               <i class="fa-solid fa-magnifying-glass search-icon"></i>
-              <input type="text" id="search" aria-label="Buscar atendimentos" placeholder="Buscar por nome, CPF, número ou tipo..." oninput="loadTickets()">
+              <input type="text" id="search" aria-label="Buscar atendimentos" placeholder="Buscar por nome, CPF, número ou tipo..." data-input-action="loadTickets">
             </div>
-            <select id="filter-status" onchange="loadTickets()">
+            <select id="filter-status" data-change-action="loadTickets">
               <option value="">Todos os status</option>
               <option value="aberto">Aberto</option>
               <option value="em_andamento">Em andamento</option>
@@ -386,22 +382,22 @@
                 <strong>Conversas</strong>
                 <span id="chat-total">0 conversas</span>
               </div>
-              <button onclick="loadConversations()" title="Atualizar lista">
+              <button type="button" data-action="loadConversations" title="Atualizar lista">
                 <i class="fa-solid fa-arrows-rotate"></i>
               </button>
             </div>
             <div class="chat-status-tabs">
-              <button class="chat-status-tab active" data-filter="pendentes" onclick="setTicketFilter('pendentes', this)">
+              <button type="button" class="chat-status-tab active" data-filter="pendentes" data-action="setTicketFilter" data-value="pendentes">
                 <i class="fa-solid fa-clock"></i>
                 <span class="tab-label">Pendentes</span>
                 <span id="badge-pendentes" class="chat-status-badge">0</span>
               </button>
-              <button class="chat-status-tab" data-filter="em_andamento" onclick="setTicketFilter('em_andamento', this)">
+              <button type="button" class="chat-status-tab" data-filter="em_andamento" data-action="setTicketFilter" data-value="em_andamento">
                 <i class="fa-solid fa-headset"></i>
                 <span class="tab-label">Ativos</span>
                 <span id="badge-em_andamento" class="chat-status-badge">0</span>
               </button>
-              <button class="chat-status-tab" data-filter="fechados" onclick="setTicketFilter('fechados', this)">
+              <button type="button" class="chat-status-tab" data-filter="fechados" data-action="setTicketFilter" data-value="fechados">
                 <i class="fa-solid fa-circle-check"></i>
                 <span class="tab-label">Fechados</span>
               </button>
@@ -409,7 +405,7 @@
 
             <div class="chat-search">
               <i class="fa-solid fa-magnifying-glass"></i>
-              <input id="search-conversations" type="text" aria-label="Pesquisar conversa" placeholder="Pesquisar conversa..." oninput="debouncedSearch()">
+              <input id="search-conversations" type="text" aria-label="Pesquisar conversa" placeholder="Pesquisar conversa..." data-input-action="debouncedSearch">
             </div>
 
             <div class="chat-list" id="chat-list"></div>
@@ -435,13 +431,13 @@
              <textarea
               id="conversation-message"
               placeholder="Selecione uma conversa..."
-              onkeydown="handleConversationKeydown(event)"
-              oninput="notifyTyping(); autoResizeTextarea(this)"
+              data-input-action="conversationTextarea"
+              data-keydown-action="conversationTextarea"
               rows="1"
               disabled
               ></textarea>
             
-              <button id="btn-send-conversation" onclick="sendConversationMessage()" title="Enviar">
+              <button type="button" id="btn-send-conversation" data-action="sendConversationMessage" title="Enviar">
                 <i class="fa-solid fa-paper-plane"></i>
               </button>
             </div>
@@ -459,25 +455,25 @@
                 id="search-history"
                 aria-label="Buscar histórico"
                 placeholder="Buscar por número, cliente, mensagem ou resposta..."
-                oninput="loadHistory(true)"
+                data-input-action="loadHistoryTrue"
               >
             </div>
 
             <div class="history-date-field">
               <label>De</label>
-              <input type="date" id="history-date-start" onchange="loadHistory(true)">
+              <input type="date" id="history-date-start" data-change-action="loadHistoryTrue">
             </div>
 
             <div class="history-date-field">
               <label>Até</label>
-              <input type="date" id="history-date-end" onchange="loadHistory(true)">
+              <input type="date" id="history-date-end" data-change-action="loadHistoryTrue">
             </div>
 
-            <button class="history-clear-btn" onclick="clearHistoryFilters()">
+            <button type="button" class="history-clear-btn" data-action="clearHistoryFilters">
               <i class="fa-solid fa-eraser"></i> Limpar
             </button>
 
-            <button class="history-clear-btn" onclick="loadHistory(true)">
+            <button type="button" class="history-clear-btn" data-action="loadHistoryTrue">
               <i class="fa-solid fa-arrows-rotate"></i>
             </button>
           </div>
@@ -522,10 +518,10 @@
         <!-- Bulk bar -->
         <div id="contacts-bulk-bar" class="contacts-bulk-bar">
           <span id="contacts-bulk-label">0 selecionados</span>
-          <button class="ci-btn ci-btn-delete" onclick="bulkDeleteContacts()">
+          <button type="button" class="ci-btn ci-btn-delete" data-action="bulkDeleteContacts">
             <i class="fa-solid fa-trash"></i> Excluir selecionados
           </button>
-          <button class="ci-btn" onclick="toggleContactSelectAll(false)">
+          <button type="button" class="ci-btn" data-action="toggleContactSelectAll" data-checked="false">
             <i class="fa-solid fa-xmark"></i> Limpar seleção
           </button>
         </div>
@@ -542,25 +538,25 @@
                 <i class="fa-solid fa-magnifying-glass"></i>
                 <input class="contacts-search" id="contacts-search" type="text"
                   placeholder="Buscar nome ou número..."
-                  oninput="contactsSearch(this.value)">
+                  data-input-action="contactsSearch">
               </div>
-              <select class="contacts-filter-select" id="contacts-filter-tag" onchange="contactsFilterTag(this.value)">
+              <select class="contacts-filter-select" id="contacts-filter-tag" data-change-action="contactsFilterTag">
                 <option value="">Todas as etiquetas</option>
               </select>
-              <select class="contacts-filter-select" onchange="contactsFilterStatus(this.value)">
+              <select class="contacts-filter-select" data-change-action="contactsFilterStatus">
                 <option value="">Todos os status</option>
                 <option value="ativo">Ativo</option>
                 <option value="inativo">Inativo</option>
                 <option value="bloqueado">Bloqueado</option>
               </select>
               <span class="ct-toolbar-sep"></span>
-              <button class="ct-btn-add" onclick="openContactModal()">
+              <button type="button" class="ct-btn-add" data-action="openContactModal">
                 <i class="fa-solid fa-plus"></i> Adicionar
               </button>
-              <button class="ct-btn-secondary" onclick="importContactsCSV()">
+              <button type="button" class="ct-btn-secondary" data-action="importContactsCSV">
                 <i class="fa-solid fa-file-import"></i> Importar
               </button>
-              <button class="ct-btn-secondary" onclick="exportContactsCSV()">
+              <button type="button" class="ct-btn-secondary" data-action="exportContactsCSV">
                 <i class="fa-solid fa-file-export"></i> Exportar
               </button>
             </div>
@@ -574,7 +570,7 @@
               </colgroup>
               <thead>
                 <tr>
-                  <th width="44"><input type="checkbox" id="contacts-check-all" onchange="toggleContactSelectAll(this.checked)"></th>
+                  <th width="44"><input type="checkbox" id="contacts-check-all" data-change-action="toggleContactSelectAll"></th>
                   <th width="250">Nome</th>
                   <th width="210">WhatsApp</th>
                   <th width="90">Estado</th>
@@ -595,11 +591,11 @@
           <div class="contacts-footer">
             <span class="contacts-showing" id="contacts-showing">0 contatos</span>
             <div class="contacts-pagination">
-              <button class="ct-page-btn" id="contacts-prev" onclick="contactsPagePrev()" disabled>
+              <button type="button" class="ct-page-btn" id="contacts-prev" data-action="contactsPagePrev" disabled>
                 <i class="fa-solid fa-chevron-left"></i>
               </button>
               <span class="ct-page-info" id="contacts-page-info">1 / 1</span>
-              <button class="ct-page-btn" id="contacts-next" onclick="contactsPageNext()" disabled>
+              <button type="button" class="ct-page-btn" id="contacts-next" data-action="contactsPageNext" disabled>
                 <i class="fa-solid fa-chevron-right"></i>
               </button>
             </div>
@@ -607,11 +603,11 @@
         </div>
 
         <!-- Add/Edit modal -->
-        <div id="contact-modal-overlay" class="contacts-modal-overlay hidden" onclick="if(event.target===this)closeContactModal()">
+        <div id="contact-modal-overlay" class="contacts-modal-overlay hidden" data-backdrop-action="closeContactModal">
           <div class="panel contacts-modal">
             <div class="contacts-modal-header">
               <h3 id="contact-modal-title">Novo Contato</h3>
-              <button onclick="closeContactModal()"><i class="fa-solid fa-xmark"></i></button>
+              <button type="button" data-action="closeContactModal"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <div class="contacts-form-grid">
               <div class="full">
@@ -659,23 +655,23 @@
               </div>
             </div>
             <div class="contacts-modal-actions">
-              <button class="btn-refresh" onclick="closeContactModal()">Cancelar</button>
-              <button class="send-btn" onclick="saveContact()">Salvar</button>
+              <button type="button" class="btn-refresh" data-action="closeContactModal">Cancelar</button>
+              <button type="button" class="send-btn" data-action="saveContact">Salvar</button>
             </div>
           </div>
         </div>
 
         <!-- Delete confirm modal -->
-        <div id="contact-delete-overlay" class="contacts-modal-overlay hidden" onclick="if(event.target===this)closeDeleteContactModal()">
+        <div id="contact-delete-overlay" class="contacts-modal-overlay hidden" data-backdrop-action="closeDeleteContactModal">
           <div class="panel contacts-modal contacts-delete-modal">
             <div class="contacts-modal-header">
               <h3>Excluir contato</h3>
-              <button onclick="closeDeleteContactModal()"><i class="fa-solid fa-xmark"></i></button>
+              <button type="button" data-action="closeDeleteContactModal"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <p>Tem certeza que deseja excluir <strong id="contact-delete-name"></strong>? Esta ação não pode ser desfeita.</p>
             <div class="contacts-modal-actions">
-              <button class="btn-refresh" onclick="closeDeleteContactModal()">Cancelar</button>
-              <button class="send-btn" style="background:rgba(239,68,68,.8);" onclick="doDeleteContact()">
+              <button type="button" class="btn-refresh" data-action="closeDeleteContactModal">Cancelar</button>
+              <button type="button" class="send-btn" style="background:rgba(239,68,68,.8);" data-action="doDeleteContact">
                 <i class="fa-solid fa-trash"></i> Excluir
               </button>
             </div>
@@ -696,17 +692,17 @@
       </div>
     </div>
     <div class="camp-page-actions">
-      <select id="campaign-status-filter" class="campaign-status-filter-select" onchange="filterCampaigns(this.value)">
+      <select id="campaign-status-filter" class="campaign-status-filter-select" data-change-action="filterCampaigns">
         <option value="all">Todos os status</option>
         <option value="pending">Aguardando</option>
         <option value="sending">Enviando</option>
         <option value="finished">Finalizado</option>
         <option value="cancelled">Cancelado</option>
       </select>
-      <button class="camp-refresh-icon" onclick="loadCampaigns()" title="Atualizar lista">
+      <button type="button" class="camp-refresh-icon" data-action="loadCampaigns" title="Atualizar lista">
         <i class="fa-solid fa-rotate"></i>
       </button>
-      <button class="camp-new-btn" onclick="openCampaignModal()">
+      <button type="button" class="camp-new-btn" data-action="openCampaignModal">
         <i class="fa-solid fa-plus"></i> Nova Campanha
       </button>
     </div>
@@ -764,7 +760,7 @@
   </div>
 
   <!-- MODAL: NOVA CAMPANHA -->
-  <div id="camp-modal-overlay" class="camp-modal-overlay hidden" onclick="if(event.target===this)closeCampaignModal()">
+  <div id="camp-modal-overlay" class="camp-modal-overlay hidden" data-backdrop-action="closeCampaignModal">
     <div class="camp-modal panel">
 
       <div class="camp-modal-header">
@@ -772,7 +768,7 @@
           <i class="fa-solid fa-bullhorn"></i>
           <h3>Nova Campanha</h3>
         </div>
-        <button class="camp-modal-close" onclick="closeCampaignModal()">
+        <button type="button" class="camp-modal-close" data-action="closeCampaignModal">
           <i class="fa-solid fa-xmark"></i>
         </button>
       </div>
@@ -785,29 +781,29 @@
           <div class="camp-field">
             <label>Título da campanha</label>
             <input id="campaign-title" type="text" placeholder="Ex: Promoção de Janeiro"
-              oninput="updateCampaignPreview()">
+              data-input-action="updateCampaignPreview">
           </div>
 
           <div class="camp-field">
             <label>Mensagem <span id="camp-msg-counter" class="camp-label-opt">0 / 1024</span></label>
             <textarea id="campaign-message" maxlength="1024"
               placeholder="Digite a mensagem que será enviada..."
-              oninput="updateCampaignPreview(); updateMsgCounter()"></textarea>
+              data-input-action="updateCampaignPreviewMsgCounter"></textarea>
           </div>
 
           <div class="camp-field">
             <label>Mídia <span class="camp-label-opt">(opcional)</span></label>
             <div class="camp-media-tabs">
-              <button type="button" class="camp-media-tab active" onclick="setCampaignMediaType('none', this)">
+              <button type="button" class="camp-media-tab active" data-action="setCampaignMediaType" data-value="none">
                 <i class="fa-solid fa-ban"></i> Nenhuma
               </button>
-              <button type="button" class="camp-media-tab" onclick="setCampaignMediaType('image', this)">
+              <button type="button" class="camp-media-tab" data-action="setCampaignMediaType" data-value="image">
                 <i class="fa-solid fa-image"></i> Imagem
               </button>
-              <button type="button" class="camp-media-tab" onclick="setCampaignMediaType('pdf', this)">
+              <button type="button" class="camp-media-tab" data-action="setCampaignMediaType" data-value="pdf">
                 <i class="fa-solid fa-file-pdf"></i> PDF
               </button>
-              <button type="button" class="camp-media-tab" onclick="setCampaignMediaType('audio', this)">
+              <button type="button" class="camp-media-tab" data-action="setCampaignMediaType" data-value="audio">
                 <i class="fa-solid fa-music"></i> Áudio
               </button>
             </div>
@@ -818,13 +814,13 @@
                 <span id="camp-file-name">Escolher arquivo...</span>
               </label>
               <input type="file" id="campaign-media-file" style="display:none"
-                onchange="previewCampaignMedia(event)">
+                data-change-action="previewCampaignMedia">
             </div>
 
             <!-- Preview imagem -->
             <div id="campaign-image-preview" class="hidden" style="margin-top:8px;">
               <img id="campaign-preview-img" style="max-width:100%;border-radius:8px;">
-              <button class="camp-img-remove" onclick="removeCampaignMedia()" title="Remover">
+              <button type="button" class="camp-img-remove" data-action="removeCampaignMedia" title="Remover">
                 <i class="fa-solid fa-xmark"></i>
               </button>
             </div>
@@ -833,7 +829,7 @@
             <div id="campaign-pdf-preview" class="hidden" style="margin-top:8px;display:flex;align-items:center;gap:8px;padding:10px;background:rgba(255,255,255,.06);border-radius:8px;">
               <i class="fa-solid fa-file-pdf" style="font-size:24px;color:#ef4444;"></i>
               <span id="campaign-pdf-name" style="font-size:13px;color:var(--color-text);">—</span>
-              <button class="camp-img-remove" onclick="removeCampaignMedia()" title="Remover" style="margin-left:auto;">
+              <button type="button" class="camp-img-remove" data-action="removeCampaignMedia" title="Remover" style="margin-left:auto;">
                 <i class="fa-solid fa-xmark"></i>
               </button>
             </div>
@@ -841,7 +837,7 @@
             <!-- Preview áudio -->
             <div id="campaign-audio-preview" class="hidden" style="margin-top:8px;">
               <audio id="campaign-preview-audio" controls style="width:100%;border-radius:8px;"></audio>
-              <button class="camp-img-remove" onclick="removeCampaignMedia()" title="Remover" style="margin-top:4px;">
+              <button type="button" class="camp-img-remove" data-action="removeCampaignMedia" title="Remover" style="margin-top:4px;">
                 <i class="fa-solid fa-xmark"></i> Remover
               </button>
             </div>
@@ -851,27 +847,27 @@
             <label>Destinatários</label>
             <div class="campaign-audience-options camp-audience-grid">
               <label class="campaign-radio">
-                <input type="radio" name="campaign-audience" value="all_clients" checked onchange="toggleCustomRecipients()">
+                <input type="radio" name="campaign-audience" value="all_clients" checked data-change-action="toggleCustomRecipients">
                 <i class="fa-solid fa-users"></i>
                 <span>Todos os clientes</span>
               </label>
               <label class="campaign-radio">
-                <input type="radio" name="campaign-audience" value="with_tickets" onchange="toggleCustomRecipients()">
+                <input type="radio" name="campaign-audience" value="with_tickets" data-change-action="toggleCustomRecipients">
                 <i class="fa-solid fa-ticket"></i>
                 <span>Com ticket</span>
               </label>
               <label class="campaign-radio">
-                <input type="radio" name="campaign-audience" value="last_30_days" onchange="toggleCustomRecipients()">
+                <input type="radio" name="campaign-audience" value="last_30_days" data-change-action="toggleCustomRecipients">
                 <i class="fa-solid fa-calendar-days"></i>
                 <span>Últimos 30 dias</span>
               </label>
               <label class="campaign-radio">
-                <input type="radio" name="campaign-audience" value="contacts" onchange="toggleCustomRecipients()">
+                <input type="radio" name="campaign-audience" value="contacts" data-change-action="toggleCustomRecipients">
                 <i class="fa-solid fa-address-book"></i>
                 <span>Contatos</span>
               </label>
               <label class="campaign-radio">
-                <input type="radio" name="campaign-audience" value="custom" onchange="toggleCustomRecipients()">
+                <input type="radio" name="campaign-audience" value="custom" data-change-action="toggleCustomRecipients">
                 <i class="fa-solid fa-list"></i>
                 <span>Personalizada</span>
               </label>
@@ -881,10 +877,10 @@
           <div id="contacts-filters-box" class="hidden camp-field contacts-filters-box">
             <label>Filtrar contatos</label>
             <div class="contacts-filters-row">
-              <select id="camp-filter-tag" class="contacts-filter-select" onchange="updateCampaignAudienceCount()">
+              <select id="camp-filter-tag" class="contacts-filter-select" data-change-action="updateCampaignAudienceCount">
                 <option value="">Todas as etiquetas</option>
               </select>
-              <select id="camp-filter-atendente" class="contacts-filter-select" onchange="updateCampaignAudienceCount()">
+              <select id="camp-filter-atendente" class="contacts-filter-select" data-change-action="updateCampaignAudienceCount">
                 <option value="">Todos os atendentes</option>
               </select>
             </div>
@@ -901,15 +897,15 @@
                 <i class="fa-solid fa-magnifying-glass"></i>
                 <input type="text" id="camp-contact-search" class="camp-picker-search"
                   placeholder="Buscar por nome ou número..."
-                  oninput="searchCampContacts(this.value)" autocomplete="off">
+                  data-input-action="searchCampContacts" autocomplete="off">
               </div>
               <div class="camp-picker-toolbar">
                 <span id="camp-picker-sel-count" class="camp-picker-sel-count"></span>
                 <div class="camp-picker-toolbar-actions">
-                  <button class="cp-toolbar-btn" onclick="campSelectAll()">
+                  <button type="button" class="cp-toolbar-btn" data-action="campSelectAll">
                     <i class="fa-solid fa-check-double"></i> Todos
                   </button>
-                  <button class="cp-toolbar-btn cp-toolbar-btn-clear" onclick="campClearAll()">
+                  <button type="button" class="cp-toolbar-btn cp-toolbar-btn-clear" data-action="campClearAll">
                     <i class="fa-solid fa-xmark"></i> Limpar
                   </button>
                 </div>
@@ -984,8 +980,8 @@
 
       <!-- FOOTER fixo fora das colunas — sempre visível -->
       <div class="camp-modal-footer">
-        <button class="history-clear-btn" onclick="closeCampaignModal()">Cancelar</button>
-        <button id="campaign-submit-btn" class="send-btn" onclick="createCampaign()">
+        <button type="button" class="history-clear-btn" data-action="closeCampaignModal">Cancelar</button>
+        <button type="button" id="campaign-submit-btn" class="send-btn" data-action="createCampaign">
           <i class="fa-solid fa-paper-plane"></i> Criar campanha
         </button>
       </div>
@@ -1012,24 +1008,24 @@
         </p>
       </div>
 
-      <button class="btn-refresh" onclick="saveBotSettings()">
+      <button type="button" class="btn-refresh" data-action="saveBotSettings">
         <i class="fa-solid fa-floppy-disk"></i>
         Salvar
       </button>
     </div>
 
     <div class="settings-tabs">
-      <button class="settings-tab active" onclick="switchBotPanel('bot-settings', event)">
+      <button type="button" class="settings-tab active" data-action="switchBotPanel" data-value="bot-settings">
         <i class="fa-solid fa-sliders"></i>
         Configurações do Bot
       </button>
 
-      <button class="settings-tab" onclick="switchBotPanel('bot-quick-replies', event)">
+      <button type="button" class="settings-tab" data-action="switchBotPanel" data-value="bot-quick-replies">
         <i class="fa-solid fa-bolt"></i>
         Respostas Rápidas
       </button>
 
-      <button class="settings-tab" onclick="switchBotPanel('bot-flows', event)">
+      <button type="button" class="settings-tab" data-action="switchBotPanel" data-value="bot-flows">
         <i class="fa-solid fa-diagram-project"></i>
         Editor de Fluxos
       </button>
@@ -1082,7 +1078,7 @@
         <label>Mensagem</label>
         <textarea id="quick-message" placeholder="Digite a resposta que será enviada..."></textarea>
 
-        <button class="btn-refresh" onclick="addQuickReply()">
+        <button type="button" class="btn-refresh" data-action="addQuickReply">
           <i class="fa-solid fa-plus"></i>
           Adicionar resposta
         </button>
@@ -1099,27 +1095,27 @@
   <section id="bot-flows" class="bot-panel hidden">
     <div class="flow-layout">
       <aside class="flow-menu">
-        <button class="flow-item active">
+        <button type="button" class="flow-item active">
           <strong>Menu principal</strong>
           <span>Mensagem inicial e opções</span>
         </button>
 
-        <button class="flow-item">
+        <button type="button" class="flow-item">
           <strong>Dúvidas frequentes</strong>
           <span>Respostas automáticas</span>
         </button>
 
-        <button class="flow-item">
+        <button type="button" class="flow-item">
           <strong>Suporte técnico</strong>
           <span>Fluxo de atendimento</span>
         </button>
 
-        <button class="flow-item">
+        <button type="button" class="flow-item">
           <strong>Vendas / Orçamento</strong>
           <span>Fluxo comercial</span>
         </button>
 
-        <button class="flow-item">
+        <button type="button" class="flow-item">
           <strong>Financeiro</strong>
           <span>Fluxo financeiro</span>
         </button>
@@ -1154,7 +1150,7 @@ Como podemos ajudar você hoje?
 6|financeiro
 7|humano</textarea>
 
-          <button class="btn-refresh" onclick="saveFlow()" disabled title="Em desenvolvimento">
+          <button type="button" class="btn-refresh" data-action="saveFlow" disabled title="Em desenvolvimento">
             <i class="fa-solid fa-floppy-disk"></i>
             Salvar fluxo
           </button>
@@ -1179,10 +1175,10 @@ Como podemos ajudar você hoje?
             </div>
 
             <div class="settings-actions">
-              <button class="btn-refresh" onclick="loadSettings()">
+              <button type="button" class="btn-refresh" data-action="loadSettings">
                 <i class="fa-solid fa-arrows-rotate"></i> Atualizar
               </button>
-              <button class="btn-save-settings" onclick="saveSettings()">
+              <button type="button" class="btn-save-settings" data-action="saveSettings">
                 <i class="fa-solid fa-floppy-disk"></i> Salvar alterações
               </button>
             </div>
@@ -1198,7 +1194,7 @@ Como podemos ajudar você hoje?
           </div>
 
           <div class="settings-home-grid">
-            <button type="button" class="settings-home-card" onclick="openSettingsPanel('usuarios')">
+            <button type="button" class="settings-home-card" data-action="openSettingsPanel" data-value="usuarios">
               <span class="settings-home-icon bg-purple"><i class="fa-solid fa-users-gear"></i></span>
               <span>
                 <strong>Usuários</strong>
@@ -1207,7 +1203,7 @@ Como podemos ajudar você hoje?
               <i class="fa-solid fa-chevron-right"></i>
             </button>
 
-            <button type="button" class="settings-home-card" onclick="openSettingsPanel('empresa')">
+            <button type="button" class="settings-home-card" data-action="openSettingsPanel" data-value="empresa">
               <span class="settings-home-icon bg-blue"><i class="fa-solid fa-building"></i></span>
               <span>
                 <strong>Empresa</strong>
@@ -1216,7 +1212,7 @@ Como podemos ajudar você hoje?
               <i class="fa-solid fa-chevron-right"></i>
             </button>
 
-            <button type="button" class="settings-home-card" onclick="openSettingsPanel('atendimento')">
+            <button type="button" class="settings-home-card" data-action="openSettingsPanel" data-value="atendimento">
               <span class="settings-home-icon bg-green"><i class="fa-solid fa-headset"></i></span>
               <span>
                 <strong>Atendimento</strong>
@@ -1225,7 +1221,7 @@ Como podemos ajudar você hoje?
               <i class="fa-solid fa-chevron-right"></i>
             </button>
 
-            <button type="button" class="settings-home-card" onclick="openSettingsPanel('aparencia')">
+            <button type="button" class="settings-home-card" data-action="openSettingsPanel" data-value="aparencia">
               <span class="settings-home-icon bg-indigo"><i class="fa-solid fa-palette"></i></span>
               <span>
                 <strong>Aparência</strong>
@@ -1234,7 +1230,7 @@ Como podemos ajudar você hoje?
               <i class="fa-solid fa-chevron-right"></i>
             </button>
 
-            <button type="button" class="settings-home-card" onclick="openSettingsPanel('notificacoes')">
+            <button type="button" class="settings-home-card" data-action="openSettingsPanel" data-value="notificacoes">
               <span class="settings-home-icon bg-orange"><i class="fa-solid fa-bell"></i></span>
               <span>
                 <strong>Notificações</strong>
@@ -1243,7 +1239,7 @@ Como podemos ajudar você hoje?
               <i class="fa-solid fa-chevron-right"></i>
             </button>
 
-            <button type="button" class="settings-home-card" onclick="openSettingsPanel('historico')">
+            <button type="button" class="settings-home-card" data-action="openSettingsPanel" data-value="historico">
               <span class="settings-home-icon bg-red"><i class="fa-solid fa-clock-rotate-left"></i></span>
               <span>
                 <strong>Histórico</strong>
@@ -1252,7 +1248,7 @@ Como podemos ajudar você hoje?
               <i class="fa-solid fa-chevron-right"></i>
             </button>
 
-            <button type="button" class="settings-home-card" onclick="openSettingsPanel('whatsapp')">
+            <button type="button" class="settings-home-card" data-action="openSettingsPanel" data-value="whatsapp">
               <span class="settings-home-icon bg-green"><i class="fa-brands fa-whatsapp"></i></span>
               <span>
                 <strong>WhatsApp</strong>
@@ -1265,7 +1261,7 @@ Como podemos ajudar você hoje?
         </section>
 
         <div class="settings-panel-toolbar hidden" id="settings-panel-toolbar">
-          <button type="button" class="btn-back-settings" onclick="backToSettingsHome()">
+          <button type="button" class="btn-back-settings" data-action="backToSettingsHome">
             <i class="fa-solid fa-arrow-left"></i> Voltar para configurações
           </button>
           <strong id="settings-panel-title">Configurações</strong>
@@ -1293,7 +1289,7 @@ Como podemos ajudar você hoje?
               <label>Senha</label>
               <div class="password-wrapper">
                 <input id="user-password" type="password" placeholder="Senha de acesso" autocomplete="new-password">
-                <button type="button" class="toggle-pass" onclick="togglePassword('user-password', this)" aria-label="Mostrar/ocultar senha" tabindex="-1">
+                <button type="button" class="toggle-pass" data-action="togglePassword" data-target="user-password" aria-label="Mostrar/ocultar senha" tabindex="-1">
                   <i class="fa-solid fa-eye"></i>
                 </button>
               </div>
@@ -1314,7 +1310,7 @@ Como podemos ajudar você hoje?
                 <option value="garantia">Garantia</option>
               </select>
 
-              <button class="btn-save-settings" onclick="createPanelUser()">
+              <button type="button" class="btn-save-settings" data-action="createPanelUser">
                 <i class="fa-solid fa-user-plus"></i>
                 Criar usuário
               </button>
@@ -1473,7 +1469,7 @@ Como podemos ajudar você hoje?
                 <option value="csv">CSV</option>
               </select>
 
-              <button class="btn-reset-settings" onclick="resetSettings()">
+              <button type="button" class="btn-reset-settings" data-action="resetSettings">
                 <i class="fa-solid fa-rotate-left"></i> Restaurar padrão
               </button>
             </div>
@@ -1519,7 +1515,7 @@ Como podemos ajudar você hoje?
                 <small>O QR aparecerá automaticamente quando o bot precisar reconectar.</small>
               </div>
 
-              <button class="btn-primary" onclick="requestWaReconnect()" style="margin-top:16px">
+              <button type="button" class="btn-primary" data-action="requestWaReconnect" style="margin-top:16px">
                 <i class="fa-solid fa-rotate"></i> Forçar nova conexão
               </button>
             </div>
@@ -1544,7 +1540,7 @@ Como podemos ajudar você hoje?
         </p>
       </div>
 
-      <button class="btn-refresh" onclick="loadActivityLogs()">
+      <button type="button" class="btn-refresh" data-action="loadActivityLogs">
         <i class="fa-solid fa-arrows-rotate"></i>
         Atualizar
       </button>
@@ -1565,7 +1561,7 @@ Como podemos ajudar você hoje?
       <p>Resumo analítico dos atendimentos, setores e desempenho.</p>
     </div>
 
-   <button class="btn-refresh" onclick="loadMetricsCharts()">
+   <button type="button" class="btn-refresh" data-action="loadMetricsCharts">
       <i class="fa-solid fa-arrows-rotate"></i>
       Atualizar
     </button>
@@ -1654,7 +1650,7 @@ Como podemos ajudar você hoje?
     <div class="chat-box">
       <div class="chat-header">
         <h3 id="chat-modal-title">Responder Cliente</h3>
-        <button onclick="fecharChat()" aria-label="Fechar modal">
+        <button type="button" data-action="fecharChat" aria-label="Fechar modal">
           <i class="fa-solid fa-xmark"></i>
         </button>
       </div>
@@ -1662,7 +1658,7 @@ Como podemos ajudar você hoje?
       <div class="chat-user" id="chat-user"></div>
       <textarea id="chat-message" placeholder="Digite sua mensagem..."></textarea>
 
-      <button class="send-btn" onclick="enviarMensagemManual()">
+      <button type="button" class="send-btn" data-action="enviarMensagemManual">
         Enviar mensagem
       </button>
     </div>
@@ -1676,7 +1672,7 @@ Como podemos ajudar você hoje?
   <div class="chat-box profile-box">
     <div class="chat-header">
       <h3 id="profile-modal-title">Meu Perfil</h3>
-      <button onclick="closeProfileModal()" aria-label="Fechar perfil">
+      <button type="button" data-action="closeProfileModal" aria-label="Fechar perfil">
         <i class="fa-solid fa-xmark"></i>
       </button>
     </div>
@@ -1688,7 +1684,7 @@ Como podemos ajudar você hoje?
         id="profile-photo"
         type="file"
         accept="image/*"
-        onchange="previewProfilePhoto(event)"
+        data-change-action="previewProfilePhoto"
       >
     </div>
 
@@ -1698,7 +1694,7 @@ Como podemos ajudar você hoje?
     <label>Número</label>
     <input id="profile-phone" type="tel" placeholder="(79) 99999-9999" autocomplete="tel">
 
-    <button class="send-btn" onclick="saveProfile()">
+    <button type="button" class="send-btn" data-action="saveProfile">
       Salvar perfil
     </button>
   </div>
@@ -1717,23 +1713,31 @@ Como podemos ajudar você hoje?
 
   <!-- JS modularizado -->
   <script src="js/00-core.js"></script>
-  <script src="js/01-utils.js?v=3"></script>
+  <script src="js/01-utils.js?v=5"></script>
   <script src="js/02-auth.js"></script>
   <script src="js/03-navigation.js?v=3"></script>
-  <script src="js/04-history.js?v=4"></script>
+  <script src="js/history/history-utils.js?v=1"></script>
+  <script src="js/04-history.js?v=6"></script>
   <script src="js/05-metrics.js"></script>
-  <script src="js/06-tickets.js?v=4"></script>
-  <script src="js/07-conversations.js?v=10"></script>
-  <script src="js/08-settings.js"></script>
-  <script src="js/09-users.js"></script>
+  <script src="js/tickets/tickets-render.js?v=1"></script>
+  <script src="js/06-tickets.js?v=5"></script>
+  <script src="js/conversations/conversations-utils.js?v=1"></script>
+  <script src="js/conversations/conversations-render.js?v=1"></script>
+  <script src="js/07-conversations.js?v=13"></script>
+  <script src="js/08-settings.js?v=3"></script>
+  <script src="js/09-users.js?v=3"></script>
   <script src="js/10-logs.js"></script>
   <script src="js/11-profile.js?v=2"></script>
-  <script src="js/12-socket.js?v=7"></script>
-  <script src="js/13-campaigns.js?v=16"></script>
+  <script src="js/12-socket.js?v=8"></script>
+  <script src="js/campaigns/campaigns-render.js?v=2"></script>
+  <script src="js/campaigns/campaigns-modal.js?v=1"></script>
+  <script src="js/13-campaigns.js?v=19"></script>
   <script src="js/14-charts.js"></script>
-  <script src="js/15-modal.js"></script>
-  <script src="js/16-contacts.js?v=4"></script>
-  <script src="js/13-main.js?v=2"></script>
+  <script src="js/15-modal.js?v=2"></script>
+  <script src="js/contacts/contacts-utils.js?v=1"></script>
+  <script src="js/16-contacts.js?v=6"></script>
+  <script src="js/13-main.js?v=3"></script>
+  <script src="js/17-ui-events.js?v=2"></script>
 
 
 </body>

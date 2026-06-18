@@ -16,14 +16,14 @@ function showConfirmModal({ title, message, confirmText = "Confirmar", cancelTex
   _openModal(`
     <div class="modal-header">
       <strong>${safe(title)}</strong>
-      <button class="modal-close-btn" onclick="_closeModal()">&times;</button>
+      <button class="modal-close-btn" type="button" data-modal-close aria-label="Fechar modal">&times;</button>
     </div>
     <div class="modal-body">
       <p>${safe(message)}</p>
     </div>
     <div class="modal-footer">
-      <button class="modal-btn modal-btn-secondary" onclick="_closeModal()">${safe(cancelText)}</button>
-      <button class="modal-btn ${danger ? "modal-btn-danger" : "modal-btn-primary"}" id="_modal-confirm-btn">${safe(confirmText)}</button>
+      <button class="modal-btn modal-btn-secondary" type="button" data-modal-close>${safe(cancelText)}</button>
+      <button class="modal-btn ${danger ? "modal-btn-danger" : "modal-btn-primary"}" type="button" id="_modal-confirm-btn">${safe(confirmText)}</button>
     </div>
   `);
 
@@ -48,16 +48,16 @@ function showInputModal({ title, label, placeholder = "", type = "text", confirm
   _openModal(`
     <div class="modal-header">
       <strong>${safe(title)}</strong>
-      <button class="modal-close-btn" onclick="_closeModal()">&times;</button>
+      <button class="modal-close-btn" type="button" data-modal-close aria-label="Fechar modal">&times;</button>
     </div>
     <div class="modal-body">
       <label class="modal-label">${safe(label)}</label>
-      <input id="_modal-input" type="${safe(type)}" placeholder="${safe(placeholder)}"
+      <input id="_modal-input" type="${escapeAttr(type)}" placeholder="${escapeAttr(placeholder)}"
              class="modal-input" autocomplete="${type === "password" ? "new-password" : "off"}">
     </div>
     <div class="modal-footer">
-      <button class="modal-btn modal-btn-secondary" onclick="_closeModal()">Cancelar</button>
-      <button class="modal-btn modal-btn-primary" id="_modal-confirm-btn">${safe(confirmText)}</button>
+      <button class="modal-btn modal-btn-secondary" type="button" data-modal-close>Cancelar</button>
+      <button class="modal-btn modal-btn-primary" type="button" id="_modal-confirm-btn">${safe(confirmText)}</button>
     </div>
   `);
 
@@ -86,13 +86,13 @@ function showInputModal({ title, label, placeholder = "", type = "text", confirm
  */
 function showSelectModal({ title, label, options = [], confirmText = "Confirmar", onConfirm }) {
   const opts = options
-    .map(o => `<option value="${safe(String(o.value))}">${safe(o.label)}</option>`)
+    .map(o => `<option value="${escapeAttr(String(o.value))}">${safe(o.label)}</option>`)
     .join("");
 
   _openModal(`
     <div class="modal-header">
       <strong>${safe(title)}</strong>
-      <button class="modal-close-btn" onclick="_closeModal()">&times;</button>
+      <button class="modal-close-btn" type="button" data-modal-close aria-label="Fechar modal">&times;</button>
     </div>
     <div class="modal-body">
       <label class="modal-label">${safe(label)}</label>
@@ -102,8 +102,8 @@ function showSelectModal({ title, label, options = [], confirmText = "Confirmar"
       </select>
     </div>
     <div class="modal-footer">
-      <button class="modal-btn modal-btn-secondary" onclick="_closeModal()">Cancelar</button>
-      <button class="modal-btn modal-btn-primary" id="_modal-confirm-btn">${safe(confirmText)}</button>
+      <button class="modal-btn modal-btn-secondary" type="button" data-modal-close>Cancelar</button>
+      <button class="modal-btn modal-btn-primary" type="button" id="_modal-confirm-btn">${safe(confirmText)}</button>
     </div>
   `);
 
@@ -126,20 +126,39 @@ function _openModal(innerHtml) {
     document.body.appendChild(overlay);
   }
 
-  overlay.innerHTML = `<div class="_modal-box">${innerHtml}</div>`;
+  overlay.innerHTML = `<div class="_modal-box" role="dialog" aria-modal="true">${innerHtml}</div>`;
   overlay.classList.add("_modal-open");
 
-  // Fecha ao clicar fora
-  overlay.addEventListener("click", e => { if (e.target === overlay) _closeModal(); }, { once: true });
+  // Fecha ao clicar fora ou em botões marcados com data-modal-close, sem acumular listeners.
+  if (window.__rildonModalClickHandler) {
+    overlay.removeEventListener("click", window.__rildonModalClickHandler);
+  }
+  window.__rildonModalClickHandler = e => {
+    if (e.target === overlay || e.target.closest("[data-modal-close]")) _closeModal();
+  };
+  overlay.addEventListener("click", window.__rildonModalClickHandler);
 
-  // Fecha com Escape
-  const escHandler = e => { if (e.key === "Escape") { _closeModal(); document.removeEventListener("keydown", escHandler); } };
-  document.addEventListener("keydown", escHandler);
+  // Fecha com Escape, sem acumular listeners entre aberturas
+  if (window.__rildonModalEscHandler) {
+    document.removeEventListener("keydown", window.__rildonModalEscHandler);
+  }
+  window.__rildonModalEscHandler = e => { if (e.key === "Escape") _closeModal(); };
+  document.addEventListener("keydown", window.__rildonModalEscHandler);
 }
 
 function _closeModal() {
   const overlay = document.getElementById("_global-modal-overlay");
-  if (overlay) overlay.classList.remove("_modal-open");
+  if (overlay) {
+    overlay.classList.remove("_modal-open");
+    if (window.__rildonModalClickHandler) {
+      overlay.removeEventListener("click", window.__rildonModalClickHandler);
+      window.__rildonModalClickHandler = null;
+    }
+  }
+  if (window.__rildonModalEscHandler) {
+    document.removeEventListener("keydown", window.__rildonModalEscHandler);
+    window.__rildonModalEscHandler = null;
+  }
 }
 
 // ─── Estilos inline do modal ─────────────────────────────────────────────────

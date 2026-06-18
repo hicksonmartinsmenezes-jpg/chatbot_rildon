@@ -3,106 +3,15 @@
 let _campaignPollTimer = null;
 let _campaigns = []; // cache para clonar
 
-const STATUS_LABEL = {
-  pending:   "Aguardando",
-  sending:   "Enviando",
-  finished:  "Finalizado",
-  cancelled: "Cancelado"
-};
-
-const STATUS_CLASS = {
-  pending:   "cs-pending",
-  sending:   "cs-sending",
-  finished:  "cs-finished",
-  cancelled: "cs-cancelled"
-};
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function _fmtDate(iso) {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })
-    + " " + d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-}
-
-// ─── Renderização (tabela) ────────────────────────────────────────────────────
-
-function renderCampaignItem(campaign, index) {
-  const id        = escapeAttr(String(campaign.id));
-  const total     = Number(campaign.total_recipients || 0);
-  const sent      = Number(campaign.sent_count || 0);
-  const failed    = Number(campaign.failed_count || 0);
-  const processed = sent + failed;
-  const progress  = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0;
-  const allFailed = total > 0 && failed === total && processed > 0;
-  const label     = STATUS_LABEL[campaign.status] || campaign.status;
-  const cls       = STATUS_CLASS[campaign.status] || "";
-  const preview   = (campaign.message || "").slice(0, 60) + (campaign.message?.length > 60 ? "…" : "");
-
-  const barColor  = allFailed ? "#ef4444"
-    : campaign.status === "cancelled" ? "#475569"
-    : "var(--primary)";
-  const canDelete = campaign.status !== "sending";
-
-  let etaText = "";
-  if (campaign.status === "sending" && total > processed) {
-    const mins = Math.ceil((total - processed) * 5 / 60);
-    etaText = ` (~${mins}min)`;
-  }
-
-  return `
-    <tr id="ci-${id}" class="camp-tr">
-      <td class="camp-td-num">${index + 1}</td>
-      <td class="camp-td-title">
-        <div class="camp-title-cell">
-          ${campaign.image_url ? `<img src="${safe(campaign.image_url)}" class="camp-thumb-sm" alt="">` : ""}
-          <div>
-            <strong>${safe(campaign.title)}</strong>
-            <small>${safe(preview)}</small>
-          </div>
-        </div>
-      </td>
-      <td class="camp-td-date">${_fmtDate(campaign.created_at)}</td>
-      <td><span class="campaign-status-badge ${cls}">${safe(label)}</span></td>
-      <td class="camp-td-num">${total}</td>
-      <td class="camp-td-num camp-td-sent">${sent}</td>
-      <td class="camp-td-num ${failed > 0 ? "camp-td-failed" : ""}">${failed}</td>
-      <td class="camp-td-progress">
-        <div class="camp-prog-wrap">
-          <div class="camp-prog-bar"><div style="width:${progress}%;background:${barColor}"></div></div>
-          <span>${progress}%${etaText}</span>
-        </div>
-      </td>
-      <td class="camp-td-actions">
-        <div class="camp-td-actions-inner">
-          ${campaign.status === "pending" ? `
-            <button class="ci-btn ci-btn-start" onclick="startCampaign('${id}')" title="Iniciar">
-              <i class="fa-solid fa-play"></i>
-            </button>` : ""}
-          ${campaign.status === "sending" ? `
-            <button class="ci-btn ci-btn-cancel" onclick="cancelCampaign('${id}')" title="Cancelar">
-              <i class="fa-solid fa-stop"></i>
-            </button>` : ""}
-          ${campaign.status === "finished" && failed > 0 ? `
-            <button class="ci-btn ci-btn-retry" onclick="retryCampaign('${id}')" title="Reenviar falhas (${failed})">
-              <i class="fa-solid fa-rotate"></i>
-            </button>` : ""}
-          <button class="ci-btn ci-btn-icon ci-btn-clone" onclick="cloneCampaign('${id}')" title="Clonar">
-            <i class="fa-regular fa-copy"></i>
-          </button>
-          ${canDelete ? `
-            <button class="ci-btn ci-btn-icon ci-btn-delete" onclick="deleteCampaign('${id}')" title="Excluir">
-              <i class="fa-regular fa-trash-can"></i>
-            </button>` : ""}
-        </div>
-      </td>
-    </tr>`;
-}
+// Helpers e renderização extraídos para js/campaigns/campaigns-render.js
 
 // ─── Carregar campanhas ───────────────────────────────────────────────────────
 
 async function loadCampaigns() {
+  return runExclusive("loadCampaigns", _loadCampaignsCore);
+}
+
+async function _loadCampaignsCore() {
   if (_campaignPollTimer) {
     clearTimeout(_campaignPollTimer);
     _campaignPollTimer = null;
@@ -110,6 +19,7 @@ async function loadCampaigns() {
 
   const list = document.getElementById("campaign-list");
   if (!list) return;
+  bindCampaignActionDelegation();
 
   loadCampaignStats();
   list.innerHTML = `<tr><td colspan="9" class="camp-empty"><i class="fa-solid fa-spinner fa-spin"></i> Carregando campanhas...</td></tr>`;
@@ -157,7 +67,14 @@ function _renderCampaignList() {
     return;
   }
 
-  tbody.innerHTML = filtered.map((c, i) => renderCampaignItem(c, i)).join("");
+  const maxVisible = 250;
+  const visible = filtered.slice(0, maxVisible);
+  const hiddenCount = Math.max(0, filtered.length - visible.length);
+  tbody.innerHTML = visible.map((c, i) => renderCampaignItem(c, i)).join("") +
+    (hiddenCount > 0 ? `<tr><td colspan="9" class="camp-empty camp-list-limit">
+      <i class="fa-solid fa-gauge-high"></i>
+      <p>Mostrando ${maxVisible} de ${filtered.length} campanhas. Use o filtro de status para refinar a listagem.</p>
+    </td></tr>` : "");
 }
 
 // ─── Filtrar campanhas ────────────────────────────────────────────────────────
@@ -296,35 +213,8 @@ async function _doCreateCampaign(title, message, recipients) {
 
 // ─── Modal de ação genérico ───────────────────────────────────────────────────
 
-function _showActionModal({ icon, iconClass, title, body, confirmLabel, confirmClass, onConfirm }) {
-  document.getElementById("_campaign-action-overlay")?.remove();
-
-  const overlay = document.createElement("div");
-  overlay.id        = "_campaign-action-overlay";
-  overlay.className = "campaign-confirm-overlay";
-  overlay.innerHTML = `
-    <div class="campaign-confirm-modal panel">
-      <div class="campaign-confirm-header">
-        <i class="fa-solid ${icon} ${iconClass || ""}"></i>
-        <h3>${title}</h3>
-      </div>
-      <p class="campaign-confirm-info">${body}</p>
-      <div class="campaign-confirm-actions">
-        <button class="history-clear-btn" id="_cam-cancel-btn">Cancelar</button>
-        <button class="${confirmClass || "send-btn"}" id="_cam-confirm-btn">
-          ${confirmLabel}
-        </button>
-      </div>
-    </div>
-  `;
-
-  document.body.appendChild(overlay);
-  overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
-  overlay.querySelector("#_cam-cancel-btn").addEventListener("click",  () => overlay.remove());
-  overlay.querySelector("#_cam-confirm-btn").addEventListener("click", () => {
-    overlay.remove();
-    onConfirm();
-  });
+function _showActionModal(options) {
+  return showCampaignActionModal(options);
 }
 
 // ─── Iniciar campanha ─────────────────────────────────────────────────────────
@@ -624,13 +514,10 @@ function _renderCampContactResults(contacts, total) {
     return `
       <div class="cp-item ${sel ? "cp-selected" : ""}"
            data-phone="${escapeAttr(phone)}"
-           data-nome="${escapeAttr(c.nome)}"
-           onclick="_onCpItemClick(this)">
+           data-nome="${escapeAttr(c.nome)}">
         <div class="cp-avatar">
           <div class="cp-avatar-ini">${ini}</div>
-          <img class="cp-avatar-img" src="${photoUrl}"
-            onload="this.style.display='block'"
-            onerror="this.style.display='none'">
+          <img class="cp-avatar-img" src="${escapeAttr(safeUrl(photoUrl))}" data-avatar-img="true" data-avatar-user="${escapeAttr(userId)}">
         </div>
         <div class="cp-info">
           <strong>${safe(c.nome)}</strong>
@@ -644,6 +531,25 @@ function _renderCampContactResults(contacts, total) {
 }
 
 // Delegação de click via data attributes — evita problemas com nomes especiais em onclick inline
+function bindCampaignPickerDelegation() {
+  const overlay = document.getElementById("camp-modal-overlay");
+  if (!overlay || overlay.dataset.pickerDelegated === "true") return;
+  overlay.dataset.pickerDelegated = "true";
+
+  overlay.addEventListener("click", (event) => {
+    const item = event.target.closest(".cp-item");
+    if (item && overlay.contains(item)) {
+      _onCpItemClick(item);
+      return;
+    }
+
+    const removeBtn = event.target.closest("[data-camp-chip-remove]");
+    if (removeBtn && overlay.contains(removeBtn)) {
+      removeCampContact(removeBtn.dataset.campChipRemove || "");
+    }
+  });
+}
+
 function _onCpItemClick(itemEl) {
   const phone = itemEl.dataset.phone;
   const nome  = itemEl.dataset.nome;
@@ -702,13 +608,11 @@ function _renderCampChips() {
   if (!el) return;
   if (_campSelected.size === 0) { el.classList.add("hidden"); el.innerHTML = ""; return; }
   el.classList.remove("hidden");
-  el.innerHTML = [..._campSelected.entries()].map(([phone, c]) => {
-    const safePhone = phone.replace(/'/g, "\\'");
-    return `<span class="camp-chip">
+  el.innerHTML = [..._campSelected.entries()].map(([phone, c]) => `
+    <span class="camp-chip">
       ${safe(c.contactName || phone)}
-      <button onclick="removeCampContact('${safePhone}')" title="Remover">&times;</button>
-    </span>`;
-  }).join("");
+      <button type="button" data-camp-chip-remove="${escapeAttr(phone)}" title="Remover">&times;</button>
+    </span>`).join("");
 }
 
 function removeCampContact(phone) {
@@ -816,6 +720,7 @@ async function loadCampaignStats() {
 // ─── Modal Nova Campanha ──────────────────────────────────────────────────────
 
 function openCampaignModal() {
+  bindCampaignPickerDelegation();
   document.getElementById("camp-modal-overlay")?.classList.remove("hidden");
   // toggleCustomRecipients já dispara searchCampContacts e updateCampaignAudienceCount internamente
   toggleCustomRecipients();
@@ -882,9 +787,10 @@ function updateCampaignPreview() {
     const hasFile      = mediaInput?.files?.length > 0;
 
     if (_campMediaType === "image" && previewImg?.src && !previewImg.src.endsWith("#") && !previewImg.src.endsWith("/")) {
-      waImg.src = previewImg.src;
+      const previewSrc = safeUrl(previewImg.src);
+      waImg.src = previewSrc;
       waImg.style.display = "";
-      imgWrap.innerHTML = `<img id="camp-wa-img" src="${previewImg.src}" alt="" style="width:100%;border-radius:6px 6px 0 0;">`;
+      imgWrap.innerHTML = `<img id="camp-wa-img" src="${escapeAttr(previewSrc)}" alt="" style="width:100%;border-radius:6px 6px 0 0;">`;
       imgWrap.classList.remove("hidden");
     } else if (_campMediaType === "pdf" && hasFile) {
       const fname = mediaInput.files[0].name;
@@ -912,18 +818,8 @@ function updateMsgCounter() {
   if (counter) counter.textContent = `${msg.length} / 1024`;
 }
 
-function removeCampaignImage() {
-  const input      = document.getElementById("campaign-image");
-  const previewBox = document.getElementById("campaign-image-preview");
-  const previewImg = document.getElementById("campaign-preview-img");
-  const fileName   = document.getElementById("camp-file-name");
-  if (previewImg?.src?.startsWith("blob:")) URL.revokeObjectURL(previewImg.src);
-  if (input)      input.value = "";
-  if (previewImg) previewImg.src = "";
-  if (previewBox) previewBox.classList.add("hidden");
-  if (fileName)   fileName.textContent = "Escolher imagem...";
-  updateCampaignPreview();
-}
+// Compatibilidade: usa o fluxo único de mídia de campanha.
+// Evita divergência com o campo antigo campaign-image.
 
 // ─── Modal de confirmação ─────────────────────────────────────────────────────
 
@@ -971,8 +867,8 @@ function showCampaignConfirm(recipients, message, onConfirm) {
         <p>${safe(message.length > 300 ? message.substring(0, 300) + "…" : message)}</p>
       </div>
       <div class="campaign-confirm-actions">
-        <button class="history-clear-btn" id="cc-cancel">Cancelar</button>
-        <button class="send-btn" id="cc-confirm">
+        <button type="button" class="history-clear-btn" id="cc-cancel">Cancelar</button>
+        <button type="button" class="send-btn" id="cc-confirm">
           <i class="fa-solid fa-paper-plane"></i> Confirmar envio
         </button>
       </div>

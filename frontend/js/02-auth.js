@@ -9,7 +9,15 @@ function getCurrentUser() {
   if (_currentUser) return _currentUser;
   try {
     const raw = sessionStorage.getItem("current_user");
-    return raw ? JSON.parse(raw) : null;
+    const sessionUser = raw ? JSON.parse(raw) : null;
+    if (!sessionUser) return null;
+
+    // Perfil salvo localmente complementa os dados públicos da sessão.
+    // Mantém uma única fonte de leitura para evitar sobrescrita entre módulos.
+    const key = `profile_${sessionUser.usuario || sessionUser.id}`;
+    const saved = JSON.parse(localStorage.getItem(key) || "null");
+    _currentUser = saved || sessionUser;
+    return _currentUser;
   } catch { return null; }
 }
 
@@ -36,18 +44,44 @@ function apiHeaders(extra = {}, body = null) {
 
 // ─── Fetch autenticado — sempre com credentials: "include" para enviar cookie ─
 async function apiFetch(url, options = {}) {
-  const res = await fetch(url, {
-    ...options,
-    credentials: "include",              // envia o cookie HttpOnly automaticamente
-    headers: apiHeaders(options.headers, options.body)
-  });
+  const timeoutMs = Number(options.timeoutMs || 20000);
+  const controller = new AbortController();
+  let externalAbortHandler = null;
 
-  if (res.status === 401) {
-    showSessionExpired();
-    return res;
+  if (options.signal) {
+    if (options.signal.aborted) controller.abort();
+    externalAbortHandler = () => controller.abort();
+    options.signal.addEventListener("abort", externalAbortHandler, { once: true });
   }
 
-  return res;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const { timeoutMs: _timeoutMs, signal: _signal, ...fetchOptions } = options;
+    const res = await fetch(url, {
+      ...fetchOptions,
+      credentials: "include",              // envia o cookie HttpOnly automaticamente
+      headers: apiHeaders(options.headers, options.body),
+      signal: controller.signal
+    });
+
+    if (res.status === 401) {
+      showSessionExpired();
+      return res;
+    }
+
+    return res;
+  } catch (err) {
+    if (err?.name === "AbortError") {
+      showToast?.("A conexão demorou demais. Tente novamente.", "warning");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+    if (options.signal && externalAbortHandler) {
+      options.signal.removeEventListener("abort", externalAbortHandler);
+    }
+  }
 }
 
 // ─── Toggle de visibilidade da senha ─────────────────────────────────────────
@@ -112,12 +146,8 @@ async function login() {
   }
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-  ["login-user", "login-pass"].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.addEventListener("keydown", e => { if (e.key === "Enter") login(); });
-  });
-});
+// O envio do login é tratado pelo submit do formulário em 17-ui-events.js.
+// Evita disparo duplo ao pressionar Enter nos campos de usuário/senha.
 
 // ─── Logout ───────────────────────────────────────────────────────────────────
 async function logout() {

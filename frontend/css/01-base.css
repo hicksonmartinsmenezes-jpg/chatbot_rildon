@@ -21,20 +21,10 @@
 }
 
 /* ─── Variáveis de design ─────────────────────────────── */
+/* Nota: --bg, --panel, --panel-2, --border, --text, --muted, --primary
+   são definidas (com precedência) em 12-ux-global.css. Aqui ficam apenas
+   as variáveis exclusivas deste arquivo. */
 :root {
-  /* Cores base */
-  --bg:       #0b0b0b;
-  --panel:    #161616;
-  --panel-2:  #1c1c1c;
-  --border:   #262626;
-
-  /* Texto */
-  --text:  #e5e7eb;
-  --muted: #9ca3af;
-
-  /* Identidade */
-  --primary: #1d6cf5;
-
   /* Status */
   --green:  #2ecc71;
   --orange: #f59e0b;

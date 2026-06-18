@@ -3,6 +3,10 @@ const axios   = require("axios");
 const multer  = require("multer");
 const { getProfilePhotoUrl } = require("../config/whatsapp");
 const logger = require("../utils/logger");
+const { requirePrivileged } = require("../utils/access-control");
+const { auditLog } = require("../services/audit.service");
+const { emitEvent } = require("../services/socket.service");
+const { uploadLimiter, criticalActionLimiter } = require("../middlewares/rate-limiters");
 const {
   listContacts,
   getContact,
@@ -15,7 +19,17 @@ const {
 } = require("../services/contacts.service");
 
 const router = express.Router();
-const csvUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 } });
+const csvUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const original = String(file.originalname || "").toLowerCase();
+    const mime = String(file.mimetype || "").toLowerCase();
+    const allowed = original.endsWith(".csv") && ["text/csv", "application/csv", "application/vnd.ms-excel", "text/plain"].includes(mime);
+    if (!allowed) return cb(new Error("Envie apenas arquivo CSV válido."));
+    return cb(null, true);
+  }
+});
 
 // Previne CSV formula injection (= + - @ no início → prefixo com apóstrofo ao exportar)
 function sanitizeCsvCell(val) {
@@ -71,7 +85,7 @@ router.get("/contacts/photo", async (req, res) => {
     const photoUrl = await getProfilePhotoUrl(userId);
 
     if (!photoUrl) {
-      return res.set("Cache-Control", "no-store").status(404).end();
+      return res.set("Cache-Control", "private, max-age=300").status(204).end();
     }
 
     // Proxia a imagem pelo backend para evitar CORS e URLs expiradas no browser
@@ -86,8 +100,8 @@ router.get("/contacts/photo", async (req, res) => {
     return res.send(Buffer.from(response.data));
 
   } catch (error) {
-    logger.error(`Erro ao buscar foto: ${error.message}`);
-    return res.set("Cache-Control", "no-store").status(404).end();
+    logger.warn(`Foto indisponível para contato: ${error.message}`);
+    return res.set("Cache-Control", "private, max-age=120").status(204).end();
   }
 });
 
@@ -118,7 +132,7 @@ router.get("/contacts/tags", async (req, res) => {
   }
 });
 
-router.get("/contacts/export", async (req, res) => {
+router.get("/contacts/export", requirePrivileged, criticalActionLimiter, async (req, res) => {
   try {
     const result = await listContacts({ limit: 10000 });
     const header = "nome,whatsapp,estado,status,tags,departamento,atendente\n";
@@ -130,18 +144,21 @@ router.get("/contacts/export", async (req, res) => {
     ).join("\n");
     res.set("Content-Type", "text/csv");
     res.set("Content-Disposition", `attachment; filename="contatos.csv"`);
+    await auditLog({ user: req.user, action: "CONTACTS_EXPORT", target: "contacts", details: { total: result.rows.length } });
     res.send(header + rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.post("/contacts/import", csvUpload.single("file"), async (req, res) => {
+router.post("/contacts/import", requirePrivileged, uploadLimiter, csvUpload.single("file"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "Arquivo CSV não enviado." });
     const content = req.file.buffer.toString("utf-8");
     const rows = parseCSV(content);
     const result = await importContacts(rows);
+    await auditLog({ user: req.user, action: "CONTACTS_IMPORT", target: "contacts", details: result });
+    emitEvent("contacts_updated", { action: "imported", result, by: req.user?.id || req.user?.usuario || null });
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -156,35 +173,46 @@ router.get("/contacts/:id", async (req, res) => {
   }
 });
 
-router.post("/contacts", async (req, res) => {
+router.post("/contacts", requirePrivileged, async (req, res) => {
   try {
     const contact = await createContact(req.body);
+    await auditLog({ user: req.user, action: "CONTACT_CREATE", target: `contact:${contact.id}`, details: { whatsapp: contact.whatsapp } });
+    emitEvent("contacts_updated", { action: "created", contact, by: req.user?.id || req.user?.usuario || null });
     res.status(201).json(contact);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
 
-router.put("/contacts/:id", async (req, res) => {
+router.put("/contacts/:id", requirePrivileged, async (req, res) => {
   try {
-    res.json(await updateContact(req.params.id, req.body));
+    const contact = await updateContact(req.params.id, req.body);
+    await auditLog({ user: req.user, action: "CONTACT_UPDATE", target: `contact:${req.params.id}`, details: { fields: Object.keys(req.body || {}) } });
+    emitEvent("contacts_updated", { action: "updated", id: req.params.id, contact, by: req.user?.id || req.user?.usuario || null });
+    res.json(contact);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
 
-router.delete("/contacts/bulk", async (req, res) => {
+router.delete("/contacts/bulk", requirePrivileged, criticalActionLimiter, async (req, res) => {
   try {
     const { ids } = req.body;
-    res.json(await deleteContacts(ids));
+    const result = await deleteContacts(ids);
+    await auditLog({ user: req.user, action: "CONTACT_BULK_DELETE", target: "contacts", details: { requested: Array.isArray(ids) ? ids.length : 0, deleted: result.deleted } });
+    emitEvent("contacts_updated", { action: "bulk_deleted", ids: Array.isArray(ids) ? ids : [], result, by: req.user?.id || req.user?.usuario || null });
+    res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
 
-router.delete("/contacts/:id", async (req, res) => {
+router.delete("/contacts/:id", requirePrivileged, criticalActionLimiter, async (req, res) => {
   try {
-    res.json(await deleteContact(req.params.id));
+    const result = await deleteContact(req.params.id);
+    await auditLog({ user: req.user, action: "CONTACT_DELETE", target: `contact:${req.params.id}`, details: {} });
+    emitEvent("contacts_updated", { action: "deleted", id: req.params.id, by: req.user?.id || req.user?.usuario || null });
+    res.json(result);
   } catch (err) {
     res.status(404).json({ error: err.message });
   }

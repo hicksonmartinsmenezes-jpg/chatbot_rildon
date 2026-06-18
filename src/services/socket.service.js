@@ -2,6 +2,7 @@ const { Server } = require("socket.io");
 const logger = require("../utils/logger");
 
 let io = null;
+// userId -> { sockets:Set<string>, online:boolean, lastSeen:string, user?:object }
 const onlineUsers = new Map();
 
 const COOKIE_NAME = "rildon_sid";
@@ -11,28 +12,53 @@ function extractTokenFromCookie(cookieHeader = "") {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
-function setUserOnline(userId, socketId) {
-  onlineUsers.set(userId, {
-    socketId,
-    online: true,
-    lastSeen: new Date().toISOString()
-  });
+function setUserOnline(userId, socketId, user = null) {
+  if (!userId || !socketId) return;
+  const id = String(userId);
+  const current = onlineUsers.get(id) || { sockets: new Set(), online: false, lastSeen: null, user: null };
+  current.sockets.add(socketId);
+  current.online = true;
+  current.lastSeen = new Date().toISOString();
+  if (user) current.user = user;
+  onlineUsers.set(id, current);
+}
+
+function setSocketOffline(socketId) {
+  if (!socketId) return null;
+  for (const [id, data] of onlineUsers.entries()) {
+    if (!data.sockets?.has(socketId)) continue;
+
+    data.sockets.delete(socketId);
+    data.lastSeen = new Date().toISOString();
+    data.online = data.sockets.size > 0;
+
+    if (data.online) onlineUsers.set(id, data);
+    else onlineUsers.set(id, data);
+
+    return id;
+  }
+  return null;
 }
 
 function setUserOffline(userId) {
-  const user = onlineUsers.get(userId);
+  const id = String(userId || "");
+  const user = onlineUsers.get(id);
 
   if (user) {
+    user.sockets = new Set();
     user.online = false;
     user.lastSeen = new Date().toISOString();
-    onlineUsers.set(userId, user);
+    onlineUsers.set(id, user);
   }
 }
 
 function getOnlineUsers() {
   return Array.from(onlineUsers.entries()).map(([id, data]) => ({
     id,
-    ...data
+    online: Boolean(data.online && data.sockets?.size > 0),
+    connections: data.sockets?.size || 0,
+    lastSeen: data.lastSeen,
+    user: data.user || null
   }));
 }
 
@@ -74,20 +100,15 @@ function initSocket(server) {
     socket.on("user_online", user => {
       if (!user?.id) return;
 
-      setUserOnline(user.id, socket.id);
+      setUserOnline(user.id, socket.id, user);
       io.emit("online_users", getOnlineUsers());
     });
 
     socket.on("disconnect", () => {
       logger.warn(`Painel desconectado: ${socket.id}`);
 
-      for (const [id, data] of onlineUsers.entries()) {
-        if (data.socketId === socket.id) {
-          setUserOffline(id);
-          io.emit("online_users", getOnlineUsers());
-          break;
-        }
-      }
+      const changedUserId = setSocketOffline(socket.id);
+      if (changedUserId) io.emit("online_users", getOnlineUsers());
     });
   });
 }
@@ -102,5 +123,6 @@ module.exports = {
   emitEvent,
   setUserOnline,
   setUserOffline,
+  setSocketOffline,
   getOnlineUsers
 };

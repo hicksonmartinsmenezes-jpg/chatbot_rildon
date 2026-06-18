@@ -2,6 +2,10 @@
 
 // ─── Tickets ──────────────────────────────────────────────────────────────────
 async function loadTickets() {
+  return runExclusive("loadTickets", _loadTicketsCore);
+}
+
+async function _loadTicketsCore() {
   const search    = document.getElementById("search")?.value || "";
   const status    = document.getElementById("filter-status")?.value || "";
   const container = document.getElementById("tickets-container");
@@ -36,68 +40,8 @@ async function loadTickets() {
       return;
     }
 
-    container.innerHTML = data.tickets.map(ticket => `
-      <div class="ticket-card ${ticket.status} ${ticket.status === "aberto" ? "novo-ticket" : ""}" id="card-${escapeAttr(String(ticket.id))}">
-
-        <div class="ticket-header">
-          <div class="ticket-header-left">
-            <span class="ticket-id">#${safe(ticket.protocolo || ticket.id)}</span>
-            <span class="ticket-type-badge">${safe(tipoLabel(ticket.type))}</span>
-          </div>
-          <span class="status-badge status-${ticket.status}">${statusLabel(ticket.status)}</span>
-        </div>
-
-        <div class="ticket-meta">
-          <div class="ticket-meta-item">
-            <i class="fa-solid fa-user" aria-hidden="true"></i>
-            <span title="${escapeAttr(ticket.customerName || "Não informado")}">${safe(ticket.customerName || "Não informado")}</span>
-          </div>
-          <div class="ticket-meta-item">
-            <i class="fa-solid fa-mobile-screen" aria-hidden="true"></i>
-            <span>${safe(formatPhone(ticket.userId))}</span>
-          </div>
-          ${ticket.cpf && ticket.cpf !== "Não informado" && ticket.cpf !== "não informado" ? `
-          <div class="ticket-meta-item">
-            <i class="fa-solid fa-id-card" aria-hidden="true"></i>
-            <span>${safe(ticket.cpf)}</span>
-          </div>` : ""}
-          ${ticket.sector ? `
-          <div class="ticket-meta-item">
-            <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
-            <span>${safe(ticket.sector)}</span>
-          </div>` : ""}
-        </div>
-
-        ${ticket.description ? `<div class="desc">${safe(ticket.description)}</div>` : ""}
-
-        <div class="ticket-footer-meta">
-          <span class="ticket-time">
-            <i class="fa-regular fa-clock" aria-hidden="true"></i>
-            ${safe(relativeTime(ticket.createdAt))}
-          </span>
-          ${ticket.assignedToName ? `
-          <span class="ticket-assigned">
-            <i class="fa-solid fa-user-check" aria-hidden="true"></i>
-            ${safe(ticket.assignedToName)}
-          </span>` : ""}
-        </div>
-
-        <div class="ticket-footer">
-          <div class="ticket-footer-primary">
-            ${!ticket.assignedTo ? `<button class="btn-status btn-andamento" onclick="assumirTicket('${ticket.id}')"><i class="fa-solid fa-hand-pointer"></i> Assumir</button>` : ""}
-            <button class="btn-status btn-chat" onclick="abrirChat('${escapeAttr(ticket.userId)}')"><i class="fa-solid fa-reply"></i> Responder</button>
-            ${ticket.status !== "em_andamento" ? `<button class="btn-status btn-andamento" onclick="mudarStatus('${ticket.id}', 'em_andamento')"><i class="fa-solid fa-spinner"></i> Em andamento</button>` : ""}
-            ${ticket.status !== "resolvido"    ? `<button class="btn-status btn-resolvido" onclick="mudarStatus('${ticket.id}', 'resolvido')"><i class="fa-solid fa-check"></i> Resolvido</button>` : ""}
-            <button class="btn-status btn-transfer" onclick="transferirTicket('${ticket.id}')"><i class="fa-solid fa-right-left"></i> Transferir</button>
-          </div>
-          ${ticket.status !== "cancelado" ? `
-          <div class="ticket-footer-danger">
-            <button class="btn-status btn-cancelado" onclick="mudarStatus('${ticket.id}', 'cancelado')"><i class="fa-solid fa-xmark"></i> Cancelar</button>
-          </div>` : ""}
-        </div>
-
-      </div>
-    `).join("");
+    container.innerHTML = data.tickets.map(renderTicketCard).join("");
+    bindTicketActionDelegation();
   } catch (err) {
     if (container) container.innerHTML = `<p class="empty">❌ Erro ao carregar atendimentos.</p>`;
   }
@@ -271,26 +215,19 @@ async function checkServerStatus() {
 
 function playAlertSound(type = "ticket") {
   try {
-    // Sons hospedados localmente para evitar dependência de domínio externo.
-    // Fallback para Web Audio API se os arquivos não existirem.
-    const localSrc = type === "message" ? "/sounds/message.ogg" : "/sounds/ticket.ogg";
-    const audio    = new Audio(localSrc);
-    audio.volume   = 0.5;
-    audio.play().catch(() => {
-      // Fallback: gera beep simples via Web Audio API
-      try {
-        const ctx  = new (window.AudioContext || window.webkitAudioContext)();
-        const osc  = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.frequency.value = type === "message" ? 880 : 660;
-        gain.gain.setValueAtTime(0.3, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + 0.3);
-      } catch (_) {}
-    });
+    // Gera o som localmente para evitar 404 de /sounds/message.ogg ou /sounds/ticket.ogg.
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx  = new AudioCtx();
+    const osc  = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = type === "message" ? 880 : 660;
+    gain.gain.setValueAtTime(0.22, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.25);
   } catch (_) {}
 }
 

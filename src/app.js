@@ -3,9 +3,11 @@ const cors         = require("cors");
 const path         = require("path");
 const fs           = require("fs");
 const helmet       = require("helmet");
-const rateLimit    = require("express-rate-limit");
 const cookieParser = require("cookie-parser");
 const logger       = require("./utils/logger");
+const requestId    = require("./middlewares/request-id");
+const { apiLimiter, loginLimiter } = require("./middlewares/rate-limiters");
+const { notFoundHandler, errorHandler } = require("./middlewares/error-handler");
 
 const pool              = require("./database/postgres");
 const quickReplyRoutes  = require("./routes/quickReply.routes");
@@ -62,36 +64,31 @@ app.use(cookieParser());
 
 app.use(express.json({ limit: "2mb" }));
 
-// ── Rate limit geral da API ───────────────────────────────────────────────────
-const apiLimiter = rateLimit({
-  windowMs:       60 * 1000,
-  max:            120,
-  message:        { error: "Muitas requisições. Aguarde alguns instantes." },
-  standardHeaders: true,
-  legacyHeaders:   false
-});
-
-// ── Rate limit dedicado para login (proteção contra força bruta) ──────────────
-// NOVO: limite muito mais restrito — 10 tentativas por minuto por IP
-const loginLimiter = rateLimit({
-  windowMs:        60 * 1000,
-  max:             10,
-  message:         { error: "Muitas tentativas de login. Aguarde 1 minuto." },
-  standardHeaders: true,
-  legacyHeaders:   false,
-  skipSuccessfulRequests: true  // só conta falhas
-});
-
+// ── Identificação de requisições, rate limit e logs ───────────────────────────
+app.use(requestId);
 app.use("/api", apiLimiter);
 app.post("/api/auth/login", loginLimiter);
 app.use(logger.httpLogger);
 
 // ── Arquivos estáticos do painel ─────────────────────────────────────────────
-app.use(express.static(path.join(__dirname, "../frontend"), {
-  etag: false,
-  lastModified: false,
-  setHeaders: (res) => res.setHeader("Cache-Control", "no-store")
-}));
+// Compatível com dois cenários:
+// 1) pacote integrado: backend/src/app.js + ../../frontend
+// 2) backend isolado: backend/src/app.js + ../frontend
+const FRONTEND_DIR_CANDIDATES = [
+  path.resolve(__dirname, "../../frontend"),
+  path.resolve(__dirname, "../frontend")
+];
+const FRONTEND_DIR = FRONTEND_DIR_CANDIDATES.find(dir => fs.existsSync(path.join(dir, "index.html")));
+
+if (FRONTEND_DIR) {
+  app.use(express.static(FRONTEND_DIR, {
+    etag: false,
+    lastModified: false,
+    setHeaders: (res) => res.setHeader("Cache-Control", "no-store")
+  }));
+} else {
+  logger.warn("[Static] Frontend não encontrado. Apenas a API será servida.");
+}
 
 // ── Rotas da API ──────────────────────────────────────────────────────────────
 app.use("/api", authRouter);
@@ -111,15 +108,20 @@ app.use("/api", authSession, requireAdmin, activityLogRoutes);
 app.use("/api", authSession, requireAdmin, metricsRoutes);
 app.use("/api", authSession, requireAdmin, broadcastRoutes);
 
-// ── Health check ──────────────────────────────────────────────────────────────
-app.get("/health", async (req, res) => {
+// ── Health checks ─────────────────────────────────────────────────────────────
+async function healthCheck(req, res) {
   try {
     await pool.query("SELECT 1");
-    res.json({ status: "ok", uptime: process.uptime() });
+    res.json({ status: "ok", db: true, uptime: process.uptime(), requestId: req.id });
   } catch (err) {
-    res.status(503).json({ status: "degraded", db: false, error: err.message });
+    res.status(503).json({ status: "degraded", db: false, error: "Banco indisponível.", requestId: req.id });
   }
-});
+}
+
+app.get("/health", healthCheck);
+app.get("/api/health", healthCheck);
+app.get("/api/ready", healthCheck);
+app.get("/api/live", (req, res) => res.json({ status: "ok", uptime: process.uptime(), requestId: req.id }));
 
 // ── Uploads autenticados (CORRIGIDO: era express.static público) ──────────────
 // Fotos de perfil e imagens de campanha exigem sessão válida
@@ -143,13 +145,8 @@ app.get("/uploads/*", authSession, (req, res) => {
   res.sendFile(filePath);
 });
 
-// ── Global error handler ──────────────────────────────────────────────────────
-app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
-  const status = err.status || err.statusCode || 500;
-  logger.error(`[Express] ${req.method} ${req.path} ${status} — ${err.message}`);
-  // Erros 500 nunca expõem detalhes internos ao cliente
-  const message = status >= 500 ? "Erro interno do servidor." : (err.message || "Erro desconhecido.");
-  res.status(status).json({ error: message });
-});
+// ── 404 e Global error handler ──────────────────────────────────────────────
+app.use(notFoundHandler);
+app.use(errorHandler);
 
 module.exports = app;

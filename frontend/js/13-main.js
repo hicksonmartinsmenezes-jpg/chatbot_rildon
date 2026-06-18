@@ -34,12 +34,14 @@ if (getCurrentUser()) {
 let _pollId = null;
 
 function startPolling() {
-  return setInterval(() => {
+  if (_pollId !== null) return _pollId;
+  _pollId = setInterval(() => {
     if (!getCurrentUser()) return;
     if (currentTab === "dashboard" || currentTab === "tickets") loadTickets();
     if (currentTab === "history") loadHistory(true);
     if (currentTab === "conversations") loadConversations(true);
   }, 30000);
+  return _pollId;
 }
 
 function stopPolling() {
@@ -49,7 +51,7 @@ function stopPolling() {
   }
 }
 
-_pollId = startPolling();
+startPolling();
 
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
@@ -59,8 +61,9 @@ document.addEventListener("visibilitychange", () => {
     if (getCurrentUser()) {
       if (currentTab === "dashboard" || currentTab === "tickets") loadTickets();
       if (currentTab === "history") loadHistory(true);
+      if (currentTab === "conversations") loadConversations(true);
     }
-    _pollId = startPolling();
+    startPolling();
   }
 });
 
@@ -72,8 +75,29 @@ function switchBotPanel(panelId, event) {
   event?.currentTarget?.classList.add("active");
 }
 
-const saveBotSettings = () => saveSettings();
-const saveFlow        = () => saveSettings();
+function saveBotSettings() { return saveSettings(); }
+function saveFlow() { return saveSettings(); }
 
-checkServerStatus();
-setInterval(checkServerStatus, 5000);
+let _serverStatusPollId = null;
+
+function startServerStatusPolling() {
+  if (_serverStatusPollId !== null) return;
+  checkServerStatus();
+  _serverStatusPollId = setInterval(() => {
+    if (!document.hidden && getCurrentUser()) checkServerStatus();
+  }, 20000);
+}
+
+function stopServerStatusPolling() {
+  if (_serverStatusPollId !== null) {
+    clearInterval(_serverStatusPollId);
+    _serverStatusPollId = null;
+  }
+}
+
+startServerStatusPolling();
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) stopServerStatusPolling();
+  else if (getCurrentUser()) startServerStatusPolling();
+});

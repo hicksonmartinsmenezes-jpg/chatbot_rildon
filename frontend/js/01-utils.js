@@ -12,21 +12,53 @@ function setOffline() {
 }
 
 // ─── Avatar ───────────────────────────────────────────────────────────────────
+const _avatarPhotoFailures = new Set();
+
+function buildContactPhotoUrl(userId) {
+  const id = String(userId || "").trim();
+  if (!id || id === "photo" || id === "undefined" || id === "null" || id === "[object Object]") return "";
+  if (_avatarPhotoFailures.has(id)) return "";
+  return `${BASE}/api/contacts/photo?userId=${encodeURIComponent(id)}&t=${Math.floor(Date.now()/60000)}`;
+}
+
 function avatarHtml(userId, name, big = false) {
+  const photoUrl = buildContactPhotoUrl(userId);
+  const fallback = safe(initials(name || formatPhone(userId)));
+  const imgHtml = photoUrl ? `
+      <img
+        src="${photoUrl}"
+        alt="${safe(name || "Contato")}"
+        loading="lazy"
+        data-avatar-img="true"
+        data-avatar-user="${safeAttr(userId)}"
+      >` : "";
+
   return `
     <span class="chat-avatar ${big ? "big" : ""}">
-      <img
-        src="${BASE}/api/contacts/photo?userId=${encodeURIComponent(userId)}&t=${Math.floor(Date.now()/60000)}"
-        alt="${safe(name)}"
-        loading="lazy"
-        onerror="this.style.display='none'; const fb=this.nextElementSibling; if(fb&&fb.classList.contains('avatar-fallback')) fb.style.display='inline-flex';"
-      >
-      <span class="avatar-fallback" style="display:none;">
-        ${safe(initials(name))}
+      ${imgHtml}
+      <span class="avatar-fallback" style="${photoUrl ? "display:none;" : ""}">
+        ${fallback}
       </span>
     </span>
   `;
 }
+
+function handleAvatarImageError(img) {
+  if (!img) return;
+  const userId = img.dataset?.avatarUser;
+  if (userId) _avatarPhotoFailures.add(userId);
+  const wrapper = img.closest?.(".chat-avatar");
+  const fallback = wrapper?.querySelector?.(".avatar-fallback");
+  if (fallback) fallback.style.display = "";
+  img.remove();
+}
+
+document.addEventListener("error", event => {
+  const target = event.target;
+  if (target?.matches?.("img[data-avatar-img]")) {
+    handleAvatarImageError(target);
+  }
+}, true);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
@@ -74,6 +106,23 @@ function formatPhone(userId) {
 
 const STATUS_LABELS = { aberto: "Aberto", em_andamento: "Em andamento", resolvido: "Resolvido", cancelado: "Cancelado" };
 function statusLabel(status) { return STATUS_LABELS[status] || status || "—"; }
+
+function safeAttr(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function safeClassName(value, fallback = "unknown") {
+  const clean = String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  return clean || fallback;
+}
 
 const TIPO_LABELS = {
   suporte_tecnico:      "Suporte Técnico",
@@ -165,11 +214,120 @@ function safe(value) {
 }
 
 function escapeAttr(value) {
-  return String(value ?? "").replaceAll("'", "&#39;").replaceAll('"', "&quot;");
+  return safe(value).replaceAll("'", "&#39;").replaceAll('"', "&quot;");
+}
+
+
+function escapeHtml(value) {
+  return safe(value);
+}
+
+function safeUrl(value, fallback = "") {
+  const raw = String(value ?? "").trim();
+  if (!raw) return fallback;
+
+  try {
+    const url = new URL(raw, window.location.origin);
+
+    if (["http:", "https:", "blob:"].includes(url.protocol)) {
+      return url.href;
+    }
+
+    // Data URLs somente para imagens raster seguras em previews locais.
+    // SVG é bloqueado porque pode carregar scripts/eventos em alguns contextos.
+    if (url.protocol === "data:") {
+      const allowedDataImage = /^data:image\/(png|jpe?g|webp|gif);base64,[a-z0-9+/=\s]+$/i.test(raw);
+      return allowedDataImage ? raw : fallback;
+    }
+
+    return fallback;
+  } catch (_) {
+    return fallback;
+  }
+}
+
+
+function debounce(fn, delay = 350) {
+  let timer = null;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), delay);
+  };
+}
+
+function normalizeId(value) {
+  return String(value ?? "").replace(/[^a-zA-Z0-9_.:@-]/g, "");
+}
+
+function runExclusive(key, fn) {
+  window.__appLocks = window.__appLocks || {};
+  if (window.__appLocks[key]) return window.__appLocks[key];
+
+  window.__appLocks[key] = Promise.resolve()
+    .then(fn)
+    .finally(() => { delete window.__appLocks[key]; });
+
+  return window.__appLocks[key];
 }
 
 function cssEscape(value) {
   return window.CSS?.escape ? CSS.escape(value) : String(value).replace(/([@.])/g, "\\$1");
+}
+
+
+
+// ─── Estados visuais reutilizáveis ───────────────────────────────────────────
+function renderEmptyState({ icon = "fa-circle-info", title = "Nada encontrado", message = "", actionText = "", action = "" } = {}) {
+  const actionHtml = actionText && action
+    ? `<button type="button" class="empty-retry-btn" ${action}>${safe(actionText)}</button>`
+    : "";
+  return `
+    <div class="app-state app-state-empty">
+      <i class="fa-solid ${normalizeId(icon) || "fa-circle-info"}" aria-hidden="true"></i>
+      <strong>${safe(title)}</strong>
+      ${message ? `<small>${safe(message)}</small>` : ""}
+      ${actionHtml}
+    </div>
+  `;
+}
+
+function renderErrorState({ title = "Não foi possível carregar os dados", message = "Verifique sua conexão ou tente novamente.", retry = "" } = {}) {
+  return renderEmptyState({
+    icon: "fa-triangle-exclamation",
+    title,
+    message,
+    actionText: retry ? "Tentar novamente" : "",
+    action: retry
+  });
+}
+
+function setButtonBusy(btn, busy, busyText = "Processando...") {
+  if (!btn) return;
+  if (busy) {
+    if (!btn.dataset.originalHtml) btn.dataset.originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.setAttribute("aria-busy", "true");
+    btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin" aria-hidden="true"></i> ${safe(busyText)}`;
+  } else {
+    btn.disabled = false;
+    btn.removeAttribute("aria-busy");
+    if (btn.dataset.originalHtml) {
+      btn.innerHTML = btn.dataset.originalHtml;
+      delete btn.dataset.originalHtml;
+    }
+  }
+}
+
+function announceToScreenReader(message) {
+  let live = document.getElementById("app-live-region");
+  if (!live) {
+    live = document.createElement("div");
+    live.id = "app-live-region";
+    live.className = "sr-only";
+    live.setAttribute("aria-live", "polite");
+    document.body.appendChild(live);
+  }
+  live.textContent = String(message || "");
 }
 
 // ─── Toast com tipos visuais ──────────────────────────────────────────────────
@@ -230,3 +388,145 @@ function togglePassword(inputId, btn) {
     icon.className = isHidden ? "fa-solid fa-eye-slash" : "fa-solid fa-eye";
   }
 }
+
+// ─── Acessibilidade progressiva ──────────────────────────────────────────────
+// Garante nome acessível para botões criados pelo HTML ou renderizados via JS.
+const ACCESSIBLE_ACTION_LABELS = {
+  togglePasswordVisibility: 'Mostrar ou ocultar senha',
+  refreshAll: 'Atualizar painel',
+  toggleTheme: 'Alternar tema claro ou escuro',
+  toggleNotifDropdown: 'Abrir notificações',
+  clearNotifications: 'Limpar notificações',
+  openProfileModal: 'Abrir perfil',
+  logout: 'Sair do sistema',
+  loadTickets: 'Atualizar atendimentos',
+  loadConversations: 'Atualizar conversas',
+  sendConversationMessage: 'Enviar mensagem',
+  clearHistoryFilters: 'Limpar filtros do histórico',
+  bulkDeleteContacts: 'Excluir contatos selecionados',
+  openContactModal: 'Adicionar contato',
+  importContactsCSV: 'Importar contatos CSV',
+  exportContactsCSV: 'Exportar contatos CSV',
+  contactsPagePrev: 'Página anterior de contatos',
+  contactsPageNext: 'Próxima página de contatos',
+  closeContactModal: 'Fechar janela de contato',
+  saveContact: 'Salvar contato',
+  closeDeleteContactModal: 'Cancelar exclusão de contato',
+  doDeleteContact: 'Confirmar exclusão de contato',
+  loadCampaigns: 'Atualizar campanhas',
+  openCampaignModal: 'Nova campanha',
+  closeCampaignModal: 'Fechar janela de campanha',
+  removeCampaignMedia: 'Remover mídia da campanha',
+  campSelectAll: 'Selecionar todos os contatos da campanha',
+  campClearAll: 'Limpar seleção de contatos da campanha',
+  createCampaign: 'Criar campanha',
+  saveBotSettings: 'Salvar configurações do bot',
+  addQuickReply: 'Adicionar resposta rápida',
+  saveFlow: 'Salvar fluxo',
+  loadSettings: 'Carregar configurações',
+  saveSettings: 'Salvar configurações',
+  backToSettingsHome: 'Voltar para configurações',
+  createPanelUser: 'Criar usuário',
+  resetSettings: 'Restaurar configurações',
+  requestWaReconnect: 'Reconectar WhatsApp',
+  loadActivityLogs: 'Atualizar logs',
+  loadMetricsCharts: 'Atualizar métricas',
+  fecharChat: 'Fechar chat',
+  enviarMensagemManual: 'Enviar mensagem manual',
+  closeProfileModal: 'Fechar perfil',
+  saveProfile: 'Salvar perfil',
+};
+
+function getButtonAccessibleName(btn) {
+  const explicit = btn.getAttribute('aria-label')?.trim();
+  if (explicit) return explicit;
+
+  const title = btn.getAttribute('title')?.trim();
+  if (title) return title;
+
+  const text = btn.textContent?.replace(/\s+/g, ' ').trim();
+  const iconOnly = !text || text.length <= 2;
+  if (text && !iconOnly) return text;
+
+  const action = btn.dataset?.action;
+  if (action && ACCESSIBLE_ACTION_LABELS[action]) return ACCESSIBLE_ACTION_LABELS[action];
+
+  const tab = btn.dataset?.tab;
+  if (tab) return `Abrir aba ${tab}`;
+
+  return '';
+}
+
+function enhanceButtonAccessibility(root = document) {
+  const buttons = root.querySelectorAll?.('button') || [];
+  buttons.forEach(btn => {
+    const name = getButtonAccessibleName(btn);
+    if (!name) return;
+    if (!btn.hasAttribute('aria-label')) btn.setAttribute('aria-label', name);
+    if (!btn.hasAttribute('title') && btn.classList.contains('icon-btn')) btn.setAttribute('title', name);
+  });
+}
+
+function observeDynamicAccessibility() {
+  if (!('MutationObserver' in window) || !document.body) return;
+  const observer = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      mutation.addedNodes.forEach(node => {
+        if (node.nodeType !== 1) return;
+        if (node.matches?.('button')) enhanceButtonAccessibility(node.parentElement || document);
+        else if (node.querySelector?.('button')) enhanceButtonAccessibility(node);
+      });
+    }
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+}
+
+function handleAvatarMediaState(event) {
+  const img = event.target;
+  if (!(img instanceof HTMLImageElement)) return;
+
+  const isKnownAvatar =
+    img.dataset.avatarImg === "true" ||
+    img.classList.contains("cp-avatar-img") ||
+    img.classList.contains("contact-avatar-img");
+
+  if (!isKnownAvatar) return;
+
+  if (event.type === "load") {
+    img.style.display = "block";
+    return;
+  }
+
+  img.style.display = "none";
+
+  const fallback = img.nextElementSibling?.classList?.contains("avatar-fallback")
+    ? img.nextElementSibling
+    : img.previousElementSibling?.classList?.contains("cp-avatar-ini")
+      ? img.previousElementSibling
+      : null;
+
+  if (fallback) fallback.style.display = "inline-flex";
+}
+
+document.addEventListener("error", handleAvatarMediaState, true);
+document.addEventListener("load", handleAvatarMediaState, true);
+
+document.addEventListener('DOMContentLoaded', () => {
+  enhanceButtonAccessibility(document);
+  observeDynamicAccessibility();
+  document.body.classList.toggle('is-offline', !navigator.onLine);
+
+  window.addEventListener('offline', () => {
+    document.body.classList.add('is-offline');
+    showToast?.('Você está offline. Algumas ações podem falhar.', 'warning');
+    announceToScreenReader('Você está offline.');
+  });
+
+  window.addEventListener('online', () => {
+    document.body.classList.remove('is-offline');
+    showToast?.('Conexão restabelecida.', 'success');
+    announceToScreenReader('Conexão restabelecida.');
+    if (typeof refreshAll === 'function') refreshAll();
+  });
+
+});

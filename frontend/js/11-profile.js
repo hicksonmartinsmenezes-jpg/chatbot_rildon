@@ -122,7 +122,8 @@ function applyUserProfileVisual(user) {
   const avatar  = document.getElementById("top-user-avatar");
   if (topName) topName.textContent = name;
   if (avatar) {
-    avatar.innerHTML = user.foto ? `<img src="${escapeAttr(safeUrl(user.foto))}" alt="Perfil">` : safe(initials(name));
+    const photo = safeUrl(user.foto);
+    avatar.innerHTML = photo ? `<img src="${escapeAttr(photo)}" alt="Perfil">` : safe(initials(name));
   }
 }
 

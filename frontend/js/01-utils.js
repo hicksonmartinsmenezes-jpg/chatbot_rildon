@@ -12,13 +12,11 @@ function setOffline() {
 }
 
 // ─── Avatar ───────────────────────────────────────────────────────────────────
-const _avatarPhotoFailures = new Set();
-
 function buildContactPhotoUrl(userId) {
   const id = String(userId || "").trim();
   if (!id || id === "photo" || id === "undefined" || id === "null" || id === "[object Object]") return "";
-  if (_avatarPhotoFailures.has(id)) return "";
-  return `${BASE}/api/contacts/photo?userId=${encodeURIComponent(id)}&t=${Math.floor(Date.now()/60000)}`;
+  const bust = window.__avatarCacheBust || (window.__avatarCacheBust = Date.now());
+  return `${BASE}/api/contacts/photo?userId=${encodeURIComponent(id)}&v=${bust}`;
 }
 
 function avatarHtml(userId, name, big = false) {
@@ -31,12 +29,13 @@ function avatarHtml(userId, name, big = false) {
         loading="lazy"
         data-avatar-img="true"
         data-avatar-user="${safeAttr(userId)}"
+        style="display:none;"
       >` : "";
 
   return `
     <span class="chat-avatar ${big ? "big" : ""}">
       ${imgHtml}
-      <span class="avatar-fallback" style="${photoUrl ? "display:none;" : ""}">
+      <span class="avatar-fallback">
         ${fallback}
       </span>
     </span>
@@ -45,20 +44,11 @@ function avatarHtml(userId, name, big = false) {
 
 function handleAvatarImageError(img) {
   if (!img) return;
-  const userId = img.dataset?.avatarUser;
-  if (userId) _avatarPhotoFailures.add(userId);
-  const wrapper = img.closest?.(".chat-avatar");
-  const fallback = wrapper?.querySelector?.(".avatar-fallback");
-  if (fallback) fallback.style.display = "";
-  img.remove();
+  const wrapper = img.closest?.(".chat-avatar, .cp-avatar, .ct-avatar-wrap") || img.parentElement;
+  const fallback = wrapper?.querySelector?.(".avatar-fallback, .cp-avatar-ini, .ct-avatar-ini");
+  if (fallback) fallback.style.display = "flex";
+  img.style.display = "none";
 }
-
-document.addEventListener("error", event => {
-  const target = event.target;
-  if (target?.matches?.("img[data-avatar-img]")) {
-    handleAvatarImageError(target);
-  }
-}, true);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
@@ -492,20 +482,23 @@ function handleAvatarMediaState(event) {
 
   if (!isKnownAvatar) return;
 
+  const wrapper = img.closest?.(".chat-avatar, .cp-avatar, .ct-avatar-wrap") || img.parentElement;
+  const fallback = wrapper?.querySelector?.(".avatar-fallback, .cp-avatar-ini, .ct-avatar-ini") || null;
+
   if (event.type === "load") {
+    // Respostas 204/sem corpo podem disparar load, mas não exibem imagem real.
+    if (!img.naturalWidth || !img.naturalHeight) {
+      img.style.display = "none";
+      if (fallback) fallback.style.display = "flex";
+      return;
+    }
     img.style.display = "block";
+    if (fallback) fallback.style.display = "none";
     return;
   }
 
   img.style.display = "none";
-
-  const fallback = img.nextElementSibling?.classList?.contains("avatar-fallback")
-    ? img.nextElementSibling
-    : img.previousElementSibling?.classList?.contains("cp-avatar-ini")
-      ? img.previousElementSibling
-      : null;
-
-  if (fallback) fallback.style.display = "inline-flex";
+  if (fallback) fallback.style.display = "flex";
 }
 
 document.addEventListener("error", handleAvatarMediaState, true);

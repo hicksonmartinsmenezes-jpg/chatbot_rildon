@@ -87,37 +87,53 @@ async function requestWaReconnect() {
   // Se já está conectado, gerar um QR novo exige DESCONECTAR a sessão atual.
   const statusText  = document.getElementById("wa-status-text")?.textContent || "";
   const isConnected = /conectado/i.test(statusText) && !/desconect/i.test(statusText);
-  let clearSession  = false;
+
+  const doReconnect = async (clearSession = false) => {
+    try {
+      const res = await apiFetch(`${BASE}/api/whatsapp/reconnect`, {
+        method: "POST",
+        body: JSON.stringify({ clearSession })
+      });
+      if (res?.ok) {
+        showToast("🔄 Reconexão solicitada. Aguarde o QR Code...");
+        const area    = document.getElementById("wa-qr-area");
+        const waiting = document.getElementById("wa-waiting-area");
+        const conn    = document.getElementById("wa-connected-area");
+        area?.classList.add("hidden");
+        conn?.classList.add("hidden");
+        waiting?.classList.remove("hidden");
+        // Fallback: se o evento socket "qr_code" não chegar, busca o QR pendente.
+        setTimeout(loadWaStatus, 2500);
+        return;
+      }
+
+      const data = await res?.json().catch(() => ({}));
+      showToast(`❌ ${data.error || "Não foi possível reconectar."}`);
+    } catch (err) {
+      showToast(`❌ Erro ao reconectar WhatsApp: ${err.message}`);
+    }
+  };
 
   if (isConnected) {
-    const ok = confirm(
-      "O WhatsApp está conectado.\n\n" +
-      "Gerar um novo QR Code vai DESCONECTAR a sessão atual e você precisará " +
-      "escanear novamente no celular.\n\nDeseja continuar?"
-    );
-    if (!ok) return;
-    clearSession = true;
+    const message = "O WhatsApp está conectado. Gerar um novo QR Code vai desconectar a sessão atual e você precisará escanear novamente no celular. Deseja continuar?";
+    if (typeof showConfirmModal === "function") {
+      showConfirmModal({
+        title: "Reconectar WhatsApp",
+        message,
+        confirmText: "Reconectar",
+        cancelText: "Cancelar",
+        danger: true,
+        onConfirm: () => doReconnect(true)
+      });
+      return;
+    }
+
+    // Fallback raro, caso o arquivo de modal não tenha carregado.
+    if (!confirm(message)) return;
+    return doReconnect(true);
   }
 
-  try {
-    const res = await apiFetch(`${BASE}/api/whatsapp/reconnect`, {
-      method: "POST",
-      body: JSON.stringify({ clearSession })
-    });
-    if (res?.ok) {
-      showToast("🔄 Reconexão solicitada. Aguarde o QR Code...");
-      const area    = document.getElementById("wa-qr-area");
-      const waiting = document.getElementById("wa-waiting-area");
-      const conn    = document.getElementById("wa-connected-area");
-      area?.classList.add("hidden");
-      conn?.classList.add("hidden");
-      waiting?.classList.remove("hidden");
-      // Fallback: se o evento socket "qr_code" não chegar, busca o QR pendente.
-      setTimeout(loadWaStatus, 2500);
-    } else {
-      showToast("❌ Falha ao solicitar reconexão.");
-    }
-  } catch { showToast("❌ Erro ao conectar."); }
+  return doReconnect(false);
 }
 
 // ─── Socket.IO ────────────────────────────────────────────────────────────────
@@ -135,20 +151,11 @@ if (typeof io !== "undefined") {
     }
   });
 
-socket.on("connect", () => {
-
-  setOnline();
-
-  const user = getCurrentUser();
-
-  if (user) {
-
-    socket.emit(
-      "user_online",
-      user
-    );
-  }
-});
+  socket.on("connect", () => {
+    setOnline();
+    const user = getCurrentUser();
+    if (user) socket.emit("user_online", user);
+  });
 
   socket.on("disconnect", () => {
     setOffline();
@@ -161,51 +168,50 @@ socket.on("connect", () => {
     _convReloadTimer = _histReloadTimer = _ticketReloadTimer = _contactsReloadTimer = _broadcastsReloadTimer = null;
   });
 
-socket.on("online_users", users => {
-  window.onlineUsers = Array.isArray(users) ? users : [];
-  if (currentTab === "settings") renderPanelUsers();
-});
+  socket.on("online_users", users => {
+    window.onlineUsers = Array.isArray(users) ? users : [];
+    if (currentTab === "settings") renderPanelUsers();
+  });
 
-socket.on("users_updated", data => {
-  document.dispatchEvent(new CustomEvent("rildon:users-updated", { detail: data || {} }));
-});
+  socket.on("users_updated", data => {
+    document.dispatchEvent(new CustomEvent("rildon:users-updated", { detail: data || {} }));
+  });
 
-// Atualizações administrativas em tempo real
-let _contactsReloadTimer = null;
-let _broadcastsReloadTimer = null;
+  // Atualizações administrativas em tempo real
+  let _contactsReloadTimer = null;
+  let _broadcastsReloadTimer = null;
 
-socket.on("contacts_updated", (data) => {
-  document.dispatchEvent(new CustomEvent("rildon:contacts-updated", { detail: data || {} }));
-  if (currentTab !== "contacts" && currentTab !== "channels") return;
+  socket.on("contacts_updated", (data) => {
+    document.dispatchEvent(new CustomEvent("rildon:contacts-updated", { detail: data || {} }));
+    if (currentTab !== "contacts" && currentTab !== "channels") return;
 
-  clearTimeout(_contactsReloadTimer);
-  _contactsReloadTimer = setTimeout(() => {
-    if (currentTab === "contacts") {
-      if (typeof loadContacts === "function") loadContacts(true);
-      if (typeof loadContactsTags === "function") loadContactsTags();
-    }
-    if (currentTab === "channels" && typeof updateCampaignAudienceCount === "function") {
-      updateCampaignAudienceCount();
-    }
-  }, 350);
-});
+    clearTimeout(_contactsReloadTimer);
+    _contactsReloadTimer = setTimeout(() => {
+      if (currentTab === "contacts") {
+        if (typeof loadContacts === "function") loadContacts(true);
+        if (typeof loadContactsTags === "function") loadContactsTags();
+      }
+      if (currentTab === "channels" && typeof updateCampaignAudienceCount === "function") {
+        updateCampaignAudienceCount();
+      }
+    }, 350);
+  });
 
-socket.on("broadcasts_updated", (data) => {
-  document.dispatchEvent(new CustomEvent("rildon:broadcasts-updated", { detail: data || {} }));
-  if (currentTab !== "channels") return;
+  socket.on("broadcasts_updated", (data) => {
+    document.dispatchEvent(new CustomEvent("rildon:broadcasts-updated", { detail: data || {} }));
+    if (currentTab !== "channels") return;
 
-  clearTimeout(_broadcastsReloadTimer);
-  _broadcastsReloadTimer = setTimeout(() => {
-    if (typeof loadCampaigns === "function") loadCampaigns();
-    if (typeof loadCampaignStats === "function") loadCampaignStats();
-  }, 350);
-});
+    clearTimeout(_broadcastsReloadTimer);
+    _broadcastsReloadTimer = setTimeout(() => {
+      if (typeof loadCampaigns === "function") loadCampaigns();
+      if (typeof loadCampaignStats === "function") loadCampaignStats();
+    }, 350);
+  });
 
-
-// Debounce timers para evitar múltiplos reloads simultâneos por rajada de eventos
-let _convReloadTimer   = null;
-let _histReloadTimer   = null;
-let _ticketReloadTimer = null;
+  // Debounce timers para evitar múltiplos reloads simultâneos por rajada de eventos
+  let _convReloadTimer   = null;
+  let _histReloadTimer   = null;
+  let _ticketReloadTimer = null;
 
 function _scheduleConvReload(userId) {
   clearTimeout(_convReloadTimer);

@@ -510,14 +510,15 @@ function _renderCampContactResults(contacts, total) {
     const ini      = typeof contactInitials === "function" ? contactInitials(c.nome) : (c.nome || "?")[0].toUpperCase();
     const userId   = phone + "@s.whatsapp.net";
     // t= evita cache de foto antiga e distribui a carga evitando rate-limit
-    const photoUrl = `/api/contacts/photo?userId=${encodeURIComponent(userId)}&t=${_campPhotoEpoch}`;
+    const bust = window.__avatarCacheBust || (window.__avatarCacheBust = Date.now());
+    const photoUrl = `/api/contacts/photo?userId=${encodeURIComponent(userId)}&v=${bust}&t=${_campPhotoEpoch}`;
     return `
       <div class="cp-item ${sel ? "cp-selected" : ""}"
            data-phone="${escapeAttr(phone)}"
            data-nome="${escapeAttr(c.nome)}">
         <div class="cp-avatar">
           <div class="cp-avatar-ini">${ini}</div>
-          <img class="cp-avatar-img" src="${escapeAttr(safeUrl(photoUrl))}" data-avatar-img="true" data-avatar-user="${escapeAttr(userId)}">
+          <img class="cp-avatar-img" src="${escapeAttr(safeUrl(photoUrl))}" data-avatar-img="true" data-avatar-user="${escapeAttr(userId)}" style="display:none;">
         </div>
         <div class="cp-info">
           <strong>${safe(c.nome)}</strong>

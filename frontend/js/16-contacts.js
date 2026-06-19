@@ -72,7 +72,8 @@ function renderContactsTable(rows) {
     const ini      = contactInitials(c.nome);
     const color    = contactAvatarColor(c.nome);
     const userId   = String(c.whatsapp || "").replace(/\D/g, "") + "@s.whatsapp.net";
-    const photoUrl = `/api/contacts/photo?userId=${encodeURIComponent(userId)}`;
+    const bust = window.__avatarCacheBust || (window.__avatarCacheBust = Date.now());
+    const photoUrl = `/api/contacts/photo?userId=${encodeURIComponent(userId)}&v=${bust}`;
     const tags     = (c.tags || []).map(t => `<span class="ct-tag">${safe(t)}</span>`).join("");
     const checked  = _contactsSelected.has(c.id) ? "checked" : "";
 

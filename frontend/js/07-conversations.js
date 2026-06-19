@@ -297,7 +297,7 @@ async function openConversation(userId, updateActive = true) {
     if (item.response) {
       html.push(`
         <div class="bubble-row bot-row">
-          <div class="bubble bot"${item.messageId ? ` data-msg-id="${safe(item.messageId)}"` : ""}>
+          <div class="bubble bot"${item.messageId ? ` data-msg-id="${escapeAttr(item.messageId)}"` : ""}>
             <p>${safe(item.response)}</p>
             <small>${safe(shortTime(item.createdAt))} <span class="msg-status">${renderMessageStatus(item.status)}</span></small>
           </div>

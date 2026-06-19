@@ -513,40 +513,53 @@ async function connectWhatsApp(onMessage) {
   });
 }
 
-async function getProfilePhotoUrl(userId) {
-  if (!sock) return null;
-  const raw = String(userId);
-  const resolvedJid = lidToJid[raw] || raw;
 
-  // Tenta o JID resolvido primeiro (se disponível no mapa)
-  if (resolvedJid !== raw) {
-    try {
-      const url = await sock.profilePictureUrl(resolvedJid, "image");
-      if (url) return url;
-    } catch (_) {}
-  }
-
-  // Tenta com o JID original
-  try {
-    const url = await sock.profilePictureUrl(raw, "image");
-    if (url) return url;
-  } catch (_) {}
-
-  return null;
+function normalizePhotoJid(userId) {
+  const raw = String(userId || "").trim();
+  if (!raw) return "";
+  if (raw.endsWith("@s.whatsapp.net") || raw.endsWith("@lid") || raw.endsWith("@g.us")) return raw;
+  const digits = raw.replace(/\D/g, "");
+  return digits ? `${digits}@s.whatsapp.net` : raw;
 }
 
-function resolveSendJid(userId) {
-  const raw = String(userId || "");
+function getProfilePhotoCandidates(userId) {
+  const raw = String(userId || "").trim();
+  const normalized = normalizePhotoJid(raw);
+  const digits = raw.replace(/\D/g, "");
+  const phoneJid = digits ? `${digits}@s.whatsapp.net` : "";
 
-  // Quando recebemos mensagem via @lid, o histórico/ticket usa o número real
-  // (@s.whatsapp.net), mas a sessão Signal ativa pode estar associada ao @lid.
-  // Para evitar mensagens no WhatsApp como "Aguardando mensagem", priorizamos o
-  // @lid conhecido para envio manual/respostas, mantendo o número apenas como fallback.
-  if (raw.endsWith("@s.whatsapp.net") && jidToLid[raw]) {
-    return jidToLid[raw];
+  return Array.from(new Set([
+    raw,
+    normalized,
+    phoneJid,
+    lidToJid[raw],
+    lidToJid[normalized],
+    lidToJid[phoneJid],
+    jidToLid[raw],
+    jidToLid[normalized],
+    jidToLid[phoneJid]
+  ].filter(Boolean)));
+}
+
+async function getProfilePhotoUrl(userId) {
+  if (!sock) return null;
+
+  const candidates = getProfilePhotoCandidates(userId);
+
+  for (const jid of candidates) {
+    try {
+      const url = await sock.profilePictureUrl(jid, "image");
+      if (url) {
+        logger.debug?.(`[FotoContato] foto encontrada para ${userId} via ${jid}`);
+        return url;
+      }
+    } catch (err) {
+      logger.debug?.(`[FotoContato] sem foto para candidato ${jid}: ${err?.message || err}`);
+    }
   }
 
-  return lidToJid[raw] || raw;
+  logger.debug?.(`[FotoContato] nenhuma foto encontrada para ${userId}. candidatos=${candidates.join(",")}`);
+  return null;
 }
 
 async function sendMessage(userId, text) {

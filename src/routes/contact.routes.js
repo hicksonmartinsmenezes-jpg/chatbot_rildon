@@ -70,6 +70,7 @@ function photoRateOk(userId, ip) {
 }
 
 router.get("/contacts/photo", async (req, res) => {
+  const requestedAt = Date.now();
   try {
     const { userId } = req.query;
 
@@ -85,23 +86,45 @@ router.get("/contacts/photo", async (req, res) => {
     const photoUrl = await getProfilePhotoUrl(userId);
 
     if (!photoUrl) {
-      return res.set("Cache-Control", "private, max-age=300").status(204).end();
+      // 204 é intencional: o frontend mantém as iniciais e não mostra imagem quebrada.
+      logger.debug?.(`[FotoContato] indisponível userId=${userId} em ${Date.now() - requestedAt}ms`);
+      return res.set("Cache-Control", "no-store").status(204).end();
     }
 
-    // Proxia a imagem pelo backend para evitar CORS e URLs expiradas no browser
+    // Proxia a imagem pelo backend para evitar CORS e URLs expiradas no browser.
+    // Alguns endpoints temporários do WhatsApp rejeitam requisições sem User-Agent.
     const response = await axios.get(photoUrl, {
       responseType: "arraybuffer",
-      timeout: 8000
+      timeout: 10000,
+      maxRedirects: 3,
+      validateStatus: status => status >= 200 && status < 300,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
+        "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
+      }
     });
 
-    const contentType = response.headers["content-type"] || "image/jpeg";
+    const buffer = Buffer.from(response.data || []);
+    const contentType = String(response.headers["content-type"] || "image/jpeg").toLowerCase();
+
+    if (!buffer.length || !contentType.startsWith("image/")) {
+      logger.debug?.(`[FotoContato] resposta inválida userId=${userId} type=${contentType} bytes=${buffer.length}`);
+      return res.set("Cache-Control", "no-store").status(204).end();
+    }
+
+    // Evita SVG como imagem de avatar. WhatsApp costuma entregar jpeg/webp.
+    if (contentType.includes("svg")) {
+      return res.set("Cache-Control", "no-store").status(204).end();
+    }
+
     res.set("Content-Type", contentType);
-    res.set("Cache-Control", "private, max-age=300"); // cache 5 min só no browser do usuário
-    return res.send(Buffer.from(response.data));
+    res.set("Content-Length", String(buffer.length));
+    res.set("Cache-Control", "private, max-age=300");
+    return res.send(buffer);
 
   } catch (error) {
     logger.warn(`Foto indisponível para contato: ${error.message}`);
-    return res.set("Cache-Control", "private, max-age=120").status(204).end();
+    return res.set("Cache-Control", "no-store").status(204).end();
   }
 });
 

@@ -69,6 +69,28 @@ function photoRateOk(userId, ip) {
   return true;
 }
 
+// Cache de 204 (sem foto): evita re-consultar o WhatsApp a cada ciclo de polling
+// para contatos que confirmadamente não têm foto. TTL de 10 min.
+const _photo204Cache  = new Map(); // userId → expiresAt (ms)
+const PHOTO_204_TTL   = 10 * 60 * 1000;
+
+function is204Cached(userId) {
+  const exp = _photo204Cache.get(userId);
+  if (!exp) return false;
+  if (Date.now() > exp) { _photo204Cache.delete(userId); return false; }
+  return true;
+}
+
+function cache204(userId) {
+  _photo204Cache.set(userId, Date.now() + PHOTO_204_TTL);
+  if (_photo204Cache.size > 2000) {
+    const now = Date.now();
+    for (const [k, exp] of _photo204Cache) {
+      if (exp < now) _photo204Cache.delete(k);
+    }
+  }
+}
+
 router.get("/contacts/photo", async (req, res) => {
   const requestedAt = Date.now();
   try {
@@ -83,12 +105,17 @@ router.get("/contacts/photo", async (req, res) => {
       return res.set("Cache-Control", "no-store").status(429).end();
     }
 
+    // Resposta rápida para contatos que confirmadamente não têm foto (cache 10 min)
+    if (is204Cached(userId)) {
+      return res.set("Cache-Control", "public, max-age=600").status(204).end();
+    }
+
     const photoUrl = await getProfilePhotoUrl(userId);
 
     if (!photoUrl) {
-      // 204 é intencional: o frontend mantém as iniciais e não mostra imagem quebrada.
+      cache204(userId);
       logger.debug?.(`[FotoContato] indisponível userId=${userId} em ${Date.now() - requestedAt}ms`);
-      return res.set("Cache-Control", "no-store").status(204).end();
+      return res.set("Cache-Control", "public, max-age=600").status(204).end();
     }
 
     // Proxia a imagem pelo backend para evitar CORS e URLs expiradas no browser.
@@ -108,13 +135,15 @@ router.get("/contacts/photo", async (req, res) => {
     const contentType = String(response.headers["content-type"] || "image/jpeg").toLowerCase();
 
     if (!buffer.length || !contentType.startsWith("image/")) {
+      cache204(userId);
       logger.debug?.(`[FotoContato] resposta inválida userId=${userId} type=${contentType} bytes=${buffer.length}`);
-      return res.set("Cache-Control", "no-store").status(204).end();
+      return res.set("Cache-Control", "public, max-age=600").status(204).end();
     }
 
     // Evita SVG como imagem de avatar. WhatsApp costuma entregar jpeg/webp.
     if (contentType.includes("svg")) {
-      return res.set("Cache-Control", "no-store").status(204).end();
+      cache204(userId);
+      return res.set("Cache-Control", "public, max-age=600").status(204).end();
     }
 
     res.set("Content-Type", contentType);

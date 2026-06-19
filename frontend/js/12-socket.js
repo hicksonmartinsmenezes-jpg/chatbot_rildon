@@ -141,7 +141,14 @@ let socket = null;
 
 if (typeof io !== "undefined") {
 
-  socket = io(BASE, { autoConnect: true, withCredentials: true });
+  socket = io(BASE, {
+    autoConnect: true,
+    withCredentials: true,
+    reconnectionDelay: 2000,        // espera 2s antes da 1ª tentativa
+    reconnectionDelayMax: 15000,    // máximo 15s entre tentativas (backoff exponencial)
+    reconnectionAttempts: 10,       // desiste após 10 falhas consecutivas
+    timeout: 10000                  // 10s para estabelecer conexão inicial
+  });
 
   // Trata falha de autenticação no socket (sessão expirada)
   socket.on("connect_error", (err) => {

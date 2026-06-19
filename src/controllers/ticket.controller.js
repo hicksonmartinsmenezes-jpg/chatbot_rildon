@@ -1,7 +1,7 @@
 const logger = require("../utils/logger");
 const humanMode = require("../services/humanMode.service");
 const ticketRepository = require("../repositories/ticket.repository");
-const { canAccessTicket, canManageTicket, canSeeSensitiveDashboard } = require("../utils/access-control");
+const { canAccessTicket, canManageTicket, canSeeSensitiveDashboard, canUseFullConversationPanel } = require("../utils/access-control");
 const {
   createTicket,
   listTickets,
@@ -52,7 +52,9 @@ async function getTickets(req, res) {
 
     let tickets = await listTickets({ status, search, dateStart, dateEnd });
 
-    if (req.user?.perfil === "atendente") {
+    // No painel Conversas, o atendente precisa visualizar igual ao administrador.
+    // Mantém o comportamento restrito apenas se ATTENDANT_CONVERSATIONS_FULL_ACCESS=false.
+    if (req.user?.perfil === "atendente" && !canUseFullConversationPanel(req.user)) {
       tickets = tickets.filter(ticket => {
         const mesmoSetor = (ticket.sector || "geral") === (req.user.sector || "geral");
         const disponivel  = !ticket.assignedTo;

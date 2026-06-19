@@ -23,9 +23,23 @@ function sameUserId(a, b) {
   return String(a || "") === String(b || "");
 }
 
+function attendantConversationsFullAccess() {
+  // Por padrão, o painel Conversas do atendente deve enxergar e operar igual ao admin.
+  // Para voltar ao modo restrito por setor/atribuição, defina no .env:
+  // ATTENDANT_CONVERSATIONS_FULL_ACCESS=false
+  return String(process.env.ATTENDANT_CONVERSATIONS_FULL_ACCESS || "true").toLowerCase() !== "false";
+}
+
+function canUseFullConversationPanel(user) {
+  if (!user) return false;
+  if (isPrivileged(user)) return true;
+  return normalizePerfil(user) === "atendente" && attendantConversationsFullAccess();
+}
+
 function canAccessTicket(user, ticket, { allowUnassigned = false } = {}) {
   if (!user || !ticket) return false;
   if (isPrivileged(user)) return true;
+  if (canUseFullConversationPanel(user)) return true;
 
   if (normalizePerfil(user) !== "atendente") return false;
 
@@ -38,6 +52,7 @@ function canAccessTicket(user, ticket, { allowUnassigned = false } = {}) {
 function canManageTicket(user, ticket) {
   if (!user || !ticket) return false;
   if (isPrivileged(user)) return true;
+  if (canUseFullConversationPanel(user)) return true;
 
   if (normalizePerfil(user) !== "atendente") return false;
   const assignedTo = ticket.assignedTo ?? ticket.assigned_to;
@@ -71,6 +86,8 @@ module.exports = {
   normalizePerfil,
   isPrivileged,
   normalizeSector,
+  attendantConversationsFullAccess,
+  canUseFullConversationPanel,
   canAccessTicket,
   canManageTicket,
   canSeeSensitiveDashboard,

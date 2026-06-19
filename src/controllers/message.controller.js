@@ -4,13 +4,13 @@ const { emitEvent }   = require("../services/socket.service");
 const humanMode       = require("../services/humanMode.service");
 const logger          = require("../utils/logger");
 const ticketRepository = require("../repositories/ticket.repository");
-const { canAccessTicket, isPrivileged } = require("../utils/access-control");
+const { canAccessTicket, isPrivileged, canUseFullConversationPanel } = require("../utils/access-control");
 
 // Autorização de conversa: privilegiados (admin/supervisor/api) sempre podem.
 // Atendente só acessa se houver ticket ATIVO atribuído a ele — ou não atribuído
 // no mesmo setor (allowUnassigned). Centraliza a regra antes repetida 3×.
 async function canUserAccessConversation(user, userId) {
-  if (isPrivileged(user)) return true;
+  if (isPrivileged(user) || canUseFullConversationPanel(user)) return true;
   const tickets = await ticketRepository.findByUserId(userId);
   const ativos  = tickets.filter(t => t.status === "aberto" || t.status === "em_andamento");
   return ativos.some(t => canAccessTicket(user, t, { allowUnassigned: true }));

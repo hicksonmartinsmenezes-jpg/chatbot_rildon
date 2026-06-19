@@ -22,11 +22,13 @@ function buildContactPhotoUrl(userId) {
 function avatarHtml(userId, name, big = false) {
   const photoUrl = buildContactPhotoUrl(userId);
   const fallback = safe(initials(name || formatPhone(userId)));
+  // Sem loading="lazy": um <img> display:none com lazy NUNCA entra no viewport,
+  // então o navegador nunca o carrega (nem dispara load) e a foto nunca aparece.
+  // Eager + display:none carrega normalmente; handleAvatarMediaState revela no load.
   const imgHtml = photoUrl ? `
       <img
         src="${photoUrl}"
         alt="${safe(name || "Contato")}"
-        loading="lazy"
         data-avatar-img="true"
         data-avatar-user="${safeAttr(userId)}"
         style="display:none;"

@@ -2,6 +2,21 @@ const { getBotConfig }  = require("../services/botConfig.service");
 const logger            = require("../utils/logger");
 const { emitEvent }     = require("../services/socket.service");
 const pool              = require("../database/postgres");
+const {
+  setLidMapping,
+  carregarLidMap,
+  resolveLid,
+  resolveJidToLid,
+  resolveSendJid,
+  getProfilePhotoCandidates,
+  getLidMapStats
+} = require("../whatsapp/lid-map");
+const {
+  getTextMessage,
+  getMediaType,
+  isValidUserMessage,
+  parseMessageStatus
+} = require("../whatsapp/message-utils");
 
 const {
   default: makeWASocket,
@@ -23,45 +38,6 @@ let cachedConfig = null;
 let lastConfigCheck = 0;
 let messageHandler   = null;  // processMessage — guardado para reconexões forçadas
 let lastQr           = null;  // último QR pendente (até conectar) — permite buscar via API
-
-// Mapa LID (@lid) → JID real (@s.whatsapp.net) preenchido pelo evento contacts.upsert
-// e pelas mensagens recebidas (senderPn). Leitura é sempre em memória; a escrita
-// no banco é assíncrona e só ocorre quando o valor muda — sem latência no envio.
-const lidToJid = {};
-const jidToLid = {};
-let _lidMapCarregado = false;
-
-function setLidMapping(lid, jid, source = "") {
-  if (!lid || !jid) return;
-  const lidKey = String(lid);
-  const jidKey = String(jid);
-  const changed = lidToJid[lidKey] !== jidKey;
-  lidToJid[lidKey] = jidKey;
-  jidToLid[jidKey] = lidKey;
-  if (!changed) return;
-  logger.info(`[lidToJid] ${lidKey} → ${jidKey}${source ? ` (via ${source})` : ""}`);
-  pool.query(
-    `INSERT INTO lid_map (lid, jid, updated_at) VALUES ($1, $2, NOW())
-     ON CONFLICT (lid) DO UPDATE SET jid = EXCLUDED.jid, updated_at = NOW()`,
-    [lidKey, jidKey]
-  ).catch(err => logger.warn(`[lidToJid] persistência falhou: ${err.message}`));
-}
-
-async function carregarLidMap() {
-  if (_lidMapCarregado) return;       // carrega uma única vez (sobrevive a reconexões)
-  _lidMapCarregado = true;
-  try {
-    const res = await pool.query(`SELECT lid, jid FROM lid_map`);
-    for (const row of res.rows) {
-      lidToJid[row.lid] = row.jid;
-      jidToLid[row.jid] = row.lid;
-    }
-    if (res.rowCount) logger.info(`[lidToJid] ${res.rowCount} mapeamento(s) restaurado(s) do banco`);
-  } catch (err) {
-    logger.warn(`[lidToJid] Falha ao restaurar do banco: ${err.message}`);
-  }
-}
-
 
 // Map com TTL por entrada: evita clear abrupto que abriria janela de duplicatas
 const processedMessages = new Map(); // id → timestamp
@@ -110,65 +86,24 @@ function isProcessed(id) {
 }
 
 const MAX_RECONNECT_DELAY_MS = 30_000;
+const MESSAGE_PROCESSING_TIMEOUT_MS = Number(process.env.BOT_MESSAGE_TIMEOUT_MS || 45_000);
+const BOT_PROCESSING_FALLBACK =
+  process.env.BOT_PROCESSING_FALLBACK ||
+  "⚠️ Estou com uma instabilidade momentânea para processar sua mensagem. Tente novamente em instantes ou aguarde um atendente.";
+
+function withTimeout(promise, timeoutMs, label = "operação") {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} excedeu ${timeoutMs}ms`)), timeoutMs);
+  });
+
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
 
 function getReconnectDelay() {
   const delay = Math.min(1000 * 2 ** reconnectAttempts, MAX_RECONNECT_DELAY_MS);
   reconnectAttempts++;
   return delay;
-}
-
-function unwrapMessage(message) {
-  if (!message) return null;
-  if (message.ephemeralMessage)              return unwrapMessage(message.ephemeralMessage.message);
-  if (message.viewOnceMessage)               return unwrapMessage(message.viewOnceMessage.message);
-  if (message.viewOnceMessageV2)             return unwrapMessage(message.viewOnceMessageV2.message);
-  if (message.documentWithCaptionMessage)    return unwrapMessage(message.documentWithCaptionMessage.message);
-  return message;
-}
-
-function getTextMessage(msg) {
-  const message = unwrapMessage(msg.message);
-  return (
-    message?.conversation ||
-    message?.extendedTextMessage?.text ||
-    message?.imageMessage?.caption ||
-    message?.videoMessage?.caption ||
-    message?.buttonsResponseMessage?.selectedButtonId ||
-    message?.listResponseMessage?.singleSelectReply?.selectedRowId ||
-    ""
-  );
-}
-
-function getMediaType(msg) {
-  const message = unwrapMessage(msg.message);
-  if (!message)                                               return null;
-  if (message.audioMessage)                                   return "áudio";
-  if (message.stickerMessage)                                 return "sticker";
-  if (message.documentMessage)                                return "documento";
-  if (message.imageMessage && !message.imageMessage.caption)  return "imagem";
-  if (message.videoMessage && !message.videoMessage.caption)  return "vídeo";
-  return null;
-}
-
-function isValidUserMessage(msg, type) {
-  const jid = msg.key.remoteJid;
-  if (type !== "notify")                  return false;
-  if (!jid)                               return false;
-  if (msg.key.fromMe)                     return false;
-  if (jid.endsWith("@g.us"))              return false;
-  if (jid.endsWith("@newsletter"))        return false;
-  if (jid === "status@broadcast")         return false;
-  if (jid.endsWith("@broadcast"))         return false;
-  return jid.endsWith("@s.whatsapp.net") || jid.endsWith("@lid");
-}
-
-function parseMessageStatus(status) {
-  switch (status) {
-    case 1:  return "sent";
-    case 2:  return "delivered";
-    case 3:  return "read";
-    default: return "pending";
-  }
 }
 
 /**
@@ -240,6 +175,58 @@ async function enviarComRetry(userId, response) {
   return false;
 }
 
+
+async function autoRegisterContact(userId, contactName = "") {
+  const rawUserId = String(userId || "").trim();
+  const isPhoneJid = rawUserId.endsWith("@s.whatsapp.net");
+  const isLidJid = rawUserId.endsWith("@lid");
+  if (!isPhoneJid && !isLidJid) return null;
+
+  // Para @lid sem resolução, salvamos o identificador numérico do LID.
+  // Isso evita perda de rastreio no painel até que o mapa LID→JID seja descoberto.
+  const phone = rawUserId.replace(/@(s\.whatsapp\.net|lid)$/i, "").replace(/\D/g, "");
+  if (!phone) return null;
+
+  const safeName = String(contactName || "").trim() || phone;
+
+  try {
+    const existing = await pool.query(
+      `SELECT id, nome FROM contacts WHERE whatsapp = $1::varchar LIMIT 1`,
+      [phone]
+    );
+
+    if (existing.rows.length) {
+      const currentName = String(existing.rows[0].nome || "").trim();
+      const looksGeneric = !currentName || currentName === phone || /^\d{8,15}$/.test(currentName);
+
+      if (safeName !== phone && looksGeneric) {
+        await pool.query(
+          `UPDATE contacts SET nome = $1::text, updated_at = NOW() WHERE id = $2`,
+          [safeName, existing.rows[0].id]
+        );
+        logger.info(`[CONTACT_UPDATED] ${phone} nome="${safeName}"`);
+        emitEvent("contacts_updated", { reason: "auto_contact_update", whatsapp: phone });
+      }
+
+      return existing.rows[0].id;
+    }
+
+    const inserted = await pool.query(
+      `INSERT INTO contacts (nome, whatsapp, status, tags)
+       VALUES ($1::text, $2::varchar, 'ativo', '{}'::text[])
+       RETURNING id`,
+      [safeName, phone]
+    );
+
+    logger.info(`[CONTACT_CREATED] ${phone} nome="${safeName}"`);
+    emitEvent("contacts_updated", { reason: "auto_contact", whatsapp: phone });
+    return inserted.rows[0]?.id || null;
+  } catch (err) {
+    logger.warn(`[AutoContact] falhou para ${phone}: ${err.message}`);
+    return null;
+  }
+}
+
 async function connectWhatsApp(onMessage) {
   if (typeof onMessage !== "function") {
     throw new Error("connectWhatsApp precisa receber processMessage.");
@@ -300,7 +287,7 @@ async function connectWhatsApp(onMessage) {
         setLidMapping(c.id, `${phone}@s.whatsapp.net`, `${source}/phone`);
       }
     }
-    logger.info(`[lidToJid] mapa total: ${Object.keys(lidToJid).length} entradas`);
+    logger.info(`[lidToJid] mapa total: ${getLidMapStats().lidToJid} entradas`);
   }
 
   sock.ev.on("contacts.upsert", contacts => processContacts(contacts, "contacts.upsert"));
@@ -435,8 +422,9 @@ async function connectWhatsApp(onMessage) {
       let sendTo = jid; // JID de destino para enviar — começa igual ao recebido
 
       if (jid.includes("@lid")) {
-        if (lidToJid[jid]) {
-          userId = lidToJid[jid];
+        const resolvedFromMap = resolveLid(jid);
+        if (resolvedFromMap) {
+          userId = resolvedFromMap;
           // sendTo permanece @lid: sessão Signal está ativa com esse JID,
           // responder ao número causaria novo handshake → "Aguardando mensagem"
           logger.info(`[LID→JID] ${jid} → ${userId} (resposta via @lid)`);
@@ -448,8 +436,11 @@ async function connectWhatsApp(onMessage) {
           // Aqui não temos sessão com o número — usamos o @lid mesmo
           logger.info(`[senderPn] ${jid} → ${userId} (resposta via @lid)`);
         } else {
-          logger.warn(`[msg@lid ignorada - sem resolução] jid=${jid} pushName=${msg.pushName || ""}`);
-          continue;
+          // Não perde mensagem @lid sem resolução. Mantém o próprio @lid como
+          // identificador de conversa/ticket e responde pelo mesmo JID.
+          userId = jid;
+          sendTo = jid;
+          logger.warn(`[LID_FALLBACK] ${jid} sem resolução; mensagem será salva/respondida via @lid. pushName=${msg.pushName || ""}`);
         }
       }
 
@@ -459,16 +450,10 @@ async function connectWhatsApp(onMessage) {
         msg.notifyName ||
         "";
 
-      // Auto-registro: salva o contato na tabela contacts se ainda não existir
-      if (userId.endsWith("@s.whatsapp.net")) {
-        const phone = userId.replace("@s.whatsapp.net", "");
-        pool.query(
-          `INSERT INTO contacts (nome, whatsapp)
-           SELECT $1::text, $2::varchar
-           WHERE NOT EXISTS (SELECT 1 FROM contacts WHERE whatsapp = $2::varchar)`,
-          [contactName || phone, phone]
-        ).catch(err => logger.warn(`[AutoContact] ${err.message}`));
-      }
+      // Auto-registro: salva/atualiza o contato sem bloquear o fluxo da mensagem.
+      // Importante: esta função usa casts explícitos e SELECT prévio para evitar o erro
+      // "inconsistent types deduced for parameter" do PostgreSQL.
+      await autoRegisterContact(userId, contactName);
 
       const text = getTextMessage(msg).trim();
 
@@ -502,44 +487,44 @@ async function connectWhatsApp(onMessage) {
       }
 
       try {
-        logger.info(`Mensagem recebida de ${userId}: ${text}`);
-        const response = await onMessage({ userId, contactName, message: text });
-        if (!response) { logger.warn("Nenhuma resposta retornada."); continue; }
+        logger.info(`[MESSAGE_IN] ${userId}: ${text}`);
+
+        // UX: mostra "digitando..." antes de processar IA/fluxo quando possível.
+        sendTypingPresence(sendTo).catch(err =>
+          logger.debug?.(`[Typing] não enviado para ${sendTo}: ${err.message}`)
+        );
+
+        const response = await withTimeout(
+          onMessage({ userId, contactName, message: text }),
+          MESSAGE_PROCESSING_TIMEOUT_MS,
+          "processamento do bot"
+        );
+
+        // Retorno vazio é normal quando atendimento humano está ativo.
+        if (!response) {
+          logger.debug?.(`[MESSAGE_NO_BOT_RESPONSE] ${userId}`);
+          continue;
+        }
+
         await enviarComRetry(sendTo, response);
       } catch (err) {
-        logger.error(`Erro ao processar mensagem: ${err.message}`);
+        logger.error(`[BOT_PROCESSING_ERROR] ${userId}: ${err.stack || err.message}`);
+        try {
+          await enviarComRetry(sendTo, BOT_PROCESSING_FALLBACK);
+        } catch (sendErr) {
+          logger.error(`[BOT_FALLBACK_SEND_ERROR] ${userId}: ${sendErr.message}`);
+        }
+        emitEvent("bot_error", {
+          userId,
+          message: "Erro ao processar mensagem do cliente.",
+          detail: err.message,
+          createdAt: new Date()
+        });
       }
     }
   });
 }
 
-
-function normalizePhotoJid(userId) {
-  const raw = String(userId || "").trim();
-  if (!raw) return "";
-  if (raw.endsWith("@s.whatsapp.net") || raw.endsWith("@lid") || raw.endsWith("@g.us")) return raw;
-  const digits = raw.replace(/\D/g, "");
-  return digits ? `${digits}@s.whatsapp.net` : raw;
-}
-
-function getProfilePhotoCandidates(userId) {
-  const raw = String(userId || "").trim();
-  const normalized = normalizePhotoJid(raw);
-  const digits = raw.replace(/\D/g, "");
-  const phoneJid = digits ? `${digits}@s.whatsapp.net` : "";
-
-  return Array.from(new Set([
-    raw,
-    normalized,
-    phoneJid,
-    lidToJid[raw],
-    lidToJid[normalized],
-    lidToJid[phoneJid],
-    jidToLid[raw],
-    jidToLid[normalized],
-    jidToLid[phoneJid]
-  ].filter(Boolean)));
-}
 
 async function getProfilePhotoUrl(userId) {
   if (!sock) return null;
@@ -653,14 +638,6 @@ function getSocket() {
   return sock;
 }
 
-function resolveLid(lid) {
-  return lidToJid[lid] || null;
-}
-
-function resolveJidToLid(jid) {
-  return jidToLid[jid] || null;
-}
-
 async function sendTypingPresence(userId) {
   if (!sock || !isWhatsAppConnected) return;
 
@@ -762,6 +739,7 @@ module.exports = {
   getProfilePhotoUrl,
   getSocket,
   resolveLid,
+  resolveJidToLid,
   sendTypingPresence,
   isConnected,
   forceReconnect,

@@ -8,6 +8,10 @@ const { reopenTicketIfClosed } = require("./ticket.service");
 const humanMode       = require("./humanMode.service");
 const logger          = require("../utils/logger");
 
+const BOT_FLOW_FALLBACK =
+  process.env.BOT_FLOW_FALLBACK ||
+  "⚠️ Não consegui processar sua solicitação agora. Tente novamente em instantes ou aguarde um atendente.";
+
 // ─── Rate Limiting ───────────────────────────────────────────────────────────
 //
 // MELHORIA: o objeto rateLimits era persistido em memória global, o que significa:
@@ -109,11 +113,19 @@ async function processMessage({ userId, contactName, message }) {
   }
 
   return enqueue(userId, async () => {
-    // Log de recebimento já feito em whatsapp.js (ponto de entrada) — evita linha duplicada
-    const response = await mainFlow({ userId, message });
-
     const session = getSession(userId) || {};
     const sector = session.sector || "main";
+    let response = "";
+    let flowError = null;
+
+    try {
+      // Log de recebimento já feito em whatsapp.js (ponto de entrada) — evita linha duplicada
+      response = await mainFlow({ userId, message });
+    } catch (err) {
+      flowError = err;
+      response = BOT_FLOW_FALLBACK;
+      logger.error(`[FLOW_ERROR] ${userId}: ${err.stack || err.message}`);
+    }
 
     if (!response) {
       logger.warn(`Fluxo sem resposta para ${userId}`);
@@ -126,7 +138,7 @@ async function processMessage({ userId, contactName, message }) {
         contactName,
         message,
         response,
-        sector
+        sector: flowError ? "erro" : sector
       });
 
       // Emite de novo com a resposta do bot já salva
@@ -136,7 +148,8 @@ async function processMessage({ userId, contactName, message }) {
           contactName,
           message,
           response,
-          sector,
+          sector: flowError ? "erro" : sector,
+          error: flowError ? true : false,
           createdAt: new Date()
         });
       } catch (e) { logger.warn(`Erro ao emitir nova_mensagem (resposta): ${e.message}`); }

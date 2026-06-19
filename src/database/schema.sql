@@ -148,6 +148,35 @@ CREATE TABLE IF NOT EXISTS processed_messages (
 CREATE INDEX IF NOT EXISTS idx_processed_messages_at
 ON processed_messages(processed_at);
 
+
+-- Contatos / Agenda
+CREATE TABLE IF NOT EXISTS contacts (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  nome         VARCHAR(255) NOT NULL,
+  whatsapp     VARCHAR(30) NOT NULL,
+  estado       VARCHAR(2),
+  status       VARCHAR(20) NOT NULL DEFAULT 'ativo',
+  tags         TEXT[] NOT NULL DEFAULT '{}',
+  atendente_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  departamento VARCHAR(100),
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_contacts_whatsapp ON contacts(whatsapp);
+CREATE INDEX IF NOT EXISTS idx_contacts_status   ON contacts(status);
+CREATE INDEX IF NOT EXISTS idx_contacts_nome     ON contacts(lower(nome));
+
+-- Mapa persistente @lid → @s.whatsapp.net
+CREATE TABLE IF NOT EXISTS lid_map (
+  lid        TEXT PRIMARY KEY,
+  jid        TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_lid_map_jid ON lid_map(jid);
+CREATE INDEX IF NOT EXISTS idx_lid_map_updated ON lid_map(updated_at DESC);
+
 -- Campanhas / Transmissões
 CREATE TABLE IF NOT EXISTS broadcasts (
   id                SERIAL PRIMARY KEY,

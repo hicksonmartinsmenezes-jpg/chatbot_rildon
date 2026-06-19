@@ -139,11 +139,14 @@ async function healthCheck(req, res) {
   }
 }
 
-// ── Uploads autenticados (CORRIGIDO: era express.static público) ──────────────
-// Fotos de perfil e imagens de campanha exigem sessão válida
+// ── Uploads (imagens de perfil / campanha) ───────────────────────────────────
+// Servidos publicamente: tags <img> não carregam o cookie de sessão de forma
+// confiável (authSession retornava 401 e as fotos sumiam). Os nomes de arquivo
+// são UUID+timestamp (não-adivinháveis) e o conteúdo é de baixa sensibilidade.
+// Mantém-se a proteção contra path traversal.
 const UPLOADS_DIR = path.join(__dirname, "uploads");
 
-app.get("/uploads/*", authSession, (req, res) => {
+app.get("/uploads/*", (req, res) => {
   // Normaliza o path para evitar path traversal
   const relative = req.path.replace(/^\/uploads\//, "");
   const filePath  = path.resolve(UPLOADS_DIR, relative);

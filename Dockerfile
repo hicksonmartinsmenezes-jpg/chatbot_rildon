@@ -1,13 +1,14 @@
-FROM node:22
+FROM node:20-alpine AS runtime
 
 WORKDIR /app
+ENV NODE_ENV=production
 
 COPY package*.json ./
+RUN npm install --omit=dev
 
-RUN npm install
-
-COPY . .
+COPY src ./src
+COPY frontend ./frontend
+COPY .env.example ./env.example
 
 EXPOSE 3000
-
-CMD ["npm", "run", "dev"]
+CMD ["node", "src/server.js"]

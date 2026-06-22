@@ -1,41 +1,57 @@
-node_modules/
+# Ambiente
 .env
 .env.*
 !.env.example
+
+# Dependências
+node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.DS_Store
+pnpm-debug.log*
 
-# runtime data/logs
+# Logs
+logs/
+*.log
 src/logs/*
 !src/logs/.gitkeep
+
+# Dados locais / fallback JSON
 src/data/*
 !src/data/.gitkeep
-src/services/logs/*
-src/services/data/*
+src/services/data/
 
-# uploaded files
+# Uploads gerados em runtime
+uploads/
 src/uploads/*
 !src/uploads/.gitkeep
 !src/uploads/campaigns/
-!src/uploads/profiles/
-!src/uploads/profile/
-src/uploads/campaigns/*
 !src/uploads/campaigns/.gitkeep
-src/uploads/profiles/*
-!src/uploads/profiles/.gitkeep
-src/uploads/profile/*
+!src/uploads/profile/
 !src/uploads/profile/.gitkeep
-src/services/uploads/*
-!src/services/uploads/.gitkeep
-!src/services/uploads/campaigns/
-!src/services/uploads/profiles/
-src/services/uploads/campaigns/*
-!src/services/uploads/campaigns/.gitkeep
-src/services/uploads/profiles/*
-!src/services/uploads/profiles/.gitkeep
+!src/uploads/profiles/
+!src/uploads/profiles/.gitkeep
+src/services/uploads/
 
-# WhatsApp auth/session folders
+# Sessões e credenciais do WhatsApp/Baileys
 auth_info/
+.auth/
+auth/
 sessions/
+baileys_auth/
+*.session
+*.creds.json
+
+# Build / cache / sistema operacional
+coverage/
+dist/
+build/
+.cache/
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Arquivos compactados / backups acidentais
+*.zip
+src.zip

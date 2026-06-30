@@ -421,7 +421,6 @@ const ACCESSIBLE_ACTION_LABELS = {
   createPanelUser: 'Criar usuário',
   resetSettings: 'Restaurar configurações',
   requestWaReconnect: 'Reconectar WhatsApp',
-  loadActivityLogs: 'Atualizar logs',
   loadMetricsCharts: 'Atualizar métricas',
   fecharChat: 'Fechar chat',
   enviarMensagemManual: 'Enviar mensagem manual',

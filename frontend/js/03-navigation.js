@@ -11,7 +11,6 @@ function switchTab(tab, event) {
   // CORRIGIDO: evita scroll pro topo e bug de histórico do navegador
   if (event) event.preventDefault();
 
-  if (tab === "logs" && typeof loadActivityLogs === "function") loadActivityLogs();
   if (tab === "metrics") {
     const p = typeof loadTickets === "function" ? loadTickets() : Promise.resolve();
     Promise.resolve(p).finally(() => { if (typeof loadMetricsCharts === "function") loadMetricsCharts(); });

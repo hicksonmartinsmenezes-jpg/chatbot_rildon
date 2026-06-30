@@ -57,7 +57,6 @@
     "createPanelUser",
     "resetSettings",
     "requestWaReconnect",
-    "loadActivityLogs",
     "loadMetricsCharts",
     "fecharChat",
     "enviarMensagemManual",

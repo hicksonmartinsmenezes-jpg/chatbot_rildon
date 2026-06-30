@@ -22,7 +22,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css">
-  <link rel="stylesheet" href="style.css?v=36">
+  <link rel="stylesheet" href="style.css?v=37">
   <link rel="stylesheet" href="supervisor.css?v=25">
 <style>
     /* Centraliza colunas da tabela de histórico */
@@ -1532,17 +1532,10 @@ Como podemos ajudar você hoje?
       <p>Resumo analítico dos atendimentos, setores e desempenho.</p>
     </div>
 
-    <div class="metrics-hero-actions">
-      <span class="metrics-updated" aria-live="polite">
-        <i class="fa-solid fa-clock-rotate-left"></i>
-        Atualizado às <strong id="metrics-updated-time">—</strong>
-      </span>
-
-      <button type="button" class="metrics-refresh-btn" data-action="loadMetricsCharts" aria-label="Atualizar métricas">
-        <i class="fa-solid fa-arrows-rotate"></i>
-        <span>Atualizar</span>
-      </button>
-    </div>
+    <button type="button" class="metrics-refresh-btn" data-action="loadMetricsCharts" aria-label="Atualizar métricas">
+      <i class="fa-solid fa-arrows-rotate"></i>
+      <span>Atualizar</span>
+    </button>
   </header>
 
   <section class="metrics-cards">
@@ -1714,7 +1707,7 @@ Como podemos ajudar você hoje?
   <script src="js/03-navigation.js?v=4"></script>
   <script src="js/history/history-utils.js?v=1"></script>
   <script src="js/04-history.js?v=6"></script>
-  <script src="js/05-metrics.js?v=2"></script>
+  <script src="js/05-metrics.js?v=3"></script>
   <script src="js/tickets/tickets-render.js?v=2"></script>
   <script src="js/06-tickets.js?v=6"></script>
   <script src="js/conversations/conversations-utils.js?v=1"></script>

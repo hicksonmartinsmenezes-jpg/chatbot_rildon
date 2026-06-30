@@ -136,12 +136,6 @@ async function loadMetricsCharts() {
     // Mantém referência global para compatibilidade com código que usa metricDayChart
     if (typeof AppState !== "undefined") AppState.metricDayChart = metricDay;
 
-    // ── Timestamp da última atualização ───────────────────────────────────────
-    const stamp = document.getElementById("metrics-updated-time");
-    if (stamp) {
-      stamp.textContent = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-    }
-
   } catch (err) {
     console.error("Erro métricas:", err);
   } finally {

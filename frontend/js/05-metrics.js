@@ -67,7 +67,7 @@ async function loadMetricsCharts() {
     const data = await res.json();
 
     // ── KPIs (com animação de contagem) ───────────────────────────────────────
-    animateMetric(document.getElementById("metric-total"),      data.total);
+    animateMetric(document.getElementById("metric-total"),      data.mensal);
     animateMetric(document.getElementById("metric-andamento"),  data.andamento);
     animateMetric(document.getElementById("metric-resolvidos"), data.resolvidos);
     animateMetric(document.getElementById("metric-cancelados"), data.cancelados);

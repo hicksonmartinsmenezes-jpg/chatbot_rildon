@@ -8,7 +8,7 @@ const router = express.Router();
 const TZ = process.env.TZ_NEGOCIO || "America/Maceio";
 
 router.get("/metrics", asyncHandler(async (req, res) => {
-  // Totais por status + total geral + criados hoje
+  // Totais por status + total geral + criados hoje + criados no mês corrente
   const summaryRes = await pool.query(`
     SELECT
       COUNT(*)::int                                                        AS total,
@@ -16,9 +16,13 @@ router.get("/metrics", asyncHandler(async (req, res) => {
       COUNT(*) FILTER (WHERE status = 'em_andamento')::int                AS andamento,
       COUNT(*) FILTER (WHERE status = 'resolvido')::int                   AS resolvidos,
       COUNT(*) FILTER (WHERE status = 'cancelado')::int                   AS cancelados,
-      COUNT(*) FILTER (WHERE DATE(created_at) = CURRENT_DATE)::int        AS hoje
+      COUNT(*) FILTER (WHERE DATE(created_at) = CURRENT_DATE)::int        AS hoje,
+      COUNT(*) FILTER (
+        WHERE DATE_TRUNC('month', created_at AT TIME ZONE $1)
+            = DATE_TRUNC('month', NOW() AT TIME ZONE $1)
+      )::int                                                              AS mensal
     FROM tickets
-  `);
+  `, [TZ]);
 
   // Totais por setor
   const setorRes = await pool.query(`
@@ -67,6 +71,7 @@ router.get("/metrics", asyncHandler(async (req, res) => {
 
   res.json({
     total,
+    mensal:     s.mensal,
     hoje:       s.hoje,
     abertos:    s.abertos,
     andamento:  s.andamento,

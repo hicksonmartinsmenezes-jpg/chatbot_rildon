@@ -55,3 +55,7 @@ Thumbs.db
 # Arquivos compactados / backups acidentais
 *.zip
 src.zip
+
+# Geradores do Playbook de Tráfego Pago (projeto separado — não pertence ao chatbot)
+gerar_volume*.js
+gerar_volume*.py

@@ -30,6 +30,6 @@
 @import url("./css/11-campaigns.css?v=59");
 @import url('./css/12-ux-global.css?v=44');
 @import url('./css/14-contacts.css?v=13');
-@import url('./css/16-metrics.css?v=1');
+@import url('./css/16-metrics.css?v=2');
 /* Tema claro — DEVE ser o último para sobrescrever os demais */
 @import url('./css/15-light-theme.css?v=1');

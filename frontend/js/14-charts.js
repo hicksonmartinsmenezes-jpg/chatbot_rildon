@@ -2,33 +2,67 @@
 // Utilitários centralizados de gráficos — evita duplicação entre
 // 05-metrics.js e 06-tickets.js.
 
+// ─── Merge profundo de opções (preserva plugins/scales padrão) ────────────────
+function deepMergeChartOptions(base, extra) {
+  const out = { ...base };
+  for (const key of Object.keys(extra || {})) {
+    const bv = base ? base[key] : undefined;
+    const ev = extra[key];
+    if (ev && typeof ev === "object" && !Array.isArray(ev) &&
+        bv && typeof bv === "object" && !Array.isArray(bv)) {
+      out[key] = deepMergeChartOptions(bv, ev);
+    } else {
+      out[key] = ev;
+    }
+  }
+  return out;
+}
+
 // ─── Opções padrão ────────────────────────────────────────────────────────────
 function defaultChartOptions(extra = {}) {
-  return {
+  const base = {
     responsive: true,
     maintainAspectRatio: false,
+    animation: { duration: 700, easing: "easeOutQuart" },
+    interaction: { intersect: false },
     plugins: {
       legend: {
         labels: {
           color: "#cbd5e1",
           boxWidth: 12,
-          font: { weight: "bold" }
+          usePointStyle: true,
+          pointStyle: "circle",
+          padding: 16,
+          font: { weight: "bold", size: 12 }
         }
+      },
+      tooltip: {
+        backgroundColor: "rgba(17,17,17,0.96)",
+        borderColor: "rgba(255,255,255,0.10)",
+        borderWidth: 1,
+        padding: 12,
+        cornerRadius: 12,
+        titleColor: "#ffffff",
+        bodyColor: "#cbd5e1",
+        usePointStyle: true,
+        titleFont: { weight: "800" },
+        bodyFont: { weight: "600" }
       }
     },
     scales: {
       x: {
-        ticks: { color: "#94a3b8" },
+        ticks: { color: "#94a3b8", font: { weight: "600" } },
         grid:  { color: "rgba(255,255,255,.04)" }
       },
       y: {
         beginAtZero: true,
-        ticks: { color: "#94a3b8", precision: 0 },
+        ticks: { color: "#94a3b8", precision: 0, font: { weight: "600" } },
         grid:  { color: "rgba(255,255,255,.06)" }
       }
-    },
-    ...extra
+    }
   };
+
+  return deepMergeChartOptions(base, extra);
 }
 
 // ─── Fábrica de gráficos (cria ou atualiza no lugar) ──────────────────────────
@@ -57,6 +91,7 @@ function upsertChart(canvasOrId, type, data, opts = {}) {
   if (existing) {
     existing.data.labels   = data.labels;
     existing.data.datasets = data.datasets;
+    existing.options = defaultChartOptions(opts);
     existing.update("none"); // "none" = sem animação na atualização, mais rápido
     return existing;
   }

@@ -105,7 +105,48 @@
 
 .metrics-refresh-btn:active { transform: translateY(0); }
 .metrics-refresh-btn i { transition: transform var(--transition-slow); }
-.metrics-refresh-btn:hover i { transform: rotate(180deg); }
+.metrics-refresh-btn:not(.is-loading):hover i { transform: rotate(180deg); }
+
+/* Estado de carregamento */
+.metrics-refresh-btn.is-loading {
+  opacity: 0.8;
+  cursor: progress;
+  pointer-events: none;
+}
+
+.metrics-refresh-btn.is-loading i {
+  animation: metricsSpin 0.7s linear infinite;
+}
+
+@keyframes metricsSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* Ações do header (timestamp + botão) */
+.metrics-hero-actions {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.metrics-updated {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  color: #93a4bd;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.metrics-updated i { font-size: 11px; opacity: 0.7; }
+.metrics-updated strong { color: #cbd5e1; font-weight: 800; }
 
 /* ─── Cards KPI ────────────────────────────────────────────────── */
 #tab-metrics .metrics-cards {
@@ -301,3 +342,44 @@ body.light-theme #tab-metrics .chart-card {
 }
 
 body.light-theme #tab-metrics .chart-card h3 { color: #0f172a; }
+body.light-theme .metrics-updated {
+  background: #f1f5f9;
+  border-color: #dbe3ee;
+  color: #64748b;
+}
+body.light-theme .metrics-updated strong { color: #334155; }
+
+/* ─── Entrada com stagger ──────────────────────────────────────── */
+#tab-metrics:not(.hidden) .metric-card {
+  animation: metricCardIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+#tab-metrics:not(.hidden) .metric-card:nth-child(1) { animation-delay: 0.02s; }
+#tab-metrics:not(.hidden) .metric-card:nth-child(2) { animation-delay: 0.06s; }
+#tab-metrics:not(.hidden) .metric-card:nth-child(3) { animation-delay: 0.10s; }
+#tab-metrics:not(.hidden) .metric-card:nth-child(4) { animation-delay: 0.14s; }
+#tab-metrics:not(.hidden) .metric-card:nth-child(5) { animation-delay: 0.18s; }
+#tab-metrics:not(.hidden) .metric-card:nth-child(6) { animation-delay: 0.22s; }
+#tab-metrics:not(.hidden) .metric-card:nth-child(7) { animation-delay: 0.26s; }
+#tab-metrics:not(.hidden) .metric-card:nth-child(8) { animation-delay: 0.30s; }
+
+#tab-metrics:not(.hidden) .chart-card {
+  animation: metricCardIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: 0.34s;
+}
+
+@keyframes metricCardIn {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── Respeita preferência de menos movimento ──────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  #tab-metrics:not(.hidden) .metric-card,
+  #tab-metrics:not(.hidden) .chart-card {
+    animation: none;
+  }
+  .metrics-refresh-btn.is-loading i { animation: none; }
+  .metric-card,
+  .metrics-refresh-btn { transition: none; }
+}

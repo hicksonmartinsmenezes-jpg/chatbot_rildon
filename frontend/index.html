@@ -22,7 +22,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css">
-  <link rel="stylesheet" href="style.css?v=34">
+  <link rel="stylesheet" href="style.css?v=35">
   <link rel="stylesheet" href="supervisor.css?v=25">
 <style>
     /* Centraliza colunas da tabela de histórico */
@@ -1525,80 +1525,99 @@ Como podemos ajudar você hoje?
 
 <section id="tab-metrics" class="tab-content hidden">
 
-  <section class="metrics-header">
-    <div>
+  <header class="metrics-hero">
+    <div class="metrics-hero-text">
+      <span class="metrics-kicker"><i class="fa-solid fa-chart-line"></i> Painel analítico</span>
       <h2>Métricas do Sistema</h2>
       <p>Resumo analítico dos atendimentos, setores e desempenho.</p>
     </div>
 
-   <button type="button" class="btn-refresh" data-action="loadMetricsCharts">
+    <button type="button" class="metrics-refresh-btn" data-action="loadMetricsCharts">
       <i class="fa-solid fa-arrows-rotate"></i>
-      Atualizar
+      <span>Atualizar</span>
     </button>
-  </section>
+  </header>
 
   <section class="metrics-cards">
 
-  <div class="metric-card">
-    <span>Total de atendimentos</span>
-    <strong id="metric-total">0</strong>
-  </div>
+    <article class="metric-card" data-accent="blue">
+      <span class="metric-card-icon"><i class="fa-solid fa-headset"></i></span>
+      <strong id="metric-total">0</strong>
+      <span class="metric-card-label">Total de atendimentos</span>
+    </article>
 
-  <div class="metric-card">
-    <span>Em andamento</span>
-    <strong id="metric-andamento">0</strong>
-  </div>
+    <article class="metric-card" data-accent="amber">
+      <span class="metric-card-icon"><i class="fa-solid fa-hourglass-half"></i></span>
+      <strong id="metric-andamento">0</strong>
+      <span class="metric-card-label">Em andamento</span>
+    </article>
 
-  <div class="metric-card">
-    <span>Resolvidos</span>
-    <strong id="metric-resolvidos">0</strong>
-  </div>
+    <article class="metric-card" data-accent="green">
+      <span class="metric-card-icon"><i class="fa-solid fa-circle-check"></i></span>
+      <strong id="metric-resolvidos">0</strong>
+      <span class="metric-card-label">Resolvidos</span>
+    </article>
 
-  <div class="metric-card">
-    <span>Cancelados</span>
-    <strong id="metric-cancelados">0</strong>
-  </div>
+    <article class="metric-card" data-accent="red">
+      <span class="metric-card-icon"><i class="fa-solid fa-circle-xmark"></i></span>
+      <strong id="metric-cancelados">0</strong>
+      <span class="metric-card-label">Cancelados</span>
+    </article>
 
-  <div class="metric-card">
-    <span>Tickets hoje</span>
-    <strong id="metric-hoje">0</strong>
-  </div>
+    <article class="metric-card" data-accent="cyan">
+      <span class="metric-card-icon"><i class="fa-solid fa-calendar-day"></i></span>
+      <strong id="metric-hoje">0</strong>
+      <span class="metric-card-label">Tickets hoje</span>
+    </article>
 
-  <div class="metric-card">
-    <span>Pendentes</span>
-    <strong id="metric-pendentes">0</strong>
-  </div>
+    <article class="metric-card" data-accent="orange">
+      <span class="metric-card-icon"><i class="fa-solid fa-clock"></i></span>
+      <strong id="metric-pendentes">0</strong>
+      <span class="metric-card-label">Pendentes</span>
+    </article>
 
-  <div class="metric-card">
-    <span>Taxa de resolução</span>
-    <strong id="metric-taxa-resolucao">0%</strong>
-  </div>
+    <article class="metric-card" data-accent="purple">
+      <span class="metric-card-icon"><i class="fa-solid fa-gauge-high"></i></span>
+      <strong id="metric-taxa-resolucao">0%</strong>
+      <span class="metric-card-label">Taxa de resolução</span>
+    </article>
 
-  <div class="metric-card">
-    <span>Setor destaque</span>
-    <strong id="metric-setor-top">—</strong>
-  </div>
+    <article class="metric-card" data-accent="teal">
+      <span class="metric-card-icon"><i class="fa-solid fa-trophy"></i></span>
+      <strong id="metric-setor-top">—</strong>
+      <span class="metric-card-label">Setor destaque</span>
+    </article>
 
-</section>
-
-  <section class="charts-grid professional">
-    <div class="chart-card">
-      <h3>Atendimentos por status</h3>
-     <canvas id="metric-chart-status"></canvas>
-    </div>
-
-    <div class="chart-card">
-      <h3>Atendimentos por setor</h3>
-      <canvas id="metric-chart-sector"></canvas>
-    </div>
   </section>
 
-  <section class="charts-grid professional">
-  <div class="chart-card chart-wide">
-    <h3>Atendimentos por dia</h3>
-    <canvas id="metric-chart-day"></canvas>
-  </div>
-</section>
+  <section class="metrics-charts">
+
+    <article class="chart-card">
+      <header class="chart-card-head">
+        <span class="chart-card-icon"><i class="fa-solid fa-chart-pie"></i></span>
+        <h3>Atendimentos por status</h3>
+      </header>
+      <div class="chart-canvas-wrap"><canvas id="metric-chart-status"></canvas></div>
+    </article>
+
+    <article class="chart-card">
+      <header class="chart-card-head">
+        <span class="chart-card-icon"><i class="fa-solid fa-chart-column"></i></span>
+        <h3>Atendimentos por setor</h3>
+      </header>
+      <div class="chart-canvas-wrap"><canvas id="metric-chart-sector"></canvas></div>
+    </article>
+
+    <article class="chart-card chart-wide">
+      <header class="chart-card-head">
+        <span class="chart-card-icon"><i class="fa-solid fa-chart-line"></i></span>
+        <h3>Atendimentos por dia</h3>
+      </header>
+      <div class="chart-canvas-wrap"><canvas id="metric-chart-day"></canvas></div>
+    </article>
+
+  </section>
+
 </section>
 
 </section>

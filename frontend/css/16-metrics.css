@@ -1,0 +1,303 @@
+/* ==========================================
+   16-metrics.css — Painel de Métricas (profissional)
+
+   Escopado em #tab-metrics para sobrepor as regras genéricas de
+   .metric-card / .chart-card sem afetar outros painéis.
+========================================== */
+
+#tab-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+/* ─── Cabeçalho ────────────────────────────────────────────────── */
+.metrics-hero {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 22px;
+  flex-wrap: wrap;
+  padding: 26px 28px;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(37, 99, 235, 0.20), transparent 55%),
+    linear-gradient(160deg, #1b1b1b 0%, #141414 60%, #101010 100%);
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.metrics-hero::after {
+  content: "";
+  position: absolute;
+  width: 240px;
+  height: 240px;
+  right: -70px;
+  top: -90px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(37, 99, 235, 0.28), transparent 70%);
+  filter: blur(10px);
+  pointer-events: none;
+}
+
+.metrics-hero-text { position: relative; z-index: 2; }
+
+.metrics-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  margin-bottom: 12px;
+  border-radius: var(--radius-full);
+  background: rgba(37, 99, 235, 0.12);
+  border: 1px solid rgba(37, 99, 235, 0.28);
+  color: #bfdbfe;
+  font-size: 11.5px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.metrics-hero h2 {
+  margin: 0;
+  color: #fff;
+  font-size: 30px;
+  font-weight: 900;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+.metrics-hero p {
+  margin: 8px 0 0;
+  color: #cbd5e1;
+  font-size: 14.5px;
+  line-height: 1.55;
+  max-width: 560px;
+}
+
+.metrics-refresh-btn {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 20px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(37, 99, 235, 0.35);
+  background: linear-gradient(135deg, var(--primary), var(--primary-2));
+  color: #fff;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 10px 26px rgba(37, 99, 235, 0.35);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast), filter var(--transition-fast);
+}
+
+.metrics-refresh-btn:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.06);
+  box-shadow: 0 14px 32px rgba(37, 99, 235, 0.45);
+}
+
+.metrics-refresh-btn:active { transform: translateY(0); }
+.metrics-refresh-btn i { transition: transform var(--transition-slow); }
+.metrics-refresh-btn:hover i { transform: rotate(180deg); }
+
+/* ─── Cards KPI ────────────────────────────────────────────────── */
+#tab-metrics .metrics-cards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+#tab-metrics .metric-card {
+  --accent: var(--primary);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  min-height: 150px;
+  padding: 20px 22px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background:
+    radial-gradient(circle at 85% 0%, rgba(255, 255, 255, 0.04), transparent 55%),
+    linear-gradient(160deg, #1e1e1e 0%, #151515 60%, #121212 100%);
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.40),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transition: transform var(--transition-normal), box-shadow var(--transition-normal), border-color var(--transition-normal);
+}
+
+/* Faixa de destaque no topo (cor por métrica) */
+#tab-metrics .metric-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent), transparent 85%);
+  opacity: 0.9;
+}
+
+#tab-metrics .metric-card:hover {
+  transform: translateY(-4px);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  box-shadow:
+    0 20px 46px rgba(0, 0, 0, 0.50),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.metric-card-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  margin-bottom: 14px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+#tab-metrics .metric-card strong {
+  display: block;
+  width: 100%;
+  font-size: 40px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: #fff;
+  text-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+}
+
+.metric-card-label {
+  margin-top: 8px;
+  color: #93a4bd;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Cores de destaque por métrica */
+#tab-metrics .metric-card[data-accent="blue"]   { --accent: #3b82f6; }
+#tab-metrics .metric-card[data-accent="amber"]  { --accent: #f59e0b; }
+#tab-metrics .metric-card[data-accent="green"]  { --accent: #22c55e; }
+#tab-metrics .metric-card[data-accent="red"]    { --accent: #ef4444; }
+#tab-metrics .metric-card[data-accent="cyan"]   { --accent: #06b6d4; }
+#tab-metrics .metric-card[data-accent="orange"] { --accent: #fb923c; }
+#tab-metrics .metric-card[data-accent="purple"] { --accent: #8b5cf6; }
+#tab-metrics .metric-card[data-accent="teal"]   { --accent: #14b8a6; }
+
+/* ─── Gráficos ─────────────────────────────────────────────────── */
+.metrics-charts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+#tab-metrics .chart-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 22px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background:
+    radial-gradient(circle at 90% 0%, rgba(255, 255, 255, 0.035), transparent 55%),
+    linear-gradient(160deg, #1c1c1c 0%, #141414 60%, #111111 100%);
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+#tab-metrics .chart-card.chart-wide { grid-column: 1 / -1; }
+
+.chart-card-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.chart-card-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  color: #bfdbfe;
+  background: rgba(37, 99, 235, 0.14);
+  border: 1px solid rgba(37, 99, 235, 0.26);
+  flex-shrink: 0;
+}
+
+#tab-metrics .chart-card h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: #f8fafc;
+  letter-spacing: -0.01em;
+}
+
+/* Altura fixa: Chart.js usa maintainAspectRatio:false */
+.chart-canvas-wrap {
+  position: relative;
+  height: 290px;
+}
+
+#tab-metrics .chart-card.chart-wide .chart-canvas-wrap { height: 320px; }
+
+.chart-canvas-wrap canvas { max-height: 100%; }
+
+/* ─── Responsivo ───────────────────────────────────────────────── */
+@media (max-width: 1180px) {
+  #tab-metrics .metrics-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .metrics-charts { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 640px) {
+  .metrics-hero { padding: 22px; }
+  .metrics-hero h2 { font-size: 24px; }
+  .metrics-refresh-btn { width: 100%; justify-content: center; }
+  #tab-metrics .metrics-cards { grid-template-columns: 1fr; }
+  #tab-metrics .metric-card strong { font-size: 34px; }
+}
+
+/* ─── Tema claro ───────────────────────────────────────────────── */
+body.light-theme .metrics-hero {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(37, 99, 235, 0.10), transparent 55%),
+    linear-gradient(160deg, #ffffff 0%, #f5f7fb 100%);
+  border-color: #dbe3ee;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+}
+
+body.light-theme .metrics-hero h2 { color: #0f172a; }
+body.light-theme .metrics-hero p  { color: #475569; }
+
+body.light-theme #tab-metrics .metric-card {
+  background: #ffffff;
+  border-color: #dbe3ee;
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.07);
+}
+
+body.light-theme #tab-metrics .metric-card strong { color: #0f172a; text-shadow: none; }
+body.light-theme .metric-card-label { color: #64748b; }
+
+body.light-theme #tab-metrics .chart-card {
+  background: #ffffff;
+  border-color: #dbe3ee;
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.07);
+}
+
+body.light-theme #tab-metrics .chart-card h3 { color: #0f172a; }

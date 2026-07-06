@@ -12,7 +12,9 @@
     "dev": "nodemon src/server.js",
     "migrate": "node src/database/migrate.js",
     "db:test": "node src/database/test-postgres.js",
-    "check": "node -c src/server.js && node -c src/app.js"
+    "check": "node -c src/server.js && node -c src/app.js",
+    "test": "jest",
+    "test:watch": "jest --watch"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "^6.7.23",
@@ -35,6 +37,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "jest": "^30.4.2",
     "nodemon": "^3.1.14"
   }
 }

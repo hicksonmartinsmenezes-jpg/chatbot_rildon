@@ -26,7 +26,7 @@ async function _loadTicketsCore() {
     if (!res) return;
     const data = await res.json();
 
-    updateStats(data.stats, data.tickets || [], data.liveStats);
+    updateStats(data.stats, data.tickets || [], data.liveStats, data.todayStats);
 
     if (!firstLoadTickets && data.total > lastTicketTotal) showNewTicketAlert();
 
@@ -83,7 +83,7 @@ async function _executarMudarStatus(id, status) {
   }
 }
 
-function updateStats(stats, tickets = [], liveStats = null) {
+function updateStats(stats, tickets = [], liveStats = null, todayStats = null) {
   if (!stats) return;
 
   const total     = stats.total ?? 0;
@@ -94,13 +94,16 @@ function updateStats(stats, tickets = [], liveStats = null) {
   const live      = liveStats || stats;
   const aberto    = live.aberto ?? live.abertos ?? 0;
   const andamento = live.em_andamento ?? 0;
-  const fechados  = (live.resolvido ?? 0) + (live.cancelado ?? 0);
+
+  // Encerrados reflete apenas HOJE (todayStats), coerente com o foco do Dashboard no dia.
+  const hoje         = todayStats || stats;
+  const encerradosHoje = (hoje.resolvido ?? 0) + (hoje.cancelado ?? 0);
 
   setText("stat-total",    total);
   setText("stat-aberto",   aberto);    // Pendentes = aberto (todos, sem filtro de data)
   setText("stat-andamento",andamento); // Ativos    = em_andamento (todos)
   setText("stat-resolvido",resolvido);
-  setText("stat-encerrados",fechados);  // Encerrados = resolvido + cancelado (todos)
+  setText("stat-encerrados",encerradosHoje);  // Encerrados = resolvido + cancelado, apenas de HOJE
   setText("stat-contatos", new Set((tickets || []).map(t => t.userId)).size);
 
   setText("op-aberto",    aberto);

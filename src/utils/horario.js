@@ -46,6 +46,19 @@ function proximoAtendimento() {
   return `${nomes[dia + 1]} às *07:50h*`;
 }
 
+// Data de "hoje" no fuso do negócio, em formato ISO (YYYY-MM-DD).
+// Usada por cards "do dia" (ex.: Encerrados hoje no Dashboard). Aceita uma data
+// opcional para testes determinísticos.
+function dataHojeISO(date = new Date()) {
+  // en-CA formata como YYYY-MM-DD; o timeZone garante o dia correto no fuso do negócio.
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(date);
+}
+
 function mensagemForaDeHorario() {
   return (
     "🕐 *Fora do horário de atendimento*\n\n" +
@@ -58,4 +71,4 @@ function mensagemForaDeHorario() {
   );
 }
 
-module.exports = { estaEmHorarioDeAtendimento, mensagemForaDeHorario, proximoAtendimento };
+module.exports = { estaEmHorarioDeAtendimento, mensagemForaDeHorario, proximoAtendimento, dataHojeISO };

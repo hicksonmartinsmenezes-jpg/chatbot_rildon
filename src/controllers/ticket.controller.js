@@ -2,6 +2,7 @@ const logger = require("../utils/logger");
 const humanMode = require("../services/humanMode.service");
 const ticketRepository = require("../repositories/ticket.repository");
 const { canAccessTicket, canManageTicket, canSeeSensitiveDashboard, canUseFullConversationPanel } = require("../utils/access-control");
+const { dataHojeISO } = require("../utils/horario");
 const {
   createTicket,
   listTickets,
@@ -66,7 +67,12 @@ async function getTickets(req, res) {
     const stats     = await getTicketStats({ dateStart, dateEnd });
     const liveStats = await getTicketStats({}); // sem filtro de data = estado atual real
 
-    res.json({ stats, liveStats, total: tickets.length, tickets });
+    // Estatísticas fixas de HOJE (fuso do negócio) — o card "Encerrados" do
+    // Dashboard reflete o dia, independente do filtro de data no topo.
+    const hoje       = dataHojeISO();
+    const todayStats = await getTicketStats({ dateStart: hoje, dateEnd: hoje });
+
+    res.json({ stats, liveStats, todayStats, total: tickets.length, tickets });
   } catch (err) {
     logger.error(`[getTickets] ${err.message}`);
     res.status(500).json({ error: "Erro ao listar tickets." });

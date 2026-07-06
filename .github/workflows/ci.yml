@@ -27,5 +27,8 @@ jobs:
       - name: Verificação de sintaxe
         run: npm run check
 
+      - name: ESLint
+        run: npm run lint
+
       - name: Testes (Jest)
         run: npm test

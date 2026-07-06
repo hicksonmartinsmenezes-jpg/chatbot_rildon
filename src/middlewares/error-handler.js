@@ -7,7 +7,8 @@ function notFoundHandler(req, res) {
   return res.status(404).send("Página não encontrada.");
 }
 
-function errorHandler(err, req, res, next) { // eslint-disable-line no-unused-vars
+// Express identifica o error handler pela aridade (4 args): "next" precisa existir mesmo sem uso.
+function errorHandler(err, req, res, next) {
   const status = Number(err.status || err.statusCode || 500);
   const safeStatus = status >= 400 && status < 600 ? status : 500;
   const requestId = req.id || req.headers["x-request-id"] || "";

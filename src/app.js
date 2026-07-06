@@ -58,7 +58,7 @@ app.use(helmet({
 
 // ── CORS configurável via .env — credentials:true obrigatório para cookies ───
 const _corsRaw = (process.env.CORS_ORIGIN || "").split(",").map(s => s.trim()).filter(Boolean);
-const _validOriginRe = /^https?:\/\/[a-zA-Z0-9.\-]+(:\d+)?$/;
+const _validOriginRe = /^https?:\/\/[a-zA-Z0-9.-]+(:\d+)?$/;
 const corsOrigins = _corsRaw.filter(o => _validOriginRe.test(o));
 app.use(corsOrigins.length > 0
   ? cors({ origin: corsOrigins, credentials: true })

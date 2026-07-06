@@ -1,0 +1,10 @@
+node_modules/
+coverage/
+dist/
+build/
+package-lock.json
+src/uploads/
+src/logs/
+src/data/
+frontend/
+*.md

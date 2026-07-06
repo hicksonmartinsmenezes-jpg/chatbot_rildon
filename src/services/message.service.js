@@ -115,7 +115,7 @@ async function processMessage({ userId, contactName, message }) {
   return enqueue(userId, async () => {
     const session = getSession(userId) || {};
     const sector = session.sector || "main";
-    let response = "";
+    let response;
     let flowError = null;
 
     try {

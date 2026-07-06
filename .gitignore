@@ -56,6 +56,10 @@ Thumbs.db
 *.zip
 src.zip
 
+# Dumps de backup do banco (gerados por scripts/backup.sh)
+backups/
+*.sql.gz
+
 # Geradores do Playbook de Tráfego Pago (projeto separado — não pertence ao chatbot)
 gerar_volume*.js
 gerar_volume*.py

@@ -42,6 +42,28 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 ---
 
+## Backup e restauração do banco
+
+Backup manual (gera dump comprimido em `./backups` com retenção):
+```bash
+bash scripts/backup.sh
+```
+
+Restaurar um backup (⚠️ sobrescreve os dados atuais):
+```bash
+bash scripts/restore.sh backups/chatbot_rildon_AAAAMMDD_HHMMSS.sql.gz
+```
+
+Agendamento:
+- **Linux/cron:** `0 3 * * * cd /caminho/projeto && bash scripts/backup.sh`
+- **Windows:** Agendador de Tarefas chamando `bash scripts/backup.sh`
+- **Produção Docker:** o `docker-compose.prod.example.yml` já inclui o serviço
+  `backup` (dumps diários automáticos com retenção de dias/semanas/meses).
+
+Os dumps ficam em `./backups` e são ignorados pelo Git.
+
+---
+
 ## Melhorias aplicadas (v7 → v8)
 
 ### 🔴 Segurança

@@ -17,10 +17,15 @@ npm install
 # 3. Criar tabelas no banco
 psql -U postgres -d chatbot_rildon -f src/database/schema.sql
 
-# 4. Iniciar em desenvolvimento
+# 4. Gerar o bundle do painel (obrigatório antes do primeiro uso e sempre
+#    que editar arquivos em frontend/js ou frontend/css — o index.html
+#    aponta para o bundle gerado, não para os arquivos individuais)
+npm run build:frontend
+
+# 5. Iniciar em desenvolvimento
 npm run dev
 
-# 5. Iniciar em produção
+# 6. Iniciar em produção
 npm start
 ```
 

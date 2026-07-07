@@ -95,13 +95,264 @@ async function enviarComRetry(userId, response) {
   return false;
 }
 
+// ─── Handlers de eventos do socket ───────────────────────────────────────────
+// Extraídos como funções nomeadas de nível de módulo (em vez de closures
+// inline dentro de connectWhatsApp) só para reduzir o tamanho e a
+// profundidade de aninhamento da função de conexão. Continuam no mesmo
+// arquivo porque dependem do estado compartilhado via closure (sock,
+// isWhatsAppConnected, reconnectAttempts etc.) — mover para outro módulo
+// exigiria transformar esse estado em algo explícito (classe/objeto),
+// o que é uma mudança maior e fica para uma refatoração futura dedicada.
+
+function processContacts(contacts, source) {
+  logger.info(`[${source}] ${contacts.length} contatos`);
+  for (const c of contacts) {
+    if (c.lid && c.id && !c.id.includes("@lid")) {
+      setLidMapping(c.lid, c.id, source);
+    }
+    if (c.id && c.id.includes("@lid") && (c.phone || c.number)) {
+      const phone = (c.phone || c.number).replace(/\D/g, "");
+      setLidMapping(c.id, `${phone}@s.whatsapp.net`, `${source}/phone`);
+    }
+  }
+  logger.info(`[lidToJid] mapa total: ${getLidMapStats().lidToJid} entradas`);
+}
+
+// Handler de connection.update: QR code, desconexão (com backoff de
+// reconexão) e confirmação de conexão aberta.
+async function onConnectionUpdate({ connection, lastDisconnect, qr }) {
+  if (qr) {
+    lastQr = qr; // mantém o QR disponível para quem abrir o painel depois do evento
+    logger.info("Escaneie o QR Code abaixo com o WhatsApp");
+    qrcode.generate(qr, { small: true });
+    emitEvent("qr_code", { qr });
+  }
+
+  if (connection === "close") {
+    isWhatsAppConnected = false;
+
+    const code = lastDisconnect?.error?.output?.statusCode;
+    const shouldReconnect =
+      code !== DisconnectReason.loggedOut &&
+      code !== 401 &&
+      code !== 440;
+
+    logger.warn(`Conexão encerrada (código ${code})`);
+    if (code === 401 || code === 440) {
+      try {
+        fs.rmSync(
+          path.join(__dirname, "../../auth_info"),
+          { recursive: true, force: true }
+        );
+        logger.warn("Sessão inválida removida automaticamente.");
+      } catch (err) {
+        logger.error(`Erro removendo auth_info: ${err.message}`);
+      }
+    }
+
+    emitEvent("whatsapp_status", { status: "disconnected", code });
+
+    if (shouldReconnect) {
+      if (reconnecting) {
+        logger.warn("Reconexão já em andamento...");
+        return;
+      }
+
+      reconnecting = true;
+      const delay   = getReconnectDelay();
+      const oldSock = sock;
+
+      logger.info(`Reconectando em ${delay / 1000}s... (tentativa ${reconnectAttempts})`);
+
+      setTimeout(async () => {
+        try {
+          await limparSocketAntigo(oldSock);
+          await connectWhatsApp(messageHandler);
+        } finally {
+          reconnecting = false;
+        }
+      }, delay);
+
+      return;
+    }
+
+    logger.warn("Sessão encerrada. Novo QR Code será necessário.");
+    emitEvent("whatsapp_status", { status: "logged_out" });
+  }
+
+  if (connection === "open") {
+    reconnectAttempts = 0;
+    reconnecting      = false;
+    isWhatsAppConnected = true;
+    lastQr            = null; // conectou: não há mais QR pendente
+    logger.info("[WhatsApp] ✓ Conectado com sucesso!");
+    emitEvent("whatsapp_status", { status: "connected" });
+  }
+}
+
+function onPresenceUpdate(update) {
+  const userId = update.id;
+  if (!userId)                        return;
+  if (userId.endsWith("@g.us"))       return;
+  if (userId === "status@broadcast")  return;
+
+  const isTyping = Object.values(update.presences || {}).some(
+    p => p.lastKnownPresence === "composing"
+  );
+  if (isTyping) emitEvent("typing", { userId, from: "client" });
+}
+
+async function onMessagesUpdate(updates) {
+  for (const update of updates) {
+    const key = update.key;
+    if (!key?.id) continue;
+    emitEvent("message_status", {
+      messageId: key.id,
+      status:    parseMessageStatus(update.update?.status)
+    });
+  }
+}
+
+// Handler de messages.upsert: pipeline completo de uma mensagem recebida —
+// dedup, resolução de LID, auto-registro de contato, checagem de bot
+// ativo/inativo, tratamento de mídia sem texto, dedup de conteúdo e,
+// finalmente, chamada ao processMessage (messageHandler) com timeout e
+// fallback amigável em caso de erro.
+async function onMessagesUpsert({ messages, type }) {
+  for (const msg of messages) {
+    const messageId = msg.key?.id;
+
+    // MELHORIA: deduplicação com persistência no banco
+    if (await marcarMensagemProcessada(messageId)) {
+      logger.debug?.("Duplicada ignorada");
+      continue;
+    }
+
+    const jid = msg.key.remoteJid;
+
+    if (!isValidUserMessage(msg, type)) {
+      if (!msg.key.fromMe) logger.info(`Mensagem ignorada | type=${type} | jid=${jid}`);
+      continue;
+    }
+
+    // Resolve LID → JID real (número de telefone) quando disponível.
+    // sendTo = JID usado para ENVIAR a resposta (mantemos @lid quando possível,
+    //          pois a sessão Signal foi estabelecida com esse JID).
+    // userId = JID normalizado (número) usado para histórico, contexto e painel.
+    let userId = jid;
+    let sendTo = jid; // JID de destino para enviar — começa igual ao recebido
+
+    if (jid.includes("@lid")) {
+      const resolvedFromMap = resolveLid(jid);
+      if (resolvedFromMap) {
+        userId = resolvedFromMap;
+        // sendTo permanece @lid: sessão Signal está ativa com esse JID,
+        // responder ao número causaria novo handshake → "Aguardando mensagem"
+        logger.info(`[LID→JID] ${jid} → ${userId} (resposta via @lid)`);
+      } else if (msg.key.senderPn) {
+        // Normaliza senderPn para JID completo
+        const rawPn = String(msg.key.senderPn).replace(/[^\d]/g, "");
+        userId = `${rawPn}@s.whatsapp.net`;
+        setLidMapping(jid, userId, "senderPn");
+        // Aqui não temos sessão com o número — usamos o @lid mesmo
+        logger.info(`[senderPn] ${jid} → ${userId} (resposta via @lid)`);
+      } else {
+        // Não perde mensagem @lid sem resolução. Mantém o próprio @lid como
+        // identificador de conversa/ticket e responde pelo mesmo JID.
+        userId = jid;
+        sendTo = jid;
+        logger.warn(`[LID_FALLBACK] ${jid} sem resolução; mensagem será salva/respondida via @lid. pushName=${msg.pushName || ""}`);
+      }
+    }
+
+    const contactName =
+      msg.pushName ||
+      msg.verifiedBizName ||
+      msg.notifyName ||
+      "";
+
+    // Auto-registro: salva/atualiza o contato sem bloquear o fluxo da mensagem.
+    // Importante: esta função usa casts explícitos e SELECT prévio para evitar o erro
+    // "inconsistent types deduced for parameter" do PostgreSQL.
+    await autoRegisterContact(userId, contactName);
+
+    const text = getTextMessage(msg).trim();
+
+    const botConfig = await getBotConfigCached();
+    if (botConfig.ativo === false || botConfig.ativo === "false") {
+      logger.warn("Bot desativado. Mensagem ignorada.");
+      continue;
+    }
+
+    if (!text) {
+      const tipoMidia = getMediaType(msg);
+      if (tipoMidia) {
+        try {
+          await enviarComRetry(
+            sendTo,
+            `⚠️ Recebi seu ${tipoMidia}, mas ainda não consigo processar arquivos.\n\n` +
+            `Por favor, descreva sua dúvida em *texto* e será um prazer ajudar! 😊\n\n` +
+            `Digite *0* para ver o menu.`
+          );
+        } catch (err) {
+          logger.error(`Erro ao enviar aviso de mídia: ${err.message}`);
+        }
+      }
+      continue;
+    }
+
+    // Dedup secundário: mesma mensagem entregue duas vezes pelo Baileys com IDs diferentes (@lid)
+    if (isDuplicateContent(userId, text)) {
+      logger.debug?.(`[Dedup-conteúdo] Ignorada: ${userId} → "${text}"`);
+      continue;
+    }
+
+    try {
+      logger.info(`[MESSAGE_IN] ${userId}: ${text}`);
+
+      // UX: mostra "digitando..." antes de processar IA/fluxo quando possível.
+      sendTypingPresence(sendTo).catch(err =>
+        logger.debug?.(`[Typing] não enviado para ${sendTo}: ${err.message}`)
+      );
+
+      const response = await withTimeout(
+        messageHandler({ userId, contactName, message: text }),
+        MESSAGE_PROCESSING_TIMEOUT_MS,
+        "processamento do bot"
+      );
+
+      // Retorno vazio é normal quando atendimento humano está ativo.
+      if (!response) {
+        logger.debug?.(`[MESSAGE_NO_BOT_RESPONSE] ${userId}`);
+        continue;
+      }
+
+      await enviarComRetry(sendTo, response);
+    } catch (err) {
+      logger.error(`[BOT_PROCESSING_ERROR] ${userId}: ${err.stack || err.message}`);
+      try {
+        await enviarComRetry(sendTo, BOT_PROCESSING_FALLBACK);
+      } catch (sendErr) {
+        logger.error(`[BOT_FALLBACK_SEND_ERROR] ${userId}: ${sendErr.message}`);
+      }
+      emitEvent("bot_error", {
+        userId,
+        message: "Erro ao processar mensagem do cliente.",
+        detail: err.message,
+        createdAt: new Date()
+      });
+    }
+  }
+}
 
 async function connectWhatsApp(onMessage) {
   if (typeof onMessage !== "function") {
     throw new Error("connectWhatsApp precisa receber processMessage.");
   }
 
-  // Guarda o handler para que forceReconnect() possa reiniciar a conexão sozinho
+  // Guarda o handler para que forceReconnect() e a reconexão automática
+  // possam reiniciar a conexão sozinhas (os handlers de evento acima usam
+  // messageHandler, não o parâmetro local, justamente por isso).
   messageHandler = onMessage;
 
   // Restaura o mapa @lid → JID do banco (uma vez) para sobreviver a restarts
@@ -144,254 +395,12 @@ async function connectWhatsApp(onMessage) {
   });
 
   sock.ev.on("creds.update", saveCreds);
-
-  function processContacts(contacts, source) {
-    logger.info(`[${source}] ${contacts.length} contatos`);
-    for (const c of contacts) {
-      if (c.lid && c.id && !c.id.includes("@lid")) {
-        setLidMapping(c.lid, c.id, source);
-      }
-      if (c.id && c.id.includes("@lid") && (c.phone || c.number)) {
-        const phone = (c.phone || c.number).replace(/\D/g, "");
-        setLidMapping(c.id, `${phone}@s.whatsapp.net`, `${source}/phone`);
-      }
-    }
-    logger.info(`[lidToJid] mapa total: ${getLidMapStats().lidToJid} entradas`);
-  }
-
   sock.ev.on("contacts.upsert", contacts => processContacts(contacts, "contacts.upsert"));
   sock.ev.on("contacts.set",    ({ contacts }) => processContacts(contacts || [], "contacts.set"));
-
-  sock.ev.on("connection.update", async ({ connection, lastDisconnect, qr }) => {
-    if (qr) {
-      lastQr = qr; // mantém o QR disponível para quem abrir o painel depois do evento
-      logger.info("Escaneie o QR Code abaixo com o WhatsApp");
-      qrcode.generate(qr, { small: true });
-      emitEvent("qr_code", { qr });
-    }
-
-    if (connection === "close") {
-      isWhatsAppConnected = false;
-
-      const code           = lastDisconnect?.error?.output?.statusCode;
-     const shouldReconnect =
-      code !== DisconnectReason.loggedOut &&
-      code !== 401 &&
-      code !== 440;
-
-      logger.warn(`Conexão encerrada (código ${code})`);
-      if (code === 401 || code === 440) {
-  try {
-    fs.rmSync(
-      path.join(__dirname, "../../auth_info"),
-      {
-        recursive: true,
-        force: true
-      }
-    );
-
-    logger.warn(
-      "Sessão inválida removida automaticamente."
-    );
-  } catch (err) {
-    logger.error(
-      `Erro removendo auth_info: ${err.message}`
-    );
-  }
-}
-
-
-      emitEvent("whatsapp_status", { status: "disconnected", code });
-
-      if (shouldReconnect) {
-        if (reconnecting) {
-          logger.warn("Reconexão já em andamento...");
-          return;
-        }
-
-        reconnecting = true;
-        const delay   = getReconnectDelay();
-        const oldSock = sock;
-
-        logger.info(`Reconectando em ${delay / 1000}s... (tentativa ${reconnectAttempts})`);
-
-        setTimeout(async () => {
-          try {
-            await limparSocketAntigo(oldSock);
-            await connectWhatsApp(onMessage);
-          } finally {
-            reconnecting = false;
-          }
-        }, delay);
-
-        return;
-      }
-
-      logger.warn("Sessão encerrada. Novo QR Code será necessário.");
-      emitEvent("whatsapp_status", { status: "logged_out" });
-    }
-
-    if (connection === "open") {
-      reconnectAttempts = 0;
-      reconnecting      = false;
-      isWhatsAppConnected = true;
-      lastQr            = null; // conectou: não há mais QR pendente
-      logger.info("[WhatsApp] ✓ Conectado com sucesso!");
-      emitEvent("whatsapp_status", { status: "connected" });
-    }
-  });
-
-  sock.ev.on("presence.update", update => {
-    const userId = update.id;
-    if (!userId)                        return;
-    if (userId.endsWith("@g.us"))       return;
-    if (userId === "status@broadcast")  return;
-
-    const isTyping = Object.values(update.presences || {}).some(
-      p => p.lastKnownPresence === "composing"
-    );
-    if (isTyping) emitEvent("typing", { userId, from: "client" });
-  });
-
-  sock.ev.on("messages.update", async updates => {
-    for (const update of updates) {
-      const key = update.key;
-      if (!key?.id) continue;
-      emitEvent("message_status", {
-        messageId: key.id,
-        status:    parseMessageStatus(update.update?.status)
-      });
-    }
-  });
-
-  sock.ev.on("messages.upsert", async ({ messages, type }) => {
-    for (const msg of messages) {
-      const messageId = msg.key?.id;
-
-      // MELHORIA: deduplicação com persistência no banco
-      if (await marcarMensagemProcessada(messageId)) {
-            logger.debug?.(
-        `Duplicada ignorada`
-      );
-        continue;
-      }
-
-      const jid = msg.key.remoteJid;
-
-      if (!isValidUserMessage(msg, type)) {
-        if (!msg.key.fromMe) logger.info(`Mensagem ignorada | type=${type} | jid=${jid}`);
-        continue;
-      }
-
-      // Resolve LID → JID real (número de telefone) quando disponível.
-      // sendTo = JID usado para ENVIAR a resposta (mantemos @lid quando possível,
-      //          pois a sessão Signal foi estabelecida com esse JID).
-      // userId = JID normalizado (número) usado para histórico, contexto e painel.
-      let userId = jid;
-      let sendTo = jid; // JID de destino para enviar — começa igual ao recebido
-
-      if (jid.includes("@lid")) {
-        const resolvedFromMap = resolveLid(jid);
-        if (resolvedFromMap) {
-          userId = resolvedFromMap;
-          // sendTo permanece @lid: sessão Signal está ativa com esse JID,
-          // responder ao número causaria novo handshake → "Aguardando mensagem"
-          logger.info(`[LID→JID] ${jid} → ${userId} (resposta via @lid)`);
-        } else if (msg.key.senderPn) {
-          // Normaliza senderPn para JID completo
-          const rawPn = String(msg.key.senderPn).replace(/[^\d]/g, "");
-          userId = `${rawPn}@s.whatsapp.net`;
-          setLidMapping(jid, userId, "senderPn");
-          // Aqui não temos sessão com o número — usamos o @lid mesmo
-          logger.info(`[senderPn] ${jid} → ${userId} (resposta via @lid)`);
-        } else {
-          // Não perde mensagem @lid sem resolução. Mantém o próprio @lid como
-          // identificador de conversa/ticket e responde pelo mesmo JID.
-          userId = jid;
-          sendTo = jid;
-          logger.warn(`[LID_FALLBACK] ${jid} sem resolução; mensagem será salva/respondida via @lid. pushName=${msg.pushName || ""}`);
-        }
-      }
-
-      const contactName =
-        msg.pushName ||
-        msg.verifiedBizName ||
-        msg.notifyName ||
-        "";
-
-      // Auto-registro: salva/atualiza o contato sem bloquear o fluxo da mensagem.
-      // Importante: esta função usa casts explícitos e SELECT prévio para evitar o erro
-      // "inconsistent types deduced for parameter" do PostgreSQL.
-      await autoRegisterContact(userId, contactName);
-
-      const text = getTextMessage(msg).trim();
-
-     const botConfig = await getBotConfigCached();
-      if (botConfig.ativo === false || botConfig.ativo === "false") {
-        logger.warn("Bot desativado. Mensagem ignorada.");
-        continue;
-      }
-
-      if (!text) {
-        const tipoMidia = getMediaType(msg);
-        if (tipoMidia) {
-          try {
-            await enviarComRetry(
-              sendTo,
-              `⚠️ Recebi seu ${tipoMidia}, mas ainda não consigo processar arquivos.\n\n` +
-              `Por favor, descreva sua dúvida em *texto* e será um prazer ajudar! 😊\n\n` +
-              `Digite *0* para ver o menu.`
-            );
-          } catch (err) {
-            logger.error(`Erro ao enviar aviso de mídia: ${err.message}`);
-          }
-        }
-        continue;
-      }
-
-      // Dedup secundário: mesma mensagem entregue duas vezes pelo Baileys com IDs diferentes (@lid)
-      if (isDuplicateContent(userId, text)) {
-        logger.debug?.(`[Dedup-conteúdo] Ignorada: ${userId} → "${text}"`);
-        continue;
-      }
-
-      try {
-        logger.info(`[MESSAGE_IN] ${userId}: ${text}`);
-
-        // UX: mostra "digitando..." antes de processar IA/fluxo quando possível.
-        sendTypingPresence(sendTo).catch(err =>
-          logger.debug?.(`[Typing] não enviado para ${sendTo}: ${err.message}`)
-        );
-
-        const response = await withTimeout(
-          onMessage({ userId, contactName, message: text }),
-          MESSAGE_PROCESSING_TIMEOUT_MS,
-          "processamento do bot"
-        );
-
-        // Retorno vazio é normal quando atendimento humano está ativo.
-        if (!response) {
-          logger.debug?.(`[MESSAGE_NO_BOT_RESPONSE] ${userId}`);
-          continue;
-        }
-
-        await enviarComRetry(sendTo, response);
-      } catch (err) {
-        logger.error(`[BOT_PROCESSING_ERROR] ${userId}: ${err.stack || err.message}`);
-        try {
-          await enviarComRetry(sendTo, BOT_PROCESSING_FALLBACK);
-        } catch (sendErr) {
-          logger.error(`[BOT_FALLBACK_SEND_ERROR] ${userId}: ${sendErr.message}`);
-        }
-        emitEvent("bot_error", {
-          userId,
-          message: "Erro ao processar mensagem do cliente.",
-          detail: err.message,
-          createdAt: new Date()
-        });
-      }
-    }
-  });
+  sock.ev.on("connection.update", onConnectionUpdate);
+  sock.ev.on("presence.update", onPresenceUpdate);
+  sock.ev.on("messages.update", onMessagesUpdate);
+  sock.ev.on("messages.upsert", onMessagesUpsert);
 }
 
 

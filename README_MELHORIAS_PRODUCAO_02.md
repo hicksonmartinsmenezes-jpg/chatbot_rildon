@@ -44,3 +44,26 @@
 - Padronizar migrations numeradas.
 - Revisar regras de permissão por rota no painel inteiro.
 - Separar upload público de upload privado com rota autenticada.
+
+## Nota de divergência (2026-07-07)
+
+Uma auditoria do código atual encontrou diferenças entre o que este
+changelog descreve e o que existe hoje em `src/`. Mantido o texto acima
+como registro histórico, mas para quem for mexer no código, o estado real
+é:
+
+- **`src/middlewares/security.js` (`originGuard`) não existe** no código
+  atual. A mitigação de CSRF hoje vem do cookie de sessão configurado com
+  `sameSite: "strict"` em `src/routes/auth.routes.js` — funciona, só não é
+  o mecanismo descrito aqui.
+- **`requireSupervisorOrAdmin` não existe.** `src/middlewares/permissions.js`
+  só tem `requireAdmin` (tudo ou nada). Métricas, campanhas e logs de
+  atividade estão hoje atrás de `requireAdmin` em `src/app.js`, não de uma
+  hierarquia admin/supervisor. Se o nível "supervisor" for necessário,
+  precisa ser implementado — não é só reativar algo que já existiu.
+- "Criar testes automatizados mínimos" foi feito (Jest + `tests/`), mas
+  o `test-flow.js` (97 testes do fluxo conversacional) ainda não roda no
+  CI — ver tarefa em andamento sobre isso.
+- "Separar upload público de upload privado" segue como está: `/uploads/*`
+  em `src/app.js` é público por decisão consciente (comentário no código
+  explica o motivo), não por omissão. Vale revisar se ainda é aceitável.

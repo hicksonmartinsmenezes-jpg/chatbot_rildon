@@ -17,15 +17,19 @@ npm install
 # 3. Criar tabelas no banco
 psql -U postgres -d chatbot_rildon -f src/database/schema.sql
 
-# 4. Gerar o bundle do painel (obrigatório antes do primeiro uso e sempre
+# 4. Criar o primeiro usuário administrador (obrigatório — não existe
+#    admin padrão; sem isso não há como logar no painel na primeira vez)
+npm run create-admin -- admin "SenhaForte123" "Administrador"
+
+# 5. Gerar o bundle do painel (obrigatório antes do primeiro uso e sempre
 #    que editar arquivos em frontend/js ou frontend/css — o index.html
 #    aponta para o bundle gerado, não para os arquivos individuais)
 npm run build:frontend
 
-# 5. Iniciar em desenvolvimento
+# 6. Iniciar em desenvolvimento
 npm run dev
 
-# 6. Iniciar em produção
+# 7. Iniciar em produção
 npm start
 ```
 

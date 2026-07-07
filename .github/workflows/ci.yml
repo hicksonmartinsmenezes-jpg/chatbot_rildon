@@ -32,3 +32,6 @@ jobs:
 
       - name: Testes (Jest)
         run: npm test
+
+      - name: Testes de fluxo conversacional (test-flow.js)
+        run: npm run test:flow

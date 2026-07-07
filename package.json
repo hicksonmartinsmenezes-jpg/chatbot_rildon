@@ -15,12 +15,14 @@
     "check": "node -c src/server.js && node -c src/app.js",
     "test": "jest",
     "test:watch": "jest --watch",
+    "test:flow": "node test-flow.js",
     "lint": "eslint src tests",
     "lint:fix": "eslint src tests --fix",
     "format": "prettier --write \"src/**/*.js\" \"tests/**/*.js\"",
     "format:check": "prettier --check \"src/**/*.js\" \"tests/**/*.js\""
   },
   "dependencies": {
+    "@sentry/node": "^10.63.0",
     "@whiskeysockets/baileys": "^6.7.23",
     "axios": "^1.16.1",
     "bcrypt": "^6.0.0",

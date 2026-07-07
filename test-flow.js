@@ -249,12 +249,12 @@ async function testVendas() {
   contem(r3, "veículo", "pede veículo após nome");
 
   const r4 = await enviar("VW Gol 2015", "veículo");
-  contem(r4, "produto", "pede produto após veículo");
+  contem(r4, "peça", "pede peça/serviço após veículo");
 
   const r5 = await enviar("Sensor MAP", "produto");
   naoNulo(r5, "orçamento finalizado");
-  contem(r5, "Protocolo", "mensagem com protocolo");
-  contem(r5, "Posso te ajudar", "mensagem de fechamento natural");
+  contem(r5, "🎫", "mensagem com protocolo (ticket)");
+  contem(r5, "consultor entrará em contato", "mensagem de fechamento natural");
   naoContem(r5, "Como posso ajudar você hoje", "não re-abre o menu principal");
 
   subtitulo("Nome já salvo → pula etapa de nome direto para veículo");
@@ -273,9 +273,9 @@ async function testVendas() {
   await enviar("1", null);
   await enviar("Maria Oliveira", null);
   const rPular = await enviar("pular", "pular veículo");
-  contem(rPular, "produto", "pular aceito no veículo");
+  contem(rPular, "peça", "pular aceito no veículo");
   const rFimPular = await enviar("Alternador Bosch", null);
-  contem(rFimPular, "Protocolo", "orçamento ok com pular");
+  contem(rFimPular, "🎫", "orçamento ok com pular");
 
 
   subtitulo("Escape do fluxo de orçamento");
@@ -358,29 +358,29 @@ async function testAtendenteGestao() {
 async function testIA() {
   titulo("SUITE 5 — IA e Roteamento por Intenção");
 
-  subtitulo("IA detecta 'vendas' — primeira entrada → exibe mensagem de orçamento");
+  subtitulo("IA detecta 'vendas' — primeira entrada → entra direto no formulário de orçamento");
   await resetarSessao();
   const rV1 = await enviar("preciso de um alternador", "ia vendas nova entrada");
-  contem(rV1, "Orçamento", "IA 'vendas' nova entrada → mensagem de orçamento");
-  contem(rV1, "atendente", "mensagem de orçamento menciona atendente");
+  contem(rV1, "orçamento", "IA 'vendas' nova entrada → resposta menciona orçamento");
+  contem(rV1, "nome completo", "sem nome salvo, formulário pede nome completo");
   naoContem(rV1, "Para solicitar orçamento, escolha a opção", "não deve mostrar dica sutil na primeira entrada");
 
-  subtitulo("IA detecta 'vendas' — já em contexto → dica sutil (não repete menu)");
-  // userId já está em sector=vendas pela mensagem anterior
+  subtitulo("IA detecta 'vendas' — mensagem seguinte já é tratada como etapa do formulário");
+  // userId já está em sector=vendas/aguardando_nome pela mensagem anterior — a próxima
+  // mensagem é consumida pelo formulário (como nome), não roteada de novo pela IA.
   const r2V = await enviar("e sensor de map, vocês têm?", "ia vendas contexto existente");
   naoContem(r2V, "🛒 *Vendas / Orçamento*", "não repete menu completo em contexto de vendas");
-  contem(r2V, "1", "exibe dica sutil com emoji");
+  contem(r2V, "veículo", "avança para a etapa de veículo do formulário");
 
-  subtitulo("Texto livre em sector=vendas sem step → IA responde (não mostra sub-menu)");
+  subtitulo("Intenção 'vendas' via IA sempre entra no formulário (não há mais chat livre dentro do setor)");
   await resetarSessao();
-  // Entra em sector=vendas via IA (não seta step, ao contrário de digitar "1" no menu)
   _iaMockFn = () => ({ resposta: "Temos sim! Para orçamento, escolha a opção 1.", intencao: "vendas" });
-  await enviar("vocês têm bateria?", null);  // IA roteia para vendas, seta sector mas sem step
+  await enviar("vocês têm bateria?", null);  // IA roteia para vendas e já define a etapa (aguardando_nome)
   _iaMockFn = () => ({ resposta: "Sim, temos filtros de ar de diversas marcas! 🔧", intencao: "vendas" });
-  const rFiltro = await enviar("filtros brasil", "texto livre em vendas sem step");
+  const rFiltro = await enviar("filtros brasil", "texto livre em vendas — consumido como nome do formulário");
   _iaMockFn = null;
   naoContem(rFiltro, "Como posso ajudar?", "texto livre em vendas → não exibe sub-menu direto");
-  contem(rFiltro, "filtros", "IA respondeu sobre filtros");
+  contem(rFiltro, "veículo", "nome aceito, formulário avança para veículo");
 
   subtitulo("IA chat — sem menu forçado ao final");
   await resetarSessao();
@@ -482,8 +482,8 @@ async function testPosFluxo() {
   await enviar("1", null); await enviar("1", null);
   await enviar("Lucas Martins", null); await enviar("pular", null);
   const rOrc = await enviar("Sensor de temperatura", null);
-  contem(rOrc, "Protocolo", "orçamento concluído");
-  contem(rOrc, "Posso te ajudar", "mensagem de fechamento presente");
+  contem(rOrc, "🎫", "orçamento concluído");
+  contem(rOrc, "consultor entrará em contato", "mensagem de fechamento presente");
 
   // Sessão foi limpa — próxima mensagem deve abrir normalmente
   _iaMockFn = () => ({ resposta: "Claro! Posso te ajudar com isso.", intencao: "chat" });

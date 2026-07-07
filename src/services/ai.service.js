@@ -77,26 +77,6 @@ async function _parseFile(filePath, ext) {
       return result.value;
     }
 
-    case ".xlsx":
-    case ".xls": {
-      const XLSX   = require("xlsx");
-      const wb     = XLSX.readFile(filePath);
-      const partes = [];
-      for (const sheetName of wb.SheetNames) {
-        const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { defval: "" });
-        if (!rows.length) continue;
-        partes.push(`[Aba: ${sheetName}]`);
-        for (const row of rows) {
-          const linha = Object.entries(row)
-            .filter(([, v]) => String(v).trim() !== "")
-            .map(([k, v]) => `${k}: ${v}`)
-            .join(" | ");
-          if (linha) partes.push(linha);
-        }
-      }
-      return partes.join("\n");
-    }
-
     default:
       return null;
   }

@@ -24,6 +24,9 @@ jobs:
       - name: Instala dependências (reprodutível)
         run: npm ci
 
+      - name: Auditoria de vulnerabilidades (falha em alta/crítica)
+        run: npm audit --audit-level=high
+
       - name: Verificação de sintaxe
         run: npm run check
 

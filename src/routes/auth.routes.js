@@ -1,10 +1,13 @@
 const logger  = require("../utils/logger");
 const express = require("express");
 const crypto  = require("crypto");
+const bcrypt  = require("bcrypt");
 
 const pool   = require("../database/postgres");
 const upload = require("../middlewares/uploadProfile");
 const { addLog } = require("../services/activityLog.service");
+const twoFactorService = require("../services/twoFactor.service");
+const userRepository = require("../repositories/user.repository");
 
 const {
   validateUser,
@@ -76,6 +79,34 @@ function safeCompare(a, b) {
   return crypto.timingSafeEqual(ba, bb);
 }
 
+/** Mesmo formato salvo na sessão/retornado ao cliente — nunca inclui senha/2FA. */
+function toSessionUser(user) {
+  return {
+    id: user.id,
+    nome: user.nome,
+    usuario: user.usuario,
+    perfil: user.perfil,
+    sector: user.sector || "geral",
+    numero: user.numero || "",
+    foto: user.foto || ""
+  };
+}
+
+async function abrirSessao(res, user, extra = {}) {
+  const token = crypto.randomBytes(32).toString("hex");
+
+  await salvarSessao(token, {
+    user,
+    expiresAt: Date.now() + SESSION_MS
+  });
+
+  await addLog(user, "LOGIN", `${user.nome} entrou no sistema`);
+
+  res.cookie(COOKIE_NAME, token, COOKIE_OPTIONS);
+
+  return res.json({ user, expiresIn: SESSION_MS, ...extra });
+}
+
 // ─── POST /api/auth/login ─────────────────────────────────────────────────────
 router.post("/auth/login", async (req, res) => {
   try {
@@ -86,22 +117,50 @@ router.post("/auth/login", async (req, res) => {
       return res.status(401).json({ error: "Usuário ou senha inválidos." });
     }
 
-    const token = crypto.randomBytes(32).toString("hex");
+    // 2FA ativo: não abre sessão ainda — exige um segundo passo com o código.
+    const fullUser = await userRepository.findById(user.id);
+    if (fullUser?.totpEnabled) {
+      const { token: challengeToken, expiresIn } = await twoFactorService.criarDesafioLogin(user.id);
+      return res.json({ requiresTwoFactor: true, challengeToken, expiresIn });
+    }
 
-    await salvarSessao(token, {
-      user,
-      expiresAt: Date.now() + SESSION_MS
-    });
-
-    await addLog(user, "LOGIN", `${user.nome} entrou no sistema`);
-
-    // Define o cookie HttpOnly — JS do cliente nunca vê o token
-    res.cookie(COOKIE_NAME, token, COOKIE_OPTIONS);
-
-    return res.json({ user, expiresIn: SESSION_MS });
+    return await abrirSessao(res, user);
   } catch (error) {
     logger.error(`[auth/login] ${error.message}`);
     return res.status(500).json({ error: "Erro ao fazer login." });
+  }
+});
+
+// ─── POST /api/auth/login/verify-2fa ─────────────────────────────────────────
+// Segundo passo do login quando o usuário tem 2FA ativo. Recebe o token do
+// desafio (gerado em /auth/login) + o código do app autenticador (ou um
+// backup code). Só abre sessão de verdade se o código bater.
+router.post("/auth/login/verify-2fa", async (req, res) => {
+  try {
+    const { challengeToken, codigo } = req.body || {};
+
+    if (!challengeToken || !codigo) {
+      return res.status(400).json({ error: "Token de desafio e código são obrigatórios." });
+    }
+
+    let resultado;
+    try {
+      resultado = await twoFactorService.verificarDesafioLogin(challengeToken, codigo);
+    } catch (err) {
+      return res.status(401).json({ error: err.message });
+    }
+
+    const fullUser = await userRepository.findById(resultado.userId);
+    if (!fullUser || fullUser.ativo === false) {
+      return res.status(401).json({ error: "Usuário inválido ou inativo." });
+    }
+
+    return await abrirSessao(res, toSessionUser(fullUser), {
+      usouBackupCode: !!resultado.usouBackupCode
+    });
+  } catch (error) {
+    logger.error(`[auth/login/verify-2fa] ${error.message}`);
+    return res.status(500).json({ error: "Erro ao verificar código." });
   }
 });
 
@@ -178,6 +237,65 @@ router.patch("/auth/me/photo", authSession, upload.single("foto"), async (req, r
     return res.json({ success: true, foto, user: updatedUser });
   } catch (error) {
     return res.status(400).json({ error: error.message || "Erro ao salvar foto." });
+  }
+});
+
+// ─── POST /api/auth/2fa/setup ─────────────────────────────────────────────────
+// Gera um segredo pendente + QR code. Não ativa o 2FA até /2fa/confirm.
+router.post("/auth/2fa/setup", authSession, async (req, res) => {
+  try {
+    const { secret, qrCodeDataUrl } = await twoFactorService.setup(req.user.id, req.user.usuario);
+    return res.json({ secret, qrCodeDataUrl });
+  } catch (error) {
+    logger.error(`[auth/2fa/setup] ${error.message}`);
+    return res.status(500).json({ error: "Erro ao iniciar configuração do 2FA." });
+  }
+});
+
+// ─── POST /api/auth/2fa/confirm ───────────────────────────────────────────────
+// Confirma o setup com um código do app autenticador. Retorna os backup
+// codes em texto puro — só aparecem aqui, uma única vez.
+router.post("/auth/2fa/confirm", authSession, async (req, res) => {
+  try {
+    const { codigo } = req.body || {};
+    if (!codigo) {
+      return res.status(400).json({ error: "Código é obrigatório." });
+    }
+
+    const { backupCodes } = await twoFactorService.confirmSetup(req.user.id, codigo);
+
+    await addLog(req.user, "ENABLE_2FA", `${req.user.nome} ativou a autenticação de dois fatores`);
+
+    return res.json({ ok: true, backupCodes });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+});
+
+// ─── POST /api/auth/2fa/disable ───────────────────────────────────────────────
+// Exige a senha atual para desligar — é um passo que reduz a segurança da
+// conta, então não pode depender só da sessão já aberta.
+router.post("/auth/2fa/disable", authSession, async (req, res) => {
+  try {
+    const { senha } = req.body || {};
+    if (!senha) {
+      return res.status(400).json({ error: "Confirme sua senha atual para desativar o 2FA." });
+    }
+
+    const fullUser = await userRepository.findById(req.user.id);
+    const senhaOk  = await bcrypt.compare(String(senha), String(fullUser?.senha || ""));
+
+    if (!senhaOk) {
+      return res.status(401).json({ error: "Senha incorreta." });
+    }
+
+    await twoFactorService.disable(req.user.id);
+    await addLog(req.user, "DISABLE_2FA", `${req.user.nome} desativou a autenticação de dois fatores`);
+
+    return res.json({ ok: true });
+  } catch (error) {
+    logger.error(`[auth/2fa/disable] ${error.message}`);
+    return res.status(500).json({ error: "Erro ao desativar 2FA." });
   }
 });
 
@@ -260,6 +378,11 @@ function requireAdmin(req, res, next) {
 // Limpeza de sessões expiradas a cada 5 min
 setInterval(async () => {
   try { await limparSessoesExpiradas(); } catch (_) {}
+}, 5 * 60 * 1000);
+
+// Limpeza de desafios de 2FA expirados a cada 5 min
+setInterval(async () => {
+  try { await twoFactorService.limparDesafiosExpirados(); } catch (_) {}
 }, 5 * 60 * 1000);
 
 module.exports = { router, authSession, requireAdmin, requireRole, buscarSessao };

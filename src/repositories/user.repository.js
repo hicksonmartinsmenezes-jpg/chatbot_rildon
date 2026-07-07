@@ -11,6 +11,12 @@ function mapUser(row) {
     numero: row.numero,
     foto: row.foto,
     ativo: row.ativo,
+    // 2FA — nunca expor totpSecret/totpPendingSecret/totpBackupCodes fora do
+    // backend (ver twoFactor.service.js e o sanitizeUser() das rotas).
+    totpSecret: row.totp_secret,
+    totpPendingSecret: row.totp_pending_secret,
+    totpEnabled: row.totp_enabled,
+    totpBackupCodes: row.totp_backup_codes,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -139,6 +145,59 @@ async function deactivate(id) {
     : null;
 }
 
+// ─── 2FA (TOTP) ────────────────────────────────────────────────────────────
+
+/** Guarda o segredo gerado no setup, ainda não confirmado/ativo. */
+async function setTotpPendingSecret(id, secret) {
+  await pool.query(
+    `UPDATE users SET totp_pending_secret = $1, updated_at = NOW() WHERE id = $2`,
+    [secret, id]
+  );
+}
+
+/** Confirma o setup: pending vira secret ativo, salva os códigos de backup (hash). */
+async function enableTotp(id, secret, backupCodeHashes) {
+  const result = await pool.query(
+    `
+    UPDATE users
+    SET totp_secret = $1,
+        totp_pending_secret = NULL,
+        totp_enabled = TRUE,
+        totp_backup_codes = $2::jsonb,
+        updated_at = NOW()
+    WHERE id = $3
+    RETURNING *
+    `,
+    [secret, JSON.stringify(backupCodeHashes), id]
+  );
+
+  return result.rows[0] ? mapUser(result.rows[0]) : null;
+}
+
+/** Desliga o 2FA e limpa segredo/pendência/backup codes. */
+async function disableTotp(id) {
+  await pool.query(
+    `
+    UPDATE users
+    SET totp_secret = NULL,
+        totp_pending_secret = NULL,
+        totp_enabled = FALSE,
+        totp_backup_codes = NULL,
+        updated_at = NOW()
+    WHERE id = $1
+    `,
+    [id]
+  );
+}
+
+/** Substitui a lista de backup codes restantes (após consumir um). */
+async function updateBackupCodes(id, remainingHashes) {
+  await pool.query(
+    `UPDATE users SET totp_backup_codes = $1::jsonb, updated_at = NOW() WHERE id = $2`,
+    [JSON.stringify(remainingHashes), id]
+  );
+}
+
 module.exports = {
   findAll,
   countActiveAdmins,
@@ -147,5 +206,9 @@ module.exports = {
   create,
   updateProfile,
   updatePassword,
-  deactivate
+  deactivate,
+  setTotpPendingSecret,
+  enableTotp,
+  disableTotp,
+  updateBackupCodes
 };

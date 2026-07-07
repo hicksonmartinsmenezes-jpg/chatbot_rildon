@@ -18,6 +18,11 @@ CREATE TABLE IF NOT EXISTS users (
   email       VARCHAR(255),
   foto        TEXT,
   ativo       BOOLEAN NOT NULL DEFAULT TRUE,
+  -- 2FA (TOTP) — ver migrations/011_add_totp_2fa.sql para o histórico
+  totp_secret         TEXT,
+  totp_pending_secret TEXT,
+  totp_enabled        BOOLEAN NOT NULL DEFAULT FALSE,
+  totp_backup_codes   JSONB,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -32,6 +37,16 @@ CREATE TABLE IF NOT EXISTS auth_sessions (
 
 CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires
 ON auth_sessions(expires_at);
+
+-- Desafios de 2FA pendentes (entre senha validada e código TOTP validado)
+CREATE TABLE IF NOT EXISTS two_factor_challenges (
+  token       TEXT PRIMARY KEY,
+  user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at  BIGINT NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_two_factor_challenges_expires ON two_factor_challenges(expires_at);
 
 -- Sessões do bot
 CREATE TABLE IF NOT EXISTS sessions (

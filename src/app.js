@@ -74,6 +74,7 @@ app.use(express.json({ limit: "2mb" }));
 app.use(requestId);
 app.use("/api", apiLimiter);
 app.post("/api/auth/login", loginLimiter);
+app.post("/api/auth/login/verify-2fa", loginLimiter);
 app.use(logger.httpLogger);
 
 // ── Arquivos estáticos do painel ─────────────────────────────────────────────

@@ -17,6 +17,7 @@ require("dotenv").config({ path: path.join(__dirname, "../.env") });
 
 const bcrypt = require("bcrypt");
 const pool = require("../src/database/postgres");
+const { validarForcaSenha } = require("../src/utils/passwordPolicy");
 
 const SALT_ROUNDS = 10;
 
@@ -28,8 +29,9 @@ async function main() {
     process.exit(1);
   }
 
-  if (senha.length < 8) {
-    console.error("A senha deve ter pelo menos 8 caracteres.");
+  const forca = validarForcaSenha(senha);
+  if (!forca.valido) {
+    console.error(forca.erro);
     process.exit(1);
   }
 

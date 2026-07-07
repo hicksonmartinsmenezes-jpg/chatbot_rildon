@@ -1,6 +1,7 @@
 const bcrypt = require("bcrypt");
 const crypto = require("crypto");
 const logger = require("../utils/logger");
+const { validarForcaSenha } = require("../utils/passwordPolicy");
 
 const userRepository =
   require("../repositories/user.repository");
@@ -64,6 +65,11 @@ async function createUser(data) {
     throw new Error(
       "Usuário já existe."
     );
+  }
+
+  const forca = validarForcaSenha(data.senha);
+  if (!forca.valido) {
+    throw new Error(forca.erro);
   }
 
   const senhaHash =
@@ -156,10 +162,9 @@ async function updateUserProfile(
 
   if (novaSenha) {
 
-    if (novaSenha.length < 8) {
-      throw new Error(
-        "A nova senha deve ter pelo menos 8 caracteres."
-      );
+    const forca = validarForcaSenha(novaSenha);
+    if (!forca.valido) {
+      throw new Error(forca.erro);
     }
 
     if (!senhaAtual) {
@@ -222,6 +227,11 @@ async function updateUserPassword(
   id,
   novaSenha
 ) {
+
+  const forca = validarForcaSenha(novaSenha);
+  if (!forca.valido) {
+    throw new Error(forca.erro);
+  }
 
   const senhaHash =
     await bcrypt.hash(

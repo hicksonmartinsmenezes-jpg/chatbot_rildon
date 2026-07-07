@@ -112,9 +112,8 @@ router.delete("/users/:id", asyncHandler(async (req, res) => {
 router.patch("/users/:id/password", asyncHandler(async (req, res) => {
   const { senha } = req.body || {};
 
-  // CORRIGIDO: mínimo de 8 chars, consistente com updateUserProfile
-  if (!senha || senha.length < 8) {
-    return res.status(400).json({ error: "A senha deve ter pelo menos 8 caracteres." });
+  if (!senha) {
+    return res.status(400).json({ error: "Senha é obrigatória." });
   }
 
   const targetUser = await getUserById(req.params.id);
@@ -123,7 +122,13 @@ router.patch("/users/:id/password", asyncHandler(async (req, res) => {
     return res.status(404).json({ error: "Usuário não encontrado." });
   }
 
-  await updateUserPassword(req.params.id, senha);
+  // updateUserPassword valida a força da senha (ver src/utils/passwordPolicy.js)
+  // e lança erro com mensagem clara se não atender aos requisitos.
+  try {
+    await updateUserPassword(req.params.id, senha);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
 
   await auditLog({
     user:    req.user,

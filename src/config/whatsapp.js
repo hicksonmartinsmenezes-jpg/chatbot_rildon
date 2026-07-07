@@ -1,7 +1,6 @@
 const { getBotConfig }  = require("../services/botConfig.service");
 const logger            = require("../utils/logger");
 const { emitEvent }     = require("../services/socket.service");
-const pool              = require("../database/postgres");
 const {
   setLidMapping,
   carregarLidMap,
@@ -17,6 +16,8 @@ const {
   isValidUserMessage,
   parseMessageStatus
 } = require("../whatsapp/message-utils");
+const { isDuplicateContent, marcarMensagemProcessada, startDedupCleanup } = require("../whatsapp/dedup");
+const { autoRegisterContact } = require("../whatsapp/contacts");
 
 const {
   default: makeWASocket,
@@ -39,52 +40,6 @@ let lastConfigCheck = 0;
 let messageHandler   = null;  // processMessage — guardado para reconexões forçadas
 let lastQr           = null;  // último QR pendente (até conectar) — permite buscar via API
 
-// Map com TTL por entrada: evita clear abrupto que abriria janela de duplicatas
-const processedMessages = new Map(); // id → timestamp
-const PROCESSED_TTL_MS  = 5 * 60 * 1000; // 5 min
-const PROCESSED_MAX     = 10_000;
-
-// Dedup secundário por conteúdo — captura duplicatas de @lid com IDs diferentes
-// que Baileys entrega dentro da mesma janela de tempo
-const recentContent = new Map(); // `userId:text` → timestamp
-const CONTENT_TTL_MS = 8_000; // 8 segundos
-
-function isDuplicateContent(userId, text) {
-  const key = `${userId}:${text}`;
-  const ts  = recentContent.get(key);
-  if (ts && Date.now() - ts < CONTENT_TTL_MS) return true;
-  recentContent.set(key, Date.now());
-  // Limpeza incremental
-  if (recentContent.size > 500) {
-    const cutoff = Date.now() - CONTENT_TTL_MS;
-    for (const [k, t] of recentContent) {
-      if (t < cutoff) recentContent.delete(k);
-    }
-  }
-  return false;
-}
-
-function markProcessed(id) {
-  processedMessages.set(id, Date.now());
-  // Limpeza incremental: remove entradas expiradas quando mapa fica grande
-  if (processedMessages.size > PROCESSED_MAX) {
-    const cutoff = Date.now() - PROCESSED_TTL_MS;
-    for (const [msgId, ts] of processedMessages) {
-      if (ts < cutoff) processedMessages.delete(msgId);
-    }
-  }
-}
-
-function isProcessed(id) {
-  const ts = processedMessages.get(id);
-  if (!ts) return false;
-  if (Date.now() - ts > PROCESSED_TTL_MS) {
-    processedMessages.delete(id);
-    return false;
-  }
-  return true;
-}
-
 const MAX_RECONNECT_DELAY_MS = 30_000;
 const MESSAGE_PROCESSING_TIMEOUT_MS = Number(process.env.BOT_MESSAGE_TIMEOUT_MS || 45_000);
 const BOT_PROCESSING_FALLBACK =
@@ -104,41 +59,6 @@ function getReconnectDelay() {
   const delay = Math.min(1000 * 2 ** reconnectAttempts, MAX_RECONNECT_DELAY_MS);
   reconnectAttempts++;
   return delay;
-}
-
-/**
- * MELHORIA: deduplicação com duas camadas.
- * 1. Set em memória (rápido, válido por 5 min).
- * 2. Tabela `processed_messages` no banco (persiste entre reinicializações).
- *    Se o banco falhar, a camada de memória ainda protege contra duplicatas
- *    na mesma sessão.
- */
-async function marcarMensagemProcessada(messageId) {
-  if (!messageId) return false;
-
-  // Camada 1: memória
-  if (isProcessed(messageId)) return true;
-
-  // Camada 2: banco
-  try {
-    const res = await pool.query(
-      `INSERT INTO processed_messages (message_id, processed_at)
-       VALUES ($1, NOW())
-       ON CONFLICT (message_id) DO NOTHING
-       RETURNING message_id`,
-      [messageId]
-    );
-    // Se nenhuma linha foi inserida → já existia → duplicata
-    if (res.rowCount === 0) {
-      markProcessed(messageId);
-      return true;
-    }
-  } catch (err) {
-    logger.warn(`[Dedup] Erro ao checar banco: ${err.message}`);
-  }
-
-  markProcessed(messageId);
-  return false;
 }
 
 async function limparSocketAntigo(oldSock) {
@@ -175,57 +95,6 @@ async function enviarComRetry(userId, response) {
   return false;
 }
 
-
-async function autoRegisterContact(userId, contactName = "") {
-  const rawUserId = String(userId || "").trim();
-  const isPhoneJid = rawUserId.endsWith("@s.whatsapp.net");
-  const isLidJid = rawUserId.endsWith("@lid");
-  if (!isPhoneJid && !isLidJid) return null;
-
-  // Para @lid sem resolução, salvamos o identificador numérico do LID.
-  // Isso evita perda de rastreio no painel até que o mapa LID→JID seja descoberto.
-  const phone = rawUserId.replace(/@(s\.whatsapp\.net|lid)$/i, "").replace(/\D/g, "");
-  if (!phone) return null;
-
-  const safeName = String(contactName || "").trim() || phone;
-
-  try {
-    const existing = await pool.query(
-      `SELECT id, nome FROM contacts WHERE whatsapp = $1::varchar LIMIT 1`,
-      [phone]
-    );
-
-    if (existing.rows.length) {
-      const currentName = String(existing.rows[0].nome || "").trim();
-      const looksGeneric = !currentName || currentName === phone || /^\d{8,15}$/.test(currentName);
-
-      if (safeName !== phone && looksGeneric) {
-        await pool.query(
-          `UPDATE contacts SET nome = $1::text, updated_at = NOW() WHERE id = $2`,
-          [safeName, existing.rows[0].id]
-        );
-        logger.info(`[CONTACT_UPDATED] ${phone} nome="${safeName}"`);
-        emitEvent("contacts_updated", { reason: "auto_contact_update", whatsapp: phone });
-      }
-
-      return existing.rows[0].id;
-    }
-
-    const inserted = await pool.query(
-      `INSERT INTO contacts (nome, whatsapp, status, tags)
-       VALUES ($1::text, $2::varchar, 'ativo', '{}'::text[])
-       RETURNING id`,
-      [safeName, phone]
-    );
-
-    logger.info(`[CONTACT_CREATED] ${phone} nome="${safeName}"`);
-    emitEvent("contacts_updated", { reason: "auto_contact", whatsapp: phone });
-    return inserted.rows[0]?.id || null;
-  } catch (err) {
-    logger.warn(`[AutoContact] falhou para ${phone}: ${err.message}`);
-    return null;
-  }
-}
 
 async function connectWhatsApp(onMessage) {
   if (typeof onMessage !== "function") {
@@ -662,16 +531,7 @@ function isConnected() {
   return !!sock && isWhatsAppConnected;
 }
 
-setInterval(async () => {
-  try {
-    await pool.query(`
-      DELETE FROM processed_messages
-      WHERE processed_at < NOW() - INTERVAL '7 days'
-    `);
-  } catch (err) {
-    logger.warn(`Erro limpando dedup: ${err.message}`);
-  }
-}, 24 * 60 * 60 * 1000);
+startDedupCleanup();
 
 
 async function getBotConfigCached() {

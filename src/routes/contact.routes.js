@@ -3,7 +3,7 @@ const axios   = require("axios");
 const multer  = require("multer");
 const { getProfilePhotoUrl } = require("../config/whatsapp");
 const logger = require("../utils/logger");
-const { requirePrivileged } = require("../utils/access-control");
+const { requirePrivileged, requireProfiles } = require("../utils/access-control");
 const { auditLog } = require("../services/audit.service");
 const { emitEvent } = require("../services/socket.service");
 const { uploadLimiter, criticalActionLimiter } = require("../middlewares/rate-limiters");
@@ -17,6 +17,7 @@ const {
   importContacts,
   getAllTags
 } = require("../services/contacts.service");
+const { anonymizeCustomerData, eraseCustomerData } = require("../services/lgpd.service");
 
 const router = express.Router();
 const csvUpload = multer({
@@ -267,6 +268,50 @@ router.delete("/contacts/:id", requirePrivileged, criticalActionLimiter, async (
     res.json(result);
   } catch (err) {
     res.status(404).json({ error: err.message });
+  }
+});
+
+// ── LGPD: anonimização/exclusão de dados pessoais do titular ────────────────
+// Só admin (não supervisor/api) — ação sensível e, no caso de erase,
+// irreversível. Opera em contacts + history + tickets pelo número de
+// WhatsApp do contato, não só na linha de contacts.
+router.post("/contacts/:id/lgpd/anonymize", requireProfiles("admin"), criticalActionLimiter, async (req, res) => {
+  try {
+    const contact = await getContact(req.params.id);
+    const resultado = await anonymizeCustomerData(contact.whatsapp);
+
+    await auditLog({
+      user: req.user,
+      action: "LGPD_ANONYMIZE",
+      target: `contact:${req.params.id}`,
+      details: resultado
+    });
+
+    emitEvent("contacts_updated", { action: "lgpd_anonymized", id: req.params.id, by: req.user?.id || req.user?.usuario || null });
+
+    res.json({ ok: true, ...resultado });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post("/contacts/:id/lgpd/erase", requireProfiles("admin"), criticalActionLimiter, async (req, res) => {
+  try {
+    const contact = await getContact(req.params.id);
+    const resultado = await eraseCustomerData(contact.whatsapp);
+
+    await auditLog({
+      user: req.user,
+      action: "LGPD_ERASE",
+      target: `contact:${req.params.id}`,
+      details: resultado
+    });
+
+    emitEvent("contacts_updated", { action: "lgpd_erased", id: req.params.id, by: req.user?.id || req.user?.usuario || null });
+
+    res.json({ ok: true, ...resultado });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
 });
 

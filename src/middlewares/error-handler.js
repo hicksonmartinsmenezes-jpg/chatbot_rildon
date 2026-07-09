@@ -1,4 +1,5 @@
 const logger = require("../utils/logger");
+const sentry = require("../config/sentry");
 
 function notFoundHandler(req, res) {
   if (req.originalUrl.startsWith("/api/")) {
@@ -16,6 +17,11 @@ function errorHandler(err, req, res, next) {
 
   if (safeStatus >= 500) {
     logger.error(`[Express] ${context} ${safeStatus} — ${err.stack || err.message || err}`);
+    // Só reporta ao Sentry erros de servidor (5xx); erros de cliente (4xx) são ruído.
+    sentry.captureException(err instanceof Error ? err : new Error(String(err)), {
+      tags: { path: req.path, method: req.method },
+      extra: { requestId, status: safeStatus }
+    });
   } else {
     logger.warn(`[Express] ${context} ${safeStatus} — ${err.message || "Erro de requisição"}`);
   }

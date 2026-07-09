@@ -5,6 +5,10 @@ require("dotenv").config({ path: path.join(__dirname, "../.env") });
 // DEVE ser importado logo após o dotenv — aborta o processo se faltar algo crítico
 const env = require("./config/env");
 
+// ── Monitoramento de erros — inicializado antes do Express (app) ──────────────
+const sentry = require("./config/sentry");
+sentry.initSentry();
+
 const fs     = require("fs");
 const logger = require("./utils/logger");
 const app    = require("./app");
@@ -80,13 +84,16 @@ process.on("unhandledRejection", (err) => {
   logger.error(
     `Unhandled Rejection: ${err?.stack || err}`
   );
+  sentry.captureException(err instanceof Error ? err : new Error(String(err)));
 });
 
-process.on("uncaughtException", (err) => {
+process.on("uncaughtException", async (err) => {
   logger.error(
     `Uncaught Exception: ${err?.stack || err}`
   );
 
+  sentry.captureException(err);
+  await sentry.flush(2000); // garante o envio antes de encerrar
   process.exit(1);
 });
 

@@ -130,9 +130,8 @@ src/
 │   └── schema.sql      # DDL completo
 ├── flows/              # Lógica de conversação por setor
 │   ├── main.flow.js
-│   ├── suporte.flow.js
 │   ├── vendas.flow.js
-│   ├── financeiro.flow.js
+│   ├── crediario.flow.js
 │   └── messages.js
 ├── services/           # Lógica de negócio
 ├── routes/             # Endpoints da API REST

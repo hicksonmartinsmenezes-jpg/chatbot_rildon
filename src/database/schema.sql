@@ -86,6 +86,9 @@ CREATE INDEX IF NOT EXISTS idx_tickets_status     ON tickets(status);
 CREATE INDEX IF NOT EXISTS idx_tickets_protocolo  ON tickets(protocolo);
 CREATE INDEX IF NOT EXISTS idx_tickets_sector     ON tickets(sector);
 CREATE INDEX IF NOT EXISTS idx_tickets_assigned_name ON tickets(assigned_to_name);
+-- Sem ela, "ORDER BY created_at DESC" (usado em toda listagem/filtro de
+-- tickets) cai em sort completo conforme a tabela cresce. Ver migration 012.
+CREATE INDEX IF NOT EXISTS idx_tickets_created_at ON tickets(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tickets_cpf
 ON tickets(REGEXP_REPLACE(cpf, '\D', '', 'g'));
 
@@ -105,6 +108,11 @@ CREATE TABLE IF NOT EXISTS history (
 CREATE INDEX IF NOT EXISTS idx_history_user_id    ON history(user_id);
 CREATE INDEX IF NOT EXISTS idx_history_created_at ON history(created_at);
 CREATE INDEX IF NOT EXISTS idx_history_message_id ON history(message_id);
+-- Composto: sem ele, "SELECT DISTINCT ON (user_id) ... ORDER BY user_id,
+-- created_at DESC" (painel de Conversas, consultado a cada 30s) não
+-- consegue usar um índice só de user_id nem só de created_at para resolver
+-- a ordenação — cai em sort completo da tabela. Ver migration 012.
+CREATE INDEX IF NOT EXISTS idx_history_user_created ON history(user_id, created_at DESC);
 
 -- Respostas rápidas
 CREATE TABLE IF NOT EXISTS quick_replies (

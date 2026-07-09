@@ -48,18 +48,32 @@ async function getHistoryHandler(req, res) {
   }
 }
 
+// Teto de segurança para o painel de Conversas — não é paginação de verdade
+// (a busca do painel ainda é client-side, sobre o array inteiro recebido
+// aqui), só evita que a resposta cresça sem limite conforme a base de
+// clientes aumenta. Se um dia isso for atingido na prática, a busca de
+// conversas precisa virar um parâmetro de servidor (como já é em
+// listContacts), não só aumentar este número.
+const MAX_CONVERSATIONS = 2000;
+
 async function getConversationsHandler(req, res) {
   try {
     const pool = require("../database/postgres");
-    const tz   = process.env.TZ_NEGOCIO || "America/Maceio";
 
-    // Retorna o registro mais recente por usuário — sem limite de usuários únicos
+    // Retorna o registro mais recente por usuário, limitado às conversas
+    // mais recentemente ativas — sem isso a query varre a tabela history
+    // inteira a cada 30s (polling do painel de Conversas).
     const result = await pool.query(`
-      SELECT DISTINCT ON (user_id)
-        id, user_id, contact_name, message, response, sector, status, message_id, created_at
-      FROM history
-      ORDER BY user_id, created_at DESC
-    `);
+      SELECT id, user_id, contact_name, message, response, sector, status, message_id, created_at
+      FROM (
+        SELECT DISTINCT ON (user_id)
+          id, user_id, contact_name, message, response, sector, status, message_id, created_at
+        FROM history
+        ORDER BY user_id, created_at DESC
+      ) mais_recente_por_usuario
+      ORDER BY created_at DESC
+      LIMIT $1
+    `, [MAX_CONVERSATIONS]);
 
     const rows = result.rows.map(r => ({
       id:          r.id,

@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
@@ -23,7 +23,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css">
   <!-- CSS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <link rel="stylesheet" href="dist/bundle.9099087e7a.css">
+  <link rel="stylesheet" href="dist/bundle.75b6d4c73a.css">
   <!-- CSS_BUNDLE_END -->
 <style>
     /* Centraliza colunas da tabela de histórico */
@@ -65,6 +65,17 @@
         <button type="submit">Entrar</button>
       </form>
       <span id="login-error" role="alert"></span>
+
+      <form id="login-2fa-form" class="hidden" data-submit-action="submitTwoFactorLogin" novalidate>
+        <p class="login-2fa-hint">Digite o código do seu app autenticador (ou um código de backup).</p>
+        <div class="login-field">
+          <i class="fa-solid fa-shield-halved login-field-icon"></i>
+          <input type="text" id="login-2fa-code" inputmode="numeric" autocomplete="one-time-code" aria-label="Código de verificação" placeholder="Código de 6 dígitos" required>
+        </div>
+        <button type="submit">Verificar</button>
+        <button type="button" class="login-2fa-back" data-action="cancelTwoFactorLogin">Voltar</button>
+        <span id="login-2fa-error" role="alert"></span>
+      </form>
     </div>
   </section>
 
@@ -1687,6 +1698,56 @@ Como podemos ajudar você hoje?
     <button type="button" class="send-btn" data-action="saveProfile">
       Salvar perfil
     </button>
+
+    <div class="profile-security-section">
+      <label>Autenticação de dois fatores (2FA)</label>
+      <div id="twofa-status-line" class="twofa-status-line">Carregando status...</div>
+      <button type="button" id="twofa-action-btn" class="send-btn twofa-secondary-btn" data-action="startTwoFactorSetup">
+        Gerenciar 2FA
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="twofa-modal" class="chat-modal hidden" role="dialog" aria-modal="true" aria-labelledby="twofa-modal-title">
+  <div class="chat-box profile-box twofa-box">
+    <div class="chat-header">
+      <h3 id="twofa-modal-title">Autenticação de dois fatores</h3>
+      <button type="button" data-action="closeTwoFactorModal" aria-label="Fechar">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+
+    <div id="twofa-step-setup" class="twofa-step hidden">
+      <p class="twofa-hint">Escaneie o QR code com o Google Authenticator, Authy ou app similar.</p>
+      <div class="twofa-qr-area">
+        <img id="twofa-qr-img" alt="QR code do 2FA">
+      </div>
+      <p class="twofa-secret-hint">Não consegue escanear? Digite manualmente: <code id="twofa-secret-text"></code></p>
+
+      <label>Código do app</label>
+      <input id="twofa-setup-code" type="text" inputmode="numeric" maxlength="6" placeholder="000000" autocomplete="one-time-code">
+      <span id="twofa-setup-error" class="twofa-error" role="alert"></span>
+
+      <button type="button" class="send-btn" data-action="confirmTwoFactorSetup">Confirmar e ativar</button>
+    </div>
+
+    <div id="twofa-step-codes" class="twofa-step hidden">
+      <p class="twofa-hint twofa-warning">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+        Guarde estes códigos agora — eles só aparecem uma vez. Cada um pode ser usado uma única vez caso você perca acesso ao app autenticador.
+      </p>
+      <ul id="twofa-backup-codes" class="twofa-backup-list"></ul>
+      <button type="button" class="send-btn" data-action="finishTwoFactorSetup">Já guardei, concluir</button>
+    </div>
+
+    <div id="twofa-step-disable" class="twofa-step hidden">
+      <p class="twofa-hint">Confirme sua senha atual para desativar o 2FA.</p>
+      <label>Senha atual</label>
+      <input id="twofa-disable-password" type="password" autocomplete="current-password">
+      <span id="twofa-disable-error" class="twofa-error" role="alert"></span>
+      <button type="button" class="send-btn twofa-danger-btn" data-action="confirmDisableTwoFactor">Desativar 2FA</button>
+    </div>
   </div>
 </div>
 
@@ -1702,7 +1763,7 @@ Como podemos ajudar você hoje?
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1"></script>
 
   <!-- JS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <script src="dist/bundle.ee2bead19b.js"></script>
+  <script src="dist/bundle.e99be70295.js"></script>
   <!-- JS_BUNDLE_END -->
 
 

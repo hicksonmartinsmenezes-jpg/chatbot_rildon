@@ -95,6 +95,8 @@ function togglePasswordVisibility() {
 }
 
 // ─── Login ────────────────────────────────────────────────────────────────────
+let _twoFactorChallengeToken = null;
+
 async function login() {
   const userEl = document.getElementById("login-user");
   const passEl = document.getElementById("login-pass");
@@ -128,6 +130,13 @@ async function login() {
       return;
     }
 
+    // Conta com 2FA ativo: não há sessão ainda — mostra o passo do código.
+    if (data.requiresTwoFactor) {
+      _twoFactorChallengeToken = data.challengeToken;
+      showTwoFactorLoginStep();
+      return;
+    }
+
     // Armazena apenas os dados públicos do usuário — sem token
     setCurrentUser(data.user);
 
@@ -148,6 +157,87 @@ async function login() {
 
 // O envio do login é tratado pelo submit do formulário em 17-ui-events.js.
 // Evita disparo duplo ao pressionar Enter nos campos de usuário/senha.
+
+// ─── 2FA no login (segundo passo) ─────────────────────────────────────────────
+function showTwoFactorLoginStep() {
+  document.getElementById("login-form")?.classList.add("hidden");
+  document.getElementById("login-2fa-form")?.classList.remove("hidden");
+
+  const errorEl = document.getElementById("login-2fa-error");
+  if (errorEl) errorEl.textContent = "";
+
+  const codeEl = document.getElementById("login-2fa-code");
+  if (codeEl) {
+    codeEl.value = "";
+    codeEl.focus();
+  }
+}
+
+function cancelTwoFactorLogin() {
+  _twoFactorChallengeToken = null;
+  document.getElementById("login-2fa-form")?.classList.add("hidden");
+  document.getElementById("login-form")?.classList.remove("hidden");
+
+  const passEl = document.getElementById("login-pass");
+  if (passEl) passEl.value = "";
+}
+
+async function submitTwoFactorLogin() {
+  const codeEl  = document.getElementById("login-2fa-code");
+  const errorEl = document.getElementById("login-2fa-error");
+  const btn     = document.querySelector("#login-2fa-form button[type='submit']");
+
+  const codigo = codeEl?.value.trim() || "";
+
+  if (!codigo) {
+    if (errorEl) errorEl.textContent = "Digite o código.";
+    return;
+  }
+
+  if (!_twoFactorChallengeToken) {
+    if (errorEl) errorEl.textContent = "Sessão de verificação expirou. Volte e faça login novamente.";
+    return;
+  }
+
+  if (btn) {
+    btn.disabled  = true;
+    btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Verificando...`;
+  }
+  if (errorEl) errorEl.textContent = "";
+
+  try {
+    const res = await fetch(`${BASE}/api/auth/login/verify-2fa`, {
+      method:      "POST",
+      credentials: "include",
+      headers:     { "Content-Type": "application/json" },
+      body:        JSON.stringify({ challengeToken: _twoFactorChallengeToken, codigo })
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      if (errorEl) errorEl.textContent = data.error || "Código inválido.";
+      return;
+    }
+
+    _twoFactorChallengeToken = null;
+    setCurrentUser(data.user);
+
+    document.getElementById("login-2fa-form")?.classList.add("hidden");
+    document.getElementById("login-form")?.classList.remove("hidden");
+
+    showDashboard();
+    applyUserPermissions();
+    refreshAll();
+  } catch {
+    if (errorEl) errorEl.textContent = "Erro de conexão. Verifique se o servidor está rodando.";
+  } finally {
+    if (btn) {
+      btn.disabled  = false;
+      btn.innerHTML = "Verificar";
+    }
+  }
+}
 
 // ─── Logout ───────────────────────────────────────────────────────────────────
 async function logout() {

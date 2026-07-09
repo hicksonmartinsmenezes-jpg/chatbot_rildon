@@ -61,7 +61,14 @@
     "fecharChat",
     "enviarMensagemManual",
     "closeProfileModal",
-    "saveProfile"
+    "saveProfile",
+    "cancelTwoFactorLogin",
+    "closeTwoFactorModal",
+    "startTwoFactorSetup",
+    "openTwoFactorDisableStep",
+    "confirmTwoFactorSetup",
+    "finishTwoFactorSetup",
+    "confirmDisableTwoFactor"
   ]);
 
   document.addEventListener("submit", (event) => {

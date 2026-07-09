@@ -50,7 +50,10 @@ async function validateUser(usuario, senha) {
     perfil: user.perfil,
     sector: user.sector || "geral",
     numero: user.numero || "",
-    foto: user.foto || ""
+    foto: user.foto || "",
+    // Só o flag booleano — nunca o segredo/backup codes. Necessário no
+    // cliente pra decidir "Ativar 2FA" vs "Desativar 2FA" no perfil.
+    totpEnabled: !!user.totpEnabled
   };
 }
 
@@ -219,7 +222,8 @@ async function updateUserProfile(
     foto:
       updated.foto || "",
     ativo:
-      updated.ativo
+      updated.ativo,
+    totpEnabled: !!updated.totpEnabled
   };
 }
 

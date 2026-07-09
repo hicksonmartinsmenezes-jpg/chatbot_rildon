@@ -221,3 +221,53 @@ body.light-theme .login-card input:focus { background: #fff; }
   .login-screen::before,
   #login-error:not(:empty) { animation: none; }
 }
+
+/* ─── Passo de código 2FA no login ──────── */
+#login-2fa-form.hidden {
+  display: none;
+}
+
+#login-2fa-form {
+  margin-top: 4px;
+}
+
+.login-2fa-hint {
+  color: var(--muted, #98a6b8);
+  font-size: 0.85rem;
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+#login-2fa-code {
+  text-align: center;
+  letter-spacing: 0.3em;
+  font-weight: 700;
+}
+
+.login-2fa-back {
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px;
+  border: none;
+  background: transparent;
+  color: var(--muted, #98a6b8);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: color 0.2s;
+}
+
+.login-2fa-back:hover {
+  color: var(--primary, #2563eb);
+}
+
+#login-2fa-error {
+  display: block;
+  min-height: 1.1em;
+  margin-top: 10px;
+  color: var(--red, #ef4444);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+#login-2fa-error:not(:empty) { animation: loginErrorShake 0.4s ease; }

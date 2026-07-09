@@ -210,3 +210,153 @@
   color: var(--muted);
   font-size: 12px;
 }
+
+/* ─── Segurança / 2FA no perfil ────────── */
+.profile-security-section {
+  margin-top: 26px;
+  padding-top: 22px;
+  border-top: 1px solid var(--border);
+}
+
+.profile-security-section > label {
+  margin-top: 0;
+}
+
+.twofa-status-line {
+  font-size: 13px;
+  margin-bottom: 14px;
+  font-weight: 600;
+}
+
+.twofa-status-line.twofa-on { color: #22c55e; }
+.twofa-status-line.twofa-off { color: var(--muted); }
+
+.twofa-secondary-btn {
+  background: var(--panel-2) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border);
+  box-shadow: none !important;
+}
+
+.twofa-secondary-btn:hover {
+  filter: none !important;
+  border-color: var(--primary);
+}
+
+/* ─── Modal de 2FA ──────────────────────── */
+.twofa-box {
+  max-width: 440px;
+}
+
+.twofa-step.hidden {
+  display: none;
+}
+
+.twofa-hint {
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.5;
+  margin: 4px 0 18px;
+}
+
+.twofa-warning {
+  color: #f59e0b;
+  font-weight: 700;
+}
+
+.twofa-warning i { margin-right: 6px; }
+
+.twofa-qr-area {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 14px;
+}
+
+.twofa-qr-area img {
+  width: 200px;
+  height: 200px;
+  border-radius: 12px;
+  border: 6px solid #fff;
+  background: #fff;
+}
+
+.twofa-secret-hint {
+  font-size: 12.5px;
+  color: var(--muted);
+  text-align: center;
+  margin-bottom: 18px;
+  word-break: break-all;
+}
+
+.twofa-secret-hint code {
+  background: var(--panel-2);
+  padding: 2px 6px;
+  border-radius: 6px;
+  color: var(--text);
+}
+
+.twofa-box label {
+  display: block;
+  margin-bottom: 8px;
+  margin-top: 14px;
+  color: #cbd5e1;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.twofa-box input[type="text"],
+.twofa-box input[type="password"] {
+  width: 100%;
+  height: 52px;
+  border: 1px solid var(--border);
+  outline: none;
+  border-radius: 14px;
+  padding: 0 16px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 15px;
+  text-align: center;
+  letter-spacing: 0.15em;
+  transition: var(--transition-fast);
+}
+
+.twofa-box input[type="text"]:focus,
+.twofa-box input[type="password"]:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px rgba(29, 108, 245, 0.14);
+}
+
+.twofa-error {
+  display: block;
+  min-height: 1.1em;
+  margin-top: 10px;
+  color: var(--red, #ef4444);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.twofa-danger-btn {
+  background: linear-gradient(135deg, #ef4444, #b91c1c) !important;
+  box-shadow: 0 12px 30px rgba(239, 68, 68, 0.28) !important;
+}
+
+.twofa-backup-list {
+  list-style: none;
+  margin: 0 0 18px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.twofa-backup-list li {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  text-align: center;
+  font-family: monospace;
+  font-size: 13.5px;
+  color: var(--text);
+  letter-spacing: 0.03em;
+}

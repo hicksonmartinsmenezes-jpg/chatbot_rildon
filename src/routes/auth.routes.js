@@ -83,7 +83,9 @@ function safeCompare(a, b) {
   return crypto.timingSafeEqual(ba, bb);
 }
 
-/** Mesmo formato salvo na sessão/retornado ao cliente — nunca inclui senha/2FA. */
+/** Mesmo formato salvo na sessão/retornado ao cliente — nunca inclui senha/2FA
+ * secreto (só o flag booleano totpEnabled, necessário pro painel decidir se
+ * mostra "Ativar 2FA" ou "Desativar 2FA"). */
 function toSessionUser(user) {
   return {
     id: user.id,
@@ -92,7 +94,8 @@ function toSessionUser(user) {
     perfil: user.perfil,
     sector: user.sector || "geral",
     numero: user.numero || "",
-    foto: user.foto || ""
+    foto: user.foto || "",
+    totpEnabled: !!user.totpEnabled
   };
 }
 
@@ -268,9 +271,17 @@ router.post("/auth/2fa/confirm", authSession, async (req, res) => {
 
     const { backupCodes } = await twoFactorService.confirmSetup(req.user.id, codigo);
 
+    // A sessão em memória/banco ainda tem totpEnabled desatualizado — atualiza
+    // aqui pra o painel refletir o novo estado sem precisar de outro login.
+    const updatedUser = { ...req.user, totpEnabled: true };
+    const token = extrairToken(req);
+    if (token) {
+      await salvarSessao(token, { user: updatedUser, expiresAt: Date.now() + SESSION_MS });
+    }
+
     await addLog(req.user, "ENABLE_2FA", `${req.user.nome} ativou a autenticação de dois fatores`);
 
-    return res.json({ ok: true, backupCodes });
+    return res.json({ ok: true, backupCodes, user: updatedUser });
   } catch (error) {
     return res.status(400).json({ error: error.message });
   }
@@ -294,9 +305,16 @@ router.post("/auth/2fa/disable", authSession, async (req, res) => {
     }
 
     await twoFactorService.disable(req.user.id);
+
+    const updatedUser = { ...req.user, totpEnabled: false };
+    const token = extrairToken(req);
+    if (token) {
+      await salvarSessao(token, { user: updatedUser, expiresAt: Date.now() + SESSION_MS });
+    }
+
     await addLog(req.user, "DISABLE_2FA", `${req.user.nome} desativou a autenticação de dois fatores`);
 
-    return res.json({ ok: true });
+    return res.json({ ok: true, user: updatedUser });
   } catch (error) {
     logger.error(`[auth/2fa/disable] ${error.message}`);
     return res.status(500).json({ error: "Erro ao desativar 2FA." });

@@ -3,7 +3,8 @@ const logger = require("../utils/logger");
 
 // Cooldown de reabertura: evita reabrir o mesmo ticket múltiplas vezes em rajada
 const _reopenCooldown = new Map();
-setInterval(() => _reopenCooldown.clear(), 5 * 60 * 1000);
+// .unref() — não deve impedir o processo de encerrar (graceful shutdown/testes)
+setInterval(() => _reopenCooldown.clear(), 5 * 60 * 1000).unref();
 
 // Mapeamento type → sector. "atendente_humano" agora mapeado explicitamente.
 const TYPE_TO_SECTOR = {

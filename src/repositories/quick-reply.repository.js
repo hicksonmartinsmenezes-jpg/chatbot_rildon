@@ -19,33 +19,54 @@ async function findAll() {
   return result.rows.map(mapReply);
 }
 
+// Limite de parâmetros por lote (3 colunas por linha) — bem abaixo do teto
+// de ~65535 parâmetros do PostgreSQL por query.
+const INSERT_CHUNK = 500;
+
 async function replaceAll(replies = []) {
-  await pool.query("DELETE FROM quick_replies");
+  const client = await pool.connect();
 
-  const saved = [];
+  try {
+    await client.query("BEGIN");
+    await client.query("DELETE FROM quick_replies");
 
-  for (const reply of replies) {
-    const result = await pool.query(
-      `
-      INSERT INTO quick_replies (
-        shortcut,
-        message,
-        created_at
-      )
-      VALUES ($1,$2,$3)
-      RETURNING *
-      `,
-      [
-        reply.shortcut,
-        reply.message,
-        reply.createdAt || new Date()
-      ]
-    );
+    let saved = [];
 
-    saved.push(mapReply(result.rows[0]));
+    // Insere em lote (em vez de um INSERT por resposta rápida) e tudo numa
+    // transação — antes o DELETE e os INSERTs individuais não estavam numa
+    // transação: se o processo caísse no meio do loop, as respostas rápidas
+    // ficavam apagadas sem serem recriadas.
+    for (let i = 0; i < replies.length; i += INSERT_CHUNK) {
+      const slice = replies.slice(i, i + INSERT_CHUNK);
+      const values = [];
+      const params = [];
+
+      slice.forEach((reply, j) => {
+        const b = j * 3;
+        values.push(`($${b + 1},$${b + 2},$${b + 3})`);
+        params.push(reply.shortcut, reply.message, reply.createdAt || new Date());
+      });
+
+      const result = await client.query(
+        `
+        INSERT INTO quick_replies (shortcut, message, created_at)
+        VALUES ${values.join(",")}
+        RETURNING *
+        `,
+        params
+      );
+
+      saved = saved.concat(result.rows.map(mapReply));
+    }
+
+    await client.query("COMMIT");
+    return saved;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
   }
-
-  return saved;
 }
 
 async function findByShortcut(shortcut) {

@@ -60,6 +60,20 @@ function safeTZ() {
   return _VALID_TZ_RE.test(tz) ? tz : "America/Maceio";
 }
 
+// Detecta se o valor parece um UUID (chave primária de tickets). Usado para
+// montar o WHERE de busca por id-ou-protocolo SEM fazer cast na coluna
+// "id" (id::text = $1) — esse cast, usado antes aqui, invalida o índice da
+// chave primária e força sequential scan em toda busca/assumir/transferir/
+// atualizar status de ticket. Comparando "id = $N::uuid" (cast no parâmetro,
+// não na coluna) o Postgres consegue usar o índice normalmente.
+const _UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function idOrProtocolWhere(value, paramIndex) {
+  return _UUID_RE.test(value)
+    ? `(id = $${paramIndex}::uuid OR protocolo = $${paramIndex})`
+    : `protocolo = $${paramIndex}`;
+}
+
 async function findAll({ status, search, dateStart, dateEnd, limit = 500, offset = 0 } = {}) {
   const TZ = safeTZ();
   const values = [];
@@ -111,33 +125,37 @@ async function findAll({ status, search, dateStart, dateEnd, limit = 500, offset
 }
 
 async function findByIdOrProtocol(id) {
+  const idStr = String(id);
   const result = await pool.query(
-    `SELECT * FROM tickets WHERE id::text = $1 OR protocolo = $1 LIMIT 1`,
-    [String(id)]
+    `SELECT * FROM tickets WHERE ${idOrProtocolWhere(idStr, 1)} LIMIT 1`,
+    [idStr]
   );
   return result.rows[0] ? mapTicket(result.rows[0]) : null;
 }
 
 async function updateStatus(id, status) {
+  const idStr = String(id);
   const result = await pool.query(
     `
     UPDATE tickets
     SET status = $1,
         updated_at = NOW()
-    WHERE id::text = $2 OR protocolo = $2
+    WHERE ${idOrProtocolWhere(idStr, 2)}
     RETURNING *
     `,
-    [status, String(id)]
+    [status, idStr]
   );
 
   return result.rows[0] ? mapTicket(result.rows[0]) : null;
 }
 
 async function assign(id, user) {
+  const idStr = String(id);
+
   // Verifica se o ticket existe antes de tentar assumir
   const exists = await pool.query(
-    `SELECT id, assigned_to FROM tickets WHERE id::text = $1 OR protocolo = $1`,
-    [String(id)]
+    `SELECT id, assigned_to FROM tickets WHERE ${idOrProtocolWhere(idStr, 1)}`,
+    [idStr]
   );
   if (!exists.rows[0]) return { notFound: true };
   if (exists.rows[0].assigned_to) return { alreadyAssigned: true };
@@ -150,14 +168,14 @@ async function assign(id, user) {
         status = 'em_andamento',
         updated_at = NOW()
     WHERE
-    (id::text = $3 OR protocolo = $3)
+    ${idOrProtocolWhere(idStr, 3)}
     AND assigned_to IS NULL
     RETURNING *
     `,
     [
       user.id,
       user.nome || user.usuario,
-      String(id)
+      idStr
     ]
   );
 
@@ -165,6 +183,7 @@ async function assign(id, user) {
 }
 
 async function transfer(id, sector, targetUser = null) {
+  const idStr = String(id);
   const newSector      = targetUser?.sector || sector;
   const assignedTo     = targetUser?.id     || null;
   const assignedToName = targetUser ? (targetUser.nome || targetUser.usuario) : null;
@@ -178,10 +197,10 @@ async function transfer(id, sector, targetUser = null) {
         assigned_to_name = $3,
         status           = $4,
         updated_at       = NOW()
-    WHERE id::text = $5 OR protocolo = $5
+    WHERE ${idOrProtocolWhere(idStr, 5)}
     RETURNING *
     `,
-    [newSector, assignedTo, assignedToName, newStatus, String(id)]
+    [newSector, assignedTo, assignedToName, newStatus, idStr]
   );
 
   return result.rows[0] ? mapTicket(result.rows[0]) : null;

@@ -12,6 +12,11 @@ const fs   = require("fs");
 // Diretório canônico de imagens de campanhas — usado para validar paths
 const CAMPAIGNS_DIR = path.resolve(__dirname, "../uploads/campaigns");
 
+// Limite de destinatários por lote de INSERT (3 colunas por linha) — evita
+// centenas/milhares de round-trips ao criar uma campanha grande, mantendo
+// margem folgada do teto de ~65535 parâmetros por query do PostgreSQL.
+const INSERT_CHUNK = 500;
+
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -75,14 +80,27 @@ const cleanedRecipients = Array.from(recipientMap.values());
 
     const broadcast = broadcastRes.rows[0];
 
-    for (const recipient of cleanedRecipients) {
+    // Insere destinatários em lote em vez de um INSERT por destinatário —
+    // uma campanha para todos os clientes pode ter centenas/milhares de
+    // linhas, e o loop anterior fazia um round-trip ao banco por linha.
+    for (let i = 0; i < cleanedRecipients.length; i += INSERT_CHUNK) {
+      const slice  = cleanedRecipients.slice(i, i + INSERT_CHUNK);
+      const values = [];
+      const params = [];
+
+      slice.forEach((recipient, j) => {
+        const b = j * 3;
+        values.push(`($${b + 1},$${b + 2},$${b + 3})`);
+        params.push(broadcast.id, recipient.userId, recipient.contactName);
+      });
+
       await client.query(
         `
         INSERT INTO broadcast_recipients
         (broadcast_id, user_id, contact_name)
-        VALUES ($1, $2, $3)
+        VALUES ${values.join(",")}
         `,
-        [broadcast.id, recipient.userId, recipient.contactName]
+        params
       );
     }
 

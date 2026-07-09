@@ -190,6 +190,11 @@ CREATE INDEX IF NOT EXISTS idx_contacts_whatsapp ON contacts(whatsapp);
 CREATE INDEX IF NOT EXISTS idx_contacts_status   ON contacts(status);
 CREATE INDEX IF NOT EXISTS idx_contacts_nome     ON contacts(lower(nome));
 
+-- Migration 013: tags (array) precisa de índice GIN, não btree; e
+-- atendente_id é usado em filtro/JOIN sem índice nenhum antes disso.
+CREATE INDEX IF NOT EXISTS idx_contacts_tags      ON contacts USING GIN(tags);
+CREATE INDEX IF NOT EXISTS idx_contacts_atendente ON contacts(atendente_id);
+
 -- Mapa persistente @lid → @s.whatsapp.net
 CREATE TABLE IF NOT EXISTS lid_map (
   lid        TEXT PRIMARY KEY,

@@ -17,7 +17,11 @@ const {
 const router = express.Router();
 
 // ─── Configuração do cookie de sessão ────────────────────────────────────────
-const SESSION_MS      = 30 * 60 * 1000; // 30 min
+// SESSION_TTL_MINUTES é opcional (default 30) — antes esse valor ficava
+// hardcoded aqui e a variável documentada no .env.example/README nunca
+// tinha efeito nenhum.
+const SESSION_TTL_MINUTES = Number(process.env.SESSION_TTL_MINUTES) || 30;
+const SESSION_MS      = SESSION_TTL_MINUTES * 60 * 1000;
 const COOKIE_NAME     = "rildon_sid";
 const COOKIE_OPTIONS  = {
   httpOnly:  true,                                   // JS do cliente nunca acessa
@@ -375,14 +379,17 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-// Limpeza de sessões expiradas a cada 5 min
+// Limpeza de sessões expiradas a cada 5 min.
+// unref(): não deve ser o único motivo do processo continuar rodando (não
+// atrapalha shutdown gracioso) — e evita que testes/scripts que só fazem
+// require() deste módulo fiquem pendurados esperando o timer.
 setInterval(async () => {
   try { await limparSessoesExpiradas(); } catch (_) {}
-}, 5 * 60 * 1000);
+}, 5 * 60 * 1000).unref();
 
 // Limpeza de desafios de 2FA expirados a cada 5 min
 setInterval(async () => {
   try { await twoFactorService.limparDesafiosExpirados(); } catch (_) {}
-}, 5 * 60 * 1000);
+}, 5 * 60 * 1000).unref();
 
 module.exports = { router, authSession, requireAdmin, requireRole, buscarSessao };

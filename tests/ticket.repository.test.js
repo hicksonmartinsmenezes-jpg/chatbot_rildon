@@ -1,16 +1,27 @@
 /**
  * Testes de ticket.repository.js — foco especial em findByIdOrProtocol /
- * updateStatus / assign / transfer, que hoje usam idOrProtocolWhere() para
- * comparar "id = $N::uuid" só quando o valor parece UUID (sem isso, o
- * padrão antigo "id::text = $1" invalidava o índice da chave primária —
- * ver commit "Otimiza queries de tickets, respostas rápidas e broadcast").
+ * updateStatus / assign / transfer, que usam idOrProtocolWhere() para
+ * comparar "id = $N::int" só quando o valor parece o id numérico de tickets
+ * (id é SERIAL/integer — ver schema.sql; NÃO é uuid, ao contrário de
+ * users/contacts). Sem esse cast no parâmetro (e não na coluna), o padrão
+ * antigo "id::text = $1" invalidava o índice da chave primária.
+ *
+ * IMPORTANTE: um bug real já aconteceu aqui — uma versão anterior desta
+ * função testava formato UUID em vez de inteiro, então NUNCA batia com o
+ * id real de um ticket (que é sempre um número tipo "42"), e toda busca
+ * por id caía silenciosamente no branch "protocolo = $N", que nunca
+ * corresponde a um id numérico. Resultado: assumir/transferir/fechar
+ * ticket por id retornava 404 sempre, para qualquer perfil. Os testes
+ * antigos usavam um UUID fabricado como fixture e não pegaram isso —
+ * por isso aqui o ID de fixture é deliberadamente um inteiro (como na
+ * tabela real), não um UUID.
  */
 jest.mock("../src/database/postgres", () => ({ query: jest.fn() }));
 
 const pool = require("../src/database/postgres");
 const repo = require("../src/repositories/ticket.repository");
 
-const UUID = "123e4567-e89b-12d3-a456-426614174000";
+const ID = "42"; // tickets.id é SERIAL — o valor real é sempre um inteiro como este
 const PROTOCOLO = "2026-0042";
 
 beforeEach(() => {
@@ -20,7 +31,7 @@ beforeEach(() => {
 describe("create", () => {
   test("insere com os campos esperados e devolve o ticket mapeado", async () => {
     const row = {
-      id: UUID, protocolo: PROTOCOLO, user_id: "55999@s.whatsapp.net",
+      id: 42, protocolo: PROTOCOLO, user_id: "55999@s.whatsapp.net",
       customer_name: "Cliente", cpf: "000", type: "orcamento", sector: "vendas",
       description: "desc", status: "aberto", assigned_to: null, assigned_to_name: null,
       created_at: new Date(), updated_at: new Date()
@@ -36,24 +47,24 @@ describe("create", () => {
     const [sql, params] = pool.query.mock.calls[0];
     expect(sql).toMatch(/INSERT INTO tickets/);
     expect(params[0]).toBe(PROTOCOLO);
-    expect(result).toMatchObject({ id: UUID, protocolo: PROTOCOLO, status: "aberto" });
+    expect(result).toMatchObject({ id: 42, protocolo: PROTOCOLO, status: "aberto" });
   });
 });
 
 describe("findByIdOrProtocol", () => {
-  test("valor em formato UUID: compara id = $1::uuid OU protocolo = $1 (usa índice da PK)", async () => {
-    pool.query.mockResolvedValueOnce({ rows: [{ id: UUID, protocolo: PROTOCOLO }] });
+  test("valor numérico (id real de tickets): compara id = $1::int OU protocolo = $1 (usa índice da PK)", async () => {
+    pool.query.mockResolvedValueOnce({ rows: [{ id: 42, protocolo: PROTOCOLO }] });
 
-    await repo.findByIdOrProtocol(UUID);
+    await repo.findByIdOrProtocol(ID);
 
     const [sql, params] = pool.query.mock.calls[0];
-    expect(sql).toMatch(/\(id = \$1::uuid OR protocolo = \$1\)/);
+    expect(sql).toMatch(/\(id = \$1::int OR protocolo = \$1\)/);
     expect(sql).not.toMatch(/id::text/);
-    expect(params).toEqual([UUID]);
+    expect(params).toEqual([ID]);
   });
 
-  test("valor que NÃO é UUID (protocolo): compara só protocolo = $1, sem tocar em id", async () => {
-    pool.query.mockResolvedValueOnce({ rows: [{ id: UUID, protocolo: PROTOCOLO }] });
+  test("valor não-numérico (protocolo): compara só protocolo = $1, sem tocar em id", async () => {
+    pool.query.mockResolvedValueOnce({ rows: [{ id: 42, protocolo: PROTOCOLO }] });
 
     await repo.findByIdOrProtocol(PROTOCOLO);
 
@@ -72,14 +83,14 @@ describe("findByIdOrProtocol", () => {
 
 describe("updateStatus", () => {
   test("usa idOrProtocolWhere no índice $2 e devolve o ticket atualizado", async () => {
-    pool.query.mockResolvedValueOnce({ rows: [{ id: UUID, status: "resolvido" }] });
+    pool.query.mockResolvedValueOnce({ rows: [{ id: 42, status: "resolvido" }] });
 
-    const result = await repo.updateStatus(UUID, "resolvido");
+    const result = await repo.updateStatus(ID, "resolvido");
 
     const [sql, params] = pool.query.mock.calls[0];
     expect(sql).toMatch(/SET status = \$1/);
-    expect(sql).toMatch(/\(id = \$2::uuid OR protocolo = \$2\)/);
-    expect(params).toEqual(["resolvido", UUID]);
+    expect(sql).toMatch(/\(id = \$2::int OR protocolo = \$2\)/);
+    expect(params).toEqual(["resolvido", ID]);
     expect(result).toMatchObject({ status: "resolvido" });
   });
 
@@ -101,9 +112,9 @@ describe("assign", () => {
   });
 
   test("ticket já atribuído → alreadyAssigned (sem tentar UPDATE)", async () => {
-    pool.query.mockResolvedValueOnce({ rows: [{ id: UUID, assigned_to: "outro-user" }] });
+    pool.query.mockResolvedValueOnce({ rows: [{ id: 42, assigned_to: "outro-user" }] });
 
-    const result = await repo.assign(UUID, { id: "u1", nome: "Ana" });
+    const result = await repo.assign(ID, { id: "u1", nome: "Ana" });
 
     expect(result).toEqual({ alreadyAssigned: true });
     expect(pool.query).toHaveBeenCalledTimes(1);
@@ -111,26 +122,26 @@ describe("assign", () => {
 
   test("ticket livre → assume com sucesso", async () => {
     pool.query
-      .mockResolvedValueOnce({ rows: [{ id: UUID, assigned_to: null }] }) // exists check
-      .mockResolvedValueOnce({ rows: [{ id: UUID, assigned_to: "u1", assigned_to_name: "Ana", status: "em_andamento" }] }); // update
+      .mockResolvedValueOnce({ rows: [{ id: 42, assigned_to: null }] }) // exists check
+      .mockResolvedValueOnce({ rows: [{ id: 42, assigned_to: "u1", assigned_to_name: "Ana", status: "em_andamento" }] }); // update
 
-    const result = await repo.assign(UUID, { id: "u1", nome: "Ana" });
+    const result = await repo.assign(ID, { id: "u1", nome: "Ana" });
 
     expect(pool.query).toHaveBeenCalledTimes(2);
     const [updateSql, updateParams] = pool.query.mock.calls[1];
     expect(updateSql).toMatch(/SET assigned_to = \$1/);
-    expect(updateSql).toMatch(/\(id = \$3::uuid OR protocolo = \$3\)/);
+    expect(updateSql).toMatch(/\(id = \$3::int OR protocolo = \$3\)/);
     expect(updateSql).toMatch(/AND assigned_to IS NULL/);
-    expect(updateParams).toEqual(["u1", "Ana", UUID]);
+    expect(updateParams).toEqual(["u1", "Ana", ID]);
     expect(result).toMatchObject({ status: "em_andamento" });
   });
 
   test("corrida: UPDATE não afeta linha (outro atendente assumiu entre o check e o update) → alreadyAssigned", async () => {
     pool.query
-      .mockResolvedValueOnce({ rows: [{ id: UUID, assigned_to: null }] })
+      .mockResolvedValueOnce({ rows: [{ id: 42, assigned_to: null }] })
       .mockResolvedValueOnce({ rows: [] });
 
-    const result = await repo.assign(UUID, { id: "u1", nome: "Ana" });
+    const result = await repo.assign(ID, { id: "u1", nome: "Ana" });
     expect(result).toEqual({ alreadyAssigned: true });
   });
 });
@@ -138,27 +149,27 @@ describe("assign", () => {
 describe("transfer", () => {
   test("transferência para setor (sem usuário-alvo): status volta para aberto", async () => {
     pool.query.mockResolvedValueOnce({
-      rows: [{ id: UUID, sector: "financeiro", assigned_to: null, status: "aberto" }]
+      rows: [{ id: 42, sector: "financeiro", assigned_to: null, status: "aberto" }]
     });
 
-    const result = await repo.transfer(UUID, "financeiro", null);
+    const result = await repo.transfer(ID, "financeiro", null);
 
     const [sql, params] = pool.query.mock.calls[0];
-    expect(sql).toMatch(/\(id = \$5::uuid OR protocolo = \$5\)/);
-    expect(params).toEqual(["financeiro", null, null, "aberto", UUID]);
+    expect(sql).toMatch(/\(id = \$5::int OR protocolo = \$5\)/);
+    expect(params).toEqual(["financeiro", null, null, "aberto", ID]);
     expect(result).toMatchObject({ sector: "financeiro", status: "aberto" });
   });
 
   test("transferência direta para atendente: usa o setor do atendente-alvo e status em_andamento", async () => {
     pool.query.mockResolvedValueOnce({
-      rows: [{ id: UUID, sector: "vendas", assigned_to: "u2", status: "em_andamento" }]
+      rows: [{ id: 42, sector: "vendas", assigned_to: "u2", status: "em_andamento" }]
     });
 
     const targetUser = { id: "u2", nome: "Bruno", sector: "vendas" };
-    await repo.transfer(UUID, "ignorado", targetUser);
+    await repo.transfer(ID, "ignorado", targetUser);
 
     const [, params] = pool.query.mock.calls[0];
-    expect(params).toEqual(["vendas", "u2", "Bruno", "em_andamento", UUID]);
+    expect(params).toEqual(["vendas", "u2", "Bruno", "em_andamento", ID]);
   });
 });
 

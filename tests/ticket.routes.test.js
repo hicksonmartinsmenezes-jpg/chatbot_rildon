@@ -30,10 +30,15 @@ const humanMode = require("../src/services/humanMode.service");
 const userRepository = require("../src/repositories/user.repository");
 const ticketRoutes = require("../src/routes/ticket.routes");
 
-let uuidCounter = 0;
-function fakeUuid() {
-  uuidCounter += 1;
-  return `00000000-0000-4000-8000-${String(uuidCounter).padStart(12, "0")}`;
+// tickets.id é SERIAL (inteiro), não uuid — ver schema.sql. Um bug real já
+// aconteceu aqui: fixtures antigas usavam um id em formato UUID, o que
+// mascarava uma regressão em idOrProtocolWhere() que só reconhecia UUID e
+// por isso nunca batia com o id real de um ticket. Por isso o fake id
+// aqui é deliberadamente um inteiro sequencial, como na tabela real.
+let idCounter = 0;
+function fakeId() {
+  idCounter += 1;
+  return idCounter;
 }
 
 function buildState() {
@@ -41,7 +46,12 @@ function buildState() {
 }
 
 function findTicket(state, value) {
-  return state.tickets.find(t => t.id === value || t.protocolo === value);
+  // t.id é number (como o driver do pg devolve uma coluna integer); value
+  // vem sempre como string (é o que idOrProtocolWhere/req.params.id usam)
+  // — por isso a comparação de id precisa coagir com String(), senão
+  // "42" !== 42 mascararia silenciosamente o mesmo tipo de bug já visto
+  // em produção (id nunca bate).
+  return state.tickets.find(t => String(t.id) === value || t.protocolo === value);
 }
 
 function installFakePool(state) {
@@ -54,7 +64,7 @@ function installFakePool(state) {
 
     if (/^INSERT INTO tickets/.test(sql)) {
       const row = {
-        id: fakeUuid(),
+        id: fakeId(),
         protocolo: params[0],
         user_id: params[1],
         customer_name: params[2],
@@ -72,7 +82,7 @@ function installFakePool(state) {
       return { rows: [row] };
     }
 
-    if (/^SELECT \* FROM tickets WHERE \(id = \$1::uuid OR protocolo = \$1\) LIMIT 1/.test(sql)
+    if (/^SELECT \* FROM tickets WHERE \(id = \$1::int OR protocolo = \$1\) LIMIT 1/.test(sql)
       || /^SELECT \* FROM tickets WHERE protocolo = \$1 LIMIT 1/.test(sql)) {
       const t = findTicket(state, params[0]);
       return { rows: t ? [t] : [] };

@@ -60,17 +60,27 @@ function safeTZ() {
   return _VALID_TZ_RE.test(tz) ? tz : "America/Maceio";
 }
 
-// Detecta se o valor parece um UUID (chave primária de tickets). Usado para
+// Detecta se o valor parece o id numérico de tickets (id é SERIAL/integer —
+// ver schema.sql; NÃO é uuid, ao contrário de users/contacts). Usado para
 // montar o WHERE de busca por id-ou-protocolo SEM fazer cast na coluna
 // "id" (id::text = $1) — esse cast, usado antes aqui, invalida o índice da
 // chave primária e força sequential scan em toda busca/assumir/transferir/
-// atualizar status de ticket. Comparando "id = $N::uuid" (cast no parâmetro,
+// atualizar status de ticket. Comparando "id = $N::int" (cast no parâmetro,
 // não na coluna) o Postgres consegue usar o índice normalmente.
-const _UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+//
+// BUG CORRIGIDO: a versão anterior testava formato UUID (_UUID_RE), mas
+// tickets.id é inteiro — então NUNCA batia, e toda busca por id caía no
+// branch "protocolo = $N" comparando um número (ex. "42") contra a coluna
+// protocolo (formato "2026-0042"), que nunca é igual. Resultado: assumir,
+// transferir e fechar ticket por id retornavam 404 sistematicamente, para
+// qualquer perfil (a checagem de permissão nem chegava a rodar). Os testes
+// não pegaram isso porque as fixtures usavam UUIDs fabricados em vez de
+// inteiros reais — corrigido junto com este fix.
+const _INTEGER_RE = /^\d+$/;
 
 function idOrProtocolWhere(value, paramIndex) {
-  return _UUID_RE.test(value)
-    ? `(id = $${paramIndex}::uuid OR protocolo = $${paramIndex})`
+  return _INTEGER_RE.test(value)
+    ? `(id = $${paramIndex}::int OR protocolo = $${paramIndex})`
     : `protocolo = $${paramIndex}`;
 }
 

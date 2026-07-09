@@ -15,6 +15,7 @@ numeração **não quebram a execução** — mas atrapalham a rastreabilidade.
 009_contacts.sql
 010_lid_map.sql
 011_add_totp_2fa.sql
+012_add_missing_indexes.sql
 ```
 
 **Os números 005–008 nunca existiram neste repositório** (confirmado via
@@ -32,7 +33,7 @@ o schema real do banco com `schema.sql` (ex: `pg_dump --schema-only`).
 
 ## Convenção daqui para frente
 
-- Próxima migration: `012_*.sql`. Não reutilizar nem pular números.
+- Próxima migration: `013_*.sql`. Não reutilizar nem pular números.
 - Toda mudança de schema deve ir para **os dois lugares**: o arquivo de
   migration incremental (para bancos existentes) E o `schema.sql` (para
-  instalações novas), no mesmo commit.
+  instalaçõ

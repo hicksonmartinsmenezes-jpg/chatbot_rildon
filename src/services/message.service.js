@@ -36,7 +36,7 @@ class MemoryRateLimiter {
     this._store = {};
 
     // Limpeza periódica: remove entradas inativas há mais de 1 hora
-    setInterval(() => this.cleanup(), 10 * 60 * 1000);
+    setInterval(() => this.cleanup(), 10 * 60 * 1000).unref();
   }
 
   hit(userId) {

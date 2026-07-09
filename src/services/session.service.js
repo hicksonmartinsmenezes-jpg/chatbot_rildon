@@ -72,7 +72,7 @@ function _agendarLimpezaTTL() {
     } catch (err) {
       logger.warn(`[Sessions] Erro na limpeza de TTL: ${err.message}`);
     }
-  }, 60 * 60 * 1000);
+  }, 60 * 60 * 1000).unref();
 }
 
 function getSession(userId) {

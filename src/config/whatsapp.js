@@ -31,14 +31,20 @@ const pino   = require("pino");
 const path   = require("path");
 const fs     = require("fs");
 
-let sock              = null;
-let reconnectAttempts = 0;
-let reconnecting      = false;
-let isWhatsAppConnected = false;
-let cachedConfig = null;
-let lastConfigCheck = 0;
-let messageHandler   = null;  // processMessage — guardado para reconexões forçadas
-let lastQr           = null;  // último QR pendente (até conectar) — permite buscar via API
+// Estado da conexão — antes eram 8 variáveis `let` soltas no topo do módulo,
+// lidas/escritas por closure em todos os handlers abaixo. Consolidadas aqui
+// num único objeto explícito (sem mudar nenhum comportamento) para deixar
+// claro, num só lugar, tudo que descreve "a conexão atual" com o WhatsApp.
+const conn = {
+  sock:                null,
+  reconnectAttempts:   0,
+  reconnecting:        false,
+  isWhatsAppConnected: false,
+  cachedConfig:        null,
+  lastConfigCheck:     0,
+  messageHandler:      null, // processMessage — guardado para reconexões forçadas
+  lastQr:              null  // último QR pendente (até conectar) — permite buscar via API
+};
 
 const MAX_RECONNECT_DELAY_MS = 30_000;
 const MESSAGE_PROCESSING_TIMEOUT_MS = Number(process.env.BOT_MESSAGE_TIMEOUT_MS || 45_000);
@@ -56,8 +62,8 @@ function withTimeout(promise, timeoutMs, label = "operação") {
 }
 
 function getReconnectDelay() {
-  const delay = Math.min(1000 * 2 ** reconnectAttempts, MAX_RECONNECT_DELAY_MS);
-  reconnectAttempts++;
+  const delay = Math.min(1000 * 2 ** conn.reconnectAttempts, MAX_RECONNECT_DELAY_MS);
+  conn.reconnectAttempts++;
   return delay;
 }
 
@@ -71,7 +77,7 @@ async function enviarComRetry(userId, response) {
   // Captura o socket atual. Não bloqueia por flags — o retry loop
   // trata falhas de conexão diretamente, incluindo casos onde o
   // evento "connection.open" não disparou (JIDs @lid / linked devices).
-  const currentSock = sock;
+  const currentSock = conn.sock;
 
   if (!currentSock) {
     logger.warn("Socket não disponível. Cancelando envio.");
@@ -82,7 +88,7 @@ async function enviarComRetry(userId, response) {
     try {
       await currentSock.sendMessage(userId, { text: response });
       // Garante que o flag fica sincronizado
-      if (!isWhatsAppConnected) isWhatsAppConnected = true;
+      if (!conn.isWhatsAppConnected) conn.isWhatsAppConnected = true;
       logger.info(`[WhatsApp] ✓ Resposta enviada. Tentativa ${i + 1}`);
       return true;
     } catch (err) {
@@ -99,10 +105,11 @@ async function enviarComRetry(userId, response) {
 // Extraídos como funções nomeadas de nível de módulo (em vez de closures
 // inline dentro de connectWhatsApp) só para reduzir o tamanho e a
 // profundidade de aninhamento da função de conexão. Continuam no mesmo
-// arquivo porque dependem do estado compartilhado via closure (sock,
-// isWhatsAppConnected, reconnectAttempts etc.) — mover para outro módulo
-// exigiria transformar esse estado em algo explícito (classe/objeto),
-// o que é uma mudança maior e fica para uma refatoração futura dedicada.
+// arquivo porque dependem do estado compartilhado via closure sobre `conn`
+// (sock, isWhatsAppConnected, reconnectAttempts etc.) — mover para outro
+// módulo é possível agora que o estado é um objeto explícito (bastaria
+// passar `conn` como parâmetro), mas fica para uma refatoração futura
+// dedicada, já que essa extração por si só não muda comportamento nenhum.
 
 function processContacts(contacts, source) {
   logger.info(`[${source}] ${contacts.length} contatos`);
@@ -122,14 +129,14 @@ function processContacts(contacts, source) {
 // reconexão) e confirmação de conexão aberta.
 async function onConnectionUpdate({ connection, lastDisconnect, qr }) {
   if (qr) {
-    lastQr = qr; // mantém o QR disponível para quem abrir o painel depois do evento
+    conn.lastQr = qr; // mantém o QR disponível para quem abrir o painel depois do evento
     logger.info("Escaneie o QR Code abaixo com o WhatsApp");
     qrcode.generate(qr, { small: true });
     emitEvent("qr_code", { qr });
   }
 
   if (connection === "close") {
-    isWhatsAppConnected = false;
+    conn.isWhatsAppConnected = false;
 
     const code = lastDisconnect?.error?.output?.statusCode;
     const shouldReconnect =
@@ -153,23 +160,23 @@ async function onConnectionUpdate({ connection, lastDisconnect, qr }) {
     emitEvent("whatsapp_status", { status: "disconnected", code });
 
     if (shouldReconnect) {
-      if (reconnecting) {
+      if (conn.reconnecting) {
         logger.warn("Reconexão já em andamento...");
         return;
       }
 
-      reconnecting = true;
+      conn.reconnecting = true;
       const delay   = getReconnectDelay();
-      const oldSock = sock;
+      const oldSock = conn.sock;
 
-      logger.info(`Reconectando em ${delay / 1000}s... (tentativa ${reconnectAttempts})`);
+      logger.info(`Reconectando em ${delay / 1000}s... (tentativa ${conn.reconnectAttempts})`);
 
       setTimeout(async () => {
         try {
           await limparSocketAntigo(oldSock);
-          await connectWhatsApp(messageHandler);
+          await connectWhatsApp(conn.messageHandler);
         } finally {
-          reconnecting = false;
+          conn.reconnecting = false;
         }
       }, delay);
 
@@ -181,10 +188,10 @@ async function onConnectionUpdate({ connection, lastDisconnect, qr }) {
   }
 
   if (connection === "open") {
-    reconnectAttempts = 0;
-    reconnecting      = false;
-    isWhatsAppConnected = true;
-    lastQr            = null; // conectou: não há mais QR pendente
+    conn.reconnectAttempts   = 0;
+    conn.reconnecting        = false;
+    conn.isWhatsAppConnected = true;
+    conn.lastQr              = null; // conectou: não há mais QR pendente
     logger.info("[WhatsApp] ✓ Conectado com sucesso!");
     emitEvent("whatsapp_status", { status: "connected" });
   }
@@ -316,7 +323,7 @@ async function onMessagesUpsert({ messages, type }) {
       );
 
       const response = await withTimeout(
-        messageHandler({ userId, contactName, message: text }),
+        conn.messageHandler({ userId, contactName, message: text }),
         MESSAGE_PROCESSING_TIMEOUT_MS,
         "processamento do bot"
       );
@@ -352,8 +359,8 @@ async function connectWhatsApp(onMessage) {
 
   // Guarda o handler para que forceReconnect() e a reconexão automática
   // possam reiniciar a conexão sozinhas (os handlers de evento acima usam
-  // messageHandler, não o parâmetro local, justamente por isso).
-  messageHandler = onMessage;
+  // conn.messageHandler, não o parâmetro local, justamente por isso).
+  conn.messageHandler = onMessage;
 
   // Restaura o mapa @lid → JID do banco (uma vez) para sobreviver a restarts
   await carregarLidMap();
@@ -370,17 +377,17 @@ async function connectWhatsApp(onMessage) {
     throw err;
   }
 
-  if (sock?.ev) {
-    sock.ev.removeAllListeners("messages.upsert");
-    sock.ev.removeAllListeners("messages.update");
-    sock.ev.removeAllListeners("presence.update");
-    sock.ev.removeAllListeners("connection.update");
-    sock.ev.removeAllListeners("creds.update");
-    sock.ev.removeAllListeners("contacts.upsert");
-    sock.ev.removeAllListeners("contacts.set");
+  if (conn.sock?.ev) {
+    conn.sock.ev.removeAllListeners("messages.upsert");
+    conn.sock.ev.removeAllListeners("messages.update");
+    conn.sock.ev.removeAllListeners("presence.update");
+    conn.sock.ev.removeAllListeners("connection.update");
+    conn.sock.ev.removeAllListeners("creds.update");
+    conn.sock.ev.removeAllListeners("contacts.upsert");
+    conn.sock.ev.removeAllListeners("contacts.set");
   }
 
-  sock = makeWASocket({
+  conn.sock = makeWASocket({
     version,
     auth:                    state,
     logger:                  pino({ level: "fatal" }),
@@ -394,24 +401,24 @@ async function connectWhatsApp(onMessage) {
     retryRequestDelayMs:     250
   });
 
-  sock.ev.on("creds.update", saveCreds);
-  sock.ev.on("contacts.upsert", contacts => processContacts(contacts, "contacts.upsert"));
-  sock.ev.on("contacts.set",    ({ contacts }) => processContacts(contacts || [], "contacts.set"));
-  sock.ev.on("connection.update", onConnectionUpdate);
-  sock.ev.on("presence.update", onPresenceUpdate);
-  sock.ev.on("messages.update", onMessagesUpdate);
-  sock.ev.on("messages.upsert", onMessagesUpsert);
+  conn.sock.ev.on("creds.update", saveCreds);
+  conn.sock.ev.on("contacts.upsert", contacts => processContacts(contacts, "contacts.upsert"));
+  conn.sock.ev.on("contacts.set",    ({ contacts }) => processContacts(contacts || [], "contacts.set"));
+  conn.sock.ev.on("connection.update", onConnectionUpdate);
+  conn.sock.ev.on("presence.update", onPresenceUpdate);
+  conn.sock.ev.on("messages.update", onMessagesUpdate);
+  conn.sock.ev.on("messages.upsert", onMessagesUpsert);
 }
 
 
 async function getProfilePhotoUrl(userId) {
-  if (!sock) return null;
+  if (!conn.sock) return null;
 
   const candidates = getProfilePhotoCandidates(userId);
 
   for (const jid of candidates) {
     try {
-      const url = await sock.profilePictureUrl(jid, "image");
+      const url = await conn.sock.profilePictureUrl(jid, "image");
       if (url) {
         logger.debug?.(`[FotoContato] foto encontrada para ${userId} via ${jid}`);
         return url;
@@ -426,8 +433,8 @@ async function getProfilePhotoUrl(userId) {
 }
 
 async function sendMessage(userId, text) {
-  if (!sock) throw new Error("WhatsApp não inicializado.");
-  if (!isWhatsAppConnected) throw new Error("WhatsApp não autenticado. Escaneie o QR Code no painel.");
+  if (!conn.sock) throw new Error("WhatsApp não inicializado.");
+  if (!conn.isWhatsAppConnected) throw new Error("WhatsApp não autenticado. Escaneie o QR Code no painel.");
 
   try {
     let resolvedJid = resolveSendJid(userId);
@@ -438,7 +445,7 @@ async function sendMessage(userId, text) {
     // JIDs @lid são identificadores de dispositivo — não passam por onWhatsApp()
     if (!resolvedJid.endsWith("@lid")) {
       const numero = resolvedJid.replace(/@.+/, "");
-      const [check] = await sock.onWhatsApp(numero).catch(() => [null]);
+      const [check] = await conn.sock.onWhatsApp(numero).catch(() => [null]);
       if (!check?.exists) {
         throw new Error(`Número ${numero} não está registrado no WhatsApp.`);
       }
@@ -448,7 +455,7 @@ async function sendMessage(userId, text) {
       }
     }
 
-    const sent = await sock.sendMessage(resolvedJid, { text });
+    const sent = await conn.sock.sendMessage(resolvedJid, { text });
     logger.info(`[sendMessage] ✓ Enviado para ${resolvedJid}`);
 
     return { id: sent.key.id, remoteJid: sent.key.remoteJid, fromMe: sent.key.fromMe };
@@ -464,8 +471,8 @@ async function sendMessage(userId, text) {
 }
 
 async function sendMedia(userId, filePath, caption = "", mediaType = "image") {
-  if (!sock) throw new Error("WhatsApp não inicializado.");
-  if (!isWhatsAppConnected) throw new Error("WhatsApp não autenticado. Escaneie o QR Code no painel.");
+  if (!conn.sock) throw new Error("WhatsApp não inicializado.");
+  if (!conn.isWhatsAppConnected) throw new Error("WhatsApp não autenticado. Escaneie o QR Code no painel.");
 
   try {
     // Mesma lógica de sendMessage: se o número tem @lid conhecido, envia pelo @lid.
@@ -473,7 +480,7 @@ async function sendMedia(userId, filePath, caption = "", mediaType = "image") {
 
     if (!resolvedJid.endsWith("@lid")) {
       const numero = resolvedJid.replace(/@.+/, "");
-      const [check] = await sock.onWhatsApp(numero).catch(() => [null]);
+      const [check] = await conn.sock.onWhatsApp(numero).catch(() => [null]);
       if (!check?.exists) {
         throw new Error(`Número ${numero} não está registrado no WhatsApp.`);
       }
@@ -502,7 +509,7 @@ async function sendMedia(userId, filePath, caption = "", mediaType = "image") {
       msgContent = { image: fileData, caption: caption || undefined };
     }
 
-    const sent = await sock.sendMessage(resolvedJid, msgContent);
+    const sent = await conn.sock.sendMessage(resolvedJid, msgContent);
     logger.info(`[WhatsApp] ✓ Mídia (${mediaType}) enviada para ${resolvedJid}`);
 
     return { id: sent.key.id, remoteJid: sent.key.remoteJid, fromMe: sent.key.fromMe };
@@ -513,19 +520,19 @@ async function sendMedia(userId, filePath, caption = "", mediaType = "image") {
   }
 }
 function getSocket() {
-  return sock;
+  return conn.sock;
 }
 
 async function sendTypingPresence(userId) {
-  if (!sock || !isWhatsAppConnected) return;
+  if (!conn.sock || !conn.isWhatsAppConnected) return;
 
   try {
-    await sock.presenceSubscribe(userId);
-    await sock.sendPresenceUpdate("composing", userId);
+    await conn.sock.presenceSubscribe(userId);
+    await conn.sock.sendPresenceUpdate("composing", userId);
 
     setTimeout(async () => {
       try {
-        await sock.sendPresenceUpdate("paused", userId);
+        await conn.sock.sendPresenceUpdate("paused", userId);
       } catch (_) {}
     }, 3000);
 
@@ -537,7 +544,7 @@ async function sendTypingPresence(userId) {
 }
 
 function isConnected() {
-  return !!sock && isWhatsAppConnected;
+  return !!conn.sock && conn.isWhatsAppConnected;
 }
 
 startDedupCleanup();
@@ -547,23 +554,23 @@ async function getBotConfigCached() {
   const now = Date.now();
 
   if (
-    cachedConfig &&
-    now - lastConfigCheck < 30000
+    conn.cachedConfig &&
+    now - conn.lastConfigCheck < 30000
   ) {
-    return cachedConfig;
+    return conn.cachedConfig;
   }
 
-  cachedConfig = await getBotConfig();
-  lastConfigCheck = now;
+  conn.cachedConfig = await getBotConfig();
+  conn.lastConfigCheck = now;
 
-  return cachedConfig;
+  return conn.cachedConfig;
 }
 
 // Estado da conexão para o painel: { connected, qr }
 // Permite que o frontend busque um QR pendente mesmo que tenha aberto o painel
 // depois do evento socket "qr_code" (que é efêmero).
 function getConnectionInfo() {
-  return { connected: isWhatsAppConnected, qr: lastQr };
+  return { connected: conn.isWhatsAppConnected, qr: conn.lastQr };
 }
 
 // Encerra a sessão atual e RECONECTA explicitamente para forçar novo QR Code.
@@ -575,13 +582,13 @@ async function forceReconnect(opts = {}) {
   const { clearSession = false } = opts;
   logger.warn(`[WhatsApp] Reconexão forçada solicitada pelo painel.${clearSession ? " (limpando sessão)" : ""}`);
 
-  isWhatsAppConnected = false;
-  lastQr              = null;
-  reconnecting        = false; // libera para a nova conexão não ser bloqueada
-  reconnectAttempts   = 0;     // zera backoff
+  conn.isWhatsAppConnected = false;
+  conn.lastQr              = null;
+  conn.reconnecting        = false; // libera para a nova conexão não ser bloqueada
+  conn.reconnectAttempts   = 0;     // zera backoff
 
-  const oldSock = sock;
-  sock = null;
+  const oldSock = conn.sock;
+  conn.sock = null;
   await limparSocketAntigo(oldSock);
 
   if (clearSession) {
@@ -593,8 +600,8 @@ async function forceReconnect(opts = {}) {
     }
   }
 
-  if (typeof messageHandler === "function") {
-    await connectWhatsApp(messageHandler);
+  if (typeof conn.messageHandler === "function") {
+    await connectWhatsApp(conn.messageHandler);
   } else {
     logger.error("[WhatsApp] messageHandler ausente — não foi possível reconectar.");
     throw new Error("WhatsApp ainda não foi inicializado.");

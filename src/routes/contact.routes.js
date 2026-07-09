@@ -56,7 +56,7 @@ function parseCSV(content) {
 // Rate limit por userId (30/min) e por IP global (200/min)
 const _photoRateUser = new Map();
 const _photoRateIp   = new Map();
-setInterval(() => { _photoRateUser.clear(); _photoRateIp.clear(); }, 60_000);
+setInterval(() => { _photoRateUser.clear(); _photoRateIp.clear(); }, 60_000).unref();
 
 function photoRateOk(userId, ip) {
   const userCount = (_photoRateUser.get(userId) || 0) + 1;

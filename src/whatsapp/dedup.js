@@ -98,6 +98,9 @@ async function marcarMensagemProcessada(messageId) {
 
 // Limpeza periódica da tabela de dedup (mensagens processadas há mais de 7 dias)
 function startDedupCleanup() {
+  // .unref() — não deve impedir o processo de encerrar (graceful shutdown/testes).
+  // startDedupCleanup() roda no top-level de whatsapp.js, então sem isso
+  // qualquer coisa que só requira aquele módulo (incluindo testes) travava.
   setInterval(async () => {
     try {
       await pool.query(`
@@ -107,7 +110,7 @@ function startDedupCleanup() {
     } catch (err) {
       logger.warn(`Erro limpando dedup: ${err.message}`);
     }
-  }, 24 * 60 * 60 * 1000);
+  }, 24 * 60 * 60 * 1000).unref();
 }
 
 module.exports = {

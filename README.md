@@ -53,21 +53,44 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 ## Backup e restauração do banco
 
-Backup manual (gera dump comprimido em `./backups` com retenção):
+O dump do Postgres é **sempre cifrado** (AES-256-CBC + PBKDF2, via `openssl`)
+antes de tocar o disco — os dumps contêm dados pessoais de clientes (LGPD),
+então nunca gravamos texto puro em `./backups`.
+
+1. Gere uma chave de criptografia (uma vez, guarde em local seguro — sem ela
+   os backups não podem ser restaurados):
+   ```bash
+   openssl rand -base64 48
+   ```
+2. Defina no `.env`: `BACKUP_ENCRYPTION_KEY=<a chave gerada acima>`
+
+Backup manual (gera dump cifrado em `./backups` com retenção):
 ```bash
 bash scripts/backup.sh
 ```
 
-Restaurar um backup (⚠️ sobrescreve os dados atuais):
+Restaurar um backup (⚠️ sobrescreve os dados atuais; aceita `.sql.gz.enc`
+cifrado ou `.sql.gz` de backups antigos pré-criptografia):
 ```bash
-bash scripts/restore.sh backups/chatbot_rildon_AAAAMMDD_HHMMSS.sql.gz
+bash scripts/restore.sh backups/chatbot_rildon_AAAAMMDD_HHMMSS.sql.gz.enc
 ```
 
 Agendamento:
 - **Linux/cron:** `0 3 * * * cd /caminho/projeto && bash scripts/backup.sh`
 - **Windows:** Agendador de Tarefas chamando `bash scripts/backup.sh`
-- **Produção Docker:** o `docker-compose.prod.example.yml` já inclui o serviço
-  `backup` (dumps diários automáticos com retenção de dias/semanas/meses).
+
+### Off-site (fora do servidor)
+
+Um backup que só existe no mesmo servidor não protege contra falha de disco,
+incêndio, ou ransomware que atinge `./backups` junto com o resto. Para enviar
+a cópia cifrada para outro lugar (S3, Backblaze, outro servidor etc.):
+
+1. Instale e configure o [rclone](https://rclone.org/) (`rclone config`) com o
+   destino desejado.
+2. Defina no `.env`: `BACKUP_REMOTE=nome-do-remoto:bucket/pasta`.
+3. `scripts/backup.sh` envia automaticamente a cópia cifrada para lá logo após
+   criá-la — se `rclone` não estiver instalado ou `BACKUP_REMOTE` não estiver
+   definido, o script avisa no log e segue só com o backup local (não falha).
 
 Os dumps ficam em `./backups` e são ignorados pelo Git.
 

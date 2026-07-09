@@ -51,6 +51,31 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 ---
 
+## Monitoramento de erros (Sentry) — opcional
+
+Sem `SENTRY_DSN` definido no `.env`, o monitoramento fica completamente
+desativado (no-op) — não é preciso configurar nada para rodar em
+desenvolvimento. Para ativar em produção:
+
+```bash
+SENTRY_DSN=https://<sua-chave>@<seu-projeto>.ingest.sentry.io/<id>
+SENTRY_TRACES_SAMPLE_RATE=0   # 0 = só erros, sem tracing de performance
+# SENTRY_RELEASE=chatbot-rildon@1.0.0
+```
+
+Captura automaticamente `uncaughtException`, `unhandledRejection` e erros
+5xx do Express (erros 4xx — validação, autenticação, etc. — não são
+enviados, pois são esperados e não indicam bug).
+
+**Importante ao adicionar/atualizar essa dependência via Docker:** o
+`docker-compose.yml` usa um volume anônimo em `/app/node_modules` que
+sobrevive a `docker compose up --build` — se o container reclamar de
+`Cannot find module '@sentry/node'` (ou qualquer outra dependência nova)
+mesmo após reconstruir a imagem, rode `docker compose up --build
+--renew-anon-volumes` para forçar a recriação do volume.
+
+---
+
 ## Backup e restauração do banco
 
 O dump do Postgres é **sempre cifrado** (AES-256-CBC + PBKDF2, via `openssl`)
@@ -126,27 +151,4 @@ src/
 ├── config/
 │   └── whatsapp.js     # Conexão Baileys, reconexão, deduplicação
 ├── database/
-│   ├── postgres.js     # Pool de conexões, dedup helpers
-│   └── schema.sql      # DDL completo
-├── flows/              # Lógica de conversação por setor
-│   ├── main.flow.js
-│   ├── vendas.flow.js
-│   ├── crediario.flow.js
-│   └── messages.js
-├── services/           # Lógica de negócio
-├── routes/             # Endpoints da API REST
-├── repositories/       # Acesso ao banco por entidade
-├── middlewares/        # Auth, upload
-├── controllers/        # Orquestração request → service
-└── utils/              # logger, horario, validators
-```
-
----
-
-## Segurança em produção
-
-1. **Nunca versionar** `.env` nem a pasta `auth_info/` — as credenciais da sessão WhatsApp estão lá
-2. Gerar novos valores para `API_TOKEN`, `JWT_SECRET` e `DB_PASSWORD` antes do deploy
-3. Configurar `CSP_CONNECT_SRC` com o domínio real do frontend (não usar `*`)
-4. Habilitar `DB_SSL=true` se o banco for remoto
-5. Usar HTTPS em produção (nginx, Caddy ou similar como proxy reverso)
+│   ├── postgres.

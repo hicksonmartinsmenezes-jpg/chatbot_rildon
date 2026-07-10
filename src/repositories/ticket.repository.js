@@ -68,7 +68,7 @@ function safeTZ() {
 // atualizar status de ticket. Comparando "id = $N::int" (cast no parâmetro,
 // não na coluna) o Postgres consegue usar o índice normalmente.
 //
-// BUG CORRIGIDO: a versão anterior testava formato UUID (_UUID_RE), mas
+// BUG CORRIGIDO (1): a versão anterior testava formato UUID (_UUID_RE), mas
 // tickets.id é inteiro — então NUNCA batia, e toda busca por id caía no
 // branch "protocolo = $N" comparando um número (ex. "42") contra a coluna
 // protocolo (formato "2026-0042"), que nunca é igual. Resultado: assumir,
@@ -76,11 +76,23 @@ function safeTZ() {
 // qualquer perfil (a checagem de permissão nem chegava a rodar). Os testes
 // não pegaram isso porque as fixtures usavam UUIDs fabricados em vez de
 // inteiros reais — corrigido junto com este fix.
+//
+// BUG CORRIGIDO (2): a correção acima trocou para "(id = $N::int OR
+// protocolo = $N)", mas deixou a segunda ocorrência de $N sem cast. O
+// Postgres resolve o TIPO de um parâmetro nomeado uma única vez por
+// statement — como a primeira ocorrência fixa $N como "int" (por causa do
+// "::int"), a segunda ocorrência ("protocolo = $N", sem cast) tenta comparar
+// a coluna varchar "protocolo" com um valor já tipado como integer, e o
+// Postgres não tem operador "character varying = integer" → erro em
+// runtime (500) em toda chamada, mesmo com o dado correto. Corrigido dando
+// cast explícito também na segunda ocorrência ("::text"), o que não muda o
+// comportamento (protocolo nunca é numérico puro) mas evita o conflito de
+// tipos do parâmetro compartilhado.
 const _INTEGER_RE = /^\d+$/;
 
 function idOrProtocolWhere(value, paramIndex) {
   return _INTEGER_RE.test(value)
-    ? `(id = $${paramIndex}::int OR protocolo = $${paramIndex})`
+    ? `(id = $${paramIndex}::int OR protocolo = $${paramIndex}::text)`
     : `protocolo = $${paramIndex}`;
 }
 

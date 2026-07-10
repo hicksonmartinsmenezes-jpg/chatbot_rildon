@@ -15,6 +15,21 @@
  * antigos usavam um UUID fabricado como fixture e não pegaram isso —
  * por isso aqui o ID de fixture é deliberadamente um inteiro (como na
  * tabela real), não um UUID.
+ *
+ * IMPORTANTE (2): um segundo bug real aconteceu logo depois — a correção
+ * acima usava "(id = $N::int OR protocolo = $N)" sem cast na segunda
+ * ocorrência do mesmo parâmetro. O Postgres resolve o tipo de um parâmetro
+ * nomeado uma única vez por statement; como a primeira ocorrência fixa o
+ * tipo como "int" (por causa do "::int"), a segunda ocorrência, sem cast,
+ * tentava comparar a coluna varchar "protocolo" com um valor já tipado
+ * como integer — erro em runtime "operator does not exist: character
+ * varying = integer", em produção, em toda chamada. Corrigido dando cast
+ * explícito também na segunda ocorrência ("::text"). Os testes abaixo
+ * verificam a string SQL exata gerada, então teriam pego isso se já
+ * existissem antes — mas não pegam erros de TIPO em tempo de execução do
+ * Postgres real, já que o pool aqui é mockado. Verificação desse tipo de
+ * bug (tipo compartilhado de parâmetro) precisa rodar contra um Postgres
+ * de verdade, não só o mock.
  */
 jest.mock("../src/database/postgres", () => ({ query: jest.fn() }));
 
@@ -52,13 +67,13 @@ describe("create", () => {
 });
 
 describe("findByIdOrProtocol", () => {
-  test("valor numérico (id real de tickets): compara id = $1::int OU protocolo = $1 (usa índice da PK)", async () => {
+  test("valor numérico (id real de tickets): compara id = $1::int OU protocolo = $1::text (usa índice da PK, sem conflito de tipo do parâmetro)", async () => {
     pool.query.mockResolvedValueOnce({ rows: [{ id: 42, protocolo: PROTOCOLO }] });
 
     await repo.findByIdOrProtocol(ID);
 
     const [sql, params] = pool.query.mock.calls[0];
-    expect(sql).toMatch(/\(id = \$1::int OR protocolo = \$1\)/);
+    expect(sql).toMatch(/\(id = \$1::int OR protocolo = \$1::text\)/);
     expect(sql).not.toMatch(/id::text/);
     expect(params).toEqual([ID]);
   });
@@ -89,7 +104,7 @@ describe("updateStatus", () => {
 
     const [sql, params] = pool.query.mock.calls[0];
     expect(sql).toMatch(/SET status = \$1/);
-    expect(sql).toMatch(/\(id = \$2::int OR protocolo = \$2\)/);
+    expect(sql).toMatch(/\(id = \$2::int OR protocolo = \$2::text\)/);
     expect(params).toEqual(["resolvido", ID]);
     expect(result).toMatchObject({ status: "resolvido" });
   });
@@ -130,7 +145,7 @@ describe("assign", () => {
     expect(pool.query).toHaveBeenCalledTimes(2);
     const [updateSql, updateParams] = pool.query.mock.calls[1];
     expect(updateSql).toMatch(/SET assigned_to = \$1/);
-    expect(updateSql).toMatch(/\(id = \$3::int OR protocolo = \$3\)/);
+    expect(updateSql).toMatch(/\(id = \$3::int OR protocolo = \$3::text\)/);
     expect(updateSql).toMatch(/AND assigned_to IS NULL/);
     expect(updateParams).toEqual(["u1", "Ana", ID]);
     expect(result).toMatchObject({ status: "em_andamento" });
@@ -155,7 +170,7 @@ describe("transfer", () => {
     const result = await repo.transfer(ID, "financeiro", null);
 
     const [sql, params] = pool.query.mock.calls[0];
-    expect(sql).toMatch(/\(id = \$5::int OR protocolo = \$5\)/);
+    expect(sql).toMatch(/\(id = \$5::int OR protocolo = \$5::text\)/);
     expect(params).toEqual(["financeiro", null, null, "aberto", ID]);
     expect(result).toMatchObject({ sector: "financeiro", status: "aberto" });
   });

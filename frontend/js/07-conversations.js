@@ -178,7 +178,15 @@ async function _loadConversationsCore(silent = false) {
     }).join("");
     bindConversationListDelegation();
 
-    if (selectedConversationUser && users.includes(selectedConversationUser)) {
+    // Reabre o painel da conversa selecionada sempre que ela ainda existe no
+    // histórico (usersSeen = superset ANTES do filtro de aba/busca), não só
+    // quando ela sobrevive ao filtro da aba atual. Antes disso, fechar um
+    // ticket na aba "Ativos" fazia o usuário sumir de `users` (ticket virou
+    // "resolvido", não bate mais no filtro em_andamento/aberto) e o painel
+    // da direita ficava com o header/botões antigos ("Transferir"/"Fechar"),
+    // parecendo que o fechamento não tinha efeito nenhum — mesmo o backend
+    // já tendo fechado o ticket com sucesso.
+    if (selectedConversationUser && usersSeen.has(selectedConversationUser)) {
       openConversation(selectedConversationUser, true);
     }
 

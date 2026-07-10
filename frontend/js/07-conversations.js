@@ -407,7 +407,11 @@ async function fecharTicketConv(id) {
           headers: { "Content-Type": "application/json" },
           body:    JSON.stringify({ status: "resolvido" })
         });
-        if (!res?.ok) throw new Error("Erro ao fechar.");
+        if (!res) return;
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || `Erro ao fechar (HTTP ${res.status}).`);
+        }
         showToast("✅ Atendimento fechado!");
         fecharChat();
         await loadConversations();
@@ -442,10 +446,15 @@ async function transferirTicketConv(id) {
       onConfirm:   async (toUserId) => {
         try {
           const res = await apiFetch(`${BASE}/api/tickets/${id}/transfer`, {
-            method: "PATCH",
-            body:   JSON.stringify({ toUserId })
+            method:  "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ toUserId })
           });
-          if (!res?.ok) throw new Error("Erro ao transferir.");
+          if (!res) return;
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || `Erro ao transferir (HTTP ${res.status}).`);
+          }
           showToast("✅ Transferido!");
           await loadConversations();
           if (selectedConversationUser) openConversation(selectedConversationUser);

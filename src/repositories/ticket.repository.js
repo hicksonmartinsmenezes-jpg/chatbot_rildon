@@ -174,13 +174,18 @@ async function updateStatus(id, status) {
 async function assign(id, user) {
   const idStr = String(id);
 
-  // Verifica se o ticket existe antes de tentar assumir
+  // Verifica se o ticket existe antes de tentar assumir. Também traz
+  // assigned_to_name aqui: se já estiver atribuído, o controller usa esse
+  // nome para informar ao atendente QUEM já assumiu, em vez de uma
+  // mensagem genérica de "já foi assumido por outro atendente".
   const exists = await pool.query(
-    `SELECT id, assigned_to FROM tickets WHERE ${idOrProtocolWhere(idStr, 1)}`,
+    `SELECT id, assigned_to, assigned_to_name FROM tickets WHERE ${idOrProtocolWhere(idStr, 1)}`,
     [idStr]
   );
   if (!exists.rows[0]) return { notFound: true };
-  if (exists.rows[0].assigned_to) return { alreadyAssigned: true };
+  if (exists.rows[0].assigned_to) {
+    return { alreadyAssigned: true, assignedToName: exists.rows[0].assigned_to_name || null };
+  }
 
   const result = await pool.query(
     `
@@ -201,7 +206,15 @@ async function assign(id, user) {
     ]
   );
 
-  return result.rows[0] ? mapTicket(result.rows[0]) : { alreadyAssigned: true };
+  if (result.rows[0]) return mapTicket(result.rows[0]);
+
+  // Corrida: outro atendente assumiu entre o SELECT de cima e este UPDATE
+  // (0 linhas afetadas). Busca de novo só para informar quem venceu a corrida.
+  const winner = await pool.query(
+    `SELECT assigned_to_name FROM tickets WHERE ${idOrProtocolWhere(idStr, 1)}`,
+    [idStr]
+  );
+  return { alreadyAssigned: true, assignedToName: winner.rows[0]?.assigned_to_name || null };
 }
 
 async function transfer(id, sector, targetUser = null) {

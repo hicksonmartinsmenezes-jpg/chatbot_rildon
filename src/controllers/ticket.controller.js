@@ -132,7 +132,13 @@ async function assumirTicket(req, res) {
       return res.status(404).json({ error: "Ticket não encontrado." });
     }
     if (ticket.alreadyAssigned) {
-      return res.status(409).json({ error: "Ticket já foi assumido por outro atendente." });
+      // Informa QUEM já assumiu, em vez de só "outro atendente" — evita o
+      // atendente ter que abrir o ticket de novo pra descobrir com quem falar.
+      const nome = ticket.assignedToName;
+      return res.status(409).json({
+        error: nome ? `Ticket já foi assumido por ${nome}.` : "Ticket já foi assumido por outro atendente.",
+        assignedToName: nome || null
+      });
     }
 
     // Atendente assumiu → pausa o bot para este cliente até o ticket fechar

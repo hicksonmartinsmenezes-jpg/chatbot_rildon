@@ -126,13 +126,27 @@ describe("assign", () => {
     expect(pool.query).toHaveBeenCalledTimes(1); // não chega a tentar o UPDATE
   });
 
-  test("ticket já atribuído → alreadyAssigned (sem tentar UPDATE)", async () => {
-    pool.query.mockResolvedValueOnce({ rows: [{ id: 42, assigned_to: "outro-user" }] });
+  test("ticket já atribuído → alreadyAssigned com o nome de quem assumiu (sem tentar UPDATE)", async () => {
+    pool.query.mockResolvedValueOnce({
+      rows: [{ id: 42, assigned_to: "outro-user", assigned_to_name: "Bruno" }]
+    });
 
     const result = await repo.assign(ID, { id: "u1", nome: "Ana" });
 
-    expect(result).toEqual({ alreadyAssigned: true });
+    expect(result).toEqual({ alreadyAssigned: true, assignedToName: "Bruno" });
     expect(pool.query).toHaveBeenCalledTimes(1);
+  });
+
+  test("corrida: UPDATE não afeta linha → alreadyAssigned traz o nome de quem venceu a corrida", async () => {
+    pool.query
+      .mockResolvedValueOnce({ rows: [{ id: 42, assigned_to: null, assigned_to_name: null }] }) // exists check
+      .mockResolvedValueOnce({ rows: [] }) // update não afeta linha (corrida)
+      .mockResolvedValueOnce({ rows: [{ assigned_to_name: "Carla" }] }); // re-consulta pra achar o vencedor
+
+    const result = await repo.assign(ID, { id: "u1", nome: "Ana" });
+
+    expect(pool.query).toHaveBeenCalledTimes(3);
+    expect(result).toEqual({ alreadyAssigned: true, assignedToName: "Carla" });
   });
 
   test("ticket livre → assume com sucesso", async () => {
@@ -151,14 +165,6 @@ describe("assign", () => {
     expect(result).toMatchObject({ status: "em_andamento" });
   });
 
-  test("corrida: UPDATE não afeta linha (outro atendente assumiu entre o check e o update) → alreadyAssigned", async () => {
-    pool.query
-      .mockResolvedValueOnce({ rows: [{ id: 42, assigned_to: null }] })
-      .mockResolvedValueOnce({ rows: [] });
-
-    const result = await repo.assign(ID, { id: "u1", nome: "Ana" });
-    expect(result).toEqual({ alreadyAssigned: true });
-  });
 });
 
 describe("transfer", () => {

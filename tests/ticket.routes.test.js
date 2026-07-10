@@ -82,15 +82,22 @@ function installFakePool(state) {
       return { rows: [row] };
     }
 
-    if (/^SELECT \* FROM tickets WHERE \(id = \$1::int OR protocolo = \$1\) LIMIT 1/.test(sql)
+    if (/^SELECT \* FROM tickets WHERE \(id = \$1::int OR protocolo = \$1(::text)?\) LIMIT 1/.test(sql)
       || /^SELECT \* FROM tickets WHERE protocolo = \$1 LIMIT 1/.test(sql)) {
       const t = findTicket(state, params[0]);
       return { rows: t ? [t] : [] };
     }
 
-    if (/^SELECT id, assigned_to FROM tickets WHERE/.test(sql)) {
+    if (/^SELECT id, assigned_to, assigned_to_name FROM tickets WHERE/.test(sql)) {
       const t = findTicket(state, params[0]);
-      return { rows: t ? [{ id: t.id, assigned_to: t.assigned_to }] : [] };
+      return { rows: t ? [{ id: t.id, assigned_to: t.assigned_to, assigned_to_name: t.assigned_to_name }] : [] };
+    }
+
+    // Re-consulta usada só na corrida de assign() (UPDATE não afeta linha) para
+    // descobrir quem venceu a corrida.
+    if (/^SELECT assigned_to_name FROM tickets WHERE/.test(sql)) {
+      const t = findTicket(state, params[0]);
+      return { rows: t ? [{ assigned_to_name: t.assigned_to_name }] : [] };
     }
 
     if (/^UPDATE tickets\s+SET status = \$1/.test(sql)) {
@@ -298,7 +305,7 @@ describe("ticket.routes", () => {
       expect(humanMode.ativar).toHaveBeenCalledWith("u1", expect.objectContaining({ agentName: "Bruno" }));
     });
 
-    test("ticket já assumido por outro → 409", async () => {
+    test("ticket já assumido por outro → 409 com o nome de quem assumiu na mensagem", async () => {
       const ticket = await criarTicket(ADMIN);
       await request(buildApp(ATENDENTE_VENDAS)).patch(`/api/tickets/${ticket.id}/assign`).send({});
 
@@ -306,6 +313,10 @@ describe("ticket.routes", () => {
       const res = await request(buildApp(outroAtendente)).patch(`/api/tickets/${ticket.id}/assign`).send({});
 
       expect(res.status).toBe(409);
+      // ATENDENTE_VENDAS assumiu antes — a mensagem deve nomeá-lo em vez de
+      // só dizer "outro atendente" (usuário pediu essa melhoria de UX).
+      expect(res.body.assignedToName).toBe("Bruno");
+      expect(res.body.error).toMatch(/Bruno/);
     });
   });
 

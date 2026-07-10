@@ -242,18 +242,38 @@ socket.on("nova_mensagem", (data) => {
   // Valida estrutura mínima
   if (!data?.userId || typeof data.userId !== "string") return;
 
-  // Deduplicação: por messageId se disponível, senão por userId+message+timestamp próximo
-  const alreadyExists = data.messageId
-    ? allHistory.some(item => item.messageId === data.messageId)
-    : allHistory.some(item =>
+  // O backend emite esse evento DUAS vezes para a mesma mensagem do cliente:
+  // 1) ao chegar (response: null) e 2) depois do bot/IA processar (response
+  // preenchido) — mesmo messageId nos dois. Antes, quando o messageId batia,
+  // o código só IGNORAVA o segundo evento em vez de mesclar a resposta no
+  // item já existente — isso deixava o item "congelado" com response: null
+  // em allHistory (a resposta do bot nunca era refletida ali), e quando o
+  // messageId não vinha preenchido (versão antiga do backend, sem restart),
+  // o fallback por tempo (3s) falhava com processamento mais lento, criando
+  // um SEGUNDO item de verdade → 1 mensagem real virava 2 na tela.
+  const existingIndex = data.messageId
+    ? allHistory.findIndex(item => item.messageId === data.messageId)
+    : allHistory.findIndex(item =>
         item.userId === data.userId &&
         item.message === data.message &&
         Math.abs(new Date(item.createdAt) - new Date(data.createdAt)) < 3000
       );
 
-  if (!alreadyExists) allHistory.unshift(data);
+  if (existingIndex === -1) {
+    allHistory.unshift(data);
+  } else {
+    // Mescla em vez de duplicar ou descartar: mantém o item existente e só
+    // atualiza os campos que o novo evento trouxe de novo (tipicamente a
+    // resposta do bot, chegando depois do processamento).
+    allHistory[existingIndex] = { ...allHistory[existingIndex], ...data };
+  }
 
-  const isCurrentConversation = selectedConversationUser === data.userId;
+  // isCurrentConversation também precisa checar a aba atual — sem isso,
+  // selectedConversationUser continua apontando pra última conversa aberta
+  // mesmo depois do atendente sair da aba "Conversas", fazendo notificação
+  // e contador de não lidas sumirem para esse cliente mesmo com o painel
+  // fechado ou noutra aba (reportado pelo usuário).
+  const isCurrentConversation = currentTab === "conversations" && selectedConversationUser === data.userId;
 
   if (!isCurrentConversation) {
     unreadMessages[data.userId] = (unreadMessages[data.userId] || 0) + 1;

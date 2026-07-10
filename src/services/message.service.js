@@ -72,7 +72,7 @@ class MemoryRateLimiter {
 const rateLimiter = new MemoryRateLimiter();
 
 // ─── Processamento ───────────────────────────────────────────────────────────
-async function processMessage({ userId, contactName, message }) {
+async function processMessage({ userId, contactName, message, messageId }) {
   const botConfig = await getBotConfig();
 
   if (botConfig.ativo === false || botConfig.ativo === "false") {
@@ -88,12 +88,16 @@ async function processMessage({ userId, contactName, message }) {
   // Reabre ticket fechado para que o cliente apareça em Pendentes novamente
   try { await reopenTicketIfClosed(userId); } catch (e) { logger.warn(`Erro ao reabrir ticket: ${e.message}`); }
 
-  // Emite imediatamente para o frontend saber que o cliente mandou mensagem
+  // Emite imediatamente para o frontend saber que o cliente mandou mensagem.
+  // messageId (id real da mensagem no WhatsApp) é incluído para o painel
+  // deduplicar por id exato em vez de um fallback frágil por timestamp —
+  // ver BUG CORRIGIDO abaixo, no segundo emit.
   try {
     emitEvent("nova_mensagem", {
       userId,
       contactName,
       message,
+      messageId,
       response: null,
       sector: null,
       createdAt: new Date()
@@ -105,7 +109,7 @@ async function processMessage({ userId, contactName, message }) {
   // o histórico e NÃO acionamos o fluxo do bot.
   if (humanMode.estaAtivo(userId)) {
     try {
-      await saveHistory({ userId, contactName, message, response: null, sector: "humano" });
+      await saveHistory({ userId, contactName, message, messageId, response: null, sector: "humano" });
     } catch (err) {
       logger.warn(`Erro ao salvar histórico (modo humano): ${err.message}`);
     }
@@ -137,16 +141,32 @@ async function processMessage({ userId, contactName, message }) {
         userId,
         contactName,
         message,
+        messageId,
         response,
         sector: flowError ? "erro" : sector
       });
 
-      // Emite de novo com a resposta do bot já salva
+      // Emite de novo com a resposta do bot já salva.
+      //
+      // BUG CORRIGIDO: esse segundo emit e o primeiro (logo no início da
+      // função) representam a MESMA mensagem do cliente em dois momentos
+      // (chegada e depois de processada pelo bot/IA). Nenhum dos dois
+      // incluía messageId, então o frontend (frontend/js/12-socket.js)
+      // caía num fallback de dedup por "mesmo userId + mesmo texto dentro
+      // de 3 segundos". Como o processamento do fluxo/IA pode levar mais
+      // de 3s (timeout de até 45s, ver MESSAGE_PROCESSING_TIMEOUT_MS em
+      // src/config/whatsapp.js), o segundo emit passava a ser tratado como
+      // mensagem NOVA pelo painel → 1 mensagem real virava 2 cards na tela
+      // (só visual — o banco recebe um único INSERT). Agora os dois emits
+      // (e o saveHistory acima) levam o messageId real do WhatsApp
+      // (msg.key.id, capturado em onMessagesUpsert), permitindo o frontend
+      // deduplicar por id exato, sem depender de janela de tempo.
       try {
         emitEvent("nova_mensagem", {
           userId,
           contactName,
           message,
+          messageId,
           response,
           sector: flowError ? "erro" : sector,
           error: flowError ? true : false,

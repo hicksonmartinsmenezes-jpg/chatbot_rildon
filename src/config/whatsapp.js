@@ -323,7 +323,7 @@ async function onMessagesUpsert({ messages, type }) {
       );
 
       const response = await withTimeout(
-        conn.messageHandler({ userId, contactName, message: text }),
+        conn.messageHandler({ userId, contactName, message: text, messageId }),
         MESSAGE_PROCESSING_TIMEOUT_MS,
         "processamento do bot"
       );

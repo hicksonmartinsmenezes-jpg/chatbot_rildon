@@ -63,7 +63,16 @@ function getOnlineUsers() {
 }
 
 function initSocket(server) {
-  // Suporta múltiplas origens separadas por vírgula (consistente com app.js)
+  // Suporta múltiplas origens separadas por vírgula (consistente com app.js).
+  //
+  // BUG JÁ VISTO EM PRODUÇÃO: se CORS_ORIGIN não estiver definida no .env,
+  // o fallback abaixo só libera "http://localhost:3000" — então acessar o
+  // painel de QUALQUER outro endereço (IP da rede local, domínio, etc.)
+  // faz o handshake do Socket.IO ser recusado por CORS (erro 400 na
+  // conexão, WebSocket nunca fecha o handshake), mesmo com a API REST
+  // funcionando normalmente. CORS_ORIGIN precisa listar TODAS as URLs
+  // usadas para abrir o painel, não só uma — ex:
+  // CORS_ORIGIN=http://localhost:3000,http://192.168.0.228:3000
   const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:3000")
     .split(",").map(s => s.trim()).filter(Boolean);
   io = new Server(server, {

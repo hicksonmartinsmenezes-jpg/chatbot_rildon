@@ -64,7 +64,12 @@ async function createUser(data) {
       data.usuario
     );
 
-  if (exists) {
+  // "usuario" tem UNIQUE NOT NULL no schema, e excluir um usuário (painel)
+  // só faz soft delete (ativo = false) — a linha nunca some de verdade. Se o
+  // usuário achado já estiver desativado, reativa a linha (nome/senha/perfil/
+  // sector novos) em vez de recusar com "já existe": sem isso, era impossível
+  // recriar um usuário com o mesmo nome de usuário depois de excluído.
+  if (exists && exists.ativo !== false) {
     throw new Error(
       "Usuário já existe."
     );
@@ -80,6 +85,27 @@ async function createUser(data) {
       String(data.senha || ""),
       SALT_ROUNDS
     );
+
+  if (exists) {
+    const reactivated = await userRepository.reactivate(exists.id, {
+      nome: data.nome,
+      senha: senhaHash,
+      perfil: data.perfil || "atendente",
+      sector: data.sector || "geral",
+      numero: data.numero || "",
+      foto: data.foto || ""
+    });
+
+    return {
+      id: reactivated.id,
+      nome: reactivated.nome,
+      usuario: reactivated.usuario,
+      perfil: reactivated.perfil,
+      sector: reactivated.sector,
+      ativo: reactivated.ativo,
+      reactivated: true
+    };
+  }
 
   const newUser = {
     id: crypto.randomUUID(),

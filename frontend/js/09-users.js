@@ -111,7 +111,7 @@ async function createPanelUser() {
 
     setValue("user-name", ""); setValue("user-username", ""); setValue("user-password", "");
     setValue("user-role", "atendente");
-    showToast("✅ Usuário criado com sucesso!");
+    showToast(data.reactivated ? "✅ Usuário reativado com sucesso!" : "✅ Usuário criado com sucesso!");
     loadPanelUsers({ silent: true });
   } catch (err) {
     showToast(`❌ ${err.message}`);

@@ -59,14 +59,16 @@ router.post("/users", asyncHandler(async (req, res) => {
 
   await auditLog({
     user:    req.user,
-    action:  "CREATE_USER",
+    action:  user.reactivated ? "REACTIVATE_USER" : "CREATE_USER",
     target:  user.id,
     details: { nome: user.nome, usuario: user.usuario, perfil: user.perfil, sector: user.sector }
   });
 
-  emitEvent("users_updated", { action: "created", user: sanitizeUser(user) });
+  emitEvent("users_updated", { action: user.reactivated ? "reactivated" : "created", user: sanitizeUser(user) });
 
-  res.status(201).json(sanitizeUser(user));
+  // 201 para usuário novo; 200 para reativação de um usuário antes excluído
+  // (mesmo "usuario" — ver comentário em createUser()/user.service.js).
+  res.status(user.reactivated ? 200 : 201).json({ ...sanitizeUser(user), reactivated: !!user.reactivated });
 }));
 
 router.delete("/users/:id", asyncHandler(async (req, res) => {

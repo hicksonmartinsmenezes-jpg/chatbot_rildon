@@ -96,6 +96,39 @@ async function create(user) {
   return mapUser(result.rows[0]);
 }
 
+// Reativa um usuário previamente excluído (ativo=false) em vez de criar uma
+// linha nova — necessário porque "usuario" tem UNIQUE NOT NULL no schema e
+// deactivate() nunca apaga a linha de verdade (soft delete), então um INSERT
+// com o mesmo "usuario" sempre bateria nessa constraint.
+async function reactivate(id, user) {
+  const result = await pool.query(
+    `
+    UPDATE users
+    SET nome     = $1,
+        senha    = $2,
+        perfil   = $3,
+        sector   = $4,
+        numero   = $5,
+        foto     = $6,
+        ativo    = TRUE,
+        updated_at = NOW()
+    WHERE id = $7
+    RETURNING *
+    `,
+    [
+      user.nome,
+      user.senha,
+      user.perfil,
+      user.sector,
+      user.numero || "",
+      user.foto || "",
+      id
+    ]
+  );
+
+  return result.rows[0] ? mapUser(result.rows[0]) : null;
+}
+
 async function updateProfile(id, data) {
   const result = await pool.query(
     `
@@ -204,6 +237,7 @@ module.exports = {
   findById,
   findByUsername,
   create,
+  reactivate,
   updateProfile,
   updatePassword,
   deactivate,

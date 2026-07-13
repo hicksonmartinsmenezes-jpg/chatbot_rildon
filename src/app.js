@@ -50,20 +50,32 @@ app.use(helmet({
       imgSrc:         ["'self'", "data:", "blob:"],
       connectSrc:     ["'self'", "ws:", "wss:"],
       objectSrc:      ["'none'"],
-      frameAncestors: ["'none'"]
+      frameAncestors: ["'none'"],
+      // CAUSA RAIZ REAL do ERR_SSL_PROTOCOL_ERROR em outros computadores
+      // (2026-07-13): o Helmet, com useDefaults implícito (true), MESCLA
+      // suas diretivas padrão às nossas — e uma delas é
+      // "upgrade-insecure-requests", que manda QUALQUER navegador reescrever
+      // sozinho toda URL relativa/http:// da página para https:// antes de
+      // pedir o recurso. Esse deploy é HTTP puro na rede local (sem TLS em
+      // lugar nenhum do projeto), então isso quebrava especificamente os
+      // recursos do próprio servidor (bundle.css/js, socket.io.js, ícones)
+      // — CDNs de terceiros (que já usam https:// explícito) não eram
+      // afetados, por isso só uma parte dos recursos falhava. Confirmado
+      // reproduzindo em navegador novo/sem histórico, o que descartou HSTS
+      // e qualquer configuração salva no navegador. Setar como "null" aqui
+      // remove essa diretiva do CSP final (ao contrário de HSTS, CSP não
+      // fica "memorizado" pelo navegador — silenciar essa diretiva no
+      // header já resolve na hora, sem precisar limpar nada no cliente).
+      upgradeInsecureRequests: null
     }
   },
   crossOriginEmbedderPolicy: false,
   // Este deploy é HTTP puro na rede local (sem TLS/reverse proxy configurado
   // em lugar nenhum do projeto) — mandar Strict-Transport-Security (HSTS)
   // e Cross-Origin-Opener-Policy aqui é enganoso: navegadores DEVEM ignorar
-  // HSTS recebido por HTTP (RFC 6797 §8.1), mas alguns recursos de "sempre
-  // usar HTTPS" do próprio navegador (Chrome/Edge) podem tentar subir pra
-  // https:// em requisições de subrecurso mesmo sem esse header, causando
-  // ERR_SSL_PROTOCOL_ERROR num servidor que só fala HTTP. Desligar os dois
-  // headers aqui remove qualquer contribuição do servidor pra esse problema
-  // — se persistir, é configuração do navegador no computador afetado, não
-  // do servidor (ver histórico de troubleshooting no projeto).
+  // HSTS recebido por HTTP (RFC 6797 §8.1). Desligado por precaução, mas a
+  // causa real do problema em outros computadores era a diretiva de CSP
+  // "upgrade-insecure-requests" acima, não HSTS.
   hsts: false,
   crossOriginOpenerPolicy: false
 }));

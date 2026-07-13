@@ -1,44 +1,40 @@
 /**
- * Testes de validarForcaSenha — política aplicada em toda criação/troca de
- * senha (criação de usuário, reset por admin, troca pelo próprio usuário e
- * o bootstrap do primeiro admin em scripts/create-admin.js). O ponto
- * sensível é não deixar passar senhas "tecnicamente longas" mas fracas
- * (ex: só minúsculas, ou uma senha comum conhecida).
+ * Testes de validarForcaSenha — política atual (2026-07-13): PIN numérico
+ * de exatamente 4 dígitos, para todos os perfis (inclusive admin). Trocado
+ * a pedido explícito do usuário a partir da política anterior (mín. 10
+ * caracteres + 3 das 4 classes de caractere) — ver comentário em
+ * src/utils/passwordPolicy.js para o histórico e a mitigação (loginLimiter)
+ * que continua em vigor dado o espaço de senha bem menor.
  */
-const { validarForcaSenha, MIN_LENGTH, MIN_CLASSES } = require("../src/utils/passwordPolicy");
+const { validarForcaSenha, PIN_LENGTH } = require("../src/utils/passwordPolicy");
 
 describe("validarForcaSenha", () => {
-  test("rejeita senha mais curta que o mínimo", () => {
-    const r = validarForcaSenha("Abc123!");
-    expect(r.valido).toBe(false);
-    expect(r.erro).toMatch(new RegExp(String(MIN_LENGTH)));
-  });
-
-  test("rejeita senha longa mas com só uma classe de caractere", () => {
-    const r = validarForcaSenha("aaaaaaaaaaaaaaaa");
-    expect(r.valido).toBe(false);
-  });
-
-  test(`rejeita senha com só 2 das ${MIN_CLASSES} classes exigidas`, () => {
-    const r = validarForcaSenha("abcdefghij123456"); // minúscula + dígito, sem maiúscula/símbolo
-    expect(r.valido).toBe(false);
-  });
-
-  test("rejeita senha comum conhecida mesmo atendendo tamanho/complexidade", () => {
-    const r = validarForcaSenha("Password123");
-    expect(r.valido).toBe(false);
-    expect(r.erro).toMatch(/comum/i);
-  });
-
-  test("aceita senha que atende tamanho + 3 classes e não é comum", () => {
-    const r = validarForcaSenha("SenhaForte123");
+  test("aceita PIN de 4 dígitos que não é óbvio", () => {
+    const r = validarForcaSenha("4821");
     expect(r.valido).toBe(true);
     expect(r.erro).toBeNull();
   });
 
-  test("aceita senha com as 4 classes", () => {
-    const r = validarForcaSenha("Rild0n#Peca2026");
-    expect(r.valido).toBe(true);
+  test("rejeita PIN mais curto que 4 dígitos", () => {
+    const r = validarForcaSenha("482");
+    expect(r.valido).toBe(false);
+    expect(r.erro).toMatch(new RegExp(String(PIN_LENGTH)));
+  });
+
+  test("rejeita PIN mais longo que 4 dígitos", () => {
+    const r = validarForcaSenha("48212");
+    expect(r.valido).toBe(false);
+  });
+
+  test("rejeita senha com letras/símbolos (não é só dígitos)", () => {
+    const r = validarForcaSenha("Ab1!");
+    expect(r.valido).toBe(false);
+  });
+
+  test("rejeita PINs óbvios/sequenciais mesmo com 4 dígitos", () => {
+    expect(validarForcaSenha("0000").valido).toBe(false);
+    expect(validarForcaSenha("1234").valido).toBe(false);
+    expect(validarForcaSenha("1234").erro).toMatch(/óbvio|sequencial/i);
   });
 
   test("trata entrada vazia/undefined sem lançar exceção", () => {

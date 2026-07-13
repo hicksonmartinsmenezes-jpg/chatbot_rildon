@@ -9,7 +9,11 @@
  *   node scripts/create-admin.js <usuario> <senha> ["Nome completo"]
  *
  * Exemplo:
- *   node scripts/create-admin.js admin "MinhaSenh@Forte123" "Administrador"
+ *   node scripts/create-admin.js admin 4821 "Administrador"
+ *
+ * OBS: a senha é validada por validarForcaSenha() (src/utils/passwordPolicy.js),
+ * que hoje exige um PIN numérico de exatamente 4 dígitos para qualquer perfil,
+ * inclusive admin.
  */
 
 const path = require("path");

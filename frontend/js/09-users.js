@@ -91,7 +91,7 @@ async function createPanelUser() {
   const sector  = getValue("user-sector");
 
   if (!nome || !usuario || !senha) { showToast("Preencha nome, usuário e senha."); return; }
-  if (senha.length < 8) { showToast("A senha deve ter pelo menos 8 caracteres."); return; }
+  if (!/^\d{4}$/.test(senha)) { showToast("A senha deve ter exatamente 4 dígitos numéricos."); return; }
 
   const createBtn = document.querySelector('[data-action="createPanelUser"]');
   if (createBtn?.dataset.loading === "1") return;
@@ -166,12 +166,12 @@ async function deletePanelUser(id) {
 function promptResetPassword(id) {
   showInputModal({
     title:       "Alterar senha",
-    label:       "Nova senha",
-    placeholder: "Mínimo 8 caracteres",
+    label:       "Nova senha (PIN de 4 dígitos)",
+    placeholder: "Ex: 4821",
     type:        "password",
     confirmText: "Salvar senha",
     onConfirm:   async (novaSenha) => {
-      if (novaSenha.length < 8) { showToast("A senha deve ter pelo menos 8 caracteres."); return; }
+      if (!/^\d{4}$/.test(novaSenha)) { showToast("A senha deve ter exatamente 4 dígitos numéricos."); return; }
       try {
         const res = await apiFetch(`${BASE}/api/users/${id}/password`, {
           method: "PATCH",

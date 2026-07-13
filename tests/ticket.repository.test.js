@@ -97,7 +97,7 @@ describe("findByIdOrProtocol", () => {
 });
 
 describe("updateStatus", () => {
-  test("usa idOrProtocolWhere no índice $2 e devolve o ticket atualizado", async () => {
+  test("fechar (resolvido) usa idOrProtocolWhere no índice $2 e NÃO mexe em assigned_to (preserva histórico de quem atendeu)", async () => {
     pool.query.mockResolvedValueOnce({ rows: [{ id: 42, status: "resolvido" }] });
 
     const result = await repo.updateStatus(ID, "resolvido");
@@ -105,8 +105,28 @@ describe("updateStatus", () => {
     const [sql, params] = pool.query.mock.calls[0];
     expect(sql).toMatch(/SET status = \$1/);
     expect(sql).toMatch(/\(id = \$2::int OR protocolo = \$2::text\)/);
+    expect(sql).not.toMatch(/assigned_to/);
     expect(params).toEqual(["resolvido", ID]);
     expect(result).toMatchObject({ status: "resolvido" });
+  });
+
+  test("reabrir (aberto) LIMPA assigned_to/assigned_to_name — ticket reaberto não pode 'pertencer' a quem atendeu da vez anterior", async () => {
+    // BUG CORRIGIDO: sem isso, reopenTicketIfClosed() (cliente manda mensagem
+    // de novo após o ticket ser fechado) e o botão "Reabrir" deixavam o
+    // ticket com status "aberto" mas assigned_to intacto — então assign()
+    // recusava com "já foi assumido por <nome antigo>" mesmo sem ninguém
+    // ter assumido de fato desta vez. Reportado pelo usuário em produção.
+    pool.query.mockResolvedValueOnce({
+      rows: [{ id: 42, status: "aberto", assigned_to: null, assigned_to_name: null }]
+    });
+
+    await repo.updateStatus(ID, "aberto");
+
+    const [sql, params] = pool.query.mock.calls[0];
+    expect(sql).toMatch(/SET status = \$1/);
+    expect(sql).toMatch(/assigned_to = NULL/);
+    expect(sql).toMatch(/assigned_to_name = NULL/);
+    expect(params).toEqual(["aberto", ID]);
   });
 
   test("ticket inexistente retorna null", async () => {

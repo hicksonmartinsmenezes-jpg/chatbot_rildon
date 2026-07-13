@@ -104,6 +104,12 @@ function installFakePool(state) {
       const t = findTicket(state, params[1]);
       if (!t) return { rows: [] };
       t.status = params[0];
+      // Espelha o comportamento real: reabrir (status "aberto") limpa a
+      // atribuição anterior — ver BUG CORRIGIDO em ticket.repository.js.
+      if (/assigned_to = NULL/.test(sql)) {
+        t.assigned_to = null;
+        t.assigned_to_name = null;
+      }
       return { rows: [t] };
     }
 
@@ -280,6 +286,29 @@ describe("ticket.routes", () => {
       expect(res.status).toBe(200);
       expect(res.body.ticket.status).toBe("resolvido");
       expect(humanMode.desativar).toHaveBeenCalledWith("u1", "ticket_fechado");
+    });
+
+    test("BUG CORRIGIDO: reabrir ticket fechado libera a atribuição — assumir de novo funciona, não diz 'já assumido'", async () => {
+      // Reproduz exatamente o bug relatado pelo usuário: assume, fecha,
+      // reabre, tenta assumir de novo — antes disso, a 3ª tentativa (assumir
+      // depois de reaberto) sempre voltava 409 "já assumido por Bruno",
+      // porque reabrir só trocava o status e nunca limpava assigned_to.
+      const ticket = await criarTicket(ADMIN);
+
+      await request(buildApp(ATENDENTE_VENDAS)).patch(`/api/tickets/${ticket.id}/assign`).send({});
+      await request(buildApp(ADMIN)).patch(`/api/tickets/${ticket.id}`).send({ status: "resolvido" });
+      const reabrir = await request(buildApp(ADMIN)).patch(`/api/tickets/${ticket.id}`).send({ status: "aberto" });
+
+      expect(reabrir.status).toBe(200);
+      expect(reabrir.body.ticket.assignedTo).toBeNull();
+
+      const outroAtendente = { id: "at-2", nome: "Carla", perfil: "atendente", sector: "vendas" };
+      const assumirDeNovo = await request(buildApp(outroAtendente))
+        .patch(`/api/tickets/${ticket.id}/assign`)
+        .send({});
+
+      expect(assumirDeNovo.status).toBe(200);
+      expect(assumirDeNovo.body.ticket.assignedTo).toBe("at-2");
     });
   });
 

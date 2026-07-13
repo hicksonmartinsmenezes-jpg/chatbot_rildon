@@ -244,6 +244,7 @@ async function openConversation(userId, updateActive = true) {
         <div class="chat-header-info">
           <strong class="chat-contact-name">${safe(name)}</strong>
           ${ticket ? `<span class="chat-ticket-ref">#${safe(ticket.protocolo || ticket.id)} · ${safe(ticket.sector || "geral")}</span>` : ""}
+          ${ticket?.status === "em_andamento" && ticket.assignedToName ? `<span class="chat-ticket-ref"><i class="fa-solid fa-user-check"></i> Assumido por ${safe(ticket.assignedToName)}</span>` : ""}
           ${humanModeUsers.has(userId) ? `<span class="chat-bot-paused"><i class="fa-solid fa-headset"></i> Você atendendo · bot pausado</span>` : ""}
           <div id="chat-typing-status"></div>
         </div>

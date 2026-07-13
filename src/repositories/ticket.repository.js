@@ -157,11 +157,27 @@ async function findByIdOrProtocol(id) {
 
 async function updateStatus(id, status) {
   const idStr = String(id);
+
+  // BUG CORRIGIDO: reabrir um ticket (status → "aberto") — seja pelo cliente
+  // mandando mensagem de novo via reopenTicketIfClosed(), seja pelo atendente
+  // clicando em "Reabrir" — só atualizava o status, sem limpar assigned_to/
+  // assigned_to_name do atendimento ANTERIOR. Resultado: o ticket reaberto
+  // aparecia como "aberto"/pendente na lista, mas internamente continuava
+  // "pertencendo" a quem o atendeu da última vez — então assign() sempre
+  // recusava com "já foi assumido por <nome antigo>", mesmo sem ninguém ter
+  // assumido de fato desta vez. Ao reabrir, o atendimento é conceitualmente
+  // novo: ninguém deveria estar com ele até alguém clicar Assumir de novo.
+  // (Fechar o ticket, resolvido/cancelado, continua preservando
+  // assigned_to_name de propósito — é usado para estatísticas/histórico de
+  // quem atendeu, ex. dashboard "porAtendente".)
+  const reabrindo = status === "aberto";
+
   const result = await pool.query(
     `
     UPDATE tickets
     SET status = $1,
         updated_at = NOW()
+        ${reabrindo ? ", assigned_to = NULL, assigned_to_name = NULL" : ""}
     WHERE ${idOrProtocolWhere(idStr, 2)}
     RETURNING *
     `,

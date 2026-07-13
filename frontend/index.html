@@ -1299,7 +1299,7 @@ Como podemos ajudar você hoje?
 
               <label>Senha</label>
               <div class="password-wrapper">
-                <input id="user-password" type="password" placeholder="Senha de acesso" autocomplete="new-password">
+                <input id="user-password" type="password" placeholder="PIN de 4 dígitos" autocomplete="new-password" inputmode="numeric" pattern="[0-9]*" maxlength="4">
                 <button type="button" class="toggle-pass" data-action="togglePassword" data-target="user-password" aria-label="Mostrar/ocultar senha" tabindex="-1">
                   <i class="fa-solid fa-eye"></i>
                 </button>
@@ -1763,9 +1763,4 @@ Como podemos ajudar você hoje?
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1"></script>
 
   <!-- JS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <script src="dist/bundle.e99be70295.js"></script>
-  <!-- JS_BUNDLE_END -->
-
-
-</body>
-</html>
+  <script src="dist/bundle.e99be70295.js">

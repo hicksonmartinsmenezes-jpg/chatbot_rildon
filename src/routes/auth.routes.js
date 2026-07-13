@@ -23,10 +23,25 @@ const router = express.Router();
 const SESSION_TTL_MINUTES = Number(process.env.SESSION_TTL_MINUTES) || 30;
 const SESSION_MS      = SESSION_TTL_MINUTES * 60 * 1000;
 const COOKIE_NAME     = "rildon_sid";
+
+// BUG CORRIGIDO EM PRODUÇÃO (2026-07-13): "secure" estava ligado direto ao
+// NODE_ENV==="production", mas o Dockerfile define NODE_ENV=production
+// incondicionalmente (ENV NODE_ENV=production), mesmo neste deploy sem TLS
+// nenhum (HTTP puro na rede local — ver docker-compose.yml, não há
+// reverse proxy/certificado em lugar nenhum do projeto). Um cookie "Secure"
+// é DESCARTADO pelo navegador em qualquer conexão que não seja HTTPS —
+// exceto "localhost", que a maioria dos navegadores trata como origem
+// confiável mesmo em HTTP puro. Por isso o login funcionava perfeitamente
+// na própria máquina (acessada como "localhost") e falhava (sessão
+// "expirando" a cada request, já que o cookie nunca voltava) em qualquer
+// outro computador/IP da rede. "secure" agora é controlado por uma env var
+// própria (COOKIE_SECURE), independente de NODE_ENV — só ligue se este
+// servidor realmente estiver atrás de HTTPS (proxy reverso com TLS, etc.).
+const COOKIE_SECURE = String(process.env.COOKIE_SECURE || "").toLowerCase() === "true";
 const COOKIE_OPTIONS  = {
-  httpOnly:  true,                                   // JS do cliente nunca acessa
-  secure:    process.env.NODE_ENV === "production",  // HTTPS obrigatório em prod
-  sameSite:  "strict",                               // protege contra CSRF
+  httpOnly:  true,          // JS do cliente nunca acessa
+  secure:    COOKIE_SECURE, // só true se COOKIE_SECURE=true no .env (deploy atrás de HTTPS)
+  sameSite:  "strict",      // protege contra CSRF
   maxAge:    SESSION_MS,
   path:      "/"
 };

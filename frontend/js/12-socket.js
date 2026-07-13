@@ -141,8 +141,19 @@ let socket = null;
 
 if (typeof io !== "undefined") {
 
+  // BUG CORRIGIDO: autoConnect:true fazia o socket tentar conectar assim que
+  // a página carregava, ANTES do login — sem sessão ainda, o servidor
+  // rejeitava com "Não autenticado." e o handler de connect_error abaixo
+  // mostrava "Sessão expirada. Faça login novamente." repetidamente a cada
+  // tentativa de reconexão (a cada poucos segundos), mesmo o usuário nunca
+  // tendo efetivamente logado — parecia um loop de "logando e expirando".
+  // Agora o socket só conecta depois de confirmar sessão válida: chamado
+  // explicitamente em login()/submitTwoFactorLogin() (02-auth.js) após
+  // sucesso, e em checkAuth() quando já existe sessão válida ao carregar a
+  // página. connectPanelSocket()/disconnectPanelSocket() ficam expostos
+  // globalmente pra isso.
   socket = io(BASE, {
-    autoConnect: true,
+    autoConnect: false,
     withCredentials: true,
     reconnectionDelay: 2000,        // espera 2s antes da 1ª tentativa
     reconnectionDelayMax: 15000,    // máximo 15s entre tentativas (backoff exponencial)
@@ -150,7 +161,16 @@ if (typeof io !== "undefined") {
     timeout: 10000                  // 10s para estabelecer conexão inicial
   });
 
-  // Trata falha de autenticação no socket (sessão expirada)
+  window.connectPanelSocket = () => {
+    if (!socket.connected) socket.connect();
+  };
+  window.disconnectPanelSocket = () => {
+    socket.disconnect();
+  };
+
+  // Trata falha de autenticação no socket (sessão expirada DE VERDADE — só
+  // conecta depois de login, então um connect_error aqui significa que a
+  // sessão que já estava ativa expirou/foi invalidada, não que nunca existiu)
   socket.on("connect_error", (err) => {
     if (err.message === "Não autenticado." || err.message === "Sessão inválida ou expirada.") {
       socket.disconnect();

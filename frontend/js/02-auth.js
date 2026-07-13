@@ -147,6 +147,10 @@ async function login() {
     showDashboard();
     applyUserPermissions();
     refreshAll();
+    // Só conecta o socket DEPOIS do login confirmado — ver comentário em
+    // 12-socket.js sobre o bug do autoConnect mostrando "sessão expirada"
+    // antes mesmo do usuário logar.
+    window.connectPanelSocket?.();
   } catch {
     error.textContent = "Erro de conexão. Verifique se o servidor está rodando.";
   } finally {
@@ -229,6 +233,7 @@ async function submitTwoFactorLogin() {
     showDashboard();
     applyUserPermissions();
     refreshAll();
+    window.connectPanelSocket?.();
   } catch {
     if (errorEl) errorEl.textContent = "Erro de conexão. Verifique se o servidor está rodando.";
   } finally {
@@ -241,6 +246,8 @@ async function submitTwoFactorLogin() {
 
 // ─── Logout ───────────────────────────────────────────────────────────────────
 async function logout() {
+  window.disconnectPanelSocket?.();
+
   try {
     await fetch(`${BASE}/api/auth/logout`, {
       method:      "POST",
@@ -266,6 +273,7 @@ async function checkAuth() {
       setCurrentUser(data.user);
       showDashboard();
       applyUserPermissions();
+      window.connectPanelSocket?.();
     } else {
       showLogin();
     }

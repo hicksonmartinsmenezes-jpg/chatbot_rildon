@@ -53,7 +53,19 @@ app.use(helmet({
       frameAncestors: ["'none'"]
     }
   },
-  crossOriginEmbedderPolicy: false
+  crossOriginEmbedderPolicy: false,
+  // Este deploy é HTTP puro na rede local (sem TLS/reverse proxy configurado
+  // em lugar nenhum do projeto) — mandar Strict-Transport-Security (HSTS)
+  // e Cross-Origin-Opener-Policy aqui é enganoso: navegadores DEVEM ignorar
+  // HSTS recebido por HTTP (RFC 6797 §8.1), mas alguns recursos de "sempre
+  // usar HTTPS" do próprio navegador (Chrome/Edge) podem tentar subir pra
+  // https:// em requisições de subrecurso mesmo sem esse header, causando
+  // ERR_SSL_PROTOCOL_ERROR num servidor que só fala HTTP. Desligar os dois
+  // headers aqui remove qualquer contribuição do servidor pra esse problema
+  // — se persistir, é configuração do navegador no computador afetado, não
+  // do servidor (ver histórico de troubleshooting no projeto).
+  hsts: false,
+  crossOriginOpenerPolicy: false
 }));
 
 // ── CORS configurável via .env — credentials:true obrigatório para cookies ───

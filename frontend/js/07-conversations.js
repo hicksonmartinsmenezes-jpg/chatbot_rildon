@@ -259,11 +259,12 @@ async function openConversation(userId, updateActive = true) {
     _ticketAtual?.assignedTo && getCurrentUser()?.id &&
     String(_ticketAtual.assignedTo) !== String(getCurrentUser().id)
   );
+  const _lockedName = _ticketAtual?.assignedToName || "outro atendente";
 
   if (textarea) {
     textarea.disabled = _locked;
     textarea.placeholder = _locked
-      ? `Assumido por ${_ticketAtual?.assignedToName || "outro atendente"} — sem ações disponíveis`
+      ? `Assumido por ${_lockedName} — sem ações disponíveis`
       : "Digite uma mensagem...";
   }
 
@@ -283,7 +284,7 @@ async function openConversation(userId, updateActive = true) {
           <strong class="chat-contact-name">${safe(name)}</strong>
           ${ticket ? `<span class="chat-ticket-ref">#${safe(ticket.protocolo || ticket.id)} · ${safe(ticket.sector || "geral")}</span>` : ""}
           ${ticket?.status === "em_andamento" && ticket.assignedToName ? `<span class="chat-ticket-ref"><i class="fa-solid fa-user-check"></i> Assumido por ${safe(ticket.assignedToName)}</span>` : ""}
-          ${humanModeUsers.has(userId) ? `<span class="chat-bot-paused"><i class="fa-solid fa-headset"></i> Você atendendo · bot pausado</span>` : ""}
+          ${humanModeUsers.has(userId) ? `<span class="chat-bot-paused"><i class="fa-solid fa-headset"></i> ${_locked ? `${safe(_lockedName)} atendendo` : "Você atendendo"} · bot pausado</span>` : ""}
           <div id="chat-typing-status"></div>
         </div>
       </div>
@@ -297,6 +298,20 @@ async function openConversation(userId, updateActive = true) {
   if (updateActive) {
     document.querySelectorAll(".chat-item").forEach(item => item.classList.remove("active"));
     document.querySelector(`.chat-item[data-user="${cssEscape(userId)}"]`)?.classList.add("active");
+  }
+
+  // Filtro solicitado pelo usuário ("filtro de borrão"): conversa de outro
+  // atendente não deve nem buscar nem renderizar o histórico de mensagens —
+  // mostra só um aviso de bloqueio, sem o conteúdo real chegar ao DOM.
+  if (messagesBox && _locked) {
+    messagesBox.innerHTML = `
+      <div class="chat-locked-banner">
+        <i class="fa-solid fa-lock"></i>
+        <strong>Conversa assumida por ${safe(_lockedName)}</strong>
+        <span>Sem acesso ao histórico nem ao envio de mensagens aqui.</span>
+      </div>
+    `;
+    return;
   }
 
   // Busca histórico completo do usuário via API para exibir todas as mensagens

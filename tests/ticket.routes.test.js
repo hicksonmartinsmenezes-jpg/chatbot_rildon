@@ -275,6 +275,26 @@ describe("ticket.routes", () => {
         expect(res.body.tickets.find(t => t.id === id)).toBeTruthy();
         expect(res.body.hiddenActiveUserIds).not.toContain("cliente-y");
       });
+
+      // Pedido do usuário: "Fechados" deve aparecer igual pra todo mundo,
+      // mesmo em modo restrito — sem disputa de "de quem é" depois de
+      // fechado, diferente de tickets ainda ativos (aberto/em_andamento).
+      test("ticket FECHADO por outro atendente de OUTRO setor continua visível pra todos (não some, não entra em hiddenActiveUserIds)", async () => {
+        const outroAtendente = { id: "at-2", nome: "Junior", perfil: "atendente", sector: "financeiro" };
+
+        const created = await request(buildApp(ADMIN)).post("/api/tickets")
+          .send({ userId: "cliente-z", type: "duvida_financeira" }); // sector: financeiro
+        const id = created.body.ticket.id;
+
+        await request(buildApp(outroAtendente)).patch(`/api/tickets/${id}/assign`);
+        await request(buildApp(outroAtendente)).patch(`/api/tickets/${id}`).send({ status: "resolvido" });
+
+        // ATENDENTE_VENDAS é de outro setor e nunca foi atribuído a esse ticket
+        const res = await request(buildApp(ATENDENTE_VENDAS)).get("/api/tickets");
+
+        expect(res.body.tickets.find(t => t.id === id)).toBeTruthy();
+        expect(res.body.hiddenActiveUserIds).not.toContain("cliente-z");
+      });
     });
   });
 

@@ -73,6 +73,13 @@ async function getTickets(req, res) {
     if (req.user?.perfil === "atendente" && !canUseFullConversationPanel(req.user)) {
       const antes = tickets;
       tickets = antes.filter(ticket => {
+        // Pedido do usuário: tickets já FECHADOS (resolvido/cancelado) são
+        // histórico — sem disputa de "de quem é" — então aparecem iguais
+        // pra todo mundo, igual um admin veria. A restrição por setor/
+        // atribuição vale só pra tickets ainda ATIVOS (aberto/em_andamento),
+        // que é onde faz sentido não pisar no atendimento de outro atendente.
+        if (ticket.status === "resolvido" || ticket.status === "cancelado") return true;
+
         const mesmoSetor = (ticket.sector || "geral") === (req.user.sector || "geral");
         const disponivel  = !ticket.assignedTo;
         const jaAssumido  = ticket.assignedTo === req.user.id;

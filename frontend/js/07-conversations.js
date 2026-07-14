@@ -157,7 +157,8 @@ async function _loadConversationsCore(silent = false) {
         ? `<span class="conv-sector-tag">${safe(ticket.sector)}</span>`
         : "";
       const statusClass = ticketStatus ? `ci-status-${ticketStatus}` : "";
-      const unreadBg = { aberto: "#BA7517", em_andamento: "#185FA5", resolvido: "#1D9E75", cancelado: "#A32D2D" }[ticket?.status] || "#22c55e";
+      const unreadBg = { aberto: "#BA7517", em_andamento: "#185FA5", resolvido: "#1D9E75", cancelado: "#A32D2D" }[ticket?.status] || "#25D366";
+      const unreadLabel = unread > 99 ? "99+" : unread; // igual ao badge da sidebar (updateSidebarUnreadBadge)
 
       return `
         <button type="button" class="chat-item ${statusClass}" data-user="${escapeAttr(userId)}" data-conv-list-action="open">
@@ -169,7 +170,7 @@ async function _loadConversationsCore(silent = false) {
             </span>
             <span class="chat-item-bottom">
               <span>${safe(preview)}</span>
-              ${unread > 0 ? `<span class="chat-unread" style="background:${unreadBg}">${unread}</span>` : ""}
+              ${unread > 0 ? `<span class="chat-unread" style="background:${unreadBg}">${unreadLabel}</span>` : ""}
             </span>
             ${(statusPill || sectorTag) ? `<span class="chat-item-row3">${statusPill}${sectorTag}</span>` : ""}
           </span>

@@ -56,7 +56,16 @@ function canManageTicket(user, ticket) {
 
   if (normalizePerfil(user) !== "atendente") return false;
   const assignedTo = ticket.assignedTo ?? ticket.assigned_to;
-  return sameUserId(assignedTo, user.id);
+  if (sameUserId(assignedTo, user.id)) return true;
+
+  // BUG CORRIGIDO: faltava aqui o mesmo "allowUnassigned" que já existia em
+  // canAccessTicket() — um ticket "Pendente" normalmente está SEM
+  // atribuição (assignedTo null), então sameUserId(null, user.id) é sempre
+  // false. Sem essa allowance, NENHUM atendente em modo restrito conseguia
+  // fechar/mudar status de um ticket ainda não assumido no próprio setor —
+  // "sem permissão" mesmo sendo um ticket do setor dele. Mesma regra usada
+  // pra permitir "Assumir": ticket livre + mesmo setor.
+  return Boolean(!assignedTo && sameSector(user, ticket));
 }
 
 function canSeeSensitiveDashboard(user) {

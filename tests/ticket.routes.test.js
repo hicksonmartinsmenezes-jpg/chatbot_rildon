@@ -301,15 +301,41 @@ describe("ticket.routes", () => {
       expect(res.status).toBe(404);
     });
 
-    test("atendente sem gerência sobre o ticket → 403 (canManageTicket, modo restrito)", async () => {
-      // Só no modo restrito (ATTENDANT_CONVERSATIONS_FULL_ACCESS=false) o
-      // atendente fica limitado a tickets atribuídos a ele — no modo padrão
-      // (default) ele tem acesso total, como admin (ver access-control.test.js).
+    // BUG CORRIGIDO: esta suíte esperava 403 pra um atendente do MESMO setor
+    // fechando um ticket ainda não assumido — mas isso é exatamente o caso
+    // de "Fechar em Pendentes" relatado pelo usuário como quebrado ("sem
+    // permissão"). canManageTicket agora permite ticket livre + mesmo setor
+    // (igual já valia pra canAccessTicket/"Assumir" — ver access-control.test.js).
+    test("atendente de OUTRO setor não gerencia ticket ainda não assumido → 403 (canManageTicket, modo restrito)", async () => {
+      process.env[FULL_ACCESS_ENV_KEY] = "false";
+      const atendenteFinanceiro = { id: "at-fin", nome: "Carla", perfil: "atendente", sector: "financeiro" };
+
+      const ticket = await criarTicket(ADMIN); // orcamento → sector vendas, ninguém assumiu
+      const res = await request(buildApp(atendenteFinanceiro))
+        .patch(`/api/tickets/${ticket.id}`)
+        .send({ status: "resolvido" });
+      expect(res.status).toBe(403);
+    });
+
+    test("atendente do MESMO setor gerencia ticket ainda não assumido (modo restrito)", async () => {
       process.env[FULL_ACCESS_ENV_KEY] = "false";
 
-      const ticket = await criarTicket(ADMIN); // ninguém assumiu ainda
+      const ticket = await criarTicket(ADMIN); // orcamento → sector vendas, ninguém assumiu
       const res = await request(buildApp(ATENDENTE_VENDAS))
         .patch(`/api/tickets/${ticket.id}`)
+        .send({ status: "resolvido" });
+      expect(res.status).toBe(200);
+    });
+
+    test("atendente não gerencia ticket já assumido por OUTRO atendente do mesmo setor → 403", async () => {
+      process.env[FULL_ACCESS_ENV_KEY] = "false";
+      const outroAtendente = { id: "at-2", nome: "Junior", perfil: "atendente", sector: "vendas" };
+
+      const created = await criarTicket(ADMIN);
+      await request(buildApp(outroAtendente)).patch(`/api/tickets/${created.id}/assign`);
+
+      const res = await request(buildApp(ATENDENTE_VENDAS))
+        .patch(`/api/tickets/${created.id}`)
         .send({ status: "resolvido" });
       expect(res.status).toBe(403);
     });

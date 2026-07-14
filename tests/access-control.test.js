@@ -128,9 +128,21 @@ describe("canManageTicket — mais estrito que acessar", () => {
     expect(ac.canManageTicket(atendente, { assignedTo: "999" })).toBe(false);
   });
 
-  test("atendente NÃO gerencia ticket não atribuído, mesmo do seu setor", () => {
-    // diferença chave vs canAccessTicket: manage não tem allowUnassigned
+  // BUG CORRIGIDO: esta suíte descrevia canManageTicket como "mais estrito"
+  // que canAccessTicket por não ter allowUnassigned — mas um ticket
+  // "Pendente" normalmente está SEM atribuição (assignedTo null), e sem
+  // essa allowance NENHUM atendente em modo restrito conseguia fechar/
+  // mudar status de um ticket ainda não assumido no próprio setor (relatado
+  // pelo usuário como "sem permissão" ao clicar Fechar em Pendentes).
+  // canManageTicket agora espelha a mesma regra "ticket livre + mesmo
+  // setor" que já existia em canAccessTicket.
+  test("atendente gerencia ticket não atribuído do seu próprio setor", () => {
     const ticket = { assignedTo: null, sector: "vendas" };
+    expect(ac.canManageTicket(atendente, ticket)).toBe(true);
+  });
+
+  test("atendente NÃO gerencia ticket não atribuído de OUTRO setor", () => {
+    const ticket = { assignedTo: null, sector: "financeiro" };
     expect(ac.canManageTicket(atendente, ticket)).toBe(false);
   });
 });

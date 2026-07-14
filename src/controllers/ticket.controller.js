@@ -58,16 +58,17 @@ async function getTickets(req, res) {
     // restrito — cada atendente só vê/gerencia o que assumiu + o que ainda
     // está livre no seu setor), os tickets filtrados aqui embaixo somem por
     // completo da resposta. Isso deixava a aba "Conversas" do atendente
-    // confusa: um ticket assumido por OUTRO atendente (ex: Junior) some da
-    // lista de tickets, mas o cliente continua aparecendo em "Pendentes"
-    // pro atendente que não é dono (o frontend trata "sem ticket na
-    // resposta" como "cliente novo, ainda no bot" — não tinha como
-    // distinguir isso de "ticket existe, só não é seu"). Por isso, além de
-    // filtrar a lista principal, mandamos separadamente os userIds de
-    // tickets ativos (aberto/em_andamento) que foram ocultados por
-    // pertencerem a outro atendente/setor — o frontend usa isso pra
-    // esconder essas conversas por completo, em vez de mostrá-las como
-    // "Pendente" incorretamente.
+    // confusa: um ticket assumido/fechado por OUTRO atendente (ex: Junior)
+    // some da lista de tickets, mas o cliente continua aparecendo em
+    // "Pendentes" pro atendente que não é dono, com o botão "Iniciar
+    // Atendimento" (o frontend trata "sem ticket na resposta" como
+    // "cliente novo, ainda no bot" — não tinha como distinguir isso de
+    // "ticket existe, só não é seu"). Por isso, além de filtrar a lista
+    // principal, mandamos separadamente TODOS os userIds ocultados (não só
+    // os com ticket aberto/em_andamento — um ticket JÁ FECHADO por outro
+    // atendente também precisa ficar oculto, senão reaparece exatamente
+    // como esse bug) — o frontend usa isso pra esconder essas conversas
+    // por completo, em vez de mostrá-las incorretamente como pendentes.
     let hiddenActiveUserIds = [];
     if (req.user?.perfil === "atendente" && !canUseFullConversationPanel(req.user)) {
       const antes = tickets;
@@ -80,7 +81,7 @@ async function getTickets(req, res) {
 
       const idsVisiveis = new Set(tickets.map(t => t.userId));
       hiddenActiveUserIds = antes
-        .filter(t => (t.status === "aberto" || t.status === "em_andamento") && !idsVisiveis.has(t.userId))
+        .filter(t => !idsVisiveis.has(t.userId))
         .map(t => t.userId);
     }
 

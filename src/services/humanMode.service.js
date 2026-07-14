@@ -81,7 +81,6 @@ function ativar(userId, { agentName, ticketId, protocolo } = {}) {
     since:        prev?.since || now,
     lastActivity: now,
   });
-  if (!prev) logger.info(`[humanMode] Bot pausado para ${userId}${agentName ? ` (atendente: ${agentName})` : ""}`);
   _persistir(userId);
 
   // BUG CORRIGIDO: nenhum evento de socket era emitido ao ativar/desativar o
@@ -90,8 +89,21 @@ function ativar(userId, { agentName, ticketId, protocolo } = {}) {
   // diferente. Reportado pelo usuário: ações de assumir/transferir/fechar/
   // devolver ao bot "não atualizavam" — o autor da ação via sucesso na
   // própria aba, mas outras sessões abertas (ex: painel admin observando)
-  // ficavam com o estado antigo. Emite pra todo mundo atualizar em tempo real.
-  emitEvent("humanmode_atualizado", { userId, active: true, agentName: agentName ?? prev?.agentName ?? "" });
+  // ficavam com o estado antigo.
+  //
+  // BUG CORRIGIDO (2): a 1ª versão emitia isso incondicionalmente, mas
+  // ativar() é chamado em TODA mensagem manual enviada pelo atendente
+  // (sendManualMessage → humanMode.ativar()), não só na 1ª vez — então
+  // cada mensagem trocada disparava um broadcast de socket a mais pra
+  // TODOS os painéis conectados, cada um reagindo com fetches extras
+  // (openConversation + reload da lista). Numa conversa ativa isso vira
+  // uma enxurrada de requisições — contribuiu direto pro rate limit
+  // "muitas requisições" e pra lentidão/instabilidade relatada. Só emite
+  // quando é uma ativação de verdade (!prev), igual ao log logo abaixo.
+  if (!prev) {
+    logger.info(`[humanMode] Bot pausado para ${userId}${agentName ? ` (atendente: ${agentName})` : ""}`);
+    emitEvent("humanmode_atualizado", { userId, active: true, agentName: agentName ?? "" });
+  }
 }
 
 /** Renova a atividade do atendente (mantém o bot pausado). */

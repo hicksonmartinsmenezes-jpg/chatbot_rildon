@@ -295,7 +295,16 @@ socket.on("nova_mensagem", (data) => {
   // fechado ou noutra aba (reportado pelo usuário).
   const isCurrentConversation = currentTab === "conversations" && selectedConversationUser === data.userId;
 
-  if (!isCurrentConversation) {
+  // BUG CORRIGIDO: faltava o mesmo filtro "!data.response" usado logo abaixo
+  // (som/toast/pushNotification). Sem ele, o contador de não lidas somava
+  // DUAS vezes pra mensagem do cliente que recebe resposta do bot (1º evento
+  // com response:null, 2º evento com response preenchido — ambos incrementavam)
+  // e também subia o contador quando OUTRO atendente respondia manualmente
+  // essa conversa (message.controller.js emite nova_mensagem com response
+  // preenchido pro próprio envio do atendente, e esse emit vai pra TODOS os
+  // painéis conectados) — fazendo a conversa parecer "não lida" mesmo quando
+  // a última coisa que aconteceu foi um atendente responder, não o cliente.
+  if (!isCurrentConversation && !data.response) {
     unreadMessages[data.userId] = (unreadMessages[data.userId] || 0) + 1;
     updateSidebarUnreadBadge();
   }

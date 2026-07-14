@@ -216,12 +216,27 @@ async function checkServerStatus() {
   }
 }
 
+// BUG CORRIGIDO: antes, cada chamada criava um "new AudioContext()" novo e
+// nunca fechava/reaproveitava — em uma sessão longa e movimentada (muitas
+// mensagens/tickets no dia), isso acumula contextos de áudio nunca liberados,
+// o que pode fazer o navegador silenciosamente parar de tocar o som após um
+// tempo (limite de contextos simultâneos do navegador), sem nenhum erro
+// visível (o catch(_) engolia tudo). Agora reaproveita UM único contexto
+// compartilhado e garante que ele esteja "resumed" antes de tocar.
+let _alertAudioCtx = null;
+function _getAlertAudioCtx() {
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return null;
+  if (!_alertAudioCtx) _alertAudioCtx = new AudioCtx();
+  if (_alertAudioCtx.state === "suspended") _alertAudioCtx.resume().catch(() => {});
+  return _alertAudioCtx;
+}
+
 function playAlertSound(type = "ticket") {
   try {
     // Gera o som localmente para evitar 404 de /sounds/message.ogg ou /sounds/ticket.ogg.
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx  = new AudioCtx();
+    const ctx = _getAlertAudioCtx();
+    if (!ctx) return;
     const osc  = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.connect(gain);

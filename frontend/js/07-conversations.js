@@ -637,6 +637,14 @@ function pushNotification(type, text, userId) {
   _notifItems.unshift({ type, text, time: new Date(), userId });
   if (_notifItems.length > 30) _notifItems.pop();
   renderNotifDropdown();
+  // BUG CORRIGIDO: o pontinho vermelho do sino (".has-alert") só era ligado
+  // em showNewTicketAlert (novo ticket) — notificação de NOVA MENSAGEM
+  // (nova_mensagem no 12-socket.js) chamava pushNotification() mas nunca
+  // acendia o dot, então a notificação entrava na lista silenciosamente e
+  // não tinha nenhum sinal visual pro atendente saber que tinha algo novo
+  // pra ver, a não ser abrindo o dropdown manualmente. Centralizado aqui
+  // pra valer pra qualquer tipo de notificação futura.
+  document.querySelector(".notification")?.classList.add("has-alert");
 }
 
 function renderNotifDropdown() {

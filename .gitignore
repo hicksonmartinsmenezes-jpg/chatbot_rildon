@@ -63,3 +63,7 @@ backups/
 # Geradores do Playbook de Tráfego Pago (projeto separado — não pertence ao chatbot)
 gerar_volume*.js
 gerar_volume*.py
+
+# Configuração local do assistente / arquivos pessoais soltos na pasta do projeto
+.claude/
+fotos/

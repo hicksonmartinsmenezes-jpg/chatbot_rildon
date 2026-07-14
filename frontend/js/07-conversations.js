@@ -645,6 +645,48 @@ function pushNotification(type, text, userId) {
   // pra ver, a não ser abrindo o dropdown manualmente. Centralizado aqui
   // pra valer pra qualquer tipo de notificação futura.
   document.querySelector(".notification")?.classList.add("has-alert");
+  showDesktopNotification(type, text, userId);
+}
+
+// ─── Notificação nativa do SO (Notification Web API) ────────────────────────
+// Antes disso, "notificação" era só toast + dropdown interno — nada aparecia
+// se a aba não estivesse aberta/em foco (motivo provável de "às vezes a
+// notificação não aparece" com o painel minimizado ou noutra janela).
+// A permissão é pedida uma única vez logo após login bem-sucedido (ver
+// window.requestNotificationPermission?.() em 02-auth.js) — nunca insiste
+// se o usuário já negou (Notification.permission === "denied").
+function requestNotificationPermission() {
+  if (!("Notification" in window)) return;
+  if (Notification.permission === "default") {
+    Notification.requestPermission().catch(() => {});
+  }
+}
+
+function showDesktopNotification(type, text, userId) {
+  if (!("Notification" in window)) return;
+  if (Notification.permission !== "granted") return;
+  // Só dispara a notificação nativa se o atendente NÃO está olhando a aba —
+  // com a aba visível e em foco, o toast + dropdown já bastam; duplicar
+  // com um popup do SO em cima seria só redundante/irritante.
+  if (document.visibilityState === "visible" && document.hasFocus()) return;
+
+  try {
+    const title = type === "ticket" ? "🎫 Novo atendimento" : "💬 Nova mensagem";
+    const n = new Notification(title, {
+      body: text,
+      tag:  userId ? `rildon-${userId}` : undefined, // agrupa por cliente, evita empilhar várias do mesmo
+      icon: "android-chrome-512x512.png"
+    });
+    n.onclick = () => {
+      window.focus();
+      n.close();
+      if (userId) {
+        closeNotifDropdown();
+        switchTab("conversations");
+        setTimeout(() => openConversation(userId), 200);
+      }
+    };
+  } catch (_) {}
 }
 
 function renderNotifDropdown() {

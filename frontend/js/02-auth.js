@@ -151,6 +151,9 @@ async function login() {
     // 12-socket.js sobre o bug do autoConnect mostrando "sessão expirada"
     // antes mesmo do usuário logar.
     window.connectPanelSocket?.();
+    // Pede permissão de notificação do navegador uma única vez pós-login
+    // (nunca insiste se já foi negada) — ver 07-conversations.js.
+    window.requestNotificationPermission?.();
   } catch {
     error.textContent = "Erro de conexão. Verifique se o servidor está rodando.";
   } finally {
@@ -234,6 +237,7 @@ async function submitTwoFactorLogin() {
     applyUserPermissions();
     refreshAll();
     window.connectPanelSocket?.();
+    window.requestNotificationPermission?.();
   } catch {
     if (errorEl) errorEl.textContent = "Erro de conexão. Verifique se o servidor está rodando.";
   } finally {
@@ -274,6 +278,7 @@ async function checkAuth() {
       showDashboard();
       applyUserPermissions();
       window.connectPanelSocket?.();
+      window.requestNotificationPermission?.();
     } else {
       showLogin();
     }

@@ -4,6 +4,13 @@
 let activeTicketFilter = "pendentes";
 let ticketsByUser      = {}; // userId → ticket mais recente
 let humanModeUsers     = new Set(); // userIds em atendimento humano (bot pausado)
+// BUG CORRIGIDO: em modo restrito (ATTENDANT_CONVERSATIONS_FULL_ACCESS=false),
+// um ticket ativo assumido por OUTRO atendente some de ticketsByUser (o
+// backend filtra a lista) — sem isso, o frontend não tinha como distinguir
+// "sem ticket ainda" (cliente novo) de "ticket existe, mas não é meu", e
+// mostrava esse cliente incorretamente em "Pendentes". O backend manda essa
+// lista à parte (getTickets → hiddenActiveUserIds) pra esconder de vez.
+let hiddenActiveUserIds = new Set();
 let _searchDebounceTimer = null;
 
 function debouncedSearch() {
@@ -55,9 +62,11 @@ async function _loadConversationsCore(silent = false) {
 
     // Monta mapa userId → ticket mais recente
     ticketsByUser = {};
+    hiddenActiveUserIds = new Set();
     if (ticketRes?.ok) {
       const ticketData = await ticketRes.json();
       const tickets = ticketData.tickets || [];
+      (ticketData.hiddenActiveUserIds || []).forEach(uid => hiddenActiveUserIds.add(uid));
       // Ordena: tickets ativos primeiro, depois por data DESC
       // Assim um ticket aberto/em_andamento sempre ganha sobre um resolvido mais recente
       const STATUS_PRIO = { aberto: 0, em_andamento: 1, resolvido: 2, cancelado: 3 };
@@ -92,7 +101,7 @@ async function _loadConversationsCore(silent = false) {
     const usersSeen = new Set();
     let users = [];
     for (const item of allHistory) {
-      if (item?.userId && !usersSeen.has(item.userId)) {
+      if (item?.userId && !usersSeen.has(item.userId) && !hiddenActiveUserIds.has(item.userId)) {
         usersSeen.add(item.userId);
         users.push(item.userId);
       }

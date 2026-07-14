@@ -239,6 +239,43 @@ describe("ticket.routes", () => {
       expect(res.body.total).toBe(2);
       expect(res.body.stats.total).toBe(2);
     });
+
+    // BUG CORRIGIDO: em modo restrito, um ticket assumido por OUTRO
+    // atendente sumia por completo da resposta — o frontend não tinha
+    // como distinguir isso de "cliente novo, sem ticket ainda" e mostrava
+    // esse cliente incorretamente na aba "Pendentes". hiddenActiveUserIds
+    // avisa o frontend de quem tem ticket ativo escondido, pra ocultar
+    // a conversa por completo em vez de reclassificá-la como pendente.
+    describe("modo restrito (ATTENDANT_CONVERSATIONS_FULL_ACCESS=false)", () => {
+      beforeEach(() => { process.env[FULL_ACCESS_ENV_KEY] = "false"; });
+
+      test("ticket assumido por outro atendente do mesmo setor some da lista, mas aparece em hiddenActiveUserIds", async () => {
+        const outroAtendente = { id: "at-2", nome: "Junior", perfil: "atendente", sector: "vendas" };
+
+        const created = await request(buildApp(ADMIN)).post("/api/tickets")
+          .send({ userId: "cliente-x", type: "orcamento" }); // sector: vendas
+        const id = created.body.ticket.id;
+
+        await request(buildApp(outroAtendente)).patch(`/api/tickets/${id}/assign`);
+
+        const res = await request(buildApp(ATENDENTE_VENDAS)).get("/api/tickets");
+
+        expect(res.status).toBe(200);
+        expect(res.body.tickets.find(t => t.id === id)).toBeUndefined();
+        expect(res.body.hiddenActiveUserIds).toContain("cliente-x");
+      });
+
+      test("ticket ainda não assumido no mesmo setor continua visível (não entra em hiddenActiveUserIds)", async () => {
+        const created = await request(buildApp(ADMIN)).post("/api/tickets")
+          .send({ userId: "cliente-y", type: "orcamento" });
+        const id = created.body.ticket.id;
+
+        const res = await request(buildApp(ATENDENTE_VENDAS)).get("/api/tickets");
+
+        expect(res.body.tickets.find(t => t.id === id)).toBeTruthy();
+        expect(res.body.hiddenActiveUserIds).not.toContain("cliente-y");
+      });
+    });
   });
 
   describe("PATCH /tickets/:id (status)", () => {

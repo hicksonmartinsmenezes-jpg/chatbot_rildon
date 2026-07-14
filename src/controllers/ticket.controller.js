@@ -54,15 +54,34 @@ async function getTickets(req, res) {
 
     let tickets = await listTickets({ status, search, dateStart, dateEnd });
 
-    // No painel Conversas, o atendente precisa visualizar igual ao administrador.
-    // Mantém o comportamento restrito apenas se ATTENDANT_CONVERSATIONS_FULL_ACCESS=false.
+    // BUG CORRIGIDO: com ATTENDANT_CONVERSATIONS_FULL_ACCESS=false (modo
+    // restrito — cada atendente só vê/gerencia o que assumiu + o que ainda
+    // está livre no seu setor), os tickets filtrados aqui embaixo somem por
+    // completo da resposta. Isso deixava a aba "Conversas" do atendente
+    // confusa: um ticket assumido por OUTRO atendente (ex: Junior) some da
+    // lista de tickets, mas o cliente continua aparecendo em "Pendentes"
+    // pro atendente que não é dono (o frontend trata "sem ticket na
+    // resposta" como "cliente novo, ainda no bot" — não tinha como
+    // distinguir isso de "ticket existe, só não é seu"). Por isso, além de
+    // filtrar a lista principal, mandamos separadamente os userIds de
+    // tickets ativos (aberto/em_andamento) que foram ocultados por
+    // pertencerem a outro atendente/setor — o frontend usa isso pra
+    // esconder essas conversas por completo, em vez de mostrá-las como
+    // "Pendente" incorretamente.
+    let hiddenActiveUserIds = [];
     if (req.user?.perfil === "atendente" && !canUseFullConversationPanel(req.user)) {
-      tickets = tickets.filter(ticket => {
+      const antes = tickets;
+      tickets = antes.filter(ticket => {
         const mesmoSetor = (ticket.sector || "geral") === (req.user.sector || "geral");
         const disponivel  = !ticket.assignedTo;
         const jaAssumido  = ticket.assignedTo === req.user.id;
         return (mesmoSetor && disponivel) || jaAssumido;
       });
+
+      const idsVisiveis = new Set(tickets.map(t => t.userId));
+      hiddenActiveUserIds = antes
+        .filter(t => (t.status === "aberto" || t.status === "em_andamento") && !idsVisiveis.has(t.userId))
+        .map(t => t.userId);
     }
 
     const stats     = await getTicketStats({ dateStart, dateEnd });
@@ -73,7 +92,7 @@ async function getTickets(req, res) {
     const hoje       = dataHojeISO();
     const todayStats = await getTicketStats({ dateStart: hoje, dateEnd: hoje });
 
-    res.json({ stats, liveStats, todayStats, total: tickets.length, tickets });
+    res.json({ stats, liveStats, todayStats, total: tickets.length, tickets, hiddenActiveUserIds });
   } catch (err) {
     logger.error(`[getTickets] ${err.message}`);
     res.status(500).json({ error: "Erro ao listar tickets." });

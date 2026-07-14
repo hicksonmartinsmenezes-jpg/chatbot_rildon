@@ -307,6 +307,7 @@ socket.on("nova_mensagem", (data) => {
   if (!isCurrentConversation && !data.response) {
     unreadMessages[data.userId] = (unreadMessages[data.userId] || 0) + 1;
     updateSidebarUnreadBadge();
+    persistUnreadMessages();
   }
 
   if (currentTab === "conversations") {

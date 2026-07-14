@@ -227,6 +227,7 @@ async function openConversation(userId, updateActive = true) {
   const hadUnread = unreadMessages[userId] > 0;
   unreadMessages[userId] = 0;
   updateSidebarUnreadBadge();
+  persistUnreadMessages();
 
   if (hadUnread && updateActive) {
     setTimeout(() => loadConversations(), 100);

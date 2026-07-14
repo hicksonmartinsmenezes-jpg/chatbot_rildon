@@ -139,6 +139,11 @@ async function login() {
 
     // Armazena apenas os dados públicos do usuário — sem token
     setCurrentUser(data.user);
+    // Restaura o contador de não lidas salvo no localStorage antes do
+    // refreshAll()/badge da sidebar, senão mostraria tudo zerado por um
+    // instante — ver persistUnreadMessages()/restoreUnreadMessages() em
+    // 00-core.js.
+    window.restoreUnreadMessages?.();
 
     // Limpa os campos da memória
     if (userEl) userEl.value = "";
@@ -229,6 +234,7 @@ async function submitTwoFactorLogin() {
 
     _twoFactorChallengeToken = null;
     setCurrentUser(data.user);
+    window.restoreUnreadMessages?.();
 
     document.getElementById("login-2fa-form")?.classList.add("hidden");
     document.getElementById("login-form")?.classList.remove("hidden");
@@ -275,6 +281,7 @@ async function checkAuth() {
     if (res.ok) {
       const data = await res.json();
       setCurrentUser(data.user);
+      window.restoreUnreadMessages?.();
       showDashboard();
       applyUserPermissions();
       window.connectPanelSocket?.();

@@ -51,6 +51,41 @@ function toggleTheme() {
   if (stored) applyTheme(stored);
 })();
 
+// ─── Persistência do contador de não lidas ────────────────────────────────────
+// BUG CORRIGIDO: unreadMessages vivia só em AppState (memória) — um F5/refresh
+// zerava tudo, mesmo que o atendente não tivesse aberto a conversa e visto as
+// mensagens de verdade. Parecia que "sumiu" a mensagem nova, quando na
+// verdade só a página recarregou. Agora persiste no localStorage, por
+// usuário logado (mesma convenção da chave "profile_<usuario>" em
+// 02-auth.js), e é restaurado logo após confirmar a sessão — ver
+// restoreUnreadMessages() chamado em login()/submitTwoFactorLogin()/checkAuth()
+// no 02-auth.js.
+// Limitação conhecida: só conta mensagens recebidas enquanto o painel estava
+// aberto (via socket "nova_mensagem" em 12-socket.js) — mensagens chegadas
+// com o navegador totalmente fechado não entram nessa contagem, pois não
+// existe hoje um campo de "última leitura" calculado no backend.
+function _unreadStorageKey() {
+  const user = typeof getCurrentUser === "function" ? getCurrentUser() : null;
+  const id = user?.usuario || user?.id;
+  return id ? `unread_msgs_${id}` : null;
+}
+
+function persistUnreadMessages() {
+  const key = _unreadStorageKey();
+  if (!key) return;
+  try { localStorage.setItem(key, JSON.stringify(AppState.unreadMessages)); } catch (_) {}
+}
+
+function restoreUnreadMessages() {
+  const key = _unreadStorageKey();
+  if (!key) return;
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) AppState.unreadMessages = JSON.parse(raw) || {};
+  } catch (_) {}
+  if (typeof updateSidebarUnreadBadge === "function") updateSidebarUnreadBadge();
+}
+
 // Compatibilidade com código legado que usa variáveis soltas
 Object.defineProperties(window, {
   currentTab:               { get: () => AppState.currentTab,               set: v => AppState.currentTab = v,               enumerable: true },

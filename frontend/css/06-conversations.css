@@ -664,13 +664,20 @@ body.tab-fullscreen #tab-conversations {
 
 
 /* ─── Área de mensagens ───────────────── */
+/* Marca d'água repetida (logo + "RiLDON"), estilo papel de parede do
+   WhatsApp — pedido do usuário. O tile em si já contém DOIS ícones
+   deslocados (metade da largura/altura um do outro), então o repeat
+   normal do CSS já cria o efeito "tijolo"/diagonal sem precisar rotacionar
+   a imagem. Cor bem próxima do fundo (#f5f1eb) pra ficar sutil, tom sobre
+   tom, igual ao mock que o usuário mandou. */
 .chat-messages {
   flex: 1;
   overflow-y: auto;
   padding: 16px 10px;
   scroll-behavior: smooth;
-  background-image: radial-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px);
-  background-size: 18px 18px;
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22240%22%20height%3D%22200%22%20viewBox%3D%220%200%20240%20200%22%3E%3Cg%20transform%3D%22translate%2860%2C55%29%22%3E%3Crect%20x%3D%22-26%22%20y%3D%22-26%22%20width%3D%2252%22%20height%3D%2252%22%20rx%3D%2213%22%20fill%3D%22none%22%20stroke%3D%22%23e7ddc8%22%20stroke-width%3D%224.5%22%2F%3E%3Cpath%20d%3D%22M-4%2C-17%20L9%2C-17%20L-3%2C-1%20L8%2C-1%20L-9%2C20%20L-2%2C0%20L-13%2C0%20Z%22%20fill%3D%22%23e7ddc8%22%2F%3E%3Ctext%20x%3D%220%22%20y%3D%2246%22%20font-family%3D%22Arial%2CHelvetica%2Csans-serif%22%20font-weight%3D%22800%22%20font-size%3D%2215%22%20letter-spacing%3D%221.2%22%20fill%3D%22%23e7ddc8%22%20text-anchor%3D%22middle%22%3ERiLDON%3C%2Ftext%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28180%2C155%29%22%3E%3Crect%20x%3D%22-26%22%20y%3D%22-26%22%20width%3D%2252%22%20height%3D%2252%22%20rx%3D%2213%22%20fill%3D%22none%22%20stroke%3D%22%23e7ddc8%22%20stroke-width%3D%224.5%22%2F%3E%3Cpath%20d%3D%22M-4%2C-17%20L9%2C-17%20L-3%2C-1%20L8%2C-1%20L-9%2C20%20L-2%2C0%20L-13%2C0%20Z%22%20fill%3D%22%23e7ddc8%22%2F%3E%3Ctext%20x%3D%220%22%20y%3D%2246%22%20font-family%3D%22Arial%2CHelvetica%2Csans-serif%22%20font-weight%3D%22800%22%20font-size%3D%2215%22%20letter-spacing%3D%221.2%22%20fill%3D%22%23e7ddc8%22%20text-anchor%3D%22middle%22%3ERiLDON%3C%2Ftext%3E%3C%2Fg%3E%3C%2Fsvg%3E");
+  background-repeat: repeat;
+  background-size: 240px 200px;
 }
 
 .chat-messages::-webkit-scrollbar {

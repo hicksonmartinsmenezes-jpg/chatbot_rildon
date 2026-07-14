@@ -103,9 +103,13 @@ body.light-theme .chat-ticket-ref { color: #64748b; }
 body.light-theme .chat-header-actions button:not(.conv-action-btn) { background: rgba(0,0,0,.05); color: #374151; }
 body.light-theme .chat-header-actions button:hover { background: rgba(29,108,245,.15); color: #111827; }
 
-body.light-theme .chat-messages {
-  background-image: radial-gradient(rgba(0,0,0,.045) 1px, transparent 1px);
-}
+/* BUG CORRIGIDO: esta regra tinha especificidade maior que ".chat-messages"
+   em 06-conversations.css (2 classes + 1 tag vs. 1 classe), então SEMPRE
+   vencia e escondia a marca d'água quando o tema claro estava ativo —
+   mesmo depois de trocar o fundo/imagem lá, aqui continuava sendo o
+   pontilhado antigo. Removida: agora o tema claro herda a mesma marca
+   d'água do tema escuro (a imagem já é clara o bastante pra funcionar
+   nos dois temas). */
 body.light-theme .day-separator span { background: #ffffff; color: #54656f; }
 
 body.light-theme .bubble { color: #111b21; }

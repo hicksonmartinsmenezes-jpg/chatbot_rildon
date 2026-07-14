@@ -523,7 +523,7 @@ body.tab-fullscreen #tab-conversations {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  background: #0d0d0d;
+  background: #f5f1eb; /* pedido do usuário: fundo da janela de mensagens */
 }
 
 /* ─── Estado vazio (nenhuma conversa selecionada) ─ */

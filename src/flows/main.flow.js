@@ -1,4 +1,4 @@
-const { getSession, clearSession, updateSession }           = require("../services/session.service");
+const { getSession, clearSession, updateSession, finalizarComTicket } = require("../services/session.service");
 const { createTicket }                                      = require("../services/ticket.service");
 const { estaEmHorarioDeAtendimento, mensagemForaDeHorario } = require("../utils/horario");
 const { notificarAtendente, notificarSeDisponivel }         = require("../services/notificacao.service");
@@ -327,7 +327,7 @@ async function _mainFlowInterno({ userId, message }) {
         return "⚠️ Não consegui registrar sua solicitação agora.\n\nPor favor, ligue diretamente: *(79) 99135-3569*\n\n_Digite *0* para voltar ao menu._";
       }
       notificarAtendente(ticket);
-      await clearSession(userId);
+      await finalizarComTicket(userId, ticket);
       return MSG.gestao.REGISTRADO(ticket);
     }
 
@@ -361,7 +361,7 @@ async function _mainFlowInterno({ userId, message }) {
       }
 
       estaEmHorarioDeAtendimento() ? notificarAtendente(ticket) : notificarSeDisponivel(ticket);
-      await clearSession(userId);
+      await finalizarComTicket(userId, ticket);
       return MSG.main.ATENDENTE_HUMANO(ticket);
     }
 
@@ -461,13 +461,20 @@ async function _mainFlowInterno({ userId, message }) {
       // ── Roteamento por intenção ────────────────────────────────────────────
 
       // Vendas: vai direto para o formulário, sem submenu intermediário
+      // BUG CORRIGIDO: o cliente já diz o que quer logo na 1ª mensagem
+      // ("quero orçamento de uma palheta") e o fluxo, mais na frente,
+      // perguntava de novo "qual peça ou serviço você precisa?" — o
+      // cliente responde "já falei" (frustrado) e isso vira literalmente
+      // a descrição do orçamento. Guardamos a mensagem original em
+      // "produtoInicial"; vendas.flow.js usa ela pra pular essa pergunta
+      // redundante quando já é descritiva o suficiente.
       if (intencao === "vendas") {
         if (nomeSalvo) {
           const primeiroNome = nomeSalvo.trim().split(" ")[0];
-          await updateSession(userId, { sector: "vendas", step: "aguardando_veiculo", customerName: nomeSalvo, aiHistorico: novoHistorico, _iaFalhas: 0 });
+          await updateSession(userId, { sector: "vendas", step: "aguardando_veiculo", customerName: nomeSalvo, produtoInicial: message, aiHistorico: novoHistorico, _iaFalhas: 0 });
           return resposta + "\n\n" + `Certo, *${primeiroNome}*! ` + MSG.vendas.PEDIR_VEICULO + MSG.ESCAPE_DICA;
         }
-        await updateSession(userId, { sector: "vendas", step: "aguardando_nome", aiHistorico: novoHistorico, _iaFalhas: 0 });
+        await updateSession(userId, { sector: "vendas", step: "aguardando_nome", produtoInicial: message, aiHistorico: novoHistorico, _iaFalhas: 0 });
         return resposta + "\n\n" + MSG.vendas.PEDIR_NOME + MSG.ESCAPE_DICA;
       }
 

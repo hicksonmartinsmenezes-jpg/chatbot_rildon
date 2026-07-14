@@ -1,4 +1,4 @@
-const { updateSession, clearSession }                       = require("../services/session.service");
+const { updateSession, clearSession, finalizarComTicket }    = require("../services/session.service");
 const { createTicket }                                      = require("../services/ticket.service");
 const { validarNome, validarTamanho, mensagemTamanhoInvalido,
         sanitizarTexto, normalizar }                        = require("../utils/validators");
@@ -20,6 +20,26 @@ async function _criarTicketVendas(dados) {
     logger.error(`[vendas._criarTicket] ${err.message}`);
     return null;
   }
+}
+
+// Finaliza o orçamento: monta a descrição (veículo + produto/serviço),
+// cria o ticket e encerra a sessão preservando o histórico da IA (ver
+// finalizarComTicket em session.service.js — corrige o bug de perguntas
+// de acompanhamento tipo "quando?" perderem contexto).
+async function _finalizarOrcamento(userId, session, veiculo, produtoTexto) {
+  const veiculoPrefix = veiculo && veiculo !== "Não informado" ? `Veículo: ${veiculo} | ` : "";
+  const descricao      = `${veiculoPrefix}Produto/Serviço: ${produtoTexto}`;
+
+  const ticket = await _criarTicketVendas({
+    userId,
+    type:         "orcamento",
+    customerName: session.customerName || MSG.NAO_INFORMADO,
+    description:  descricao,
+  });
+  await finalizarComTicket(userId, ticket);
+  if (!ticket) return MSG_TICKET_FALHOU;
+  notificarAtendente(ticket);
+  return MSG.vendas.ORCAMENTO_SOLICITADO(ticket);
 }
 
 // Palavras que escapam para o menu principal em qualquer etapa de coleta
@@ -52,8 +72,23 @@ async function vendasFlow(message, userId, session) {
     // ── Etapa 2: Veículo ───────────────────────────────────────────────────────
     if (session.step === "aguardando_veiculo") {
       const veiculo = msg === "pular" ? null : sanitizarTexto(message);
+      const veiculoFinal = veiculo || "Não informado";
+
+      // BUG CORRIGIDO: o cliente já tinha dito o que precisava na 1ª
+      // mensagem (ex: "quero orçamento de uma palheta") — sem isso, o
+      // fluxo perguntava "qual peça ou serviço você precisa?" de novo,
+      // o cliente respondia "já falei" (frustrado) e ISSO virava a
+      // descrição do orçamento. Se produtoInicial já é descritivo o
+      // bastante, pula a etapa 3 e finaliza direto.
+      const produtoInicial = session.produtoInicial ? sanitizarTexto(session.produtoInicial) : "";
+      const produtoValido  = validarTamanho(normalizar(produtoInicial), 5).ok;
+
+      if (produtoValido) {
+        return _finalizarOrcamento(userId, session, veiculoFinal, produtoInicial);
+      }
+
       await updateSession(userId, {
-        veiculo: veiculo || "Não informado",
+        veiculo: veiculoFinal,
         step: "aguardando_orcamento",
       });
       return MSG.vendas.PEDIR_ORCAMENTO + MSG.ESCAPE_DICA;
@@ -68,20 +103,7 @@ async function vendasFlow(message, userId, session) {
           : mensagemTamanhoInvalido();
       }
 
-      const veiculo     = session.veiculo && session.veiculo !== "Não informado"
-        ? `Veículo: ${session.veiculo} | ` : "";
-      const descricao   = `${veiculo}Produto/Serviço: ${sanitizarTexto(message)}`;
-
-      const ticket = await _criarTicketVendas({
-        userId,
-        type:         "orcamento",
-        customerName: session.customerName || MSG.NAO_INFORMADO,
-        description:  descricao,
-      });
-      await clearSession(userId);
-      if (!ticket) return MSG_TICKET_FALHOU;
-      notificarAtendente(ticket);
-      return MSG.vendas.ORCAMENTO_SOLICITADO(ticket);
+      return _finalizarOrcamento(userId, session, session.veiculo, sanitizarTexto(message));
     }
 
     // ── Sub-menu de vendas ─────────────────────────────────────────────────────

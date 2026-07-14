@@ -190,7 +190,9 @@ intencao DEVE SER:
 • "atendente" → pede para falar com atendente, vendedor ou funcionário para tirar dúvida ou fazer compra: "falar com atendente", "quero falar com alguém", "tem vendedor?"
 • "suporte"   → relata problema técnico com produto adquirido, defeito em peça comprada, dúvida de funcionamento de produto já instalado
 • "gestao"    → quer falar com a equipe, time ou responsável de forma geral; reclamação sobre atendimento, insatisfação grave, pede falar com gerente: "falar com a equipe", "quero falar com a equipe", "fale com equipe", "falar com o responsável"
-• "chat"      → PADRÃO: saudações, bate-papo, dúvidas técnicas sem intenção de compra imediata, informações gerais`,
+• "chat"      → PADRÃO: saudações, bate-papo, dúvidas técnicas sem intenção de compra imediata, informações gerais
+
+IMPORTANTE sobre intenção "vendas": logo depois da sua resposta, o SISTEMA já vai perguntar automaticamente (nesta ordem) o nome do cliente, depois o veículo, depois a peça/serviço — então a sua "resposta" deve APENAS confirmar breve e calorosamente que vai ajudar com o orçamento, SEM perguntar modelo de veículo, chassi, ano ou qual peça precisa. Perguntar isso na sua resposta faz o cliente responder a pergunta errada (ele pensa que está respondendo você, mas na verdade a próxima pergunta do sistema é sobre o nome dele) e os dados do orçamento saem trocados.`,
     };
     _promptBaseCacheAt = agora;
   }

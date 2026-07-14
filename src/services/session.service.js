@@ -95,6 +95,45 @@ async function clearSession(userId) {
   await _removerSessao(userId);
 }
 
+// BUG CORRIGIDO: todo fluxo (vendas/crediário/gestão/atendente) chamava
+// clearSession() puro logo após criar o ticket — isso apaga TAMBÉM o
+// aiHistorico da conversa com a IA. Resultado: se o cliente manda uma
+// pergunta de acompanhamento natural logo em seguida (ex: "Quando?",
+// "Quanto tempo demora?"), a IA responde sem NENHUM contexto do ticket
+// que acabou de ser criado — vira uma resposta genérica/sem sentido, tipo
+// saudação, e ainda reexibe o menu (relatado pelo usuário: pergunta
+// "Quando?" depois do orçamento virou "Bom dia! Em que posso te ajudar?").
+// finalizarComTicket() faz o mesmo reset de sector/step/dados coletados
+// (equivalente ao clearSession para fins de navegação), mas MANTÉM
+// aiHistorico e customerName, e ainda acrescenta uma nota sintética do
+// que foi registrado — assim uma pergunta de acompanhamento tem contexto
+// pra IA responder de forma útil.
+async function finalizarComTicket(userId, ticket) {
+  const atual = getSession(userId);
+  let aiHistorico = atual.aiHistorico || [];
+
+  if (ticket) {
+    aiHistorico = [
+      ...aiHistorico,
+      {
+        role: "model",
+        parts: [{
+          text: `Registrei sua solicitação — protocolo #${ticket.protocolo}. Nosso time entra em contato em breve (geralmente ainda no mesmo dia útil, respeitando o horário de atendimento).`
+        }],
+      },
+    ].slice(-20);
+  }
+
+  await updateSession(userId, {
+    sector:         undefined,
+    step:           undefined,
+    veiculo:        undefined,
+    cpf:            undefined,
+    produtoInicial: undefined,
+    aiHistorico,
+  });
+}
+
 async function _persistirSessao(userId) {
   try {
     await pool.query(
@@ -194,5 +233,6 @@ module.exports = {
   getSession,
   updateSession,
   clearSession,
+  finalizarComTicket,
   setSendMessage
 };

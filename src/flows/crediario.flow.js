@@ -1,4 +1,4 @@
-const { updateSession, clearSession }                 = require("../services/session.service");
+const { updateSession, clearSession, finalizarComTicket } = require("../services/session.service");
 const { createTicket }                                = require("../services/ticket.service");
 const { validarNome, validarCPF, validarTamanho,
         mensagemTamanhoInvalido,
@@ -83,7 +83,7 @@ async function crediarioFlow(message, userId, session) {
       customerName: session.customerName || MSG.NAO_INFORMADO,
       description:  sanitizarTexto(message),
     });
-    await clearSession(userId);
+    await finalizarComTicket(userId, ticket);
     if (!ticket) return MSG_TICKET_FALHOU;
     notificarAtendente(ticket);
     return MSG.crediario.SOLICITACAO_REGISTRADA(ticket);
@@ -113,7 +113,7 @@ async function crediarioFlow(message, userId, session) {
       customerName: session.customerName || MSG.NAO_INFORMADO,
       description:  `Consulta de situação de crediário — CPF: ${cpfNumeros}`,
     });
-    await clearSession(userId);
+    await finalizarComTicket(userId, ticket);
     if (!ticket) return MSG_TICKET_FALHOU;
     notificarAtendente(ticket);
     return MSG.crediario.SOLICITACAO_REGISTRADA(ticket);

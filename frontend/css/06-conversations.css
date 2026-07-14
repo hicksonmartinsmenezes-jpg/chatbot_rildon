@@ -283,6 +283,21 @@ body.tab-fullscreen #tab-conversations {
   margin-top: 2px;
 }
 
+/* Conversa travada: ticket pertence a outro atendente (modo restrito) —
+   sem botões de ação, só um aviso informativo no lugar deles. */
+.chat-locked-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: rgba(255,255,255,.05);
+  color: rgba(255,255,255,.55);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 /* ─── Botões de ação no header ─────────── */
 .conv-action-btn {
   display: inline-flex;

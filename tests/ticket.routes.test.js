@@ -240,6 +240,19 @@ describe("ticket.routes", () => {
       expect(res.body.stats.total).toBe(2);
     });
 
+    // Pedido do usuário: a UI da conversa precisa saber se o atendente
+    // logado pode gerenciar QUALQUER ticket (full access/privilegiado) ou
+    // só o que é dele, pra travar os botões de ação antes de clicar em vez
+    // de deixar clicar e só então mostrar 403.
+    test("canManageAnyTicket reflete full access (true pra admin, false pro atendente em modo restrito)", async () => {
+      const resAdmin = await request(buildApp(ADMIN)).get("/api/tickets");
+      expect(resAdmin.body.canManageAnyTicket).toBe(true);
+
+      process.env[FULL_ACCESS_ENV_KEY] = "false";
+      const resAtendente = await request(buildApp(ATENDENTE_VENDAS)).get("/api/tickets");
+      expect(resAtendente.body.canManageAnyTicket).toBe(false);
+    });
+
     // BUG CORRIGIDO: em modo restrito, um ticket assumido por OUTRO
     // atendente sumia por completo da resposta — o frontend não tinha
     // como distinguir isso de "cliente novo, sem ticket ainda" e mostrava

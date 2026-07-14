@@ -11,6 +11,13 @@ let humanModeUsers     = new Set(); // userIds em atendimento humano (bot pausad
 // mostrava esse cliente incorretamente em "Pendentes". O backend manda essa
 // lista à parte (getTickets → hiddenActiveUserIds) pra esconder de vez.
 let hiddenActiveUserIds = new Set();
+// Pedido do usuário: quando um ticket é assumido/transferido/fechado por
+// OUTRO atendente enquanto eu já estava com a conversa aberta na tela, a
+// UI precisa travar (sem botões de ação) em vez de deixar clicar e só
+// então mostrar "sem permissão". Vem do backend (getTickets →
+// canManageAnyTicket) pra refletir a mesma regra que o servidor aplica
+// (full access vs modo restrito), sem precisar duplicar essa lógica aqui.
+let canManageAnyTicket = true;
 let _searchDebounceTimer = null;
 
 function debouncedSearch() {
@@ -67,6 +74,7 @@ async function _loadConversationsCore(silent = false) {
       const ticketData = await ticketRes.json();
       const tickets = ticketData.tickets || [];
       (ticketData.hiddenActiveUserIds || []).forEach(uid => hiddenActiveUserIds.add(uid));
+      canManageAnyTicket = ticketData.canManageAnyTicket !== false;
       // Ordena: tickets ativos primeiro, depois por data DESC
       // Assim um ticket aberto/em_andamento sempre ganha sobre um resolvido mais recente
       const STATUS_PRIO = { aberto: 0, em_andamento: 1, resolvido: 2, cancelado: 3 };
@@ -232,7 +240,6 @@ async function openConversation(userId, updateActive = true) {
 
   selectedConversationUser = userId;
   const textarea = document.getElementById("conversation-message");
-  if (textarea) { textarea.disabled = false; textarea.placeholder = "Digite uma mensagem..."; }
   const hadUnread = unreadMessages[userId] > 0;
   unreadMessages[userId] = 0;
   updateSidebarUnreadBadge();
@@ -245,11 +252,29 @@ async function openConversation(userId, updateActive = true) {
   const header      = document.getElementById("chat-window-header");
   const messagesBox = document.getElementById("chat-messages");
 
+  // Ticket pertence a outro atendente (modo restrito) → trava a conversa:
+  // sem botões de ação e sem poder enviar mensagem, só visualização.
+  const _ticketAtual = ticketsByUser[userId];
+  const _locked = !canManageAnyTicket && Boolean(
+    _ticketAtual?.assignedTo && getCurrentUser()?.id &&
+    String(_ticketAtual.assignedTo) !== String(getCurrentUser().id)
+  );
+
+  if (textarea) {
+    textarea.disabled = _locked;
+    textarea.placeholder = _locked
+      ? `Assumido por ${_ticketAtual?.assignedToName || "outro atendente"} — sem ações disponíveis`
+      : "Digite uma mensagem...";
+  }
+
   if (header) {
     const name     = getContactName(userId) || formatPhone(userId);
     const ticket   = ticketsByUser[userId];
 
-    const actionButtons = buildConversationActionButtons(userId, ticket, humanModeUsers);
+    const actionButtons = buildConversationActionButtons(userId, ticket, humanModeUsers, {
+      currentUserId: getCurrentUser()?.id,
+      fullAccess: canManageAnyTicket
+    });
 
     header.innerHTML = `
       <div class="chat-header-profile">

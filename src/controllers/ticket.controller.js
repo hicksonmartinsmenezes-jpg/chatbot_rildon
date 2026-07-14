@@ -100,7 +100,16 @@ async function getTickets(req, res) {
     const hoje       = dataHojeISO();
     const todayStats = await getTicketStats({ dateStart: hoje, dateEnd: hoje });
 
-    res.json({ stats, liveStats, todayStats, total: tickets.length, tickets, hiddenActiveUserIds });
+    // Pedido do usuário: quando um ticket é assumido/transferido/fechado por
+    // OUTRO atendente enquanto eu já estava com a conversa aberta na tela,
+    // os botões de ação (Transferir/Fechar/Devolver ao bot) continuavam
+    // aparecendo como se fossem meus — clicar só dava 403 (o backend já
+    // bloqueia certo, a UI que não avisava antes). O frontend usa esse flag
+    // pra saber se DEVE mostrar os botões de ação normalmente (fullAccess
+    // ou privilegiado) ou só quando o ticket for realmente meu/livre.
+    const canManageAnyTicket = canUseFullConversationPanel(req.user);
+
+    res.json({ stats, liveStats, todayStats, total: tickets.length, tickets, hiddenActiveUserIds, canManageAnyTicket });
   } catch (err) {
     logger.error(`[getTickets] ${err.message}`);
     res.status(500).json({ error: "Erro ao listar tickets." });

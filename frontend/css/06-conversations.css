@@ -482,14 +482,17 @@ body.tab-fullscreen #tab-conversations {
 }
 
 /* ─── Badge não lidos (estilo WhatsApp) ──────────
-   BUG CORRIGIDO: a cor do texto era "#04110a" (quase preto), escolhida
-   pensando só no fundo verde-claro padrão (#22c55e). Só que o JS
-   (07-conversations.js, variável unreadBg) troca o fundo por cor do
-   status do ticket — laranja/azul/vermelho, todos tons médios/escuros —
-   e texto quase-preto em cima disso ficava praticamente ilegível
-   (reportado pelo usuário: "não consigo nem ver o valor"). Texto branco
-   com leve contorno escuro funciona em qualquer cor de fundo usada. */
+   Sempre verde (cor fixa, não muda mais por status do ticket — pedido
+   do usuário) + descido um pouco dentro da linha (align-self: flex-end,
+   já que ".chat-item-bottom" centraliza os itens verticalmente por
+   padrão) + número centralizado com precisão (padding simétrico,
+   line-height igual à altura do badge, sem text-shadow que distorcia
+   a leitura do centro). */
 .chat-unread {
+  align-self: flex-end;
+  margin-top: 4px;
+
+  box-sizing: border-box;
   min-width: 20px;
   height: 20px;
 
@@ -498,11 +501,11 @@ body.tab-fullscreen #tab-conversations {
   background: #25D366;
 
   color: #ffffff;
-  text-shadow: 0 1px 1px rgba(0,0,0,.35);
 
   font-size: 12px;
   font-weight: 700;
-  line-height: 1;
+  line-height: 20px;
+  text-align: center;
 
   display: flex;
   align-items: center;

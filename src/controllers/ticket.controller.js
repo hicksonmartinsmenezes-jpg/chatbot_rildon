@@ -1,5 +1,6 @@
 const logger = require("../utils/logger");
 const humanMode = require("../services/humanMode.service");
+const { emitEvent } = require("../services/socket.service");
 const ticketRepository = require("../repositories/ticket.repository");
 const { canAccessTicket, canManageTicket, canSeeSensitiveDashboard, canUseFullConversationPanel } = require("../utils/access-control");
 const { dataHojeISO } = require("../utils/horario");
@@ -107,6 +108,14 @@ async function patchTicket(req, res) {
       humanMode.desativar(ticket.userId, "ticket_fechado");
     }
 
+    // BUG CORRIGIDO: nenhum evento de socket avisava o painel de outras
+    // sessões conectadas quando um ticket mudava de status (fechar,
+    // reabrir, cancelar) — só a aba que fez a ação via a mudança de
+    // verdade (via reload local); outras abas/atendentes ficavam com o
+    // status antigo até o poll de 30s. Reportado pelo usuário como
+    // "fechar não atualiza".
+    emitEvent("ticket_atualizado", { ticket });
+
     res.json({ message: "Status atualizado.", ticket });
   } catch (err) {
     logger.error(`[patchTicket] ${err.message}`);
@@ -146,6 +155,9 @@ async function assumirTicket(req, res) {
       agentName: req.user?.nome || req.user?.usuario || "",
       protocolo: ticket.protocolo
     });
+
+    // Ver nota em patchTicket — mantém outras sessões do painel em sincronia.
+    emitEvent("ticket_atualizado", { ticket });
 
     res.json({ ok: true, ticket });
   } catch (err) {
@@ -191,6 +203,9 @@ async function transferirTicket(req, res) {
     if (!ticket) {
       return res.status(404).json({ error: "Ticket não encontrado." });
     }
+
+    // Ver nota em patchTicket — mantém outras sessões do painel em sincronia.
+    emitEvent("ticket_atualizado", { ticket });
 
     res.json({ ok: true, ticket });
   } catch (err) {

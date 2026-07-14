@@ -370,6 +370,52 @@ socket.on("typing", data => {
     }
   });
 
+  // BUG CORRIGIDO: assumir/transferir/fechar/reabrir um ticket só refletia na
+  // própria aba que fez a ação (via reload local logo após o fetch) — outras
+  // sessões conectadas (outro atendente, ou um painel admin observando a
+  // mesma conversa) ficavam com o status antigo até o poll de 30s. Backend
+  // agora emite "ticket_atualizado" em toda mudança (assumirTicket,
+  // transferirTicket, patchTicket) — atualiza o estado local e re-renderiza
+  // a conversa aberta e/ou a lista de tickets, o que for relevante pra aba atual.
+  socket.on("ticket_atualizado", ({ ticket } = {}) => {
+    if (!ticket?.userId) return;
+
+    if (typeof ticketsByUser === "object" && ticketsByUser) {
+      ticketsByUser[ticket.userId] = ticket;
+    }
+
+    if (currentTab === "conversations") {
+      if (selectedConversationUser === ticket.userId && typeof openConversation === "function") {
+        openConversation(ticket.userId, false);
+      }
+      if (typeof _scheduleConvReload === "function") _scheduleConvReload(ticket.userId);
+    }
+
+    if ((currentTab === "dashboard" || currentTab === "tickets") && typeof loadTickets === "function") {
+      clearTimeout(_ticketReloadTimer);
+      _ticketReloadTimer = setTimeout(() => loadTickets(), 400);
+    }
+
+    if (currentTab === "metrics" && typeof loadMetricsCharts === "function") loadMetricsCharts();
+  });
+
+  // Ver nota acima — mesmo problema, mas para "assumir" (pausa o bot) e
+  // "Devolver ao bot" (reativa), que passam por humanMode.service.js em vez
+  // de uma mudança de status de ticket.
+  socket.on("humanmode_atualizado", ({ userId, active } = {}) => {
+    if (!userId || typeof humanModeUsers === "undefined" || !humanModeUsers) return;
+
+    if (active) humanModeUsers.add(userId);
+    else humanModeUsers.delete(userId);
+
+    if (currentTab === "conversations") {
+      if (selectedConversationUser === userId && typeof openConversation === "function") {
+        openConversation(userId, false);
+      }
+      if (typeof _scheduleConvReload === "function") _scheduleConvReload(userId);
+    }
+  });
+
   // QR Code do WhatsApp emitido pelo backend
   socket.on("qr_code", ({ qr }) => {
     const badge = document.getElementById("status-badge");

@@ -151,4 +151,27 @@ src/
 ├── config/
 │   └── whatsapp.js     # Conexão Baileys, reconexão, deduplicação
 ├── database/
-│   ├── postgres.
+│   ├── postgres.js     # Pool de conexões, dedup helpers
+│   └── schema.sql      # DDL completo
+├── flows/              # Lógica de conversação por setor
+│   ├── main.flow.js
+│   ├── vendas.flow.js
+│   ├── crediario.flow.js
+│   └── messages.js
+├── services/           # Lógica de negócio
+├── routes/             # Endpoints da API REST
+├── repositories/       # Acesso ao banco por entidade
+├── middlewares/        # Auth, upload
+├── controllers/        # Orquestração request → service
+└── utils/              # logger, horario, validators
+```
+
+---
+
+## Segurança em produção
+
+1. **Nunca versionar** `.env` nem a pasta `auth_info/` — as credenciais da sessão WhatsApp estão lá
+2. Gerar novos valores para `API_TOKEN`, `JWT_SECRET` e `DB_PASSWORD` antes do deploy
+3. Configurar `CSP_CONNECT_SRC` com o domínio real do frontend (não usar `*`)
+4. Habilitar `DB_SSL=true` se o banco for remoto
+5. Usar HTTPS em produção (nginx, Caddy ou similar como proxy reverso)

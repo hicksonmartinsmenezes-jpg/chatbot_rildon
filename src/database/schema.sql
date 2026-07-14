@@ -78,7 +78,7 @@ CREATE TABLE IF NOT EXISTS tickets (
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
   CONSTRAINT chk_ticket_status CHECK (status IN ('aberto','em_andamento','resolvido','cancelado')),
-  CONSTRAINT chk_ticket_sector CHECK (sector IN ('suporte','vendas','financeiro','garantia','geral','atendimento'))
+  CONSTRAINT chk_ticket_sector CHECK (sector IN ('suporte','vendas','financeiro','garantia','geral','atendimento','gestao','crediario'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_tickets_user_id    ON tickets(user_id);

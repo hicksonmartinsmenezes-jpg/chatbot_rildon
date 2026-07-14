@@ -12,6 +12,7 @@
 
 const pool   = require("../database/postgres");
 const logger = require("../utils/logger");
+const { emitEvent } = require("./socket.service");
 
 // Inatividade do ATENDENTE que faz o bot voltar sozinho (evita cliente no vácuo)
 const TTL_MS = Number(process.env.HUMAN_MODE_TTL_MIN || 30) * 60_000;
@@ -82,6 +83,15 @@ function ativar(userId, { agentName, ticketId, protocolo } = {}) {
   });
   if (!prev) logger.info(`[humanMode] Bot pausado para ${userId}${agentName ? ` (atendente: ${agentName})` : ""}`);
   _persistir(userId);
+
+  // BUG CORRIGIDO: nenhum evento de socket era emitido ao ativar/desativar o
+  // atendimento humano — outras abas/atendentes conectados só percebiam a
+  // mudança 30s depois (polling) ou nunca, se estivessem numa conversa
+  // diferente. Reportado pelo usuário: ações de assumir/transferir/fechar/
+  // devolver ao bot "não atualizavam" — o autor da ação via sucesso na
+  // própria aba, mas outras sessões abertas (ex: painel admin observando)
+  // ficavam com o estado antigo. Emite pra todo mundo atualizar em tempo real.
+  emitEvent("humanmode_atualizado", { userId, active: true, agentName: agentName ?? prev?.agentName ?? "" });
 }
 
 /** Renova a atividade do atendente (mantém o bot pausado). */
@@ -96,6 +106,9 @@ function desativar(userId, motivo = "manual") {
   logger.info(`[humanMode] Bot reativado para ${userId} (motivo: ${motivo})`);
   pool.query(`DELETE FROM human_mode_sessions WHERE user_id = $1`, [userId])
     .catch(err => logger.warn(`[humanMode] erro ao remover sessão: ${err.message}`));
+
+  // Ver nota em ativar() — mantém todas as sessões do painel em sincronia.
+  emitEvent("humanmode_atualizado", { userId, active: false, motivo });
 }
 
 /** Lista os userIds em atendimento humano (para o painel). */

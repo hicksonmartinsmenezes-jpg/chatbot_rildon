@@ -22,6 +22,7 @@ const pool = require("../src/database/postgres");
 const { emitEvent } = require("../src/services/socket.service");
 const humanMode = require("../src/services/humanMode.service");
 const ticketRoutes = require("../src/routes/ticket.routes");
+const ticketService = require("../src/services/ticket.service");
 
 let idCounter = 0;
 function fakeId() { idCounter += 1; return idCounter; }
@@ -174,5 +175,29 @@ describe("ticket_atualizado / humanmode_atualizado — sincronização em tempo 
       "humanmode_atualizado",
       expect.objectContaining({ userId: "55966@s.whatsapp.net", active: false })
     );
+  });
+
+  // BUG CORRIGIDO (relatado pelo usuário): cliente que manda mensagem depois
+  // do atendimento fechado tem o ticket reaberto automaticamente
+  // (reopenTicketIfClosed em ticket.service.js), mas essa reabertura
+  // atualizava o banco direto pelo repository, sem passar pelo
+  // ticket.controller.js — nunca emitia "ticket_atualizado", então o painel
+  // não via o cliente voltar pra "Pendentes" nem a notificação, só depois
+  // de um reload manual.
+  test("reopenTicketIfClosed emite ticket_atualizado quando reabre um ticket fechado", async () => {
+    const app = buildApp(ADMIN);
+    const created = await request(app).post("/api/tickets")
+      .send({ userId: "55955@s.whatsapp.net", type: "orcamento" });
+    const id = created.body.ticket.id;
+
+    await request(app).patch(`/api/tickets/${id}`).send({ status: "resolvido" });
+    emitEvent.mockClear();
+
+    const reabriu = await ticketService.reopenTicketIfClosed("55955@s.whatsapp.net");
+    expect(reabriu).toBe(true);
+
+    const ticketEvent = emitEvent.mock.calls.find(c => c[0] === "ticket_atualizado");
+    expect(ticketEvent).toBeTruthy();
+    expect(ticketEvent[1].ticket).toMatchObject({ id, status: "aberto" });
   });
 });

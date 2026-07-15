@@ -1,5 +1,6 @@
 const ticketRepository = require("../repositories/ticket.repository");
 const logger = require("../utils/logger");
+const { emitEvent } = require("./socket.service");
 
 // Cooldown de reabertura: evita reabrir o mesmo ticket múltiplas vezes em rajada
 const _reopenCooldown = new Map();
@@ -83,8 +84,19 @@ async function reopenTicketIfClosed(userId) {
 
     const latest = tickets[0]; // já ordenado DESC
     if (latest.status === "resolvido" || latest.status === "cancelado") {
-      await ticketRepository.updateStatus(latest.id, "aberto");
+      const reaberto = await ticketRepository.updateStatus(latest.id, "aberto");
       logger.info(`Ticket #${latest.protocolo} reaberto para ${userId}`);
+
+      // BUG CORRIGIDO (relatado pelo usuário): esta reabertura automática
+      // (cliente manda mensagem de novo depois do atendimento fechado)
+      // atualizava o status no banco só por aqui, sem passar pelo
+      // ticket.controller.js — por isso nunca emitia "ticket_atualizado".
+      // O painel só via o cliente voltar pra "Pendentes" depois de um
+      // reload manual/poll de 30s, e a badge de notificação não refletia
+      // a mudança de aba. Mesmo evento usado pelas ações manuais
+      // (assumir/transferir/fechar) do ticket.controller.js.
+      if (reaberto) emitEvent("ticket_atualizado", { ticket: reaberto });
+
       return true;
     }
 

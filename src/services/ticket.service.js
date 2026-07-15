@@ -71,6 +71,22 @@ async function getTicketsByCPF(cpf) {
   return ticketRepository.findByCpf(cpfLimpo);
 }
 
+// BUG CORRIGIDO: o cooldown ficava ativo por 60s após QUALQUER reabertura
+// bem-sucedida e nunca era limpo nesse caminho — só no ramo "não precisava
+// reabrir". Se o atendente fechasse o ticket de NOVO dentro dessa janela de
+// 60s (fluxo normal: reabre automático → atendente fecha de novo rápido) e
+// o cliente mandasse outra mensagem, o cooldown ainda ativo bloqueava o
+// reopen SILENCIOSAMENTE (return false sem nem checar o status atual) —
+// reportado pelo usuário como "fechei, mandei mensagem de novo, não
+// reaparece em pendentes" (só voltava a funcionar depois que o cooldown
+// expirava sozinho, o que o usuário confundiu com "hard refresh resolveu").
+// clearReopenCooldown() é chamado por ticket.controller.js sempre que um
+// ticket é fechado manualmente — um fechamento novo é um estado novo, que
+// merece poder reabrir de novo imediatamente na próxima mensagem.
+function clearReopenCooldown(userId) {
+  _reopenCooldown.delete(userId);
+}
+
 async function reopenTicketIfClosed(userId) {
   const lastReopen = _reopenCooldown.get(userId);
   if (lastReopen && Date.now() - lastReopen < 60_000) return false;
@@ -121,6 +137,7 @@ module.exports = {
   listTickets,
   updateTicketStatus,
   reopenTicketIfClosed,
+  clearReopenCooldown,
   assignTicket,
   transferTicket,
   getTicketStats,

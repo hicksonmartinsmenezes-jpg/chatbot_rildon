@@ -8,6 +8,7 @@ const {
   createTicket,
   listTickets,
   updateTicketStatus,
+  clearReopenCooldown,
   getTicketStats,
   assignTicket,
   transferTicket
@@ -154,6 +155,16 @@ async function patchTicket(req, res) {
     // Ticket fechado → bot volta a responder este cliente
     if (status === "resolvido" || status === "cancelado") {
       humanMode.desativar(ticket.userId, "ticket_fechado");
+
+      // BUG CORRIGIDO: ver comentário em ticket.service.js — o cooldown de
+      // reabertura automática (reopenTicketIfClosed) ficava ativo por 60s
+      // após qualquer reabertura anterior. Se o ticket fosse fechado de
+      // novo dentro dessa janela, a PRÓXIMA mensagem do cliente não
+      // reabria (cooldown ainda vigente), mesmo o ticket estando
+      // legitimamente fechado agora. Um fechamento novo zera o cooldown —
+      // a próxima mensagem sempre pode reabrir, sem depender de quanto
+      // tempo falta pra um cooldown de um episódio anterior expirar.
+      clearReopenCooldown(ticket.userId);
     }
 
     // BUG CORRIGIDO: nenhum evento de socket avisava o painel de outras

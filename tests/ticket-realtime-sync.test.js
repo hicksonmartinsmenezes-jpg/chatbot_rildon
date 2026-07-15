@@ -200,4 +200,35 @@ describe("ticket_atualizado / humanmode_atualizado — sincronização em tempo 
     expect(ticketEvent).toBeTruthy();
     expect(ticketEvent[1].ticket).toMatchObject({ id, status: "aberto" });
   });
+
+  // BUG CORRIGIDO (relatado pelo usuário): "fechei, cliente mandou mensagem
+  // de novo, não reabriu" — testado com hard refresh no meio, mas o refresh
+  // não tinha nada a ver: o cooldown de 60s de reopenTicketIfClosed ficava
+  // ativo após a 1ª reabertura e NUNCA era limpo nesse caminho. Se o ticket
+  // fechasse de novo dentro dessa janela (fluxo normal de teste rápido) e o
+  // cliente mandasse outra mensagem, o cooldown ainda vigente bloqueava o
+  // reopen silenciosamente — só voltava a funcionar quando o cooldown
+  // expirava sozinho (o que coincidiu com o usuário ter dado hard refresh,
+  // mas era só o tempo passando). Fix: fechar manualmente (patchTicket)
+  // limpa o cooldown — a próxima mensagem sempre pode reabrir.
+  test("reabrir → fechar de novo rápido → reabre de novo sem esperar o cooldown de 60s", async () => {
+    const app = buildApp(ADMIN);
+    const created = await request(app).post("/api/tickets")
+      .send({ userId: "55944@s.whatsapp.net", type: "orcamento" });
+    const id = created.body.ticket.id;
+
+    // Fecha e reabre uma primeira vez — isso ativa o cooldown de 60s.
+    await request(app).patch(`/api/tickets/${id}`).send({ status: "resolvido" });
+    const primeiraReabertura = await ticketService.reopenTicketIfClosed("55944@s.whatsapp.net");
+    expect(primeiraReabertura).toBe(true);
+
+    // Atendente fecha de novo, rápido — bem dentro da janela de 60s.
+    const fechouDeNovo = await request(app).patch(`/api/tickets/${id}`).send({ status: "resolvido" });
+    expect(fechouDeNovo.status).toBe(200);
+
+    // Cliente manda mensagem de novo, imediatamente — sem esperar o
+    // cooldown expirar. Antes do fix, isso retornava false silenciosamente.
+    const segundaReabertura = await ticketService.reopenTicketIfClosed("55944@s.whatsapp.net");
+    expect(segundaReabertura).toBe(true);
+  });
 });

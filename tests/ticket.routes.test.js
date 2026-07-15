@@ -29,6 +29,7 @@ const pool = require("../src/database/postgres");
 const humanMode = require("../src/services/humanMode.service");
 const userRepository = require("../src/repositories/user.repository");
 const ticketRoutes = require("../src/routes/ticket.routes");
+const ticketService = require("../src/services/ticket.service");
 
 // tickets.id é SERIAL (inteiro), não uuid — ver schema.sql. Um bug real já
 // aconteceu aqui: fixtures antigas usavam um id em formato UUID, o que
@@ -307,6 +308,50 @@ describe("ticket.routes", () => {
 
         expect(res.body.tickets.find(t => t.id === id)).toBeTruthy();
         expect(res.body.hiddenActiveUserIds).not.toContain("cliente-z");
+      });
+
+      // Pergunta do usuário: "os pendentes aparecem pra todos os usuários?"
+      // — reporta ver um pendente reaberto (reopenTicketIfClosed, cliente
+      // manda mensagem de novo após ticket fechado) em um atendente mas não
+      // em outro. CONFIRMADO por este teste: é o comportamento ESPERADO do
+      // modo restrito — diferente de "Fechados" (visível pra todos, teste
+      // acima), um ticket ATIVO (aberto/em_andamento) — incluindo um recém
+      // REABERTO, que fica sem atendente (assigned_to = NULL) — só aparece
+      // pra quem é do MESMO setor do ticket. Atendente de outro setor não
+      // vê e o cliente entra em hiddenActiveUserIds pra ele.
+      test("ticket REABERTO (reopenTicketIfClosed) fica pendente só pro setor do ticket — outro setor não vê", async () => {
+        const outroAtendente = { id: "at-2", nome: "Junior", perfil: "atendente", sector: "vendas" };
+        const atendenteFinanceiro = { id: "at-fin", nome: "Carla", perfil: "atendente", sector: "financeiro" };
+
+        const created = await request(buildApp(ADMIN)).post("/api/tickets")
+          .send({ userId: "cliente-w", type: "orcamento" }); // sector: vendas
+        const id = created.body.ticket.id;
+
+        await request(buildApp(outroAtendente)).patch(`/api/tickets/${id}/assign`);
+        await request(buildApp(outroAtendente)).patch(`/api/tickets/${id}`).send({ status: "resolvido" });
+
+        // Cliente manda mensagem de novo → bot chama reopenTicketIfClosed
+        // (mesmo caminho usado em produção, não um UPDATE direto no mock)
+        const reabriu = await ticketService.reopenTicketIfClosed("cliente-w");
+        expect(reabriu).toBe(true);
+
+        // Atendente do MESMO setor (vendas) do ticket → vê como pendente
+        const resVendas = await request(buildApp(ATENDENTE_VENDAS)).get("/api/tickets");
+        const ticketVendas = resVendas.body.tickets.find(t => t.id === id);
+        expect(ticketVendas).toBeTruthy();
+        expect(ticketVendas.status).toBe("aberto");
+        expect(ticketVendas.assignedTo).toBeFalsy();
+        expect(resVendas.body.hiddenActiveUserIds).not.toContain("cliente-w");
+
+        // Atendente de OUTRO setor (financeiro) → não vê, mas sabe que existe
+        // um ticket ativo oculto (não deve reaparecer como "cliente novo")
+        const resFinanceiro = await request(buildApp(atendenteFinanceiro)).get("/api/tickets");
+        expect(resFinanceiro.body.tickets.find(t => t.id === id)).toBeUndefined();
+        expect(resFinanceiro.body.hiddenActiveUserIds).toContain("cliente-w");
+
+        // Admin (full access) sempre vê tudo, independente de setor
+        const resAdmin = await request(buildApp(ADMIN)).get("/api/tickets");
+        expect(resAdmin.body.tickets.find(t => t.id === id)).toBeTruthy();
       });
     });
   });

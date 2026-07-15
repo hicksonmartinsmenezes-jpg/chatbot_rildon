@@ -19,7 +19,8 @@ const broadcastRoutes   = require("./routes/broadcast.routes");
 const {
   router: authRouter,
   authSession,
-  requireAdmin
+  requireAdmin,
+  requireRole
 } = require("./routes/auth.routes");
 
 const ticketRoutes   = require("./routes/ticket.routes");
@@ -152,7 +153,9 @@ app.use("/api", authSession, requireAdmin, quickReplyRoutes);
 app.use("/api", authSession, requireAdmin, userRoutes);
 app.use("/api", authSession, requireAdmin, activityLogRoutes);
 app.use("/api", authSession, requireAdmin, metricsRoutes);
-app.use("/api", authSession, requireAdmin, broadcastRoutes);
+// Pedido do usuário: supervisor também deve poder ver/usar Campanhas, não
+// só admin (o resto das rotas administrativas continua exigindo admin).
+app.use("/api", authSession, requireRole("admin", "supervisor"), broadcastRoutes);
 
 // ── Health check handler (rotas registradas antes da autenticação) ───────────
 async function healthCheck(req, res) {

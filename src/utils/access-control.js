@@ -43,6 +43,17 @@ function canAccessTicket(user, ticket, { allowUnassigned = false } = {}) {
 
   if (normalizePerfil(user) !== "atendente") return false;
 
+  // Mesma regra de canManageTicket (pedido do usuário): pendente (aberto) e
+  // fechado (resolvido/cancelado) não têm dono em disputa — qualquer
+  // atendente pode acessar/assumir, sem exigir mesmo setor. Antes, "Assumir"
+  // continuava preso ao sameSector mesmo depois de canManageTicket liberar
+  // fechar/transferir, então só quem calhava de ser do mesmo setor do
+  // ticket (às vezes só 1 pessoa no time) conseguia agir — reportado pelo
+  // usuário como "só consigo com o usuário que reabriu".
+  if (ticket.status === "aberto" || ticket.status === "resolvido" || ticket.status === "cancelado") {
+    return true;
+  }
+
   const assignedTo = ticket.assignedTo ?? ticket.assigned_to;
   if (sameUserId(assignedTo, user.id)) return true;
 

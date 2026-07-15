@@ -101,6 +101,31 @@ describe("canAccessTicket — modo restrito (regras de atribuição)", () => {
     expect(ac.canAccessTicket(atendente, ticket, { allowUnassigned: true })).toBe(false);
   });
 
+  // BUG CORRIGIDO: pedido do usuário — Pendentes/Fechados devem ser iguais
+  // pra todos os atendentes, inclusive poder AGIR sobre eles. canManageTicket
+  // já liberava fechar/transferir de um pendente/fechado pra qualquer
+  // atendente, mas canAccessTicket (usado por "Assumir") continuava exigindo
+  // mesmo setor mesmo com allowUnassigned — na prática, só quem calhava de
+  // ser do mesmo setor do ticket conseguia assumir (reportado pelo usuário:
+  // "só consigo... com o usuário que reabriu"). Ticket com status explícito
+  // "aberto" (pendente de verdade, sem dono) agora é acessível/assumível por
+  // qualquer atendente, mesmo sem allowUnassigned e de outro setor.
+  test("ticket PENDENTE (status aberto) de OUTRO setor: assumível por qualquer atendente", () => {
+    const ticket = { status: "aberto", assignedTo: null, sector: "financeiro" };
+    expect(ac.canAccessTicket(atendente, ticket)).toBe(true);
+    expect(ac.canAccessTicket(atendente, ticket, { allowUnassigned: true })).toBe(true);
+  });
+
+  test("ticket FECHADO (resolvido/cancelado) acessível por qualquer atendente, mesmo outro dono/setor", () => {
+    expect(ac.canAccessTicket(atendente, { status: "resolvido", assignedTo: "999", sector: "financeiro" })).toBe(true);
+    expect(ac.canAccessTicket(atendente, { status: "cancelado", assignedTo: "999", sector: "financeiro" })).toBe(true);
+  });
+
+  test("ticket EM_ANDAMENTO de outro setor/dono continua negado", () => {
+    const ticket = { status: "em_andamento", assignedTo: "999", sector: "financeiro" };
+    expect(ac.canAccessTicket(atendente, ticket, { allowUnassigned: true })).toBe(false);
+  });
+
   test("user ou ticket ausente → negado", () => {
     expect(ac.canAccessTicket(null, { sector: "vendas" })).toBe(false);
     expect(ac.canAccessTicket(atendente, null)).toBe(false);

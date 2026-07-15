@@ -5,13 +5,22 @@ const humanMode       = require("../services/humanMode.service");
 const logger          = require("../utils/logger");
 const ticketRepository = require("../repositories/ticket.repository");
 const { canAccessTicket, isPrivileged, canUseFullConversationPanel } = require("../utils/access-control");
+const { getProfilePhotoCandidates } = require("../whatsapp/lid-map");
 
 // Autorização de conversa: privilegiados (admin/supervisor/api) sempre podem.
 // Atendente só acessa se houver ticket ATIVO atribuído a ele — ou não atribuído
 // no mesmo setor (allowUnassigned). Centraliza a regra antes repetida 3×.
 async function canUserAccessConversation(user, userId) {
   if (isPrivileged(user) || canUseFullConversationPanel(user)) return true;
-  const tickets = await ticketRepository.findByUserId(userId);
+
+  // BUG CORRIGIDO: mesma causa raiz do guard de reabrir ticket — o WhatsApp
+  // entrega mensagens do mesmo cliente ora como "...@lid" ora já resolvidas
+  // para "...@s.whatsapp.net" (ver LID_FALLBACK em src/config/whatsapp.js).
+  // Buscar só por userId exato podia não achar o ticket ATIVO do cliente
+  // quando ele estava salvo no OUTRO formato, gerando um 403 falso pro
+  // atendente que legitimamente tem acesso à conversa.
+  const candidatos = getProfilePhotoCandidates(userId);
+  const tickets = await ticketRepository.findByUserIds(candidatos.length ? candidatos : [userId]);
   const ativos  = tickets.filter(t => t.status === "aberto" || t.status === "em_andamento");
   return ativos.some(t => canAccessTicket(user, t, { allowUnassigned: true }));
 }

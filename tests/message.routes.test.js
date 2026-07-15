@@ -61,6 +61,11 @@ function installFakePool(state) {
       return { rows: state.tickets.filter(t => t.user_id === params[0]) };
     }
 
+    if (/^SELECT \* FROM tickets WHERE user_id = ANY/.test(sql)) {
+      const ids = new Set(params[0] || []);
+      return { rows: state.tickets.filter(t => ids.has(t.user_id)) };
+    }
+
     throw new Error("Query não mapeada no mock de message.routes.test.js: " + sql);
   });
 }
@@ -143,6 +148,36 @@ describe("message.routes", () => {
       const res = await request(buildApp(ATENDENTE_VENDAS))
         .post("/api/messages/send")
         .send({ userId: USER_ID, message: "Olá, tudo bem?" });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    // BUG CORRIGIDO: canUserAccessConversation() buscava o ticket do
+    // cliente só por userId EXATO. O WhatsApp entrega mensagens do mesmo
+    // cliente ora como "...@lid" ora já resolvidas para
+    // "...@s.whatsapp.net" (ver LID_FALLBACK em src/config/whatsapp.js) —
+    // se o ticket ativo estava salvo num formato e a mensagem enviada pelo
+    // painel usasse o OUTRO formato (ex: frontend abriu a conversa com o
+    // identificador mais recente resolvido pelo Baileys), o atendente
+    // levava um 403 falso mesmo tendo o ticket. Fix: getProfilePhotoCandidates
+    // + findByUserIds cobrem os formatos equivalentes.
+    test("atendente com ticket aberto salvo no formato @lid consegue enviar mensagem via o jid resolvido (403 falso corrigido)", async () => {
+      process.env[FULL_ACCESS_ENV_KEY] = "false";
+      const { setLidMapping } = require("../src/whatsapp/lid-map");
+      const lid = "700800900100200@lid";
+      const jid = "5511955556666@s.whatsapp.net";
+      setLidMapping(lid, jid, "test");
+
+      state.tickets.push({
+        id: "t-lid", protocolo: "2026-0002", user_id: lid, customer_name: "Cliente",
+        cpf: "", type: "orcamento", sector: "vendas", description: "", status: "aberto",
+        assigned_to: null, assigned_to_name: null, created_at: new Date(), updated_at: new Date()
+      });
+
+      const res = await request(buildApp(ATENDENTE_VENDAS))
+        .post("/api/messages/send")
+        .send({ userId: jid, message: "Olá, tudo bem?" });
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);

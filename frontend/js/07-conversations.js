@@ -89,6 +89,28 @@ async function _loadConversationsCore(silent = false) {
       }
     }
 
+    // BUG CORRIGIDO: contador de não-lidas ficava preso indefinidamente num
+    // contato já FECHADO (resolvido/cancelado) — reportado pelo usuário como
+    // "badge de mensagens novas aparece em Fechados" mesmo sem nada em
+    // Pendentes/Ativos. unreadMessages só zerava ao abrir a conversa; se
+    // ninguém abriu por último antes de fechar (ou o valor já estava velho
+    // de antes), ficava ali pra sempre. Se o ticket AINDA está resolvido/
+    // cancelado agora (dado fresco do servidor), qualquer não-lida
+    // acumulada é necessariamente antiga — uma mensagem nova de verdade já
+    // teria reaberto o ticket (reopenTicketIfClosed) e mudado o status.
+    let _unreadLimpo = false;
+    for (const uid of Object.keys(unreadMessages)) {
+      const t = ticketsByUser[uid];
+      if (t && (t.status === "resolvido" || t.status === "cancelado") && unreadMessages[uid]) {
+        unreadMessages[uid] = 0;
+        _unreadLimpo = true;
+      }
+    }
+    if (_unreadLimpo) {
+      updateSidebarUnreadBadge();
+      persistUnreadMessages();
+    }
+
     // Atualiza badges de contagem — oculta quando zero
     const pendentes   = Object.values(ticketsByUser).filter(t => t.status === "aberto").length;
     const emAndamento = Object.values(ticketsByUser).filter(t => t.status === "em_andamento").length;

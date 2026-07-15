@@ -384,6 +384,24 @@ socket.on("typing", data => {
       ticketsByUser[ticket.userId] = ticket;
     }
 
+    // BUG CORRIGIDO: contador de não-lidas ficava preso num ticket já
+    // FECHADO (resolvido/cancelado) — reportado pelo usuário como "badge de
+    // mensagens novas aparece em Fechados" mesmo sem nada pendente/ativo.
+    // unreadMessages só era zerado ao abrir a conversa (openConversation);
+    // se o ticket foi fechado sem que ninguém tenha aberto a conversa por
+    // último (ex: fechado em lote, ou o próprio contador nunca foi visto),
+    // o número ficava ali indefinidamente na aba Fechados. Roda em toda
+    // sessão conectada (não só quem clicou Fechar), já que o evento é
+    // broadcast.
+    if (
+      (ticket.status === "resolvido" || ticket.status === "cancelado") &&
+      unreadMessages[ticket.userId]
+    ) {
+      unreadMessages[ticket.userId] = 0;
+      if (typeof updateSidebarUnreadBadge === "function") updateSidebarUnreadBadge();
+      if (typeof persistUnreadMessages === "function") persistUnreadMessages();
+    }
+
     if (currentTab === "conversations") {
       if (selectedConversationUser === ticket.userId && typeof openConversation === "function") {
         openConversation(ticket.userId, false);

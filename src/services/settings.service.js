@@ -24,7 +24,13 @@ const DEFAULT_SETTINGS = {
       "Suporte Técnico, Vendas, Financeiro, Atendimento Humano",
     statusPadrao: "aberto",
     mensagemTransferencia:
-      "Certo! Vou encaminhar você para um atendente humano. Aguarde um momento, por favor."
+      "Certo! Vou encaminhar você para um atendente humano. Aguarde um momento, por favor.",
+    // Pedido do usuário: quando um atendente/supervisor aceita um
+    // atendimento, o cliente recebe automaticamente essa mensagem se
+    // apresentando (mesmo número do bot — sem trocar de canal). "{nome}" é
+    // substituído pelo nome de quem assumiu. Deixe em branco pra desativar.
+    mensagemSaudacaoAtendente:
+      "Olá! 👋 Me chamo {nome} e vou continuar seu atendimento a partir de agora."
   },
   aparencia: {
     tema: "dark",

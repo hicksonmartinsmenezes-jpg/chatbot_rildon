@@ -14,6 +14,14 @@
 jest.mock("../src/database/postgres", () => ({ query: jest.fn() }));
 jest.mock("../src/services/socket.service", () => ({ emitEvent: jest.fn() }));
 jest.mock("../src/repositories/user.repository", () => ({ findById: jest.fn() }));
+// assumirTicket agora dispara uma saudação automática (best-effort) — mockado
+// aqui só pra não carregar o módulo real do WhatsApp (Baileys) neste arquivo,
+// que é focado em sincronização de eventos de socket, não nessa mensagem.
+jest.mock("../src/config/whatsapp", () => ({ sendMessage: jest.fn().mockResolvedValue({ id: "wamid-1" }) }));
+jest.mock("../src/services/history.service", () => ({ saveHistory: jest.fn().mockResolvedValue({ id: "h1", createdAt: new Date() }) }));
+jest.mock("../src/services/settings.service", () => ({
+  getSettings: jest.fn().mockResolvedValue({ atendimento: { mensagemSaudacaoAtendente: "" } })
+}));
 
 const express = require("express");
 const request = require("supertest");

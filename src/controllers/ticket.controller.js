@@ -3,6 +3,9 @@ const humanMode = require("../services/humanMode.service");
 const { emitEvent } = require("../services/socket.service");
 const ticketRepository = require("../repositories/ticket.repository");
 const { getProfilePhotoCandidates } = require("../whatsapp/lid-map");
+const { sendMessage } = require("../config/whatsapp");
+const { saveHistory } = require("../services/history.service");
+const { getSettings } = require("../services/settings.service");
 const { canAccessTicket, canManageTicket, canSeeSensitiveDashboard, canUseFullConversationPanel } = require("../utils/access-control");
 const { dataHojeISO } = require("../utils/horario");
 const {
@@ -226,6 +229,50 @@ async function patchTicket(req, res) {
   }
 }
 
+// Pedido do usuário: quando um atendente/supervisor aceita um
+// atendimento, o cliente recebe automaticamente uma mensagem se
+// apresentando — pelo MESMO número do bot (sem trocar de canal/WhatsApp,
+// ver decisão de não seguir com multi-número por ora). "{nome}" no
+// template (settings.atendimento.mensagemSaudacaoAtendente) é trocado
+// pelo nome de quem assumiu. Deixe o template em branco pra desativar.
+// Best-effort: falha aqui não derruba a resposta de "aceitar" — o
+// atendente já assumiu o ticket de verdade mesmo se a saudação falhar.
+async function enviarSaudacaoAtendente(ticket, user) {
+  try {
+    const settings = await getSettings();
+    const template = settings?.atendimento?.mensagemSaudacaoAtendente;
+    if (!template || !template.trim()) return;
+
+    const nome = user?.nome || user?.usuario || "Atendente";
+    const mensagem = template.replace(/\{nome\}/g, nome);
+
+    const sent = await sendMessage(ticket.userId, mensagem);
+
+    const historyItem = await saveHistory({
+      userId: ticket.userId,
+      contactName: ticket.customerName || "",
+      message: null,
+      response: mensagem,
+      sector: "manual",
+      messageId: sent?.id || null,
+      status: "sent"
+    });
+
+    emitEvent("nova_mensagem", {
+      userId: ticket.userId,
+      contactName: ticket.customerName || "",
+      message: null,
+      response: mensagem,
+      sector: "manual",
+      messageId: sent?.id || null,
+      status: "sent",
+      createdAt: historyItem?.createdAt || new Date()
+    });
+  } catch (err) {
+    logger.warn(`[enviarSaudacaoAtendente] falhou para ticket #${ticket?.protocolo}: ${err.message}`);
+  }
+}
+
 async function assumirTicket(req, res) {
   try {
     const id = req.params.id;
@@ -261,6 +308,11 @@ async function assumirTicket(req, res) {
 
     // Ver nota em patchTicket — mantém outras sessões do painel em sincronia.
     emitEvent("ticket_atualizado", { ticket });
+
+    // Best-effort (ver função acima, nunca lança) — aguardamos pra garantir
+    // que a saudação foi de fato tentada antes de responder, evitando uma
+    // promise solta que poderia terminar depois do processo encerrar.
+    await enviarSaudacaoAtendente(ticket, req.user);
 
     res.json({ ok: true, ticket });
   } catch (err) {

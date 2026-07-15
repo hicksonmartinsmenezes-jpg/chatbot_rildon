@@ -21,6 +21,19 @@ jest.mock("../src/services/humanMode.service", () => ({
 jest.mock("../src/repositories/user.repository", () => ({
   findById: jest.fn()
 }));
+jest.mock("../src/config/whatsapp", () => ({
+  sendMessage: jest.fn().mockResolvedValue({ id: "wamid-saudacao" })
+}));
+jest.mock("../src/services/history.service", () => ({
+  saveHistory: jest.fn().mockResolvedValue({ id: "hist-saudacao", createdAt: new Date() })
+}));
+jest.mock("../src/services/settings.service", () => ({
+  getSettings: jest.fn().mockResolvedValue({
+    atendimento: {
+      mensagemSaudacaoAtendente: "Olá! Me chamo {nome} e vou continuar seu atendimento a partir de agora."
+    }
+  })
+}));
 
 const express = require("express");
 const request = require("supertest");
@@ -28,6 +41,9 @@ const request = require("supertest");
 const pool = require("../src/database/postgres");
 const humanMode = require("../src/services/humanMode.service");
 const userRepository = require("../src/repositories/user.repository");
+const whatsapp = require("../src/config/whatsapp");
+const historyService = require("../src/services/history.service");
+const settingsService = require("../src/services/settings.service");
 const ticketRoutes = require("../src/routes/ticket.routes");
 const ticketService = require("../src/services/ticket.service");
 
@@ -627,6 +643,50 @@ describe("ticket.routes", () => {
       // só dizer "outro atendente" (usuário pediu essa melhoria de UX).
       expect(res.body.assignedToName).toBe("Bruno");
       expect(res.body.error).toMatch(/Bruno/);
+    });
+
+    // Pedido do usuário: ao aceitar, o cliente recebe automaticamente uma
+    // saudação (mesmo número do bot) se apresentando com o nome de quem
+    // assumiu, usando o template configurável em settings (atendimento.
+    // mensagemSaudacaoAtendente, "{nome}" → nome do atendente/supervisor).
+    test("BUG CORRIGIDO: envia saudação automática ao cliente com o nome de quem assumiu", async () => {
+      const ticket = await criarTicket(ADMIN);
+      const res = await request(buildApp(ATENDENTE_VENDAS))
+        .patch(`/api/tickets/${ticket.id}/assign`)
+        .send({});
+
+      expect(res.status).toBe(200);
+      expect(whatsapp.sendMessage).toHaveBeenCalledWith(
+        "u1",
+        expect.stringContaining("Bruno")
+      );
+      expect(historyService.saveHistory).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: "u1", sector: "manual", response: expect.stringContaining("Bruno") })
+      );
+    });
+
+    test("template de saudação vazio (desativado nas configurações) → não envia mensagem nenhuma", async () => {
+      settingsService.getSettings.mockResolvedValueOnce({ atendimento: { mensagemSaudacaoAtendente: "" } });
+
+      const ticket = await criarTicket(ADMIN);
+      const res = await request(buildApp(ATENDENTE_VENDAS))
+        .patch(`/api/tickets/${ticket.id}/assign`)
+        .send({});
+
+      expect(res.status).toBe(200);
+      expect(whatsapp.sendMessage).not.toHaveBeenCalled();
+    });
+
+    test("falha ao enviar a saudação não impede o aceite do ticket (best-effort)", async () => {
+      whatsapp.sendMessage.mockRejectedValueOnce(new Error("WhatsApp indisponível"));
+
+      const ticket = await criarTicket(ADMIN);
+      const res = await request(buildApp(ATENDENTE_VENDAS))
+        .patch(`/api/tickets/${ticket.id}/assign`)
+        .send({});
+
+      expect(res.status).toBe(200);
+      expect(res.body.ticket.assignedTo).toBe("at-vendas");
     });
   });
 

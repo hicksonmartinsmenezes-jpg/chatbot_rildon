@@ -286,14 +286,26 @@ async function openConversation(userId, updateActive = true) {
       fullAccess: canManageAnyTicket
     });
 
+    // BUG CORRIGIDO (pedido do usuário: "consegue dar uma organizada
+    // melhor nisso?"): o header empilhava até 4 linhas, com informação
+    // repetida — "Assumido por X" (chat-ticket-ref) e logo abaixo "X
+    // atendendo · bot pausado" (chat-bot-paused) dizem exatamente a mesma
+    // coisa duas vezes. Agora é uma linha só: protocolo+setor, depois UMA
+    // linha de status (quem está atendendo + bot pausado, quando aplicável)
+    // — nunca as duas juntas.
+    const statusLine = humanModeUsers.has(userId)
+      ? `<span class="chat-bot-paused"><i class="fa-solid fa-headset"></i> ${_locked ? safe(_lockedName) : "Você"} atendendo · bot pausado</span>`
+      : (ticket?.status === "em_andamento" && ticket.assignedToName
+          ? `<span class="chat-ticket-ref"><i class="fa-solid fa-user-check"></i> Assumido por ${safe(ticket.assignedToName)}</span>`
+          : "");
+
     header.innerHTML = `
       <div class="chat-header-profile">
         ${avatarHtml(userId, name, true)}
         <div class="chat-header-info">
           <strong class="chat-contact-name">${safe(name)}</strong>
           ${ticket ? `<span class="chat-ticket-ref">#${safe(ticket.protocolo || ticket.id)} · ${safe(ticket.sector || "geral")}</span>` : ""}
-          ${ticket?.status === "em_andamento" && ticket.assignedToName ? `<span class="chat-ticket-ref"><i class="fa-solid fa-user-check"></i> Assumido por ${safe(ticket.assignedToName)}</span>` : ""}
-          ${humanModeUsers.has(userId) ? `<span class="chat-bot-paused"><i class="fa-solid fa-headset"></i> ${_locked ? `${safe(_lockedName)} atendendo` : "Você atendendo"} · bot pausado</span>` : ""}
+          ${statusLine}
           <div id="chat-typing-status"></div>
         </div>
       </div>

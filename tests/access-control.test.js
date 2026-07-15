@@ -123,9 +123,9 @@ describe("canManageTicket — mais estrito que acessar", () => {
     expect(ac.canManageTicket(supervisor, { assignedTo: "999" })).toBe(true);
   });
 
-  test("atendente gerencia apenas ticket atribuído a ele", () => {
-    expect(ac.canManageTicket(atendente, { assignedTo: "10" })).toBe(true);
-    expect(ac.canManageTicket(atendente, { assignedTo: "999" })).toBe(false);
+  test("atendente gerencia ticket EM_ANDAMENTO apenas se atribuído a ele", () => {
+    expect(ac.canManageTicket(atendente, { status: "em_andamento", assignedTo: "10" })).toBe(true);
+    expect(ac.canManageTicket(atendente, { status: "em_andamento", assignedTo: "999" })).toBe(false);
   });
 
   // BUG CORRIGIDO: esta suíte descrevia canManageTicket como "mais estrito"
@@ -134,15 +134,34 @@ describe("canManageTicket — mais estrito que acessar", () => {
   // essa allowance NENHUM atendente em modo restrito conseguia fechar/
   // mudar status de um ticket ainda não assumido no próprio setor (relatado
   // pelo usuário como "sem permissão" ao clicar Fechar em Pendentes).
-  // canManageTicket agora espelha a mesma regra "ticket livre + mesmo
-  // setor" que já existia em canAccessTicket.
   test("atendente gerencia ticket não atribuído do seu próprio setor", () => {
-    const ticket = { assignedTo: null, sector: "vendas" };
+    const ticket = { status: "aberto", assignedTo: null, sector: "vendas" };
     expect(ac.canManageTicket(atendente, ticket)).toBe(true);
   });
 
-  test("atendente NÃO gerencia ticket não atribuído de OUTRO setor", () => {
-    const ticket = { assignedTo: null, sector: "financeiro" };
+  // BUG CORRIGIDO (2): pedido do usuário — Pendentes e Fechados devem ser
+  // iguais pra todos os atendentes, inclusive PODER agir sobre eles (fechar
+  // um pendente de qualquer setor, reabrir um fechado mesmo que não tenha
+  // sido você quem fechou). fechar() não limpa assigned_to (só reabrir
+  // limpa — ver ticket.repository.js), então um ticket "resolvido" continua
+  // com assigned_to de quem o fechou por último; sem esta regra, só essa
+  // pessoa conseguia reabri-lo — qualquer outro atendente, mesmo do mesmo
+  // setor, levava 403 "sem permissão" (relatado pelo usuário: "não consigo
+  // reabrir nem fechar"). Só "em_andamento" (atendimento ATIVO) continua
+  // restrito por dono/setor — é aí que faz sentido não deixar outro
+  // atendente atropelar o atendimento em andamento.
+  test("atendente gerencia ticket PENDENTE (aberto) de OUTRO setor — sem dono, sem disputa", () => {
+    const ticket = { status: "aberto", assignedTo: null, sector: "financeiro" };
+    expect(ac.canManageTicket(atendente, ticket)).toBe(true);
+  });
+
+  test("atendente gerencia ticket FECHADO (resolvido/cancelado) mesmo de outro setor/dono", () => {
+    expect(ac.canManageTicket(atendente, { status: "resolvido", assignedTo: "999", sector: "financeiro" })).toBe(true);
+    expect(ac.canManageTicket(atendente, { status: "cancelado", assignedTo: "999", sector: "financeiro" })).toBe(true);
+  });
+
+  test("atendente NÃO gerencia ticket EM_ANDAMENTO de OUTRO setor/dono", () => {
+    const ticket = { status: "em_andamento", assignedTo: "999", sector: "financeiro" };
     expect(ac.canManageTicket(atendente, ticket)).toBe(false);
   });
 });

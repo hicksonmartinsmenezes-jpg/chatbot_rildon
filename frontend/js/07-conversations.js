@@ -254,8 +254,17 @@ async function openConversation(userId, updateActive = true) {
 
   // Ticket pertence a outro atendente (modo restrito) → trava a conversa:
   // sem botões de ação e sem poder enviar mensagem, só visualização.
+  //
+  // BUG CORRIGIDO: só deve travar quando o ticket está ATIVO (em_andamento)
+  // com outro dono — fechar() não limpa assigned_to, então um ticket
+  // "resolvido" continua marcado com quem o fechou por último, e isso
+  // travava a conversa (input desabilitado, sem ações) mesmo já podendo
+  // reabrir/fechar de novo (canManageTicket libera aberto/resolvido/
+  // cancelado pra qualquer atendente). Ver mesma correção em
+  // conversations-render.js (buildConversationActionButtons).
   const _ticketAtual = ticketsByUser[userId];
   const _locked = !canManageAnyTicket && Boolean(
+    _ticketAtual?.status === "em_andamento" &&
     _ticketAtual?.assignedTo && getCurrentUser()?.id &&
     String(_ticketAtual.assignedTo) !== String(getCurrentUser().id)
   );

@@ -55,17 +55,30 @@ function canManageTicket(user, ticket) {
   if (canUseFullConversationPanel(user)) return true;
 
   if (normalizePerfil(user) !== "atendente") return false;
-  const assignedTo = ticket.assignedTo ?? ticket.assigned_to;
-  if (sameUserId(assignedTo, user.id)) return true;
 
-  // BUG CORRIGIDO: faltava aqui o mesmo "allowUnassigned" que já existia em
-  // canAccessTicket() — um ticket "Pendente" normalmente está SEM
-  // atribuição (assignedTo null), então sameUserId(null, user.id) é sempre
-  // false. Sem essa allowance, NENHUM atendente em modo restrito conseguia
-  // fechar/mudar status de um ticket ainda não assumido no próprio setor —
-  // "sem permissão" mesmo sendo um ticket do setor dele. Mesma regra usada
-  // pra permitir "Assumir": ticket livre + mesmo setor.
-  return Boolean(!assignedTo && sameSector(user, ticket));
+  // Pedido do usuário: Pendentes e Fechados devem ser iguais pra todos os
+  // atendentes — inclusive PODER agir sobre eles (fechar um pendente de
+  // qualquer setor, reabrir um fechado mesmo que não tenha sido você quem
+  // fechou). Um ticket "aberto" (pendente, sem dono) e um ticket já
+  // encerrado (resolvido/cancelado) não têm disputa de propriedade — é só
+  // "em_andamento" (alguém está atendendo agora) que precisa ficar restrito
+  // por setor/atribuição, senão um atendente atropela o atendimento ativo
+  // de outro.
+  //
+  // BUG CORRIGIDO: fechar() não limpa assigned_to (só reabrir/status=aberto
+  // limpa — ver ticket.repository.js updateStatus). Isso significa que um
+  // ticket "resolvido" continua com assigned_to apontando pra quem o
+  // fechou por último. Sem esta exceção, SÓ essa pessoa conseguia reabrir
+  // o próprio ticket que fechou — qualquer outro atendente do MESMO setor
+  // levava 403 "sem permissão" ao tentar Reabrir, e um atendente de outro
+  // setor levava 403 ao tentar Fechar um pendente visível mas de setor
+  // diferente. Reportado pelo usuário: "não consigo reabrir nem fechar".
+  if (ticket.status === "aberto" || ticket.status === "resolvido" || ticket.status === "cancelado") {
+    return true;
+  }
+
+  const assignedTo = ticket.assignedTo ?? ticket.assigned_to;
+  return sameUserId(assignedTo, user.id);
 }
 
 function canSeeSensitiveDashboard(user) {

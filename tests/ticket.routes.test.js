@@ -405,7 +405,14 @@ describe("ticket.routes", () => {
     // de "Fechar em Pendentes" relatado pelo usuário como quebrado ("sem
     // permissão"). canManageTicket agora permite ticket livre + mesmo setor
     // (igual já valia pra canAccessTicket/"Assumir" — ver access-control.test.js).
-    test("atendente de OUTRO setor não gerencia ticket ainda não assumido → 403 (canManageTicket, modo restrito)", async () => {
+    //
+    // ATUALIZADO (pedido do usuário): pendente/fechado agora é gerenciável
+    // por QUALQUER atendente, não só do mesmo setor — mesma regra da
+    // visibilidade (Pendentes/Fechados iguais pra todos). Reportado pelo
+    // usuário: "não estou conseguindo reabrir nem fechar com usuarios
+    // atendentes" — atendente de outro setor levava 403 ao tentar fechar um
+    // pendente visível mas de setor diferente.
+    test("atendente de OUTRO setor TAMBÉM gerencia ticket pendente (aberto) ainda não assumido", async () => {
       process.env[FULL_ACCESS_ENV_KEY] = "false";
       const atendenteFinanceiro = { id: "at-fin", nome: "Carla", perfil: "atendente", sector: "financeiro" };
 
@@ -413,7 +420,44 @@ describe("ticket.routes", () => {
       const res = await request(buildApp(atendenteFinanceiro))
         .patch(`/api/tickets/${ticket.id}`)
         .send({ status: "resolvido" });
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(200);
+    });
+
+    // Reportado pelo usuário: atendente que NÃO foi quem fechou um ticket
+    // (fechar não limpa assigned_to — só reabrir limpa) levava 403 ao
+    // tentar Reabrir, mesmo sendo do mesmo setor. Fechado é história
+    // compartilhada — qualquer atendente pode reabrir.
+    test("atendente que NÃO foi quem fechou consegue reabrir o ticket (mesmo setor)", async () => {
+      process.env[FULL_ACCESS_ENV_KEY] = "false";
+      const outroAtendente = { id: "at-2", nome: "Junior", perfil: "atendente", sector: "vendas" };
+
+      const ticket = await criarTicket(ADMIN);
+      await request(buildApp(outroAtendente)).patch(`/api/tickets/${ticket.id}/assign`);
+      await request(buildApp(outroAtendente)).patch(`/api/tickets/${ticket.id}`).send({ status: "resolvido" });
+
+      const res = await request(buildApp(ATENDENTE_VENDAS))
+        .patch(`/api/tickets/${ticket.id}`)
+        .send({ status: "aberto" });
+      expect(res.status).toBe(200);
+      expect(res.body.ticket.status).toBe("aberto");
+    });
+
+    // Mesmo caso, mas o atendente que reabre é de OUTRO setor — também deve
+    // funcionar, ticket fechado não tem dono em disputa.
+    test("atendente de OUTRO setor também consegue reabrir um ticket fechado", async () => {
+      process.env[FULL_ACCESS_ENV_KEY] = "false";
+      const outroAtendente = { id: "at-2", nome: "Junior", perfil: "atendente", sector: "vendas" };
+      const atendenteFinanceiro = { id: "at-fin", nome: "Carla", perfil: "atendente", sector: "financeiro" };
+
+      const ticket = await criarTicket(ADMIN); // sector: vendas
+      await request(buildApp(outroAtendente)).patch(`/api/tickets/${ticket.id}/assign`);
+      await request(buildApp(outroAtendente)).patch(`/api/tickets/${ticket.id}`).send({ status: "resolvido" });
+
+      const res = await request(buildApp(atendenteFinanceiro))
+        .patch(`/api/tickets/${ticket.id}`)
+        .send({ status: "aberto" });
+      expect(res.status).toBe(200);
+      expect(res.body.ticket.status).toBe("aberto");
     });
 
     test("atendente do MESMO setor gerencia ticket ainda não assumido (modo restrito)", async () => {

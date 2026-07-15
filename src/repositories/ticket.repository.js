@@ -312,6 +312,16 @@ async function findByUserId(userId) {
   return result.rows.map(mapTicket);
 }
 
+async function findByUserIds(userIds) {
+  const ids = Array.from(new Set((userIds || []).filter(Boolean)));
+  if (!ids.length) return [];
+  const result = await pool.query(
+    `SELECT * FROM tickets WHERE user_id = ANY($1) ORDER BY created_at DESC LIMIT 20`,
+    [ids]
+  );
+  return result.rows.map(mapTicket);
+}
+
 async function findByCpf(cpfLimpo) {
   const result = await pool.query(
     `SELECT * FROM tickets WHERE REGEXP_REPLACE(cpf, '\\D', '', 'g') = $1 ORDER BY created_at DESC`,
@@ -325,6 +335,7 @@ module.exports = {
   findAll,
   findByCpf,
   findByUserId,
+  findByUserIds,
   findByIdOrProtocol,
   updateStatus,
   assign,

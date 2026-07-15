@@ -2,6 +2,7 @@ const logger = require("../utils/logger");
 const humanMode = require("../services/humanMode.service");
 const { emitEvent } = require("../services/socket.service");
 const ticketRepository = require("../repositories/ticket.repository");
+const { getProfilePhotoCandidates } = require("../whatsapp/lid-map");
 const { canAccessTicket, canManageTicket, canSeeSensitiveDashboard, canUseFullConversationPanel } = require("../utils/access-control");
 const { dataHojeISO } = require("../utils/horario");
 const {
@@ -163,7 +164,25 @@ async function patchTicket(req, res) {
     // estado do navegador — bloqueia a reabertura se já houver outro
     // ticket em_andamento pra esse cliente.
     if (status === "aberto") {
-      const outrosTickets = await ticketRepository.findByUserId(atual.userId);
+      // BUG CORRIGIDO: a checagem original comparava só o userId exato do
+      // ticket (user_id = $1), mas o mesmo cliente pode ter tickets salvos
+      // com formatos DIFERENTES de identificador — o WhatsApp entrega
+      // mensagens como "...@lid" (dispositivo vinculado) que às vezes é
+      // resolvido pra "...@s.whatsapp.net" e às vezes não (ver
+      // LID_FALLBACK em src/config/whatsapp.js), dependendo do que o
+      // Baileys anexou naquela mensagem específica. Resultado: um ticket
+      // antigo (fechado) pode estar salvo como "123@lid" e o ticket novo
+      // (em_andamento) do MESMO cliente real como "5511...@s.whatsapp.net"
+      // — a comparação exata não achava o segundo, então o guard nunca
+      // disparava e o "roubo de cliente" continuava acontecendo na prática
+      // (reportado pelo usuário mesmo após o fix anterior). Usamos o mesmo
+      // conjunto de identificadores equivalentes (lid ↔ jid) já usado para
+      // foto de perfil em src/whatsapp/lid-map.js, e buscamos tickets em
+      // QUALQUER um desses formatos antes de liberar a reabertura.
+      const candidatos = getProfilePhotoCandidates(atual.userId);
+      const outrosTickets = await ticketRepository.findByUserIds(
+        candidatos.length ? candidatos : [atual.userId]
+      );
       const emAtendimento = outrosTickets.find(
         t => String(t.id) !== String(atual.id) && t.status === "em_andamento"
       );

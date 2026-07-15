@@ -133,6 +133,11 @@ function installFakePool(state) {
       return { rows: [t] };
     }
 
+    if (/^SELECT \* FROM tickets WHERE user_id = ANY/.test(sql)) {
+      const ids = new Set(params[0] || []);
+      return { rows: state.tickets.filter(t => ids.has(t.user_id)) };
+    }
+
     if (/^SELECT \* FROM tickets\s*(WHERE|ORDER)/.test(sql) || sql.startsWith("SELECT * FROM tickets")) {
       return { rows: [...state.tickets] };
     }
@@ -548,6 +553,43 @@ describe("ticket.routes", () => {
       const antigoAtual = await request(buildApp(ADMIN)).get(`/api/tickets`);
       const antigoNoBanco = antigoAtual.body.tickets.find(t => t.id === ticketAntigo.id);
       expect(antigoNoBanco.status).toBe("resolvido");
+    });
+
+    // BUG CORRIGIDO (reportado pelo usuário DEPOIS do fix acima, o guard por
+    // userId exato não era suficiente): o mesmo cliente real pode ter
+    // tickets salvos com formatos DIFERENTES de identificador — o WhatsApp
+    // entrega mensagens como "...@lid" (dispositivo vinculado) que às vezes
+    // o Baileys resolve para "...@s.whatsapp.net" e às vezes não (ver
+    // LID_FALLBACK em src/config/whatsapp.js). Um ticket antigo resolvido
+    // salvo como "@lid" e o ticket novo em_andamento do MESMO cliente salvo
+    // já resolvido como "@s.whatsapp.net" faziam o guard por userId exato
+    // não encontrar o ticket ativo — reabrir continuava "roubando" o
+    // cliente na prática. getProfilePhotoCandidates (lid-map.js) resolve
+    // essa equivalência via o mapeamento lid↔jid já existente no projeto.
+    test("BUG CORRIGIDO: reabrir bloqueado mesmo quando o ticket ativo está salvo com outro formato de userId (lid vs jid)", async () => {
+      const { setLidMapping } = require("../src/whatsapp/lid-map");
+      const lid = "111222333444555@lid";
+      const jid = "5511988887777@s.whatsapp.net";
+      setLidMapping(lid, jid, "test");
+
+      const ticketAntigo = await criarTicket(ADMIN, { userId: lid });
+      await request(buildApp(ADMIN)).patch(`/api/tickets/${ticketAntigo.id}`).send({ status: "resolvido" });
+
+      // Mesmo cliente real, mas desta vez a mensagem chegou já resolvida
+      // para o JID — ticket novo é salvo com o OUTRO formato de userId.
+      const ticketNovo = await criarTicket(ADMIN, { userId: jid });
+      const outroAtendente = { id: "at-3", nome: "Carla", perfil: "atendente", sector: "vendas" };
+      await request(buildApp(outroAtendente)).patch(`/api/tickets/${ticketNovo.id}/assign`);
+
+      const res = await request(buildApp(ADMIN))
+        .patch(`/api/tickets/${ticketAntigo.id}`)
+        .send({ status: "aberto" });
+
+      expect(res.status).toBe(409);
+      expect(res.body.assignedToName).toBe("Carla");
+
+      const atual = await request(buildApp(ADMIN)).get(`/api/tickets`);
+      expect(atual.body.tickets.find(t => t.id === ticketAntigo.id).status).toBe("resolvido");
     });
   });
 

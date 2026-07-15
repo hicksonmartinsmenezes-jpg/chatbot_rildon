@@ -13,12 +13,31 @@
 const pool   = require("../database/postgres");
 const logger = require("../utils/logger");
 const { emitEvent } = require("./socket.service");
+const { getProfilePhotoCandidates } = require("../whatsapp/lid-map");
 
 // Inatividade do ATENDENTE que faz o bot voltar sozinho (evita cliente no vácuo)
 const TTL_MS = Number(process.env.HUMAN_MODE_TTL_MIN || 30) * 60_000;
 
 // userId → { agentName, ticketId, protocolo, since, lastActivity } (ms)
 const _cache = new Map();
+
+// BUG CORRIGIDO: todo o módulo indexava sessões de atendimento humano pelo
+// userId cru, sem normalização. O WhatsApp entrega mensagens do mesmo
+// cliente ora como "...@lid" ora já resolvidas para "...@s.whatsapp.net"
+// (ver LID_FALLBACK em src/config/whatsapp.js) — se o atendente assumisse
+// sob um formato e a próxima mensagem do cliente chegasse resolvida no
+// outro, estaAtivo() não achava a sessão: o bot voltava a responder
+// sozinho mesmo com o atendente já atendendo (ou, na direção oposta,
+// ativar() criava uma SEGUNDA entrada pro mesmo cliente em vez de renovar
+// a existente). _findExistingKey() acha a chave já em uso pra esse
+// cliente, em qualquer formato equivalente conhecido (lid ↔ jid).
+function _findExistingKey(userId) {
+  if (_cache.has(userId)) return userId;
+  for (const candidato of getProfilePhotoCandidates(userId)) {
+    if (_cache.has(candidato)) return candidato;
+  }
+  return null;
+}
 
 async function carregar() {
   try {
@@ -60,10 +79,11 @@ function _persistir(userId) {
 
 /** O bot deve ficar em silêncio para este usuário? */
 function estaAtivo(userId) {
-  const s = _cache.get(userId);
-  if (!s) return false;
+  const key = _findExistingKey(userId);
+  if (!key) return false;
+  const s = _cache.get(key);
   if (Date.now() - s.lastActivity > TTL_MS) {
-    desativar(userId, "inatividade");
+    desativar(key, "inatividade");
     return false;
   }
   return true;
@@ -73,15 +93,19 @@ function estaAtivo(userId) {
 function ativar(userId, { agentName, ticketId, protocolo } = {}) {
   if (!userId) return;
   const now = Date.now();
-  const prev = _cache.get(userId);
-  _cache.set(userId, {
+  // Renova a sessão já existente pra esse cliente (em qualquer formato
+  // equivalente conhecido) em vez de criar uma segunda entrada — ver nota
+  // em _findExistingKey acima.
+  const key  = _findExistingKey(userId) || userId;
+  const prev = _cache.get(key);
+  _cache.set(key, {
     agentName:    agentName ?? prev?.agentName ?? "",
     ticketId:     ticketId  ?? prev?.ticketId,
     protocolo:    protocolo ?? prev?.protocolo,
     since:        prev?.since || now,
     lastActivity: now,
   });
-  _persistir(userId);
+  _persistir(key);
 
   // BUG CORRIGIDO: nenhum evento de socket era emitido ao ativar/desativar o
   // atendimento humano — outras abas/atendentes conectados só percebiam a
@@ -101,26 +125,28 @@ function ativar(userId, { agentName, ticketId, protocolo } = {}) {
   // "muitas requisições" e pra lentidão/instabilidade relatada. Só emite
   // quando é uma ativação de verdade (!prev), igual ao log logo abaixo.
   if (!prev) {
-    logger.info(`[humanMode] Bot pausado para ${userId}${agentName ? ` (atendente: ${agentName})` : ""}`);
-    emitEvent("humanmode_atualizado", { userId, active: true, agentName: agentName ?? "" });
+    logger.info(`[humanMode] Bot pausado para ${key}${agentName ? ` (atendente: ${agentName})` : ""}`);
+    emitEvent("humanmode_atualizado", { userId: key, active: true, agentName: agentName ?? "" });
   }
 }
 
 /** Renova a atividade do atendente (mantém o bot pausado). */
 function renovar(userId) {
-  if (_cache.has(userId)) ativar(userId);
+  const key = _findExistingKey(userId);
+  if (key) ativar(key);
 }
 
 /** Desativa — o bot volta a responder. */
 function desativar(userId, motivo = "manual") {
-  if (!_cache.has(userId)) return;
-  _cache.delete(userId);
-  logger.info(`[humanMode] Bot reativado para ${userId} (motivo: ${motivo})`);
-  pool.query(`DELETE FROM human_mode_sessions WHERE user_id = $1`, [userId])
+  const key = _findExistingKey(userId);
+  if (!key) return;
+  _cache.delete(key);
+  logger.info(`[humanMode] Bot reativado para ${key} (motivo: ${motivo})`);
+  pool.query(`DELETE FROM human_mode_sessions WHERE user_id = $1`, [key])
     .catch(err => logger.warn(`[humanMode] erro ao remover sessão: ${err.message}`));
 
   // Ver nota em ativar() — mantém todas as sessões do painel em sincronia.
-  emitEvent("humanmode_atualizado", { userId, active: false, motivo });
+  emitEvent("humanmode_atualizado", { userId: key, active: false, motivo });
 }
 
 /** Lista os userIds em atendimento humano (para o painel). */

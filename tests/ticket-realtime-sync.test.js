@@ -85,8 +85,29 @@ function installFakePool(state) {
     if (/^SELECT \* FROM tickets\s*(WHERE|ORDER)/.test(sql) || sql.startsWith("SELECT * FROM tickets")) {
       return { rows: [...state.tickets] };
     }
+    if (/^SELECT \* FROM tickets WHERE user_id = ANY/.test(sql)) {
+      const ids = new Set(params[0] || []);
+      return { rows: state.tickets.filter(t => ids.has(t.user_id)) };
+    }
     if (/^DELETE FROM human_mode_sessions/.test(sql)) return { rows: [] };
     if (/^INSERT INTO human_mode_sessions/.test(sql)) return { rows: [] };
+    if (/^INSERT INTO lid_map/.test(sql)) return { rows: [] };
+
+    if (/COUNT\(\*\)::int AS total/.test(sql) && /FILTER \(WHERE status = 'aberto'\)/.test(sql)) {
+      const count = st => state.tickets.filter(t => t.status === st).length;
+      return {
+        rows: [{
+          total: state.tickets.length,
+          aberto: count("aberto"),
+          em_andamento: count("em_andamento"),
+          resolvido: count("resolvido"),
+          cancelado: count("cancelado")
+        }]
+      };
+    }
+    if (/COALESCE\(sector,'geral'\) AS setor/.test(sql)) return { rows: [] };
+    if (/assigned_to_name AS nome/.test(sql)) return { rows: [] };
+    if (/WHERE DATE\(created_at AT TIME ZONE \$1\) = CURRENT_DATE/.test(sql)) return { rows: [{ total: 0 }] };
 
     throw new Error("Query não mapeada: " + sql);
   });
@@ -230,5 +251,32 @@ describe("ticket_atualizado / humanmode_atualizado — sincronização em tempo 
     // cooldown expirar. Antes do fix, isso retornava false silenciosamente.
     const segundaReabertura = await ticketService.reopenTicketIfClosed("55944@s.whatsapp.net");
     expect(segundaReabertura).toBe(true);
+  });
+
+  // BUG CORRIGIDO: reopenTicketIfClosed(userId) buscava só por userId EXATO
+  // (findByUserId). O WhatsApp entrega mensagens do mesmo cliente ora como
+  // "...@lid" ora já resolvidas para "...@s.whatsapp.net" (ver LID_FALLBACK
+  // em src/config/whatsapp.js) — se o ticket fechado do cliente estava salvo
+  // num formato e a mensagem NOVA chegou resolvida no outro, esta função
+  // não achava nada e retornava false, fazendo o fluxo seguinte (main.flow)
+  // criar um ticket NOVO duplicado em vez de reabrir o existente.
+  test("reopenTicketIfClosed reabre o ticket certo mesmo quando a mensagem nova chega resolvida em outro formato (lid vs jid)", async () => {
+    const { setLidMapping } = require("../src/whatsapp/lid-map");
+    const lid = "999111222333444@lid";
+    const jid = "5511977776666@s.whatsapp.net";
+    setLidMapping(lid, jid, "test");
+
+    const app = buildApp(ADMIN);
+    const created = await request(app).post("/api/tickets").send({ userId: lid, type: "orcamento" });
+    const id = created.body.ticket.id;
+    await request(app).patch(`/api/tickets/${id}`).send({ status: "resolvido" });
+
+    // Mensagem nova do MESMO cliente chega já resolvida para o JID.
+    const reabriu = await ticketService.reopenTicketIfClosed(jid);
+    expect(reabriu).toBe(true);
+
+    const atual = await request(app).get("/api/tickets");
+    const ticketNoBanco = atual.body.tickets.find(t => t.id === id);
+    expect(ticketNoBanco.status).toBe("aberto");
   });
 });

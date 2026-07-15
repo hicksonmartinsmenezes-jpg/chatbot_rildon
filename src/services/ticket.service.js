@@ -1,6 +1,7 @@
 const ticketRepository = require("../repositories/ticket.repository");
 const logger = require("../utils/logger");
 const { emitEvent } = require("./socket.service");
+const { getProfilePhotoCandidates } = require("../whatsapp/lid-map");
 
 // Cooldown de reabertura: evita reabrir o mesmo ticket múltiplas vezes em rajada
 const _reopenCooldown = new Map();
@@ -95,7 +96,17 @@ async function reopenTicketIfClosed(userId) {
   _reopenCooldown.set(userId, Date.now());
 
   try {
-    const tickets = await ticketRepository.findByUserId(userId);
+    // BUG CORRIGIDO: mesma causa raiz do guard de "roubo de cliente" em
+    // ticket.controller.js — o WhatsApp entrega mensagens do mesmo cliente
+    // ora como "...@lid" ora já resolvidas para "...@s.whatsapp.net" (ver
+    // LID_FALLBACK em src/config/whatsapp.js). Buscar só por userId exato
+    // fazia esta função não achar o ticket fechado do cliente quando ele
+    // estava salvo no OUTRO formato — em vez de reabrir, o fluxo seguinte
+    // criava um ticket NOVO duplicado (o antigo ficava fechado, órfão).
+    // getProfilePhotoCandidates monta o conjunto de identificadores
+    // equivalentes (lid ↔ jid) já usado para foto de perfil.
+    const candidatos = getProfilePhotoCandidates(userId);
+    const tickets = await ticketRepository.findByUserIds(candidatos.length ? candidatos : [userId]);
     if (!tickets.length) { _reopenCooldown.delete(userId); return false; }
 
     const latest = tickets[0]; // já ordenado DESC

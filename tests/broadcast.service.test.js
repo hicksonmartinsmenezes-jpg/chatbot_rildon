@@ -254,6 +254,34 @@ describe("broadcast.service", () => {
       );
     });
 
+    // BUG CORRIGIDO: getBroadcastAudience (GROUP BY user_id em history/
+    // tickets) pode trazer o MESMO cliente real duas vezes se ele tem
+    // linhas salvas em formatos diferentes de identificador — o WhatsApp
+    // entrega mensagens ora como "...@lid" ora já resolvidas para
+    // "...@s.whatsapp.net" (ver LID_FALLBACK em src/config/whatsapp.js).
+    // Sem considerar essa equivalência, o dedup de createBroadcast tratava
+    // as duas entradas como destinatários diferentes — o cliente recebia a
+    // campanha duas vezes.
+    test("BUG CORRIGIDO: dedupe considera equivalência lid/jid — mesmo cliente em dois formatos não recebe a campanha duas vezes", async () => {
+      const lid = "600700800900100@lid";
+      const jid = "5511988889999@s.whatsapp.net";
+      whatsapp.resolveLid.mockImplementation(v => (v === lid ? jid : null));
+
+      const broadcast = await broadcastService.createBroadcast({
+        title: "Promoção",
+        message: "Oferta imperdível",
+        recipients: [
+          { userId: lid, contactName: "Cliente Lid" },
+          { userId: jid, contactName: "Cliente Jid" }
+        ]
+      });
+
+      expect(broadcast.total_recipients).toBe(1);
+      expect(state.recipients).toHaveLength(1);
+
+      whatsapp.resolveLid.mockReturnValue(null); // restaura o default pros testes seguintes
+    });
+
     test("insere destinatários em mais de um lote quando excede o tamanho do chunk", async () => {
       const recipients = Array.from({ length: 501 }, (_, i) => ({ userId: `7900000${String(i).padStart(4, "0")}` }));
 

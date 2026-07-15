@@ -51,9 +51,21 @@ async function createBroadcast({ title, message, recipients, createdBy, imageUrl
 for (const item of recipients) {
   const userId = normalizeUserId(item.userId || item.numero || item);
   const contactName = item.contactName || item.nome || "";
+  if (!userId) continue;
 
-  if (userId && !recipientMap.has(userId)) {
-    recipientMap.set(userId, { userId, contactName });
+  // BUG CORRIGIDO: o público de uma campanha (getBroadcastAudience) vem de
+  // GROUP BY user_id em history/tickets — se o mesmo cliente real tem
+  // linhas salvas em AMBOS os formatos (o WhatsApp entrega mensagens ora
+  // como "...@lid" ora já resolvidas para "...@s.whatsapp.net", ver
+  // LID_FALLBACK em src/config/whatsapp.js), a audiência já vem com DOIS
+  // "destinatários" pro mesmo cliente. Deduplicar só pelo userId normalizado
+  // (sem tocar lid/jid) não pegava esse caso — o cliente recebia a
+  // campanha duas vezes. Quando já sabemos a equivalência (resolveLid),
+  // usamos o jid resolvido como chave de dedup — mesma pessoa, uma linha só.
+  const dedupKey = userId.endsWith("@lid") ? (resolveLid(userId) || userId) : userId;
+
+  if (!recipientMap.has(dedupKey)) {
+    recipientMap.set(dedupKey, { userId, contactName });
   }
 }
 

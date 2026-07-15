@@ -516,6 +516,39 @@ describe("ticket.routes", () => {
       expect(assumirDeNovo.status).toBe(200);
       expect(assumirDeNovo.body.ticket.assignedTo).toBe("at-2");
     });
+
+    // BUG CORRIGIDO (relatado pelo usuário): "se o cliente estiver ativo com
+    // outro usuário, ainda aparece a possibilidade de reabrir em Fechados —
+    // se clicar, rouba o cliente do outro atendente". Cenário: cliente tem
+    // um ticket ANTIGO já resolvido (que aparece em Fechados) e um ticket
+    // NOVO em_andamento (assumido por outro atendente) — reabrir o antigo
+    // não pode ser permitido enquanto o novo estiver ativo.
+    test("BUG CORRIGIDO: reabrir bloqueado (409) quando cliente já tem outro ticket em_andamento", async () => {
+      const ticketAntigo = await criarTicket(ADMIN);
+      await request(buildApp(ADMIN)).patch(`/api/tickets/${ticketAntigo.id}`).send({ status: "resolvido" });
+
+      // Cliente manda mensagem de novo → cria/assume um ticket NOVO, que
+      // fica em_andamento (assumido por outro atendente).
+      const ticketNovo = await criarTicket(ADMIN);
+      const outroAtendente = { id: "at-2", nome: "Junior", perfil: "atendente", sector: "vendas" };
+      await request(buildApp(outroAtendente)).patch(`/api/tickets/${ticketNovo.id}/assign`);
+
+      // Atendente B, com o painel desatualizado, ainda vê o ticket ANTIGO em
+      // Fechados e tenta reabrir — deve ser bloqueado.
+      const res = await request(buildApp(ADMIN))
+        .patch(`/api/tickets/${ticketAntigo.id}`)
+        .send({ status: "aberto" });
+
+      expect(res.status).toBe(409);
+      expect(res.body.error).toMatch(/atendimento ativo/);
+      expect(res.body.assignedToName).toBe("Junior");
+
+      // Confirma que o ticket antigo continua resolvido (não foi reaberto)
+      // e o novo continua em_andamento — nenhum dos dois foi mexido.
+      const antigoAtual = await request(buildApp(ADMIN)).get(`/api/tickets`);
+      const antigoNoBanco = antigoAtual.body.tickets.find(t => t.id === ticketAntigo.id);
+      expect(antigoNoBanco.status).toBe("resolvido");
+    });
   });
 
   describe("PATCH /tickets/:id/assign", () => {

@@ -481,7 +481,21 @@ async function reabrirTicketConv(userId) {
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({ status: "aberto" })
       });
-      if (!res?.ok) throw new Error("Erro ao reabrir.");
+      if (!res) return;
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        // BUG CORRIGIDO (relatado pelo usuário): "Reabrir" em Fechados podia
+        // aparecer pra um cliente que JÁ está ativo com outro atendente
+        // (dado desatualizado no navegador) — clicar "roubava" o cliente,
+        // criando dois tickets conflitantes. O backend agora bloqueia isso
+        // (409, ticket.controller.js), mas antes o toast só mostrava "Erro
+        // ao reabrir" genérico, sem dizer o motivo real. Agora mostra a
+        // mensagem específica do backend (ex: "já está em atendimento
+        // ativo com Fulano") e recarrega a lista pra corrigir o dado
+        // desatualizado que causou o clique errado.
+        await loadConversations();
+        throw new Error(data.error || "Erro ao reabrir.");
+      }
     } else {
       // Cria novo ticket se não existir nenhum
       const res = await apiFetch(`${BASE}/api/tickets`, {

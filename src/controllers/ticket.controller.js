@@ -150,6 +150,31 @@ async function patchTicket(req, res) {
       return res.status(403).json({ error: "Você não tem permissão para alterar este ticket." });
     }
 
+    // BUG CORRIGIDO (relatado pelo usuário): "se o cliente estiver ativo com
+    // outro usuário, ainda aparece a possibilidade de reabrir em Fechados —
+    // se clicar, rouba o cliente do outro atendente". Isso acontece quando o
+    // painel de quem está olhando Fechados está com dado desatualizado
+    // (corrida: outro atendente já assumiu um ticket mais novo pra esse
+    // mesmo cliente, mas o socket/reload ainda não chegou nessa aba) — o
+    // clique em "Reabrir" reabre um ticket ANTIGO já resolvido, sem saber
+    // que já existe um ticket ATIVO (em_andamento) pro mesmo cliente,
+    // criando dois tickets conflitantes pro mesmo userId. A validação
+    // precisa estar no servidor (fonte da verdade), não só confiar no
+    // estado do navegador — bloqueia a reabertura se já houver outro
+    // ticket em_andamento pra esse cliente.
+    if (status === "aberto") {
+      const outrosTickets = await ticketRepository.findByUserId(atual.userId);
+      const emAtendimento = outrosTickets.find(
+        t => String(t.id) !== String(atual.id) && t.status === "em_andamento"
+      );
+      if (emAtendimento) {
+        return res.status(409).json({
+          error: `Este cliente já está em atendimento ativo com ${emAtendimento.assignedToName || "outro atendente"}.`,
+          assignedToName: emAtendimento.assignedToName || null
+        });
+      }
+    }
+
     const ticket = await updateTicketStatus(id, status);
 
     // Ticket fechado → bot volta a responder este cliente

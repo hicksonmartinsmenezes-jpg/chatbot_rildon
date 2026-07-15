@@ -45,6 +45,27 @@ router.get("/metrics", asyncHandler(async (req, res) => {
     ORDER BY MIN(created_at) ASC
   `, [TZ]);
 
+  // Pesquisa de satisfação: média geral + por atendente (só tickets
+  // avaliados — satisfaction_rating IS NOT NULL).
+  const satisfacaoRes = await pool.query(`
+    SELECT
+      ROUND(AVG(satisfaction_rating)::numeric, 2) AS media,
+      COUNT(*)::int AS total
+    FROM tickets
+    WHERE satisfaction_rating IS NOT NULL
+  `);
+
+  const satisfacaoAtendenteRes = await pool.query(`
+    SELECT
+      assigned_to_name AS nome,
+      ROUND(AVG(satisfaction_rating)::numeric, 2) AS media,
+      COUNT(*)::int AS total
+    FROM tickets
+    WHERE satisfaction_rating IS NOT NULL AND assigned_to_name IS NOT NULL
+    GROUP BY assigned_to_name
+    ORDER BY media DESC
+  `);
+
   const s     = summaryRes.rows[0];
   const total = s.total;
 
@@ -69,6 +90,11 @@ router.get("/metrics", asyncHandler(async (req, res) => {
     ? Math.round((s.resolvidos / total) * 100)
     : 0;
 
+  const satisfacaoPorAtendente = {};
+  for (const row of satisfacaoAtendenteRes.rows) {
+    satisfacaoPorAtendente[row.nome] = { media: Number(row.media), total: row.total };
+  }
+
   res.json({
     total,
     mensal:     s.mensal,
@@ -82,7 +108,10 @@ router.get("/metrics", asyncHandler(async (req, res) => {
     setorMaisMovimentado,
     porStatus,
     porSetor,
-    porDia
+    porDia,
+    satisfacaoMedia:         satisfacaoRes.rows[0]?.media ? Number(satisfacaoRes.rows[0].media) : null,
+    satisfacaoTotalRespostas: satisfacaoRes.rows[0]?.total || 0,
+    satisfacaoPorAtendente
   });
 }));
 

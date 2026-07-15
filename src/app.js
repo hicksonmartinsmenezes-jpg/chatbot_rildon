@@ -152,7 +152,12 @@ app.use("/api", authSession, requireAdmin, settingsRoutes);
 app.use("/api", authSession, requireAdmin, quickReplyRoutes);
 app.use("/api", authSession, requireAdmin, userRoutes);
 app.use("/api", authSession, requireAdmin, activityLogRoutes);
-app.use("/api", authSession, requireAdmin, metricsRoutes);
+// A aba Métricas do painel (frontend/index.html, data-tab="metrics") já é
+// supervisor-only na UI, mas a rota exigia admin — supervisor via a aba e
+// caía em 403 ao carregar. Corrigido junto com a pesquisa de satisfação
+// (o motivo que trouxe essa inconsistência à tona: supervisor precisa ver
+// a média de satisfação por atendente aqui).
+app.use("/api", authSession, requireRole("admin", "supervisor"), metricsRoutes);
 // Pedido do usuário: supervisor também deve poder ver/usar Campanhas, não
 // só admin (o resto das rotas administrativas continua exigindo admin).
 app.use("/api", authSession, requireRole("admin", "supervisor"), broadcastRoutes);

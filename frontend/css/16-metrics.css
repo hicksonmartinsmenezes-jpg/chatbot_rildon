@@ -228,6 +228,7 @@
 #tab-metrics .metric-card[data-accent="orange"] { --accent: #fb923c; }
 #tab-metrics .metric-card[data-accent="purple"] { --accent: #8b5cf6; }
 #tab-metrics .metric-card[data-accent="teal"]   { --accent: #14b8a6; }
+#tab-metrics .metric-card[data-accent="pink"]   { --accent: #ec4899; }
 
 /* ─── Gráficos ─────────────────────────────────────────────────── */
 .metrics-charts {
@@ -292,6 +293,48 @@
 #tab-metrics .chart-card.chart-wide .chart-canvas-wrap { height: 320px; }
 
 .chart-canvas-wrap canvas { max-height: 100%; }
+
+/* ─── Tabela de satisfação por atendente ──────────────────────────── */
+.metric-satisfaction-table-wrap {
+  overflow-x: auto;
+}
+
+.metric-satisfaction-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.metric-satisfaction-table th,
+.metric-satisfaction-table td {
+  padding: 10px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  color: #e2e8f0;
+}
+
+.metric-satisfaction-table th {
+  color: #94a3b8;
+  font-weight: 700;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.metric-satisfaction-table tbody tr:last-child td { border-bottom: none; }
+
+.metric-satisfaction-empty {
+  color: #64748b;
+  text-align: center;
+  padding: 18px;
+}
+
+body.light-theme .metric-satisfaction-table th,
+body.light-theme .metric-satisfaction-table td {
+  color: #0f172a;
+  border-bottom-color: rgba(15, 23, 42, 0.08);
+}
+body.light-theme .metric-satisfaction-table th { color: #64748b; }
 
 /* ─── Responsivo ───────────────────────────────────────────────── */
 @media (max-width: 1180px) {

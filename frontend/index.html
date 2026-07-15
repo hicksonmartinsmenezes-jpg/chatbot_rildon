@@ -23,7 +23,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css">
   <!-- CSS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <link rel="stylesheet" href="dist/bundle.24c3673e07.css">
+  <link rel="stylesheet" href="dist/bundle.59e445f389.css">
   <!-- CSS_BUNDLE_END -->
 <style>
     /* Centraliza colunas da tabela de histórico */
@@ -1600,6 +1600,12 @@ Como podemos ajudar você hoje?
       <span class="metric-card-label">Setor destaque <i class="fa-solid fa-circle-info metric-card-info" title="Setor com maior volume de atendimentos"></i></span>
     </article>
 
+    <article class="metric-card" data-accent="pink">
+      <span class="metric-card-icon"><i class="fa-solid fa-star"></i></span>
+      <strong id="metric-satisfacao">—</strong>
+      <span class="metric-card-label">Satisfação média <i class="fa-solid fa-circle-info metric-card-info" title="Média das notas de 1 a 5 respondidas pelos clientes ao fechar o atendimento"></i></span>
+    </article>
+
   </section>
 
   <section class="metrics-charts">
@@ -1626,6 +1632,23 @@ Como podemos ajudar você hoje?
         <h3>Atendimentos por dia</h3>
       </header>
       <div class="chart-canvas-wrap"><canvas id="metric-chart-day"></canvas></div>
+    </article>
+
+    <article class="chart-card chart-wide">
+      <header class="chart-card-head">
+        <span class="chart-card-icon"><i class="fa-solid fa-star-half-stroke"></i></span>
+        <h3>Satisfação por atendente</h3>
+      </header>
+      <div class="metric-satisfaction-table-wrap">
+        <table class="metric-satisfaction-table">
+          <thead>
+            <tr><th>Atendente</th><th>Média</th><th>Avaliações</th></tr>
+          </thead>
+          <tbody id="metric-satisfacao-atendente-body">
+            <tr><td colspan="3" class="metric-satisfaction-empty">Nenhuma avaliação ainda.</td></tr>
+          </tbody>
+        </table>
+      </div>
     </article>
 
   </section>
@@ -1763,7 +1786,7 @@ Como podemos ajudar você hoje?
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1"></script>
 
   <!-- JS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <script src="dist/bundle.5480f74c4f.js"></script>
+  <script src="dist/bundle.558b096fab.js"></script>
   <!-- JS_BUNDLE_END -->
 
 

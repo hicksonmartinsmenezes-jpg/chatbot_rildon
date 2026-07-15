@@ -30,7 +30,9 @@ jest.mock("../src/services/history.service", () => ({
 jest.mock("../src/services/settings.service", () => ({
   getSettings: jest.fn().mockResolvedValue({
     atendimento: {
-      mensagemSaudacaoAtendente: "Olá! Me chamo {nome} e vou continuar seu atendimento a partir de agora."
+      mensagemSaudacaoAtendente: "Olá! Me chamo {nome} e vou continuar seu atendimento a partir de agora.",
+      mensagemPesquisaSatisfacao: "De 1 a 5, o quanto você ficou satisfeito com nosso atendimento? Responda só com o número.",
+      mensagemAgradecimentoPesquisa: "Muito obrigado pela sua avaliação!"
     }
   })
 }));
@@ -127,6 +129,14 @@ function installFakePool(state) {
         t.assigned_to = null;
         t.assigned_to_name = null;
       }
+      return { rows: [t] };
+    }
+
+    // Pesquisa de satisfação: askSatisfaction() marca satisfaction_asked_at.
+    if (/^UPDATE tickets\s+SET satisfaction_asked_at = NOW\(\)/.test(sql)) {
+      const t = findTicket(state, params[0]);
+      if (!t) return { rows: [] };
+      t.satisfaction_asked_at = new Date().toISOString();
       return { rows: [t] };
     }
 
@@ -606,6 +616,70 @@ describe("ticket.routes", () => {
 
       const atual = await request(buildApp(ADMIN)).get(`/api/tickets`);
       expect(atual.body.tickets.find(t => t.id === ticketAntigo.id).status).toBe("resolvido");
+    });
+  });
+
+  // Pedido do usuário: pesquisa de satisfação automática ao fechar um
+  // atendimento (status → resolvido). Cliente responde 1-5 depois — a
+  // captura dessa resposta é testada em tests/ticket.service.satisfaction.test.js
+  // e tests/message.service.test.js; aqui o foco é só o disparo do envio +
+  // askSatisfaction() ao fechar, no mesmo padrão best-effort da saudação.
+  describe("PATCH /tickets/:id — pesquisa de satisfação ao resolver", () => {
+    async function criarTicket(user) {
+      const res = await request(buildApp(user)).post("/api/tickets").send({ userId: "u1", type: "orcamento" });
+      return res.body.ticket;
+    }
+
+    test("fechar como resolvido envia a pesquisa e marca satisfaction_asked_at", async () => {
+      const ticket = await criarTicket(ADMIN);
+      const res = await request(buildApp(ADMIN))
+        .patch(`/api/tickets/${ticket.id}`)
+        .send({ status: "resolvido" });
+
+      expect(res.status).toBe(200);
+      expect(whatsapp.sendMessage).toHaveBeenCalledWith(
+        "u1",
+        expect.stringContaining("De 1 a 5")
+      );
+      expect(historyService.saveHistory).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: "u1", sector: "manual", response: expect.stringContaining("De 1 a 5") })
+      );
+    });
+
+    test("cancelar (não resolvido) NÃO envia pesquisa de satisfação", async () => {
+      const ticket = await criarTicket(ADMIN);
+      const res = await request(buildApp(ADMIN))
+        .patch(`/api/tickets/${ticket.id}`)
+        .send({ status: "cancelado" });
+
+      expect(res.status).toBe(200);
+      expect(whatsapp.sendMessage).not.toHaveBeenCalled();
+    });
+
+    test("template de pesquisa vazio (desativado nas configurações) → não envia mensagem nenhuma", async () => {
+      settingsService.getSettings.mockResolvedValueOnce({
+        atendimento: { mensagemSaudacaoAtendente: "", mensagemPesquisaSatisfacao: "" }
+      });
+
+      const ticket = await criarTicket(ADMIN);
+      const res = await request(buildApp(ADMIN))
+        .patch(`/api/tickets/${ticket.id}`)
+        .send({ status: "resolvido" });
+
+      expect(res.status).toBe(200);
+      expect(whatsapp.sendMessage).not.toHaveBeenCalled();
+    });
+
+    test("falha ao enviar a pesquisa não impede o fechamento do ticket (best-effort)", async () => {
+      whatsapp.sendMessage.mockRejectedValueOnce(new Error("WhatsApp indisponível"));
+
+      const ticket = await criarTicket(ADMIN);
+      const res = await request(buildApp(ADMIN))
+        .patch(`/api/tickets/${ticket.id}`)
+        .send({ status: "resolvido" });
+
+      expect(res.status).toBe(200);
+      expect(res.body.ticket.status).toBe("resolvido");
     });
   });
 

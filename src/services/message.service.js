@@ -4,7 +4,7 @@ const { enqueue }     = require("./queue.service");
 const { getSession }  = require("./session.service");
 const { getBotConfig } = require("./botConfig.service");
 const { emitEvent }   = require("./socket.service");
-const { reopenTicketIfClosed } = require("./ticket.service");
+const { reopenTicketIfClosed, handleSatisfactionReply } = require("./ticket.service");
 const humanMode       = require("./humanMode.service");
 const logger          = require("../utils/logger");
 
@@ -83,6 +83,46 @@ async function processMessage({ userId, contactName, message, messageId }) {
   if (!rateLimiter.hit(userId)) {
     logger.warn(`Rate limit atingido para ${userId}`);
     return "⚠️ Muitas mensagens em pouco tempo. Aguarde alguns segundos e tente novamente.";
+  }
+
+  // Pesquisa de satisfação pendente (ver ticket.service.js)? Precisa vir
+  // ANTES de reopenTicketIfClosed — senão a própria resposta da pesquisa
+  // (ex: cliente manda "5") reabriria o ticket fechado como se fosse um
+  // pedido novo, em vez de só registrar a nota.
+  let pesquisa = null;
+  try {
+    pesquisa = await handleSatisfactionReply({ userId, message });
+  } catch (e) {
+    logger.warn(`Erro ao checar pesquisa de satisfação: ${e.message}`);
+  }
+  if (pesquisa) {
+    try {
+      emitEvent("nova_mensagem", {
+        userId,
+        contactName,
+        message,
+        messageId,
+        response: pesquisa.response,
+        sector: "pesquisa_satisfacao",
+        createdAt: new Date()
+      });
+    } catch (e) { logger.warn(`Erro ao emitir nova_mensagem (pesquisa): ${e.message}`); }
+
+    try {
+      await saveHistory({
+        userId,
+        contactName,
+        message,
+        messageId,
+        response: pesquisa.response,
+        sector: "pesquisa_satisfacao",
+        status: "sent"
+      });
+    } catch (err) {
+      logger.warn(`Erro ao salvar histórico (pesquisa de satisfação): ${err.message}`);
+    }
+
+    return pesquisa.response;
   }
 
   // Reabre ticket fechado para que o cliente apareça em Pendentes novamente

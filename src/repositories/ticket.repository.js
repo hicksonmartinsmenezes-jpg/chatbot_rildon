@@ -300,7 +300,11 @@ function mapTicket(row) {
     assignedTo: row.assigned_to,
     assignedToName: row.assigned_to_name,
     createdAt: row.created_at,
-    updatedAt: row.updated_at
+    updatedAt: row.updated_at,
+    // Pesquisa de satisfação (migration 015) — ver askSatisfaction/rateSatisfaction.
+    satisfactionRating: row.satisfaction_rating ?? null,
+    satisfactionAskedAt: row.satisfaction_asked_at ?? null,
+    satisfactionRatedAt: row.satisfaction_rated_at ?? null
   };
 }
 
@@ -322,6 +326,38 @@ async function findByUserIds(userIds) {
   return result.rows.map(mapTicket);
 }
 
+// Marca a pesquisa de satisfação como enviada (chamado ao fechar o
+// ticket). satisfaction_asked_at é o que define "pesquisa pendente" em
+// message.service.js — sem tabela nova, o próprio ticket carrega o estado.
+async function askSatisfaction(id) {
+  const idStr = String(id);
+  const result = await pool.query(
+    `
+    UPDATE tickets
+    SET satisfaction_asked_at = NOW()
+    WHERE ${idOrProtocolWhere(idStr, 1)}
+    RETURNING *
+    `,
+    [idStr]
+  );
+  return result.rows[0] ? mapTicket(result.rows[0]) : null;
+}
+
+// Registra a nota (1-5) respondida pelo cliente.
+async function rateSatisfaction(id, rating) {
+  const idStr = String(id);
+  const result = await pool.query(
+    `
+    UPDATE tickets
+    SET satisfaction_rating = $1, satisfaction_rated_at = NOW()
+    WHERE ${idOrProtocolWhere(idStr, 2)}
+    RETURNING *
+    `,
+    [rating, idStr]
+  );
+  return result.rows[0] ? mapTicket(result.rows[0]) : null;
+}
+
 async function findByCpf(cpfLimpo) {
   const result = await pool.query(
     `SELECT * FROM tickets WHERE REGEXP_REPLACE(cpf, '\\D', '', 'g') = $1 ORDER BY created_at DESC`,
@@ -341,5 +377,7 @@ module.exports = {
   assign,
   transfer,
   stats,
-  gerarProtocolo
+  gerarProtocolo,
+  askSatisfaction,
+  rateSatisfaction
 };

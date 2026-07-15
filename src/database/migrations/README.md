@@ -18,6 +18,7 @@ numeração **não quebram a execução** — mas atrapalham a rastreabilidade.
 012_add_missing_indexes.sql
 013_add_contacts_indexes.sql
 014_add_crediario_sector.sql
+015_satisfaction_survey.sql
 ```
 
 **Os números 005–008 nunca existiram neste repositório** (confirmado via
@@ -35,7 +36,14 @@ o schema real do banco com `schema.sql` (ex: `pg_dump --schema-only`).
 
 ## Convenção daqui para frente
 
-- Próxima migration: `015_*.sql`. Não reutilizar nem pular números.
+- Próxima migration: `016_*.sql`. Não reutilizar nem pular números.
 - Toda mudança de schema deve ir para **os dois lugares**: o arquivo de
   migration incremental (para bancos existentes) E o `schema.sql` (para
-  instalaç�
+  instalações novas).
+
+## 015 — pesquisa de satisfação
+
+Adiciona `satisfaction_rating`/`satisfaction_asked_at`/`satisfaction_rated_at`
+em `tickets`. Ao fechar um atendimento (status → `resolvido`), o cliente
+recebe automaticamente uma mensagem pedindo pra avaliar de 1 a 5; a resposta
+fica registrada no próprio ticket (sem tabela nova).

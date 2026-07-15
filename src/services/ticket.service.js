@@ -2,6 +2,12 @@ const ticketRepository = require("../repositories/ticket.repository");
 const logger = require("../utils/logger");
 const { emitEvent } = require("./socket.service");
 const { getProfilePhotoCandidates } = require("../whatsapp/lid-map");
+const { getSettings } = require("./settings.service");
+
+// Janela em que uma pesquisa de satisfação enviada continua "pendente"
+// (aceitando a nota do cliente) antes de ser considerada expirada.
+const SATISFACTION_WINDOW_MS =
+  Number(process.env.SATISFACTION_SURVEY_WINDOW_HOURS || 48) * 60 * 60 * 1000;
 
 // Cooldown de reabertura: evita reabrir o mesmo ticket múltiplas vezes em rajada
 const _reopenCooldown = new Map();
@@ -143,6 +149,58 @@ async function transferTicket(id, sector, targetUser = null) {
   return ticketRepository.transfer(id, sector, targetUser);
 }
 
+// Pedido do usuário: pesquisa de satisfação ao fechar atendimento. O
+// cliente responde só com um número de 1 a 5 — parseSatisfactionRating
+// tenta reconhecer isso em textos curtos como "5", "5 estrelas", "nota 5"
+// ou "5/5". Mensagens longas ou sem exatamente um dígito 1-5 isolado não
+// contam (evita confundir um CPF/telefone digitado por acaso com nota).
+//
+// LIMITAÇÃO CONHECIDA: como usa o mesmo canal de conversa normal, se o
+// cliente mandar só um dígito 1-5 por outro motivo (ex: escolher uma opção
+// de menu do bot) DENTRO da janela de pesquisa pendente (default 48h após
+// fechar), isso seria interpretado como nota em vez de seguir o fluxo do
+// bot. Janela curta + só disparar quando o ticket é fechado como
+// "resolvido" (não em qualquer mensagem a qualquer momento) minimiza esse
+// risco — aceito como trade-off razoável pro escopo pedido.
+function parseSatisfactionRating(message) {
+  const texto = String(message || "").trim();
+  if (!texto || texto.length > 30) return null;
+  const match = texto.match(/(?<!\d)([1-5])(?:\s*\/\s*5)?(?!\d)/);
+  return match ? Number(match[1]) : null;
+}
+
+// Chamado em message.service.js ANTES de reopenTicketIfClosed — se o
+// cliente tem uma pesquisa pendente e a mensagem parece uma nota válida,
+// registra e retorna a resposta de agradecimento SEM reabrir o ticket nem
+// passar pelo fluxo normal do bot. Retorna null se não há pesquisa
+// pendente ou se a mensagem não foi reconhecida como nota (nesse caso o
+// fluxo normal segue — inclusive podendo reabrir o ticket normalmente).
+async function handleSatisfactionReply({ userId, message }) {
+  const candidatos = getProfilePhotoCandidates(userId);
+  const tickets = await ticketRepository.findByUserIds(candidatos.length ? candidatos : [userId]);
+
+  const pendente = tickets.find(t =>
+    t.status === "resolvido" &&
+    t.satisfactionAskedAt &&
+    !t.satisfactionRating &&
+    (Date.now() - new Date(t.satisfactionAskedAt).getTime()) < SATISFACTION_WINDOW_MS
+  );
+  if (!pendente) return null;
+
+  const rating = parseSatisfactionRating(message);
+  if (!rating) return null;
+
+  const atualizado = await ticketRepository.rateSatisfaction(pendente.id, rating);
+  logger.info(`[Satisfação] Ticket #${pendente.protocolo} avaliado com nota ${rating}`);
+
+  const settings = await getSettings();
+  const agradecimento =
+    settings?.atendimento?.mensagemAgradecimentoPesquisa ||
+    "Muito obrigado pela sua avaliação!";
+
+  return { ticket: atualizado, rating, response: agradecimento };
+}
+
 module.exports = {
   createTicket,
   listTickets,
@@ -152,5 +210,7 @@ module.exports = {
   assignTicket,
   transferTicket,
   getTicketStats,
-  getTicketsByCPF
+  getTicketsByCPF,
+  parseSatisfactionRating,
+  handleSatisfactionReply
 };

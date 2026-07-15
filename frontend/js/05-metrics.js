@@ -82,6 +82,32 @@ async function loadMetricsCharts() {
         : "—";
     }
 
+    // Pedido do usuário: pesquisa de satisfação ao fechar atendimento —
+    // média geral (card) + quebra por atendente (tabela), pra supervisor
+    // acompanhar desempenho individual.
+    const satisfacaoEl = document.getElementById("metric-satisfacao");
+    if (satisfacaoEl) {
+      satisfacaoEl.textContent = data.satisfacaoMedia != null
+        ? `${data.satisfacaoMedia.toFixed(1)} ⭐`
+        : "—";
+    }
+
+    const satisfacaoBody = document.getElementById("metric-satisfacao-atendente-body");
+    if (satisfacaoBody) {
+      const entradas = Object.entries(data.satisfacaoPorAtendente || {})
+        .sort((a, b) => b[1].media - a[1].media);
+
+      satisfacaoBody.innerHTML = entradas.length
+        ? entradas.map(([nome, { media, total }]) => `
+            <tr>
+              <td>${safe(nome)}</td>
+              <td>${media.toFixed(1)} ⭐</td>
+              <td>${total}</td>
+            </tr>
+          `).join("")
+        : `<tr><td colspan="3" class="metric-satisfaction-empty">Nenhuma avaliação ainda.</td></tr>`;
+    }
+
     // ── Gráfico de status (doughnut) ──────────────────────────────────────────
     upsertChart("metric-chart-status", "doughnut", {
       labels:   Object.keys(data.porStatus || {}),

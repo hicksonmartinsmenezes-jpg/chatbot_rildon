@@ -30,7 +30,15 @@ const DEFAULT_SETTINGS = {
     // apresentando (mesmo número do bot — sem trocar de canal). "{nome}" é
     // substituído pelo nome de quem assumiu. Deixe em branco pra desativar.
     mensagemSaudacaoAtendente:
-      "Olá! 👋 Me chamo {nome} e vou continuar seu atendimento a partir de agora."
+      "Olá! 👋 Me chamo {nome} e vou continuar seu atendimento a partir de agora.",
+    // Pedido do usuário: pesquisa de satisfação automática ao fechar um
+    // atendimento (status → resolvido). Cliente responde só com um número
+    // de 1 a 5 (ver parseSatisfactionRating em message.service.js). Deixe
+    // em branco pra desativar.
+    mensagemPesquisaSatisfacao:
+      "De 1 a 5, o quanto você ficou satisfeito com nosso atendimento? Responda só com o número. 🙂",
+    mensagemAgradecimentoPesquisa:
+      "Muito obrigado pela sua avaliação! 🙏"
   },
   aparencia: {
     tema: "dark",

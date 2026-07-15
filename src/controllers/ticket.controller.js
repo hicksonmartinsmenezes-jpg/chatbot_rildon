@@ -214,6 +214,11 @@ async function patchTicket(req, res) {
       clearReopenCooldown(ticket.userId);
     }
 
+    // Só pra "resolvido" — ver nota na função acima.
+    if (status === "resolvido") {
+      await enviarPesquisaSatisfacao(ticket);
+    }
+
     // BUG CORRIGIDO: nenhum evento de socket avisava o painel de outras
     // sessões conectadas quando um ticket mudava de status (fechar,
     // reabrir, cancelar) — só a aba que fez a ação via a mudança de
@@ -270,6 +275,48 @@ async function enviarSaudacaoAtendente(ticket, user) {
     });
   } catch (err) {
     logger.warn(`[enviarSaudacaoAtendente] falhou para ticket #${ticket?.protocolo}: ${err.message}`);
+  }
+}
+
+// Pedido do usuário: pesquisa de satisfação automática ao fechar um
+// atendimento (status → resolvido). O cliente responde só com um número
+// de 1 a 5 — a resposta é capturada em message.service.js (processMessage),
+// ANTES do fluxo normal do bot, então não conta como pedido novo nem
+// reabre o ticket. Só dispara pra "resolvido" (um "cancelado" geralmente
+// não teve atendimento de verdade pra avaliar). Best-effort, mesmo padrão
+// de enviarSaudacaoAtendente.
+async function enviarPesquisaSatisfacao(ticket) {
+  try {
+    const settings = await getSettings();
+    const template = settings?.atendimento?.mensagemPesquisaSatisfacao;
+    if (!template || !template.trim()) return;
+
+    const sent = await sendMessage(ticket.userId, template);
+
+    await ticketRepository.askSatisfaction(ticket.id);
+
+    const historyItem = await saveHistory({
+      userId: ticket.userId,
+      contactName: ticket.customerName || "",
+      message: null,
+      response: template,
+      sector: "manual",
+      messageId: sent?.id || null,
+      status: "sent"
+    });
+
+    emitEvent("nova_mensagem", {
+      userId: ticket.userId,
+      contactName: ticket.customerName || "",
+      message: null,
+      response: template,
+      sector: "manual",
+      messageId: sent?.id || null,
+      status: "sent",
+      createdAt: historyItem?.createdAt || new Date()
+    });
+  } catch (err) {
+    logger.warn(`[enviarPesquisaSatisfacao] falhou para ticket #${ticket?.protocolo}: ${err.message}`);
   }
 }
 

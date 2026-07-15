@@ -77,8 +77,16 @@ CREATE TABLE IF NOT EXISTS tickets (
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
+  -- Pesquisa de satisfação (migration 015): enviada automaticamente quando
+  -- o ticket é fechado (resolvido). satisfaction_asked_at marca "pesquisa
+  -- pendente" até o cliente responder um número de 1 a 5 (ou expirar).
+  satisfaction_rating    SMALLINT,
+  satisfaction_asked_at  TIMESTAMPTZ,
+  satisfaction_rated_at  TIMESTAMPTZ,
+
   CONSTRAINT chk_ticket_status CHECK (status IN ('aberto','em_andamento','resolvido','cancelado')),
-  CONSTRAINT chk_ticket_sector CHECK (sector IN ('suporte','vendas','financeiro','garantia','geral','atendimento','gestao','crediario'))
+  CONSTRAINT chk_ticket_sector CHECK (sector IN ('suporte','vendas','financeiro','garantia','geral','atendimento','gestao','crediario')),
+  CONSTRAINT chk_ticket_satisfaction_rating CHECK (satisfaction_rating IS NULL OR satisfaction_rating BETWEEN 1 AND 5)
 );
 
 CREATE INDEX IF NOT EXISTS idx_tickets_user_id    ON tickets(user_id);
@@ -91,6 +99,7 @@ CREATE INDEX IF NOT EXISTS idx_tickets_assigned_name ON tickets(assigned_to_name
 CREATE INDEX IF NOT EXISTS idx_tickets_created_at ON tickets(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tickets_cpf
 ON tickets(REGEXP_REPLACE(cpf, '\D', '', 'g'));
+CREATE INDEX IF NOT EXISTS idx_tickets_satisfaction_rating ON tickets(satisfaction_rating);
 
 -- Histórico
 CREATE TABLE IF NOT EXISTS history (

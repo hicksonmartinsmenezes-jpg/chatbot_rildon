@@ -310,16 +310,35 @@ describe("ticket.routes", () => {
         expect(res.body.hiddenActiveUserIds).not.toContain("cliente-z");
       });
 
-      // Pergunta do usuário: "os pendentes aparecem pra todos os usuários?"
-      // — reporta ver um pendente reaberto (reopenTicketIfClosed, cliente
-      // manda mensagem de novo após ticket fechado) em um atendente mas não
-      // em outro. CONFIRMADO por este teste: é o comportamento ESPERADO do
-      // modo restrito — diferente de "Fechados" (visível pra todos, teste
-      // acima), um ticket ATIVO (aberto/em_andamento) — incluindo um recém
-      // REABERTO, que fica sem atendente (assigned_to = NULL) — só aparece
-      // pra quem é do MESMO setor do ticket. Atendente de outro setor não
-      // vê e o cliente entra em hiddenActiveUserIds pra ele.
-      test("ticket REABERTO (reopenTicketIfClosed) fica pendente só pro setor do ticket — outro setor não vê", async () => {
+      // Pedido do usuário: "Pendentes" deve aparecer IDÊNTICO pra todos os
+      // atendentes, igual Fechados — mesmo entre setores diferentes.
+      // ticket.controller.js agora trata status "aberto" igual a
+      // resolvido/cancelado: bypassa o filtro de setor/atribuição.
+      test("ticket PENDENTE (aberto, nunca assumido) de OUTRO setor também aparece — visível pra todos", async () => {
+        const atendenteFinanceiro = { id: "at-fin", nome: "Carla", perfil: "atendente", sector: "financeiro" };
+
+        const created = await request(buildApp(ADMIN)).post("/api/tickets")
+          .send({ userId: "cliente-v", type: "orcamento" }); // sector: vendas
+        const id = created.body.ticket.id;
+
+        // ATENDENTE_VENDAS (mesmo setor) já era esperado ver — confirma que
+        // continua vendo.
+        const resVendas = await request(buildApp(ATENDENTE_VENDAS)).get("/api/tickets");
+        expect(resVendas.body.tickets.find(t => t.id === id)).toBeTruthy();
+
+        // atendenteFinanceiro é de OUTRO setor e nunca assumiu — antes ficava
+        // oculto; agora deve ver igual, pendente é pendente pra todo mundo.
+        const resFinanceiro = await request(buildApp(atendenteFinanceiro)).get("/api/tickets");
+        expect(resFinanceiro.body.tickets.find(t => t.id === id)).toBeTruthy();
+        expect(resFinanceiro.body.hiddenActiveUserIds).not.toContain("cliente-v");
+      });
+
+      // Pedido do usuário: garantir que isso vale também pra um ticket
+      // REABERTO (reopenTicketIfClosed) — cliente manda mensagem de novo
+      // após o atendimento ter sido fechado por outro atendente de outro
+      // setor. Antes o reaberto só aparecia pendente pro setor do ticket;
+      // agora aparece igual pra qualquer atendente, admin, etc.
+      test("ticket REABERTO (reopenTicketIfClosed) aparece como pendente pra TODOS, independente de setor", async () => {
         const outroAtendente = { id: "at-2", nome: "Junior", perfil: "atendente", sector: "vendas" };
         const atendenteFinanceiro = { id: "at-fin", nome: "Carla", perfil: "atendente", sector: "financeiro" };
 
@@ -343,11 +362,13 @@ describe("ticket.routes", () => {
         expect(ticketVendas.assignedTo).toBeFalsy();
         expect(resVendas.body.hiddenActiveUserIds).not.toContain("cliente-w");
 
-        // Atendente de OUTRO setor (financeiro) → não vê, mas sabe que existe
-        // um ticket ativo oculto (não deve reaparecer como "cliente novo")
+        // Atendente de OUTRO setor (financeiro) → agora TAMBÉM vê, igual
+        // qualquer outro atendente (pedido explícito do usuário).
         const resFinanceiro = await request(buildApp(atendenteFinanceiro)).get("/api/tickets");
-        expect(resFinanceiro.body.tickets.find(t => t.id === id)).toBeUndefined();
-        expect(resFinanceiro.body.hiddenActiveUserIds).toContain("cliente-w");
+        const ticketFinanceiro = resFinanceiro.body.tickets.find(t => t.id === id);
+        expect(ticketFinanceiro).toBeTruthy();
+        expect(ticketFinanceiro.status).toBe("aberto");
+        expect(resFinanceiro.body.hiddenActiveUserIds).not.toContain("cliente-w");
 
         // Admin (full access) sempre vê tudo, independente de setor
         const resAdmin = await request(buildApp(ADMIN)).get("/api/tickets");

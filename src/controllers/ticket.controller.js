@@ -75,10 +75,22 @@ async function getTickets(req, res) {
       tickets = antes.filter(ticket => {
         // Pedido do usuário: tickets já FECHADOS (resolvido/cancelado) são
         // histórico — sem disputa de "de quem é" — então aparecem iguais
-        // pra todo mundo, igual um admin veria. A restrição por setor/
-        // atribuição vale só pra tickets ainda ATIVOS (aberto/em_andamento),
-        // que é onde faz sentido não pisar no atendimento de outro atendente.
-        if (ticket.status === "resolvido" || ticket.status === "cancelado") return true;
+        // pra todo mundo, igual um admin veria.
+        //
+        // ATUALIZADO (pedido do usuário): "Pendentes" (status "aberto", sem
+        // atendente ainda) também deve aparecer IDÊNTICO pra todos os
+        // atendentes, igual Fechados — inclusive um ticket recém-reaberto
+        // (reopenTicketIfClosed volta o status pra "aberto" e limpa
+        // assigned_to). Antes, um pendente de OUTRO setor ficava escondido
+        // pro atendente, então dois atendentes viam listas de pendentes
+        // diferentes — o usuário reportou isso ao reabrir um atendimento.
+        // A restrição por setor/atribuição agora vale só pra "em_andamento"
+        // (ticket já ASSUMIDO por alguém) — é aí que faz sentido não expor
+        // o atendimento ativo de outro atendente; um ticket ainda livre não
+        // tem "dono" nenhum pra disputar.
+        if (ticket.status === "resolvido" || ticket.status === "cancelado" || ticket.status === "aberto") {
+          return true;
+        }
 
         const mesmoSetor = (ticket.sector || "geral") === (req.user.sector || "geral");
         const disponivel  = !ticket.assignedTo;

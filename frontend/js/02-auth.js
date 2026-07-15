@@ -48,13 +48,31 @@ async function apiFetch(url, options = {}) {
   const controller = new AbortController();
   let externalAbortHandler = null;
 
+  // BUG CORRIGIDO: toast "A conexão demorou demais" aparecia sem motivo real
+  // ao aceitar/transferir/fechar um atendimento. Causa: openConversation()
+  // cancela (via _openConvAbort.abort()) a própria busca anterior toda vez
+  // que é chamada de novo — e é chamada tanto pela ação em si (aceitar/
+  // transferir/fechar chamam openConversation() após o sucesso) quanto pelo
+  // handler do socket "ticket_atualizado"/"humanmode_atualizado" ecoando de
+  // volta pro MESMO painel que disparou a ação. As duas chamadas quase
+  // simultâneas fazem a 1ª busca ser abortada — um cancelamento deliberado e
+  // saudável, não uma rede lenta — mas o catch abaixo tratava QUALQUER
+  // AbortError como timeout de 20s e mostrava o toast de erro mesmo assim.
+  // Agora só mostra o toast quando quem abortou foi o TIMER interno
+  // (timeout de verdade); um abort vindo de fora (signal externo cancelando
+  // uma busca obsoleta) é silencioso, como já era a intenção original.
+  let timedOut = false;
+
   if (options.signal) {
     if (options.signal.aborted) controller.abort();
     externalAbortHandler = () => controller.abort();
     options.signal.addEventListener("abort", externalAbortHandler, { once: true });
   }
 
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
 
   try {
     const { timeoutMs: _timeoutMs, signal: _signal, ...fetchOptions } = options;
@@ -72,7 +90,7 @@ async function apiFetch(url, options = {}) {
 
     return res;
   } catch (err) {
-    if (err?.name === "AbortError") {
+    if (err?.name === "AbortError" && timedOut) {
       showToast?.("A conexão demorou demais. Tente novamente.", "warning");
     }
     throw err;

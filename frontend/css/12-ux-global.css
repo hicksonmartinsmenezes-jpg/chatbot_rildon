@@ -254,6 +254,12 @@ button,
   gap: 10px;
 }
 
+/* Pedido do usuário: topbar de tabs (Painel/Atendimentos/Histórico/
+   Chatbot) só aparece na aba Dashboard. */
+body.hide-top-tabs #top-tabs-panel {
+  display: none;
+}
+
 .tab {
   background: rgba(255,255,255,.055);
   border: 1px solid var(--border);

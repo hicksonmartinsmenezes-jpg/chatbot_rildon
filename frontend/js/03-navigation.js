@@ -53,6 +53,11 @@ function switchTab(tab, event) {
   // Oculta o painel de abas superiores quando está em Atendimentos
   document.body.classList.toggle("tab-fullscreen", tab === "conversations");
 
+  // Pedido do usuário: o topbar de tabs (Painel/Atendimentos/Histórico/
+  // Chatbot) só deve aparecer na aba Dashboard — nas demais abas some
+  // (a navegação principal já é feita pela sidebar).
+  document.body.classList.toggle("hide-top-tabs", tab !== "dashboard");
+
   if (tab === "dashboard") {
     if (typeof loadTickets === "function") loadTickets();
     if (typeof loadHistory === "function") loadHistory(false);

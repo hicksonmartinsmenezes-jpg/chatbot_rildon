@@ -43,8 +43,11 @@ const MAX_HISTORICO   = 6;   // pares de mensagens mantidos no histórico
 const REQUEST_TIMEOUT = 25000;
 const MAX_TENTATIVAS  = 2;
 
-// 0.65 = natural e variado sem inventar informações — ideal para atendimento conversacional
-const TEMPERATURE = 0.65;
+// 0.5 = ainda natural no texto, mas mais consistente na parte ESTRUTURADA da
+// resposta (intencao/veiculo/peca/pedidoExplicito) — os erros recorrentes de
+// classificação/extração relatados em testes reais pesam mais que a variação
+// de estilo perdida ao descer de 0.65.
+const TEMPERATURE = 0.5;
 // Máximo de tokens por resposta — 512 permite respostas completas sem truncar
 const MAX_TOKENS  = 512;
 
@@ -196,7 +199,7 @@ ${trainingBlock}
 RETORNE SEMPRE JSON EXATO:
 {"resposta":"texto","intencao":"chat","veiculo":null,"peca":null,"pedidoExplicito":false}
 
-"veiculo": preencha APENAS quando intencao for "vendas" E o veículo (marca, modelo e/ou ano) já tiver sido mencionado — na mensagem atual OU em mensagem anterior desta mesma conversa — ex: "Fiat Palio 2025", "uno 2015", "gol quadrado". Isso permite ao sistema pular a pergunta "qual o veículo?" quando já souber a resposta, evitando perguntar de novo algo que o cliente já disse. Se o veículo NÃO foi mencionado em nenhum momento, ou intencao for diferente de "vendas", retorne null. NUNCA invente ou presuma um veículo que o cliente não informou — na dúvida, null.
+"veiculo": preencha APENAS quando intencao for "vendas" E o veículo (marca, modelo e/ou ano) já tiver sido mencionado — na mensagem atual OU em mensagem anterior desta mesma conversa — ex: "Fiat Palio 2025", "uno 2015", "gol quadrado". Isso permite ao sistema pular a pergunta "qual o veículo?" quando já souber a resposta, evitando perguntar de novo algo que o cliente já disse. Se o veículo NÃO foi mencionado em nenhum momento, ou intencao for diferente de "vendas", retorne null. NUNCA invente ou presuma um veículo que o cliente não informou — na dúvida, null. ATENÇÃO: preencher este campo é CÓPIA MECÂNICA do que o cliente escreveu — não depende de você conhecer o modelo. Se o cliente citou marca/modelo/ano, mesmo raro, importado ou recente demais (ex: "Audi A4 2025", "Hilux SW4", "BYD Dolphin"), copie exatamente para o campo. Deixar de preencher quando o cliente JÁ disse o veículo faz o sistema perguntar o veículo DE NOVO — erro recorrente relatado por clientes reais.
 
 "peca": preencha APENAS quando intencao for "vendas" E a peça/produto pedido estiver claro — na mensagem atual ou em mensagem anterior desta conversa — com o nome LIMPO e objetivo da peça, ex: "Motor de partida", "Pastilha de freio dianteira", "Alternador". NUNCA inclua na "peca" saudações ("bom dia"), o veículo (isso já vai no campo "veiculo" acima) ou frases inteiras do cliente — só o nome da peça em si. Se não conseguir identificar uma peça específica com clareza, retorne null (o sistema usa a mensagem original nesse caso).
 
@@ -231,10 +234,16 @@ IMPORTANTE sobre intenção "vendas": só quando "pedidoExplicito" for true o SI
 
 // ─── Extrai JSON da resposta ───────────────────────────────────────────────────
 function _extrairJSON(texto) {
-  try { return JSON.parse(texto); } catch {}
-  const match = texto.match(/\{[\s\S]*?"resposta"[\s\S]*?\}/);
+  // Alguns modelos (principalmente free tier) devolvem o JSON embrulhado em
+  // cerca markdown (```json ... ```) mesmo com response_format/prefill —
+  // remover a cerca antes do parse elimina essa classe inteira de falha.
+  const limpo = texto
+    .replace(/^\s*```(?:json)?\s*/i, "")
+    .replace(/\s*```\s*$/, "");
+  try { return JSON.parse(limpo); } catch {}
+  const match = limpo.match(/\{[\s\S]*?"resposta"[\s\S]*?\}/);
   if (match) { try { return JSON.parse(match[0]); } catch {} }
-  const m = texto.match(/"resposta"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+  const m = limpo.match(/"resposta"\s*:\s*"((?:[^"\\]|\\.)*)"/);
   if (m) return { resposta: m[1], intencao: "chat" };
   return null;
 }
@@ -392,7 +401,11 @@ async function perguntarIA(mensagem, { nomeCliente, historico = [], contexto = {
         : await _chamarGroq(systemPrompt, contents, apiKey);
 
       if (res.status === 429) {
-        const retryAfter = parseInt(res.headers.get("retry-after") || "60", 10);
+        // Cap de 20s: o cliente está com a mensagem "pendurada" esperando —
+        // melhor falhar rápido e cair no fallback determinístico do
+        // main.flow.js do que segurar a resposta por 60s+ como o header
+        // retry-after às vezes pede em free tier.
+        const retryAfter = Math.min(parseInt(res.headers.get("retry-after") || "60", 10), 20);
         logger.warn(`[IA] Rate limit (429) — ${PROVIDER_NAME} — aguardando ${retryAfter}s`);
         if (tentativa < MAX_TENTATIVAS) await new Promise(r => setTimeout(r, retryAfter * 1000));
         continue;

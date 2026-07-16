@@ -563,4 +563,162 @@ describe("mainFlow — intenção vendas com veículo extraído pela IA", () => 
       expect(perguntarIA).toHaveBeenCalled();
     });
   });
+
+  // Melhoria (varredura de IA): a IA às vezes NÃO preenche o campo
+  // estruturado "veiculo" mesmo com o cliente tendo dito marca/modelo/ano
+  // claramente (bug recorrente em testes reais com "Audi A4 2025") — o bot
+  // então perguntava o veículo DE NOVO. Fallback determinístico: regex de
+  // marcas conhecidas na mensagem do cliente, usado só quando a IA retorna
+  // veiculo=null.
+  describe("fallback determinístico de extração de veículo (IA retorna veiculo:null)", () => {
+    test("pedido explícito + nome conhecido + IA falha na extração → fallback pega 'Audi A4 2025' da mensagem e finaliza direto", async () => {
+      sessionService.getSession.mockReturnValue({ sector: "main", customerName: "Hickson Martins" });
+      perguntarIA.mockResolvedValue({
+        resposta: "Vamos registrar seu orçamento!",
+        intencao: "vendas",
+        veiculo: null, // IA falhou em extrair — exatamente o bug recorrente
+        peca: "Motor de partida",
+        pedidoExplicito: true,
+      });
+
+      const resposta = await mainFlow({
+        userId: USER_ID,
+        message: "quero orçamento de motor de partida pro audi a4 2025",
+      });
+
+      expect(vendasFlow.finalizarOrcamento).toHaveBeenCalledWith(
+        USER_ID,
+        { customerName: "Hickson Martins" },
+        "Audi A4 2025",
+        "Motor de partida"
+      );
+      expect(resposta).toContain("Orçamento registrado");
+      expect(resposta).not.toContain(MSG.vendas.PEDIR_VEICULO);
+    });
+
+    test("pergunta de disponibilidade + IA falha na extração → fallback guarda veiculoSugerido pro 'sim' seguinte", async () => {
+      sessionService.getSession.mockReturnValue({ sector: "main", customerName: "Hickson Martins" });
+      perguntarIA.mockResolvedValue({
+        resposta: "Trabalhamos com peças pra várias marcas, incluindo Audi. 😊",
+        intencao: "vendas",
+        veiculo: null,
+        peca: "Motor de partida",
+        pedidoExplicito: false,
+      });
+
+      const resposta = await mainFlow({
+        userId: USER_ID,
+        message: "boa tarde, tem motor de partida para audi a4 2025?",
+      });
+
+      expect(resposta).toContain(MSG.vendas.CONFIRMAR_ORCAMENTO);
+      expect(sessionService.updateSession).toHaveBeenCalledWith(
+        USER_ID,
+        expect.objectContaining({
+          veiculoSugerido: "Audi A4 2025",
+          pecaSugerido: "Motor de partida",
+          aguardandoConfirmacaoOrcamento: true,
+        })
+      );
+    });
+
+    test("stopword corta o modelo: 'tem audi na loja?' extrai só 'Audi', não 'Audi Na Loja'", async () => {
+      sessionService.getSession.mockReturnValue({ sector: "main", customerName: "Ana" });
+      perguntarIA.mockResolvedValue({
+        resposta: "Sim, trabalhamos com a linha Audi. 😊",
+        intencao: "vendas",
+        veiculo: null,
+        peca: null,
+        pedidoExplicito: false,
+      });
+
+      await mainFlow({ userId: USER_ID, message: "tem peça de audi na loja?" });
+
+      expect(sessionService.updateSession).toHaveBeenCalledWith(
+        USER_ID,
+        expect.objectContaining({ veiculoSugerido: "Audi" })
+      );
+    });
+
+    test("mensagem sem marca conhecida → fallback não inventa nada (veiculoSugerido null, comportamento antigo)", async () => {
+      sessionService.getSession.mockReturnValue({ sector: "main", customerName: "Ana" });
+      perguntarIA.mockResolvedValue({
+        resposta: "Temos sim! 😊",
+        intencao: "vendas",
+        veiculo: null,
+        peca: null,
+        pedidoExplicito: false,
+      });
+
+      await mainFlow({ userId: USER_ID, message: "tem pastilha de freio?" });
+
+      expect(sessionService.updateSession).toHaveBeenCalledWith(
+        USER_ID,
+        expect.objectContaining({ veiculoSugerido: null })
+      );
+    });
+
+    test("campo estruturado da IA tem prioridade sobre o fallback quando ambos existem", async () => {
+      sessionService.getSession.mockReturnValue({ sector: "main", customerName: "Hickson Martins" });
+      perguntarIA.mockResolvedValue({
+        resposta: "Vamos lá!",
+        intencao: "vendas",
+        veiculo: "Fiat Palio Weekend 2019", // IA extraiu — mais completo que o regex
+        peca: "Alternador",
+        pedidoExplicito: true,
+      });
+
+      await mainFlow({ userId: USER_ID, message: "quero alternador pro fiat palio" });
+
+      expect(vendasFlow.finalizarOrcamento).toHaveBeenCalledWith(
+        USER_ID,
+        { customerName: "Hickson Martins" },
+        "Fiat Palio Weekend 2019",
+        "Alternador"
+      );
+    });
+  });
+
+  // Melhoria (varredura de IA): a rede de segurança de pedidoExplicito agora
+  // cobre também "vende(m)", "possui(em)" e "encontro" — mesmas perguntas de
+  // disponibilidade, só com outros verbos. Continua sendo downgrade-only.
+  describe("rede de segurança ampliada — 'vendem X?' e 'possui X?' também não finalizam sozinhas", () => {
+    test("'vocês vendem X?' com pedidoExplicito:true errado → pede confirmação em vez de finalizar", async () => {
+      sessionService.getSession.mockReturnValue({ sector: "main", customerName: "Hickson Martins" });
+      perguntarIA.mockResolvedValue({
+        resposta: "Vendemos sim!",
+        intencao: "vendas",
+        veiculo: "Hilux 2020",
+        peca: "Bomba de combustível",
+        pedidoExplicito: true, // IA errou — é só pergunta de disponibilidade
+      });
+
+      const resposta = await mainFlow({
+        userId: USER_ID,
+        message: "vocês vendem bomba de combustível pra hilux 2020?",
+      });
+
+      expect(vendasFlow.finalizarOrcamento).not.toHaveBeenCalled();
+      expect(resposta).toContain(MSG.vendas.CONFIRMAR_ORCAMENTO);
+    });
+
+    test("'possui X aí?' com pedidoExplicito:true errado → também não finaliza", async () => {
+      sessionService.getSession.mockReturnValue({ sector: "main", customerName: "Ana" });
+      perguntarIA.mockResolvedValue({
+        resposta: "Temos sim!",
+        intencao: "vendas",
+        veiculo: "Onix 2021",
+        peca: "Farol dianteiro",
+        pedidoExplicito: true,
+      });
+
+      const resposta = await mainFlow({
+        userId: USER_ID,
+        message: "possui farol dianteiro do onix 2021 aí?",
+      });
+
+      expect(vendasFlow.finalizarOrcamento).not.toHaveBeenCalled();
+      expect(resposta).toContain(MSG.vendas.CONFIRMAR_ORCAMENTO);
+    });
+  });
 });

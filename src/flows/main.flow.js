@@ -51,6 +51,44 @@ const PALAVRAS_ENCERRAR = new Set([
 // Sectors gerenciados — qualquer outro é inválido e deve ser resetado
 const SECTORS_VALIDOS = new Set(["vendas", "crediario", "gestao", "atendente"]);
 
+// ── Fallback determinístico de extração de veículo ─────────────────────────────
+// BUG RECORRENTE (testes reais com "Audi A4 2025"): a IA às vezes NÃO preenche
+// o campo estruturado "veiculo" mesmo com o cliente tendo dito marca/modelo/ano
+// claramente — e o bot pergunta "qual o veículo?" de novo, irritando o cliente.
+// Este fallback só roda quando a IA retorna veiculo=null: procura uma marca
+// conhecida na mensagem e captura até 3 tokens seguintes como modelo/ano,
+// parando em stopwords ("tem audi na loja?" → só "Audi", não "Audi Na Loja").
+const MARCAS_VEICULO = [
+  "volkswagen", "vw", "chevrolet", "fiat", "ford", "toyota", "honda", "hyundai",
+  "renault", "nissan", "jeep", "peugeot", "citroen", "audi", "bmw", "mercedes",
+  "kia", "mitsubishi", "suzuki", "land rover", "volvo", "scania", "iveco",
+  "ram", "dodge", "chery", "jac", "byd", "gwm", "subaru", "troller", "agrale",
+  "yamaha", "kawasaki", "shineray", "haojue", "dafra",
+];
+const MARCAS_VEICULO_RE = new RegExp(
+  `\\b(${MARCAS_VEICULO.join("|")})\\b((?:\\s+[a-z0-9.-]{1,15}){0,3})`
+);
+const STOPWORDS_MODELO = new Set([
+  "na", "no", "de", "da", "do", "dos", "das", "pra", "para", "pro", "meu",
+  "minha", "um", "uma", "ai", "aqui", "la", "voces", "vcs", "tem", "loja",
+  "disponivel", "estoque", "e", "ou", "com", "sem", "por", "favor",
+]);
+
+function extrairVeiculoFallback(message) {
+  const msg = normalizar(sanitizarTexto(message)).replace(/[?!.,;:]/g, " ");
+  const m = msg.match(MARCAS_VEICULO_RE);
+  if (!m) return null;
+  const partes = [m[1]];
+  for (const token of (m[2] || "").trim().split(/\s+/).filter(Boolean)) {
+    if (STOPWORDS_MODELO.has(token)) break;
+    partes.push(token);
+  }
+  // Capitaliza cada token ("audi a4 2025" → "Audi A4 2025")
+  return partes
+    .map(t => t.charAt(0).toUpperCase() + t.slice(1))
+    .join(" ");
+}
+
 // ── Steps válidos por sector ───────────────────────────────────────────────────
 const STEPS_POR_SECTOR = {
   gestao:     ["aguardando_nome", "aguardando_motivo_gestao"],
@@ -529,7 +567,12 @@ async function _mainFlowInterno({ userId, message }) {
         // limiar já usado em vendas.flow.js pra pular a pergunta de peça),
         // pulamos também a pergunta "qual o veículo?".
         const produtoDescritivo = validarTamanho(normalizar(sanitizarTexto(message)), 5).ok;
-        const veiculoExtraido   = produtoDescritivo ? (resultado.veiculo || null) : null;
+        // Preferência: campo estruturado da IA; fallback: regex de marcas
+        // conhecidas (ver extrairVeiculoFallback acima) — cobre os casos em
+        // que a IA falha em extrair modelos raros/importados ("Audi A4 2025").
+        const veiculoExtraido   = produtoDescritivo
+          ? (resultado.veiculo || extrairVeiculoFallback(message))
+          : null;
         // Pedido do usuário (relatado após o primeiro ajuste): a descrição
         // do ticket ficava com a frase inteira do cliente, saudação
         // incluída (ex: "Produto: Bom dia, motor de partida fiat 2025").
@@ -559,7 +602,7 @@ async function _mainFlowInterno({ userId, message }) {
         // IA respondeu — só pode DOWNGRADE (nunca cria ticket sem
         // confirmação a mais), nunca upgrade, então o pior caso é pedir
         // "digite sim" uma vez a mais, nunca criar ticket sem consentimento.
-        const PERGUNTA_DISPONIBILIDADE_RE = /\b(tem|te m|voce tem|voces tem|vc tem|vcs tem|trabalham com|existe|ha)\b.*\?\s*$/;
+        const PERGUNTA_DISPONIBILIDADE_RE = /\b(tem|te m|voce tem|voces tem|vc tem|vcs tem|trabalham com|existe|ha|vende|vendem|possui|possuem|encontro)\b.*\?\s*$/;
         const pareceApenasPerguntaDisponibilidade = PERGUNTA_DISPONIBILIDADE_RE.test(normalizar(message));
         const pedidoExplicitoConfirmado = resultado.pedidoExplicito && !pareceApenasPerguntaDisponibilidade;
 

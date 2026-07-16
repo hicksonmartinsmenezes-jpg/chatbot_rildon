@@ -502,7 +502,12 @@ async function _mainFlowInterno({ userId, message }) {
             veiculoSugerido: veiculoExtraido || session.veiculoSugerido || null,
             pecaSugerido:    pecaExtraida    || session.pecaSugerido    || null,
           });
-          return resposta + "\n\n" + menuCompacto();
+          // Pedido do usuário: em vez do menu completo (1-4), pergunta
+          // direto se o cliente quer o orçamento — mais natural depois de
+          // uma pergunta de disponibilidade ("tem X pra Y?") do que forçar
+          // escolher "1" de novo. "sim" cai no default/IA normalmente, que
+          // já reconhece como confirmação (ver instrução em ai.service.js).
+          return resposta + "\n\n" + MSG.vendas.CONFIRMAR_ORCAMENTO;
         }
 
         // pedidoExplicito confirmado — usa o que a IA extraiu agora, ou o

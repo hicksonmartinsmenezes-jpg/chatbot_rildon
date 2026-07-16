@@ -254,6 +254,10 @@ describe("mainFlow — intenção vendas com veículo extraído pela IA", () => 
       expect(vendasFlow.finalizarOrcamento).not.toHaveBeenCalled();
       expect(resposta).not.toContain("Orçamento registrado");
       expect(resposta).toContain("Quer que eu registre o orçamento?");
+      // Pedido do usuário: em vez do menu completo (1-4), pergunta direto se
+      // quer o orçamento — mais natural após uma pergunta de disponibilidade.
+      expect(resposta).toContain(MSG.vendas.CONFIRMAR_ORCAMENTO);
+      expect(resposta).not.toContain("1 - Orçamento / Falar com atendente");
 
       expect(sessionService.updateSession).toHaveBeenCalledWith(
         USER_ID,

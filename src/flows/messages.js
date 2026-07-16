@@ -19,6 +19,13 @@ const MSG = {
     PEDIR_VEICULO:  "🚗 Qual o *veículo*? _(marca, modelo e ano)_\n_Digite *pular* se não se aplicar._",
     PEDIR_ORCAMENTO: "🔧 Qual *peça* você precisa?",
 
+    // Pedido do usuário: quando o cliente só faz uma pergunta de
+    // disponibilidade ("tem X pra Y?"), em vez de despejar o menu
+    // completo (1-4), pergunta direto se ele quer o orçamento — mais
+    // natural que forçar o cliente a escolher "1" de novo depois de já
+    // ter perguntado sobre a peça.
+    CONFIRMAR_ORCAMENTO: "Deseja que eu já registre esse orçamento? Digite *sim* para confirmar ou *0* para voltar ao menu.",
+
     ORCAMENTO_SOLICITADO: (ticket) => {
       const veiculoMatch = ticket.description?.match(/Veículo:\s*([^|]+)/);
       const pecaMatch    = ticket.description?.match(/Produto:\s*(.+)/);

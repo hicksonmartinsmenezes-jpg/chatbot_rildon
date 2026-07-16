@@ -69,11 +69,21 @@ function installFakePool(state) {
       if (!t) return { rows: [] };
       t.status = params[0];
       if (/assigned_to = NULL/.test(sql)) { t.assigned_to = null; t.assigned_to_name = null; }
+      // Reabrir (status="aberto") também zera os campos de satisfação —
+      // ver updateStatus em ticket.repository.js.
+      if (/satisfaction_asked_at = NULL/.test(sql)) {
+        t.satisfaction_rating = null;
+        t.satisfaction_asked_at = null;
+        t.satisfaction_rated_at = null;
+      }
       return { rows: [t] };
     }
     if (/^UPDATE tickets\s+SET satisfaction_asked_at/.test(sql)) {
       const t = findTicket(state, params[0]);
-      if (!t) return { rows: [] };
+      // Simula a reivindicação atômica real (WHERE ... AND
+      // satisfaction_asked_at IS NULL): se já foi pedida antes, o UPDATE
+      // não afeta nenhuma linha — RETURNING vazio.
+      if (!t || t.satisfaction_asked_at) return { rows: [] };
       t.satisfaction_asked_at = new Date().toISOString();
       return { rows: [t] };
     }
@@ -132,6 +142,29 @@ describe("patchTicket — não reenvia pesquisa de satisfação ao fechar um tic
     expect(primeiro.status).toBe(200);
     expect(segundo.status).toBe(200); // não é erro — só não deve reenviar a pesquisa
 
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  // O teste anterior ("clicar 2x seguidas") já passa graças ao atalho
+  // "jaEstavaResolvido" em patchTicket — mas esse atalho sozinho não
+  // fecha a race real (2 requisições que leem o ticket ANTES de
+  // qualquer uma escrever, ex: vindas de botões/abas diferentes). Este
+  // teste dispara as 2 requisições em paralelo de propósito (Promise.all),
+  // sem esperar a 1ª terminar antes de iniciar a 2ª — só a reivindicação
+  // atômica em askSatisfaction (ticket.repository.js) garante 1 envio só.
+  test("2 requisições PATCH resolvido disparadas em paralelo (sem esperar uma terminar) → pesquisa só 1x", async () => {
+    const app = buildApp(ADMIN);
+    const created = await request(app).post("/api/tickets")
+      .send({ userId: "5511900000099@s.whatsapp.net", type: "orcamento" });
+    const id = created.body.ticket.id;
+
+    const [r1, r2] = await Promise.all([
+      request(app).patch(`/api/tickets/${id}`).send({ status: "resolvido" }),
+      request(app).patch(`/api/tickets/${id}`).send({ status: "resolvido" }),
+    ]);
+
+    expect(r1.status).toBe(200);
+    expect(r2.status).toBe(200);
     expect(sendMessage).toHaveBeenCalledTimes(1);
   });
 

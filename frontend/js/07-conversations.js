@@ -519,7 +519,14 @@ async function fecharTicketConv(id) {
     message:     "Deseja fechar este atendimento? O ticket será marcado como resolvido.",
     confirmText: "Fechar",
     danger:      false,
-    onConfirm:   async () => {
+    // BUG CORRIGIDO (relatado pelo usuário): este botão de fechar (tela de
+    // conversa) é um caminho de código SEPARADO do botão "Resolvido" da
+    // lista de tickets (06-tickets.js) — cada um disparava seu próprio
+    // PATCH sem nenhuma trava. runExclusive com a MESMA chave usada lá
+    // (`mudarStatus:${id}`) faz os dois caminhos dedup entre si: clicar
+    // fechar na conversa E na lista pro mesmo ticket, ou clicar 2x rápido
+    // aqui, reaproveita a mesma requisição em voo em vez de disparar outra.
+    onConfirm:   async () => runExclusive(`mudarStatus:${id}`, async () => {
       try {
         const res = await apiFetch(`${BASE}/api/tickets/${id}`, {
           method:  "PATCH",
@@ -538,7 +545,7 @@ async function fecharTicketConv(id) {
       } catch (err) {
         showToast(`❌ ${err.message}`);
       }
-    }
+    })
   });
 }
 

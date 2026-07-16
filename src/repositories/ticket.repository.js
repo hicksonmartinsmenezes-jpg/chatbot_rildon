@@ -170,6 +170,15 @@ async function updateStatus(id, status) {
   // (Fechar o ticket, resolvido/cancelado, continua preservando
   // assigned_to_name de propósito — é usado para estatísticas/histórico de
   // quem atendeu, ex. dashboard "porAtendente".)
+  //
+  // BUG CORRIGIDO (relatado pelo usuário, achado ao testar o fix da
+  // pesquisa em dobro): satisfaction_asked_at nunca era limpo ao reabrir —
+  // então um cliente atendido, fechado e reaberto (novo episódio de
+  // atendimento) NUNCA mais recebia a pesquisa de satisfação depois da
+  // 1ª vez, porque o guard atômico em askSatisfaction via
+  // satisfaction_asked_at já preenchido pra sempre. Reabrir também zera os
+  // campos de satisfação — é um atendimento novo, deve poder gerar uma
+  // pesquisa nova quando fechar de novo.
   const reabrindo = status === "aberto";
 
   const result = await pool.query(
@@ -177,7 +186,7 @@ async function updateStatus(id, status) {
     UPDATE tickets
     SET status = $1,
         updated_at = NOW()
-        ${reabrindo ? ", assigned_to = NULL, assigned_to_name = NULL" : ""}
+        ${reabrindo ? ", assigned_to = NULL, assigned_to_name = NULL, satisfaction_rating = NULL, satisfaction_asked_at = NULL, satisfaction_rated_at = NULL" : ""}
     WHERE ${idOrProtocolWhere(idStr, 2)}
     RETURNING *
     `,
@@ -329,13 +338,27 @@ async function findByUserIds(userIds) {
 // Marca a pesquisa de satisfação como enviada (chamado ao fechar o
 // ticket). satisfaction_asked_at é o que define "pesquisa pendente" em
 // message.service.js — sem tabela nova, o próprio ticket carrega o estado.
+//
+// BUG CORRIGIDO (relatado pelo usuário): existem DOIS botões de "fechar"
+// no painel (lista de tickets em 06-tickets.js e a tela de conversa em
+// 07-conversations.js), cada um disparando seu próprio PATCH — se dois
+// cliques (em qualquer combinação dos dois botões, ou 2 abas abertas)
+// chegassem quase juntos, ambas as requisições liam o ticket como "ainda
+// não resolvido" ANTES de qualquer uma commitar (race de leitura-antes-
+// de-escrever), e as duas mandavam a pesquisa de satisfação — cliente
+// recebia "De 1 a 5..." duas vezes. A trava no frontend (runExclusive)
+// ajuda, mas não fecha a race entre abas/dispositivos diferentes — a
+// garantia real precisa estar no banco. "AND satisfaction_asked_at IS
+// NULL" faz esse UPDATE ser a reivindicação atômica: só a requisição que
+// realmente conseguir gravar a linha (RETURNING não vazio) é que deve
+// mandar a mensagem — ver enviarPesquisaSatisfacao em ticket.controller.js.
 async function askSatisfaction(id) {
   const idStr = String(id);
   const result = await pool.query(
     `
     UPDATE tickets
     SET satisfaction_asked_at = NOW()
-    WHERE ${idOrProtocolWhere(idStr, 1)}
+    WHERE ${idOrProtocolWhere(idStr, 1)} AND satisfaction_asked_at IS NULL
     RETURNING *
     `,
     [idStr]

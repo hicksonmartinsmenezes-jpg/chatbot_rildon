@@ -302,9 +302,22 @@ async function enviarPesquisaSatisfacao(ticket) {
     const template = settings?.atendimento?.mensagemPesquisaSatisfacao;
     if (!template || !template.trim()) return;
 
-    const sent = await sendMessage(ticket.userId, template);
+    // BUG CORRIGIDO (relatado pelo usuário): o guard "jaEstavaResolvido"
+    // em patchTicket (acima) ajuda no caso comum, mas é check-then-act —
+    // duas requisições de fechamento quase simultâneas (ex: botão da
+    // lista de tickets E botão da tela de conversa, ou 2 abas) podiam
+    // AMBAS ler o ticket como "ainda não resolvido" antes de qualquer uma
+    // gravar, e ambas mandavam a pesquisa. Agora a reivindicação é feita
+    // ANTES de enviar, direto no banco (askSatisfaction só grava se
+    // satisfaction_asked_at ainda for NULL — ver ticket.repository.js) —
+    // só quem realmente conseguir a reivindicação atômica manda a
+    // mensagem. Requer a migration 015 aplicada (satisfaction_asked_at);
+    // sem ela, esta chamada falha e cai no catch — a pesquisa não é
+    // enviada até a migration rodar (melhor que reenviar em dobro).
+    const claimed = await ticketRepository.askSatisfaction(ticket.id);
+    if (!claimed) return; // outra requisição já reivindicou o envio
 
-    await ticketRepository.askSatisfaction(ticket.id);
+    const sent = await sendMessage(ticket.userId, template);
 
     const historyItem = await saveHistory({
       userId: ticket.userId,

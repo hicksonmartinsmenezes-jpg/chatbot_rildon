@@ -247,3 +247,47 @@ describe("stats", () => {
     expect(result).toEqual(row);
   });
 });
+
+// Bug relatado pelo usuário: o painel tem DOIS botões de "fechar" (lista
+// de tickets e tela de conversa), cada um disparando seu próprio PATCH
+// sem trava entre si — 2 cliques quase simultâneos (em qualquer
+// combinação) podiam ambos ler o ticket como "pesquisa ainda não
+// enviada" antes de qualquer um gravar, e o cliente recebia a pergunta
+// de satisfação 2 vezes. askSatisfaction agora inclui "AND
+// satisfaction_asked_at IS NULL" no UPDATE — a reivindicação vira atômica
+// no banco: só quem realmente conseguir gravar a linha (RETURNING não
+// vazio) deve mandar a mensagem (ver enviarPesquisaSatisfacao em
+// ticket.controller.js).
+describe("askSatisfaction", () => {
+  test("SQL inclui 'AND satisfaction_asked_at IS NULL' — reivindicação atômica, não só um UPDATE incondicional", async () => {
+    pool.query.mockResolvedValueOnce({ rows: [{ id: 42, satisfaction_asked_at: new Date() }] });
+
+    await repo.askSatisfaction(ID);
+
+    const [sql, params] = pool.query.mock.calls[0];
+    expect(sql).toMatch(/SET satisfaction_asked_at = NOW\(\)/);
+    expect(sql).toMatch(/AND satisfaction_asked_at IS NULL/);
+    expect(params).toEqual([ID]);
+  });
+
+  test("RETURNING vazio (já reivindicado por outra requisição) → retorna null, não um ticket", async () => {
+    // Simula a 2ª de duas requisições concorrentes: o WHERE não bate mais
+    // porque a 1ª já gravou satisfaction_asked_at.
+    pool.query.mockResolvedValueOnce({ rows: [] });
+
+    const result = await repo.askSatisfaction(ID);
+
+    expect(result).toBeNull();
+  });
+
+  test("reivindicação bem-sucedida retorna o ticket mapeado", async () => {
+    pool.query.mockResolvedValueOnce({
+      rows: [{ id: 42, protocolo: PROTOCOLO, user_id: "u1", status: "resolvido", satisfaction_asked_at: new Date() }]
+    });
+
+    const result = await repo.askSatisfaction(ID);
+
+    expect(result).toMatchObject({ id: 42, protocolo: PROTOCOLO, status: "resolvido" });
+    expect(result.satisfactionAskedAt).toBeTruthy();
+  });
+});

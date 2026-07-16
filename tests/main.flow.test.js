@@ -1,0 +1,164 @@
+/**
+ * Testes de main.flow.js — foco no roteamento da intenção "vendas" quando a
+ * IA já extrai o veículo da própria mensagem inicial (pedido do usuário:
+ * "motor de partida fiat palio 2025" não deveria perguntar de novo "qual o
+ * veículo?" já que o cliente disse tudo de uma vez).
+ *
+ * vendas.flow.js é mockado por inteiro aqui — o handoff (main.flow.js chama
+ * vendasFlow.finalizarOrcamento com os argumentos certos, ou guarda
+ * veiculoInicial/produtoInicial na sessão pra vendas.flow.js pegar depois)
+ * é o que se testa neste arquivo. O comportamento REAL de vendas.flow.js
+ * (o que ele faz com veiculoInicial) é coberto em tests/vendas.flow.test.js.
+ */
+jest.mock("../src/database/postgres", () => ({ query: jest.fn().mockResolvedValue({ rows: [] }) }));
+jest.mock("../src/services/session.service", () => ({
+  getSession: jest.fn(),
+  updateSession: jest.fn().mockResolvedValue(undefined),
+  clearSession: jest.fn().mockResolvedValue(undefined),
+  finalizarComTicket: jest.fn().mockResolvedValue(undefined),
+}));
+jest.mock("../src/services/ticket.service", () => ({ createTicket: jest.fn() }));
+jest.mock("../src/services/notificacao.service", () => ({
+  notificarAtendente: jest.fn(),
+  notificarSeDisponivel: jest.fn(),
+}));
+jest.mock("../src/services/ai.service", () => ({ perguntarIA: jest.fn() }));
+jest.mock("../src/services/botConfig.service", () => ({
+  getBotConfig: jest.fn().mockResolvedValue({ iaAtiva: true }),
+}));
+jest.mock("../src/flows/vendas.flow", () => {
+  const fn = jest.fn().mockResolvedValue(null);
+  fn.finalizarOrcamento = jest.fn().mockResolvedValue("✅ *Orçamento registrado!* Protocolo #2026-0099");
+  return fn;
+});
+jest.mock("../src/flows/crediario.flow", () => jest.fn().mockResolvedValue(null));
+
+const sessionService = require("../src/services/session.service");
+const { perguntarIA } = require("../src/services/ai.service");
+const vendasFlow = require("../src/flows/vendas.flow");
+const MSG = require("../src/flows/messages");
+const mainFlow = require("../src/flows/main.flow");
+
+const USER_ID = "5511999999999@s.whatsapp.net";
+
+describe("mainFlow — intenção vendas com veículo extraído pela IA", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  test("nome já conhecido + IA extrai o veículo → finaliza o orçamento direto, sem perguntar veículo", async () => {
+    sessionService.getSession.mockReturnValue({ sector: "main", customerName: "Hickson Martins" });
+    perguntarIA.mockResolvedValue({
+      resposta: "Claro, posso te ajudar com isso! 🔧",
+      intencao: "vendas",
+      veiculo: "Fiat Palio 2025",
+    });
+
+    const resposta = await mainFlow({ userId: USER_ID, message: "motor de partida fiat palio 2025" });
+
+    expect(vendasFlow.finalizarOrcamento).toHaveBeenCalledWith(
+      USER_ID,
+      { customerName: "Hickson Martins" },
+      "Fiat Palio 2025",
+      "motor de partida fiat palio 2025"
+    );
+    expect(resposta).toContain("Claro, posso te ajudar com isso!");
+    expect(resposta).toContain("Orçamento registrado");
+    expect(resposta).not.toContain(MSG.vendas.PEDIR_VEICULO);
+    expect(resposta).not.toContain("Qual o *veículo*");
+
+    // vendasFlow "normal" (sub-menu/perguntas) não deve ter sido chamado —
+    // só o atalho finalizarOrcamento.
+    expect(vendasFlow).not.toHaveBeenCalled();
+  });
+
+  test("persiste o histórico da IA ANTES de finalizar (finalizarComTicket precisa ver a troca atual)", async () => {
+    sessionService.getSession.mockReturnValue({ sector: "main", customerName: "Hickson Martins" });
+    perguntarIA.mockResolvedValue({
+      resposta: "Fechado!",
+      intencao: "vendas",
+      veiculo: "Gol 2018",
+    });
+
+    await mainFlow({ userId: USER_ID, message: "alternador gol 2018" });
+
+    const updateCallOrder = sessionService.updateSession.mock.invocationCallOrder[0];
+    const finalizarCallOrder = vendasFlow.finalizarOrcamento.mock.invocationCallOrder[0];
+    expect(updateCallOrder).toBeLessThan(finalizarCallOrder);
+
+    expect(sessionService.updateSession).toHaveBeenCalledWith(
+      USER_ID,
+      expect.objectContaining({ customerName: "Hickson Martins" })
+    );
+  });
+
+  test("nome AINDA não conhecido + IA extrai veículo → guarda veiculoInicial/produtoInicial e pergunta só o nome (não finaliza ainda)", async () => {
+    sessionService.getSession.mockReturnValue({ sector: "main" });
+    perguntarIA.mockResolvedValue({
+      resposta: "Posso te ajudar com o orçamento!",
+      intencao: "vendas",
+      veiculo: "Onix 2020",
+    });
+
+    const resposta = await mainFlow({ userId: USER_ID, message: "pastilha de freio onix 2020" });
+
+    expect(vendasFlow.finalizarOrcamento).not.toHaveBeenCalled();
+    expect(resposta).toContain(MSG.vendas.PEDIR_NOME);
+
+    expect(sessionService.updateSession).toHaveBeenCalledWith(
+      USER_ID,
+      expect.objectContaining({
+        sector: "vendas",
+        step: "aguardando_nome",
+        produtoInicial: "pastilha de freio onix 2020",
+        veiculoInicial: "Onix 2020",
+      })
+    );
+  });
+
+  test("IA NÃO extrai veículo (retorna null) → comportamento antigo preservado (pergunta veículo quando nome já é conhecido)", async () => {
+    sessionService.getSession.mockReturnValue({ sector: "main", customerName: "Ana" });
+    perguntarIA.mockResolvedValue({
+      resposta: "Posso ajudar!",
+      intencao: "vendas",
+      veiculo: null,
+    });
+
+    const resposta = await mainFlow({ userId: USER_ID, message: "preciso de uma buzina" });
+
+    expect(vendasFlow.finalizarOrcamento).not.toHaveBeenCalled();
+    expect(resposta).toContain(MSG.vendas.PEDIR_VEICULO);
+    expect(sessionService.updateSession).toHaveBeenCalledWith(
+      USER_ID,
+      expect.objectContaining({ sector: "vendas", step: "aguardando_veiculo", produtoInicial: "preciso de uma buzina" })
+    );
+  });
+
+  test("mensagem curta demais (< 5 chars normalizados) não conta como produto descritivo mesmo com veículo extraído", async () => {
+    sessionService.getSession.mockReturnValue({ sector: "main", customerName: "Ana" });
+    // Cenário hipotético: IA extrai veículo de uma mensagem quase vazia — não
+    // deveria confiar nisso pra pular a pergunta (mesmo limiar de
+    // vendas.flow.js: >=5 chars).
+    perguntarIA.mockResolvedValue({
+      resposta: "Oi!",
+      intencao: "vendas",
+      veiculo: "Gol",
+    });
+
+    await mainFlow({ userId: USER_ID, message: "oi" });
+
+    expect(vendasFlow.finalizarOrcamento).not.toHaveBeenCalled();
+  });
+
+  test("provedor de IA sem suporte a 'veiculo' (campo undefined) não quebra — trata como não extraído", async () => {
+    sessionService.getSession.mockReturnValue({ sector: "main", customerName: "Carla" });
+    // Simula um mock antigo de perguntarIA que não retorna o campo veiculo
+    // (compatibilidade retroativa).
+    perguntarIA.mockResolvedValue({ resposta: "Posso ajudar!", intencao: "vendas" });
+
+    const resposta = await mainFlow({ userId: USER_ID, message: "preciso de um farol" });
+
+    expect(vendasFlow.finalizarOrcamento).not.toHaveBeenCalled();
+    expect(resposta).toContain(MSG.vendas.PEDIR_VEICULO);
+  });
+});

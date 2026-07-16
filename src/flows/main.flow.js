@@ -2,7 +2,7 @@ const { getSession, clearSession, updateSession, finalizarComTicket } = require(
 const { createTicket }                                      = require("../services/ticket.service");
 const { estaEmHorarioDeAtendimento, mensagemForaDeHorario } = require("../utils/horario");
 const { notificarAtendente, notificarSeDisponivel }         = require("../services/notificacao.service");
-const { validarNome, sanitizarTexto, normalizar }           = require("../utils/validators");
+const { validarNome, sanitizarTexto, normalizar, validarTamanho } = require("../utils/validators");
 const { perguntarIA }                                       = require("../services/ai.service");
 const { getBotConfig }                                      = require("../services/botConfig.service");
 const logger                                                = require("../utils/logger");
@@ -469,12 +469,47 @@ async function _mainFlowInterno({ userId, message }) {
       // "produtoInicial"; vendas.flow.js usa ela pra pular essa pergunta
       // redundante quando já é descritiva o suficiente.
       if (intencao === "vendas") {
+        // Pedido do usuário: quando o cliente já menciona peça + veículo na
+        // 1ª mensagem (ex: "motor de partida fiat palio 2025"), a IA tenta
+        // extrair o veículo (campo "veiculo" — ver ai.service.js). Se
+        // conseguir E a mensagem for descritiva o bastante como peça (mesmo
+        // limiar já usado em vendas.flow.js pra pular a pergunta de peça),
+        // pulamos também a pergunta "qual o veículo?".
+        const produtoDescritivo = validarTamanho(normalizar(sanitizarTexto(message)), 5).ok;
+        const veiculoExtraido   = produtoDescritivo ? (resultado.veiculo || null) : null;
+
+        if (veiculoExtraido && nomeSalvo) {
+          // Nome + veículo + peça já conhecidos — finaliza o orçamento
+          // direto, sem nenhuma pergunta extra. Persiste o histórico ANTES
+          // de finalizar, pra finalizarComTicket (chamado dentro de
+          // finalizarOrcamento) já ver esta troca ao anexar a confirmação.
+          await updateSession(userId, { aiHistorico: novoHistorico, _iaFalhas: 0, customerName: nomeSalvo });
+          const confirmacao = await vendasFlow.finalizarOrcamento(
+            userId,
+            { customerName: nomeSalvo },
+            veiculoExtraido,
+            message
+          );
+          return resposta + "\n\n" + confirmacao;
+        }
+
         if (nomeSalvo) {
           const primeiroNome = nomeSalvo.trim().split(" ")[0];
           await updateSession(userId, { sector: "vendas", step: "aguardando_veiculo", customerName: nomeSalvo, produtoInicial: message, aiHistorico: novoHistorico, _iaFalhas: 0 });
           return resposta + "\n\n" + `Certo, *${primeiroNome}*! ` + MSG.vendas.PEDIR_VEICULO + MSG.ESCAPE_DICA;
         }
-        await updateSession(userId, { sector: "vendas", step: "aguardando_nome", produtoInicial: message, aiHistorico: novoHistorico, _iaFalhas: 0 });
+
+        // Sem nome ainda — guarda o veículo já extraído (pode ser null) pra
+        // vendas.flow.js pular a pergunta de veículo assim que o nome for
+        // informado (ver step "aguardando_nome" em vendas.flow.js).
+        await updateSession(userId, {
+          sector: "vendas",
+          step: "aguardando_nome",
+          produtoInicial: message,
+          veiculoInicial: veiculoExtraido,
+          aiHistorico: novoHistorico,
+          _iaFalhas: 0
+        });
         return resposta + "\n\n" + MSG.vendas.PEDIR_NOME + MSG.ESCAPE_DICA;
       }
 

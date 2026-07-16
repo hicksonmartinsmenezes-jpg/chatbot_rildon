@@ -62,8 +62,23 @@ async function vendasFlow(message, userId, session) {
       if (!validarNome(sanitizarTexto(message))) {
         return MSG.NOME_INVALIDO + MSG.ESCAPE_DICA;
       }
+      const nomeSanitizado = sanitizarTexto(message);
+
+      // Pedido do usuário: se a IA já identificou o veículo na mensagem
+      // inicial (ex: "motor de partida fiat palio 2025" → veiculoInicial=
+      // "Fiat Palio 2025", setado em main.flow.js), não repete a pergunta
+      // "qual o veículo?" — já temos peça + veículo, faltava só o nome.
+      if (session.veiculoInicial) {
+        return _finalizarOrcamento(
+          userId,
+          { ...session, customerName: nomeSanitizado },
+          session.veiculoInicial,
+          session.produtoInicial
+        );
+      }
+
       await updateSession(userId, {
-        customerName: sanitizarTexto(message),
+        customerName: nomeSanitizado,
         step: "aguardando_veiculo",
       });
       return MSG.vendas.PEDIR_VEICULO;
@@ -129,3 +144,8 @@ async function vendasFlow(message, userId, session) {
 }
 
 module.exports = vendasFlow;
+// Pedido do usuário: quando peça + veículo + nome já são conhecidos logo na
+// 1ª mensagem, main.flow.js finaliza o orçamento direto, sem passar pelas
+// perguntas deste fluxo — reaproveita a mesma lógica de criação de ticket
+// (evita duplicar o formato da descrição/mensagens de sucesso e falha).
+module.exports.finalizarOrcamento = _finalizarOrcamento;

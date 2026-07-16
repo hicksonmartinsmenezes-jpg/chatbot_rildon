@@ -194,7 +194,9 @@ NUNCA: invente preços, disponibilidade de estoque ou prazos específicos que n�
 ${trainingBlock}
 
 RETORNE SEMPRE JSON EXATO:
-{"resposta":"texto","intencao":"chat"}
+{"resposta":"texto","intencao":"chat","veiculo":null}
+
+"veiculo": preencha APENAS quando intencao for "vendas" E o cliente já tiver mencionado o veículo (marca, modelo e/ou ano) na própria mensagem — ex: "Fiat Palio 2025", "uno 2015", "gol quadrado". Isso permite ao sistema pular a pergunta "qual o veículo?" quando já souber a resposta, evitando perguntar de novo algo que o cliente já disse. Se o veículo NÃO foi mencionado, ou intencao for diferente de "vendas", retorne null. NUNCA invente ou presuma um veículo que o cliente não informou — na dúvida, null.
 
 intencao DEVE SER:
 • "vendas"    → cliente quer comprar, verificar preço ou disponibilidade de peça: "preciso de X", "tem X para Y?", "quanto custa", "vocês trabalham com X?"
@@ -204,7 +206,7 @@ intencao DEVE SER:
 • "gestao"    → quer falar com a equipe, time ou responsável de forma geral; reclamação sobre atendimento, insatisfação grave, pede falar com gerente: "falar com a equipe", "quero falar com a equipe", "fale com equipe", "falar com o responsável"
 • "chat"      → PADRÃO: saudações, bate-papo, dúvidas técnicas sem intenção de compra imediata, informações gerais
 
-IMPORTANTE sobre intenção "vendas": logo depois da sua resposta, o SISTEMA já vai perguntar automaticamente (nesta ordem) o nome do cliente, depois o veículo, depois a peça/serviço — então a sua "resposta" deve APENAS confirmar breve e calorosamente que vai ajudar com o orçamento, SEM perguntar modelo de veículo, chassi, ano ou qual peça precisa. Perguntar isso na sua resposta faz o cliente responder a pergunta errada (ele pensa que está respondendo você, mas na verdade a próxima pergunta do sistema é sobre o nome dele) e os dados do orçamento saem trocados.`,
+IMPORTANTE sobre intenção "vendas": logo depois da sua resposta, o SISTEMA já vai perguntar automaticamente (nesta ordem) o nome do cliente, depois o veículo (pulado automaticamente se você já preencheu "veiculo" acima), depois a peça — então a sua "resposta" deve APENAS confirmar breve e calorosamente que vai ajudar com o orçamento, SEM perguntar modelo de veículo, chassi, ano ou qual peça precisa. Perguntar isso na sua resposta faz o cliente responder a pergunta errada (ele pensa que está respondendo você, mas na verdade a próxima pergunta do sistema pode ser sobre o nome dele) e os dados do orçamento saem trocados.`,
     };
     _promptBaseCacheAt = agora;
   }
@@ -414,13 +416,21 @@ async function perguntarIA(mensagem, { nomeCliente, historico = [], contexto = {
       const parsed   = _extrairJSON(texto);
       const resposta = parsed?.resposta?.trim();
       const intencao = INTENCOES_VALIDAS.has(parsed?.intencao) ? parsed.intencao : "chat";
+      // Pedido do usuário: quando o cliente já menciona o veículo na 1ª
+      // mensagem (ex: "motor de partida fiat palio 2025"), main.flow.js usa
+      // este campo pra pular a pergunta redundante "qual o veículo?".
+      // Qualquer valor que não seja string não-vazia vira null (não
+      // identificado) — ver instrução no prompt em _buildSystemPrompt.
+      const veiculo = typeof parsed?.veiculo === "string" && parsed.veiculo.trim()
+        ? parsed.veiculo.trim()
+        : null;
 
       if (!resposta) {
         logger.warn("[IA] JSON sem campo 'resposta'.");
         return null;
       }
 
-      return { resposta, intencao };
+      return { resposta, intencao, veiculo };
 
     } catch (err) {
       if (err.name === "AbortError") {

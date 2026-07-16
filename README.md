@@ -35,6 +35,54 @@ npm start
 
 ---
 
+## Rodando via Docker (recomendado para 2º ambiente/máquina, ex: testar de casa)
+
+Todo o setup acima também pode ser feito via Docker, sem precisar instalar
+Postgres na máquina. Use isto para montar um **ambiente de TESTE separado**
+(máquina diferente, número de WhatsApp diferente do de produção) — nunca
+rode dois bots conectados ao MESMO número WhatsApp ao mesmo tempo, isso
+duplica respostas pro cliente.
+
+```bash
+git clone https://github.com/hicksonmartinsmenezes-jpg/chatbot_rildon.git
+cd chatbot_rildon
+git checkout tema-claro-e-correcoes   # branch onde está todo o trabalho atual
+
+# 1. Copiar e preencher com valores NOVOS (não reaproveitar os de produção)
+cp .env.example .env
+# gere API_TOKEN/JWT_SECRET novos (comando abaixo), DB_PASSWORD novo,
+# e use um ATENDENTE_NUMBER seu (não o número de produção) — as
+# notificações de novo ticket vão pra esse número.
+
+# 2. Instalar dependências localmente (só usado pra gerar o bundle do
+#    painel — o servidor em si roda dentro do container). O container de
+#    produção só tem as dependências de runtime (sem esbuild), então este
+#    passo precisa rodar fora do Docker, uma vez, e sempre que mexer em
+#    frontend/js ou frontend/css.
+npm install
+npm run build:frontend
+
+# 3. Subir os containers (app + Postgres)
+docker compose up -d --build
+
+# 4. Rodar as migrations dentro do container (cria as tabelas)
+docker exec chatbot_rildon_app npm run migrate
+
+# 5. Criar o primeiro usuário administrador
+docker exec -it chatbot_rildon_app npm run create-admin -- admin "SenhaForte123" "Administrador"
+```
+
+Depois, abra `http://localhost:3000`, faça login e conecte um WhatsApp de
+teste (QR code na tela) — a sessão do WhatsApp (`auth_info/`) nunca vai
+pelo Git (contém credenciais sensíveis), então cada ambiente tem a sua
+própria sessão, independente uma da outra.
+
+**Atualizar depois de um `git pull`:** se mudou algo em `src/database/migrations/`,
+rode o passo 4 de novo; se mudou algo em `frontend/js`/`frontend/css`, rode o
+passo 2 de novo e reinicie o container (`docker compose restart app`).
+
+---
+
 ## Variáveis de ambiente obrigatórias
 
 | Variável         | Descrição                                          |

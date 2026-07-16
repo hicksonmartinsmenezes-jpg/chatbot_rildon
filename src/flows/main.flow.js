@@ -369,6 +369,59 @@ async function _mainFlowInterno({ userId, message }) {
     return menuPrincipal(nomeSalvo);
   }
 
+  // ── Confirmação pendente de orçamento (CONFIRMAR_ORCAMENTO) ──────────────────
+  // Pedido do usuário: aceitar tanto "sim" (resposta natural a uma pergunta
+  // de sim/não) quanto "1" (mesmo número do menu principal, por quem
+  // responde por hábito) como confirmação do orçamento sugerido. Sem este
+  // intercept ANTES do switch abaixo, "1" cairia no "case 1" genérico e
+  // reiniciaria o fluxo de vendas do zero (perguntando veículo de novo
+  // mesmo já sabendo veiculoSugerido/pecaSugerido) — a mesma regressão que
+  // estivemos corrigindo a conversa inteira. "0"/"menu"/saudação já limpam
+  // a sessão (e portanto essa flag) mais acima, então não precisam de
+  // tratamento especial aqui.
+  if (session.aguardandoConfirmacaoOrcamento) {
+    if (msgNorm === "sim" || msgNorm === "1") {
+      const veiculoFinal = session.veiculoSugerido || null;
+      const pecaFinal     = session.pecaSugerido    || null;
+
+      if (veiculoFinal && nomeSalvo) {
+        const confirmacao = await vendasFlow.finalizarOrcamento(
+          userId,
+          { customerName: nomeSalvo },
+          veiculoFinal,
+          pecaFinal || "Consulta de peça"
+        );
+        return confirmacao;
+      }
+
+      if (nomeSalvo) {
+        const primeiroNome = nomeSalvo.trim().split(" ")[0];
+        await updateSession(userId, {
+          sector: "vendas",
+          step: "aguardando_veiculo",
+          customerName: nomeSalvo,
+          pecaInicial: pecaFinal,
+          aguardandoConfirmacaoOrcamento: undefined,
+        });
+        return `Certo, *${primeiroNome}*! ` + MSG.vendas.PEDIR_VEICULO + MSG.ESCAPE_DICA;
+      }
+
+      await updateSession(userId, {
+        sector: "vendas",
+        step: "aguardando_nome",
+        veiculoInicial: veiculoFinal,
+        pecaInicial: pecaFinal,
+        aguardandoConfirmacaoOrcamento: undefined,
+      });
+      return MSG.vendas.PEDIR_NOME + MSG.ESCAPE_DICA;
+    }
+
+    // Mensagem diferente de "sim"/"1" — não confirma agora. Limpa a flag pra
+    // não reaproveitar veiculoSugerido/pecaSugerido "velhos" numa consulta
+    // futura sem relação com esta, e segue o processamento normal abaixo.
+    await updateSession(userId, { aguardandoConfirmacaoOrcamento: undefined });
+  }
+
   // ── Switch de opções do menu principal ───────────────────────────────────────
   switch (msgNorm) {
 
@@ -499,13 +552,6 @@ async function _mainFlowInterno({ userId, message }) {
           const veiculoConhecido = veiculoExtraido || session.veiculoSugerido || null;
           const pecaConhecida    = pecaExtraida    || session.pecaSugerido    || null;
 
-          await updateSession(userId, {
-            aiHistorico: novoHistorico,
-            _iaFalhas: 0,
-            veiculoSugerido: veiculoConhecido,
-            pecaSugerido:    pecaConhecida,
-          });
-
           // BUG CORRIGIDO (relatado pelo usuário, 2 cenários diferentes):
           // 1) Empilhar "quer que eu registre o orçamento?" em cima de uma
           //    pergunta que a própria IA já fez (ex: "qual o ano do
@@ -526,6 +572,18 @@ async function _mainFlowInterno({ userId, message }) {
           // a confirmação determinística — é o único jeito do cliente
           // saber que pode só responder "sim".
           const iaJaPerguntouAlgo = /\?\s*$/.test(resposta);
+
+          // aguardandoConfirmacaoOrcamento: true só quando de fato mostramos
+          // o CONFIRMAR_ORCAMENTO agora — usado pelo intercept de "sim"/"1"
+          // logo antes do switch de menu (ver comentário lá).
+          await updateSession(userId, {
+            aiHistorico: novoHistorico,
+            _iaFalhas: 0,
+            veiculoSugerido: veiculoConhecido,
+            pecaSugerido:    pecaConhecida,
+            aguardandoConfirmacaoOrcamento: !iaJaPerguntouAlgo,
+          });
+
           if (!iaJaPerguntouAlgo) {
             return resposta + "\n\n" + MSG.vendas.CONFIRMAR_ORCAMENTO;
           }

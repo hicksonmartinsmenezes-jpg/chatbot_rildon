@@ -382,6 +382,129 @@ describe("mainFlow — intenção vendas com veículo extraído pela IA", () => 
 
       expect(resposta).toContain(MSG.vendas.CONFIRMAR_ORCAMENTO);
       expect(vendasFlow.finalizarOrcamento).not.toHaveBeenCalled();
+      // Marca a sessão como "aguardando confirmação" — é isso que permite
+      // "sim" OU "1" (ver describe abaixo) confirmarem na próxima mensagem.
+      expect(sessionService.updateSession).toHaveBeenCalledWith(
+        USER_ID,
+        expect.objectContaining({ aguardandoConfirmacaoOrcamento: true })
+      );
+    });
+  });
+
+  // Pedido do usuário: aceitar "1" (mesmo número do menu principal) além de
+  // "sim" como confirmação do CONFIRMAR_ORCAMENTO — sem isso, "1" cairia no
+  // switch genérico do menu principal e reiniciaria o fluxo de vendas do
+  // zero, perguntando veículo de novo mesmo já sabendo veiculoSugerido.
+  describe("aguardandoConfirmacaoOrcamento — aceita 'sim' OU '1' pra confirmar", () => {
+    test("'sim' com veículo+peça+nome já conhecidos → finaliza orçamento direto", async () => {
+      sessionService.getSession.mockReturnValue({
+        sector: "main",
+        customerName: "Hickson Martins",
+        veiculoSugerido: "Audi A4 2025",
+        pecaSugerido: "Motor de partida",
+        aguardandoConfirmacaoOrcamento: true,
+      });
+
+      const resposta = await mainFlow({ userId: USER_ID, message: "sim" });
+
+      expect(vendasFlow.finalizarOrcamento).toHaveBeenCalledWith(
+        USER_ID,
+        { customerName: "Hickson Martins" },
+        "Audi A4 2025",
+        "Motor de partida"
+      );
+      expect(resposta).toContain("Orçamento registrado");
+      expect(perguntarIA).not.toHaveBeenCalled();
+    });
+
+    test("'1' (mesmo número do menu principal) com tudo já conhecido → finaliza orçamento direto, NÃO reinicia o fluxo de vendas", async () => {
+      sessionService.getSession.mockReturnValue({
+        sector: "main",
+        customerName: "Hickson Martins",
+        veiculoSugerido: "Audi A4 2025",
+        pecaSugerido: "Motor de partida",
+        aguardandoConfirmacaoOrcamento: true,
+      });
+
+      const resposta = await mainFlow({ userId: USER_ID, message: "1" });
+
+      expect(vendasFlow.finalizarOrcamento).toHaveBeenCalledWith(
+        USER_ID,
+        { customerName: "Hickson Martins" },
+        "Audi A4 2025",
+        "Motor de partida"
+      );
+      expect(resposta).toContain("Orçamento registrado");
+      // NÃO deve ter caído no "case 1" genérico do menu principal (que
+      // pergunta veículo de novo do zero via MSG.vendas.PEDIR_VEICULO).
+      expect(resposta).not.toContain(MSG.vendas.PEDIR_VEICULO);
+    });
+
+    test("confirma mas veículo NÃO foi sugerido (extração falhou) → pergunta o veículo, não finaliza direto", async () => {
+      sessionService.getSession.mockReturnValue({
+        sector: "main",
+        customerName: "Hickson Martins",
+        veiculoSugerido: null,
+        pecaSugerido: null,
+        aguardandoConfirmacaoOrcamento: true,
+      });
+
+      const resposta = await mainFlow({ userId: USER_ID, message: "sim" });
+
+      expect(vendasFlow.finalizarOrcamento).not.toHaveBeenCalled();
+      expect(resposta).toContain(MSG.vendas.PEDIR_VEICULO);
+      expect(sessionService.updateSession).toHaveBeenCalledWith(
+        USER_ID,
+        expect.objectContaining({ sector: "vendas", step: "aguardando_veiculo" })
+      );
+    });
+
+    test("confirma mas nome ainda não é conhecido → pergunta o nome primeiro, guardando veiculoInicial/pecaInicial", async () => {
+      sessionService.getSession.mockReturnValue({
+        sector: "main",
+        customerName: null,
+        veiculoSugerido: "Audi A4 2025",
+        pecaSugerido: "Motor de partida",
+        aguardandoConfirmacaoOrcamento: true,
+      });
+
+      const resposta = await mainFlow({ userId: USER_ID, message: "sim" });
+
+      expect(vendasFlow.finalizarOrcamento).not.toHaveBeenCalled();
+      expect(resposta).toContain(MSG.vendas.PEDIR_NOME);
+      expect(sessionService.updateSession).toHaveBeenCalledWith(
+        USER_ID,
+        expect.objectContaining({
+          sector: "vendas",
+          step: "aguardando_nome",
+          veiculoInicial: "Audi A4 2025",
+          pecaInicial: "Motor de partida",
+        })
+      );
+    });
+
+    test("mensagem diferente de 'sim'/'1' → NÃO confirma, limpa a flag e segue o fluxo normal (IA é chamada)", async () => {
+      sessionService.getSession.mockReturnValue({
+        sector: "main",
+        customerName: "Hickson Martins",
+        veiculoSugerido: "Audi A4 2025",
+        pecaSugerido: "Motor de partida",
+        aguardandoConfirmacaoOrcamento: true,
+      });
+      perguntarIA.mockResolvedValue({
+        resposta: "Sim, temos crediário disponível! 😊",
+        intencao: "crediario",
+        pedidoExplicito: false,
+      });
+
+      await mainFlow({ userId: USER_ID, message: "e sobre crediário?" });
+
+      expect(vendasFlow.finalizarOrcamento).not.toHaveBeenCalled();
+      expect(sessionService.updateSession).toHaveBeenCalledWith(
+        USER_ID,
+        expect.objectContaining({ aguardandoConfirmacaoOrcamento: undefined })
+      );
+      expect(perguntarIA).toHaveBeenCalled();
     });
   });
 });

@@ -200,6 +200,9 @@ async function finalizarComTicket(userId, ticket) {
     // Limpa aqui também pra não vazar pra uma futura conversa.
     veiculoSugerido: undefined,
     pecaSugerido:    undefined,
+    // Pedido do usuário: flag de confirmação pendente ("digite sim ou 1")
+    // do orçamento — limpa junto pra não sobreviver a um ticket já criado.
+    aguardandoConfirmacaoOrcamento: undefined,
     aiHistorico,
   }, { skipTimer: true });
 }

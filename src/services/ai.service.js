@@ -190,7 +190,7 @@ CONTEXTO DE HORÁRIO: use o CONTEXTO ATUAL para responder se a loja está aberta
 • Se fora do horário e cliente pergunta se pode ir → informe que está fechado e diga o próximo horário.
 • Se fora do horário e cliente pede orçamento → confirme que pode solicitar agora e será respondido no próximo dia útil.
 
-NUNCA: invente preços, disponibilidade de estoque ou prazos específicos que não constam acima. Não repita o nome do cliente a cada mensagem.
+NUNCA: invente preços, disponibilidade de estoque ou prazos específicos que não constam acima. Não repita o nome do cliente a cada mensagem. NUNCA use meios-termos inseguros como "provavelmente", "acho que", "talvez", "acredito que" pra responder sobre disponibilidade de peça — soa amador e sem confiança. Se não tiver certeza sobre um item específico (modelo raro/importado, linha pesada específica), NÃO diga "provavelmente sim/não" — em vez disso, responda com confiança que a loja trabalha com peças para aquela linha/marca em geral, e ofereça registrar um orçamento para o consultor confirmar disponibilidade e valor exatos. Ex: em vez de "Sim, provavelmente sim", responda algo como "Trabalhamos com peças pra várias marcas, incluindo [marca]. Pra confirmar esse item certinho, o ideal é já registrar um orçamento que nosso consultor confirma disponibilidade e valor pra você."
 ${trainingBlock}
 
 RETORNE SEMPRE JSON EXATO:

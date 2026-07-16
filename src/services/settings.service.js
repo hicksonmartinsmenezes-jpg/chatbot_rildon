@@ -16,8 +16,14 @@ const DEFAULT_SETTINGS = {
     foraHorario: true,
     timeoutAviso: 3,
     timeoutEncerramento: 5,
+    // Pedido do usuário: a loja só vende produtos, não presta serviços —
+    // removida a opção "Nossos serviços" deste menu padrão (este campo é só
+    // um valor default configurável no painel; o menu REAL mostrado ao
+    // cliente é o hardcoded em src/flows/main.flow.js, que já nunca mencionou
+    // "serviços" — mas esse default aparecia enganosamente na aba
+    // Configurações do painel caso ninguém tivesse customizado ainda).
     menuPrincipal:
-      "1 - Dúvidas frequentes\n2 - Nossos serviços\n3 - Horário de atendimento\n4 - Suporte técnico\n5 - Vendas / Orçamento\n6 - Financeiro\n7 - Falar com atendente"
+      "1 - Dúvidas frequentes\n2 - Horário de atendimento\n3 - Suporte técnico\n4 - Vendas / Orçamento\n5 - Financeiro\n6 - Falar com atendente"
   },
   atendimento: {
     setores:

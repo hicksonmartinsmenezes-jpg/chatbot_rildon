@@ -12,16 +12,16 @@ const MSG = {
     MENU: () =>
       "🛒 *Orçamento / Atendimento*\n\n" +
       "Como posso te ajudar?\n\n" +
-      "1 - Solicitar orçamento de peça ou serviço\n" +
+      "1 - Solicitar orçamento de peça\n" +
       "0 - Voltar ao menu principal",
 
     PEDIR_NOME:     "📝 Para solicitar orçamento, informe seu *nome completo*:",
     PEDIR_VEICULO:  "🚗 Qual o *veículo*? _(marca, modelo e ano)_\n_Digite *pular* se não se aplicar._",
-    PEDIR_ORCAMENTO: "🔧 Qual *peça ou serviço* você precisa?",
+    PEDIR_ORCAMENTO: "🔧 Qual *peça* você precisa?",
 
     ORCAMENTO_SOLICITADO: (ticket) => {
       const veiculoMatch = ticket.description?.match(/Veículo:\s*([^|]+)/);
-      const pecaMatch    = ticket.description?.match(/Produto\/Serviço:\s*(.+)/);
+      const pecaMatch    = ticket.description?.match(/Produto:\s*(.+)/);
       const veiculo      = veiculoMatch ? veiculoMatch[1].trim() : null;
       const peca         = pecaMatch    ? pecaMatch[1].trim()    : ticket.description;
 

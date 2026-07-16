@@ -61,12 +61,11 @@ const EMPRESA = {
     "Peças de mecânica geral: filtros (ar, óleo, combustível), pastilhas e lonas de freio, componentes de suspensão e direção",
   ],
 
-  servicos: [
-    "Consultoria técnica em elétrica automotiva",
-    "Orçamentos personalizados por WhatsApp",
-    "Atendimento presencial na loja e online",
-    "Venda para eletricistas, frotas e mecânicas com condições especiais",
-  ],
+  // Removido o array "servicos": a loja vende produtos, não presta
+  // serviços (instalação, consultoria paga, etc.) — pedido explícito do
+  // usuário. Este campo nunca foi lido em nenhum lugar do código (grep
+  // confirmou "EMPRESA.servicos" sem nenhuma referência), então não afetava
+  // o comportamento do bot — mas estava incorreto/confuso como documentação.
 
   // ── Marcas parceiras ─────────────────────────────────────────────────────────
   marcas: [

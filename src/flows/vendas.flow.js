@@ -22,13 +22,13 @@ async function _criarTicketVendas(dados) {
   }
 }
 
-// Finaliza o orçamento: monta a descrição (veículo + produto/serviço),
+// Finaliza o orçamento: monta a descrição (veículo + produto),
 // cria o ticket e encerra a sessão preservando o histórico da IA (ver
 // finalizarComTicket em session.service.js — corrige o bug de perguntas
 // de acompanhamento tipo "quando?" perderem contexto).
 async function _finalizarOrcamento(userId, session, veiculo, produtoTexto) {
   const veiculoPrefix = veiculo && veiculo !== "Não informado" ? `Veículo: ${veiculo} | ` : "";
-  const descricao      = `${veiculoPrefix}Produto/Serviço: ${produtoTexto}`;
+  const descricao      = `${veiculoPrefix}Produto: ${produtoTexto}`;
 
   const ticket = await _criarTicketVendas({
     userId,
@@ -99,7 +99,7 @@ async function vendasFlow(message, userId, session) {
       const v = validarTamanho(msg, 5);
       if (!v.ok) {
         return v.erro === "minimo"
-          ? "⚠️ Por favor, descreva melhor o produto ou serviço que precisa." + MSG.ESCAPE_DICA
+          ? "⚠️ Por favor, descreva melhor o produto que precisa." + MSG.ESCAPE_DICA
           : mensagemTamanhoInvalido();
       }
 

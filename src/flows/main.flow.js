@@ -545,7 +545,25 @@ async function _mainFlowInterno({ userId, message }) {
         // ai.service.js), então só auto-avançamos (pular perguntas/criar
         // ticket direto) quando a IA sinaliza "pedidoExplicito" — o cliente
         // realmente pediu o orçamento/compra, não só consultou.
-        if (!resultado.pedidoExplicito) {
+        //
+        // BUG REAL (ticket #2026-0068, mesmo tipo do #2026-0056 voltando):
+        // mesmo com essa regra, a IA às vezes classifica pedidoExplicito
+        // como true numa pergunta CLARAMENTE de disponibilidade (ex: "tem
+        // motor de partida pra audi a4 2025?") — limitação de
+        // confiabilidade do modelo grátis (ver conversa com o usuário).
+        // Rede de segurança determinística: se a mensagem do cliente bate
+        // com o padrão clássico de pergunta de disponibilidade (os MESMOS
+        // exemplos de "false" já documentados no prompt de ai.service.js —
+        // "tem X?", "vocês trabalham com X?", "existe X aí?") E termina em
+        // "?", tratamos pedidoExplicito como false independente do que a
+        // IA respondeu — só pode DOWNGRADE (nunca cria ticket sem
+        // confirmação a mais), nunca upgrade, então o pior caso é pedir
+        // "digite sim" uma vez a mais, nunca criar ticket sem consentimento.
+        const PERGUNTA_DISPONIBILIDADE_RE = /\b(tem|te m|voce tem|voces tem|vc tem|vcs tem|trabalham com|existe|ha)\b.*\?\s*$/;
+        const pareceApenasPerguntaDisponibilidade = PERGUNTA_DISPONIBILIDADE_RE.test(normalizar(message));
+        const pedidoExplicitoConfirmado = resultado.pedidoExplicito && !pareceApenasPerguntaDisponibilidade;
+
+        if (!pedidoExplicitoConfirmado) {
           // Guarda o que já foi identificado nesta consulta (pode ser null)
           // pra reaproveitar se o cliente confirmar ("sim", "quero") na
           // próxima mensagem — evita perguntar tudo de novo depois.

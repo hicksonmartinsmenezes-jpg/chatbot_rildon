@@ -317,6 +317,62 @@ describe("mainFlow — intenção vendas com veículo extraído pela IA", () => 
       expect(vendasFlow.finalizarOrcamento).not.toHaveBeenCalled();
     });
 
+    // Bug real relatado pelo usuário (ticket #2026-0068 — mesma classe do
+    // #2026-0056 que motivou o campo pedidoExplicito no começo): mesmo com
+    // a regra de pedidoExplicito, a IA (modelo grátis) às vezes classifica
+    // uma pergunta CLARAMENTE de disponibilidade como pedidoExplicito:true
+    // e o ticket era criado sem o cliente ter confirmado nada. Rede de
+    // segurança determinística: mensagem que bate com o padrão clássico de
+    // pergunta de disponibilidade ("tem X?") E termina em "?" nunca
+    // finaliza sozinha, mesmo que a IA diga pedidoExplicito:true — só pode
+    // rebaixar pra "pedir confirmação", nunca criar ticket sem consentimento.
+    test("IA erra e diz pedidoExplicito:true numa pergunta clássica de disponibilidade ('tem X?') → sistema NÃO finaliza sozinho, pede confirmação", async () => {
+      sessionService.getSession.mockReturnValue({ sector: "main", customerName: "Hickson martins" });
+      perguntarIA.mockResolvedValue({
+        resposta: "Sim, trabalhamos com peças elétricas para audi a4, incluindo motor de partida.",
+        intencao: "vendas",
+        veiculo: "Audi A4 2025",
+        peca: "Motor de partida",
+        pedidoExplicito: true, // IA errou aqui — é só uma pergunta de disponibilidade
+      });
+
+      const resposta = await mainFlow({
+        userId: USER_ID,
+        message: "tem motor de partida para audi a4 2025?",
+      });
+
+      expect(vendasFlow.finalizarOrcamento).not.toHaveBeenCalled();
+      expect(resposta).not.toContain("Orçamento registrado");
+      expect(resposta).toContain(MSG.vendas.CONFIRMAR_ORCAMENTO);
+      expect(sessionService.updateSession).toHaveBeenCalledWith(
+        USER_ID,
+        expect.objectContaining({
+          veiculoSugerido: "Audi A4 2025",
+          pecaSugerido: "Motor de partida",
+          aguardandoConfirmacaoOrcamento: true,
+        })
+      );
+    });
+
+    test("mesma rede de segurança cobre 'vocês trabalham com X?' além de 'tem X?'", async () => {
+      sessionService.getSession.mockReturnValue({ sector: "main", customerName: "Hickson martins" });
+      perguntarIA.mockResolvedValue({
+        resposta: "Sim, trabalhamos com peças pra BMW também.",
+        intencao: "vendas",
+        veiculo: "BMW 320i 2020",
+        peca: "Alternador",
+        pedidoExplicito: true, // IA errou de novo
+      });
+
+      const resposta = await mainFlow({
+        userId: USER_ID,
+        message: "vocês trabalham com alternador pra bmw 320i 2020?",
+      });
+
+      expect(vendasFlow.finalizarOrcamento).not.toHaveBeenCalled();
+      expect(resposta).toContain(MSG.vendas.CONFIRMAR_ORCAMENTO);
+    });
+
     // Cenário relatado pelo usuário testando: quando a IA ainda precisa de
     // mais info (ex: "qual o ano do veículo?"), empilhar a pergunta
     // determinística "quer que eu registre?" em cima da pergunta da IA

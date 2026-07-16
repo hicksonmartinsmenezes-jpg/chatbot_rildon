@@ -79,14 +79,30 @@ function getSession(userId) {
   return sessions[userId] || { sector: "main" };
 }
 
-async function updateSession(userId, data) {
+// skipTimer: true evita (re)agendar os avisos de inatividade ("Ainda está
+// aí?" / "Atendimento encerrado por inatividade"). Usado por
+// finalizarComTicket() — depois que um ticket é criado, o bot não está mais
+// esperando resposta nenhuma do cliente, então esses avisos são confusos
+// (relatado pelo usuário: mensagem de "encerrado por inatividade" chegando
+// logo após "orçamento registrado", como se o atendimento tivesse sido
+// cancelado). A sessão continua existindo normalmente (mantém aiHistorico
+// pra perguntas de acompanhamento) — só não dispara os timers de aviso/fim;
+// ela é limpa mais tarde pelo TTL padrão (_agendarLimpezaTTL) ou pelo timer
+// normal assim que o cliente interagir de novo (updateSession sem
+// skipTimer, no fluxo seguinte).
+async function updateSession(userId, data, { skipTimer = false } = {}) {
   sessions[userId] = {
     ...getSession(userId),
     ...data
   };
 
   await _persistirSessao(userId);
-  resetTimer(userId);
+
+  if (skipTimer) {
+    cancelTimer(userId);
+  } else {
+    resetTimer(userId);
+  }
 }
 
 async function clearSession(userId) {
@@ -141,7 +157,7 @@ async function finalizarComTicket(userId, ticket) {
     veiculoSugerido: undefined,
     pecaSugerido:    undefined,
     aiHistorico,
-  });
+  }, { skipTimer: true });
 }
 
 async function _persistirSessao(userId) {

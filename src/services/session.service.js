@@ -135,6 +135,11 @@ async function finalizarComTicket(userId, ticket) {
     // futura sessão deste mesmo cliente.
     veiculoInicial: undefined,
     pecaInicial:    undefined,
+    // Mesma ideia: "sugestões" guardadas quando o cliente só fez uma
+    // pergunta de disponibilidade (sem pedidoExplicito) — ver main.flow.js.
+    // Limpa aqui também pra não vazar pra uma futura conversa.
+    veiculoSugerido: undefined,
+    pecaSugerido:    undefined,
     aiHistorico,
   });
 }

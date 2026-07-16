@@ -171,7 +171,7 @@ ESTILO:
 • Quando precisar de mais detalhes para ajudar, faça UMA pergunta objetiva
 • Quando o cliente agradece ou se despede, responda de forma calorosa e breve
 
-SAUDAÇÕES: Responda de volta de forma natural e calorosa. Se o cliente diz "bom dia", diga "Bom dia! 😊 Em que posso te ajudar?" — não liste opções em resposta a um cumprimento. Deixe a conversa fluir antes de mencionar opções de menu.
+SAUDAÇÕES: Responda de volta de forma natural e calorosa. Se o cliente diz "bom dia", diga "Bom dia! 😊 Em que posso te ajudar?" — não liste opções em resposta a um cumprimento. Deixe a conversa fluir antes de mencionar opções de menu. IMPORTANTE: se a mensagem já vier com um pedido junto da saudação (ex: "Bom dia, tem motor de partida?"), comece MESMO ASSIM retribuindo a saudação antes de responder o pedido — nunca ignore o cumprimento pra ir direto na resposta técnica.
 
 PRODUTOS: linha leve (carros e motos), pesada (MB, Volvo, Scania, VW Truck, Iveco) e agrícola.
 ELÉTRICOS: ${EMPRESA.produtos.slice(0, 10).join(", ")}.
@@ -194,11 +194,13 @@ NUNCA: invente preços, disponibilidade de estoque ou prazos específicos que n�
 ${trainingBlock}
 
 RETORNE SEMPRE JSON EXATO:
-{"resposta":"texto","intencao":"chat","veiculo":null,"peca":null}
+{"resposta":"texto","intencao":"chat","veiculo":null,"peca":null,"pedidoExplicito":false}
 
-"veiculo": preencha APENAS quando intencao for "vendas" E o cliente já tiver mencionado o veículo (marca, modelo e/ou ano) na própria mensagem — ex: "Fiat Palio 2025", "uno 2015", "gol quadrado". Isso permite ao sistema pular a pergunta "qual o veículo?" quando já souber a resposta, evitando perguntar de novo algo que o cliente já disse. Se o veículo NÃO foi mencionado, ou intencao for diferente de "vendas", retorne null. NUNCA invente ou presuma um veículo que o cliente não informou — na dúvida, null.
+"veiculo": preencha APENAS quando intencao for "vendas" E o veículo (marca, modelo e/ou ano) já tiver sido mencionado — na mensagem atual OU em mensagem anterior desta mesma conversa — ex: "Fiat Palio 2025", "uno 2015", "gol quadrado". Isso permite ao sistema pular a pergunta "qual o veículo?" quando já souber a resposta, evitando perguntar de novo algo que o cliente já disse. Se o veículo NÃO foi mencionado em nenhum momento, ou intencao for diferente de "vendas", retorne null. NUNCA invente ou presuma um veículo que o cliente não informou — na dúvida, null.
 
-"peca": preencha APENAS quando intencao for "vendas" E a peça/produto pedido estiver claro na mensagem — com o nome LIMPO e objetivo da peça, ex: "Motor de partida", "Pastilha de freio dianteira", "Alternador". NUNCA inclua na "peca" saudações ("bom dia"), o veículo (isso já vai no campo "veiculo" acima) ou frases inteiras do cliente — só o nome da peça em si. Se não conseguir identificar uma peça específica com clareza, retorne null (o sistema usa a mensagem original nesse caso).
+"peca": preencha APENAS quando intencao for "vendas" E a peça/produto pedido estiver claro — na mensagem atual ou em mensagem anterior desta conversa — com o nome LIMPO e objetivo da peça, ex: "Motor de partida", "Pastilha de freio dianteira", "Alternador". NUNCA inclua na "peca" saudações ("bom dia"), o veículo (isso já vai no campo "veiculo" acima) ou frases inteiras do cliente — só o nome da peça em si. Se não conseguir identificar uma peça específica com clareza, retorne null (o sistema usa a mensagem original nesse caso).
+
+"pedidoExplicito": true APENAS quando o cliente claramente PEDE/SOLICITA o orçamento ou quer comprar — ex: "quero orçamento", "preciso de um orçamento", "quero comprar", "manda o valor", "pode fazer o orçamento", ou uma confirmação direta ("sim", "pode ser", "quero sim") logo depois de você ter perguntado se ele quer solicitar orçamento. false quando é APENAS uma pergunta/consulta, sem pedido de ação — ex: "tem X?", "vocês trabalham com X?", "vocês têm X pra Y?", "existe X aí?". Nesses casos de simples consulta, responda a pergunta normalmente e, se fizer sentido, pergunte se o cliente quer que você registre o orçamento — mas NÃO marque pedidoExplicito como true até ele confirmar. Na dúvida, false (o sistema só cria o ticket automaticamente quando pedidoExplicito é true — uma pergunta de disponibilidade nunca deve virar ticket sozinha).
 
 intencao DEVE SER:
 • "vendas"    → cliente quer comprar, verificar preço ou disponibilidade de peça: "preciso de X", "tem X para Y?", "quanto custa", "vocês trabalham com X?"
@@ -208,7 +210,7 @@ intencao DEVE SER:
 • "gestao"    → quer falar com a equipe, time ou responsável de forma geral; reclamação sobre atendimento, insatisfação grave, pede falar com gerente: "falar com a equipe", "quero falar com a equipe", "fale com equipe", "falar com o responsável"
 • "chat"      → PADRÃO: saudações, bate-papo, dúvidas técnicas sem intenção de compra imediata, informações gerais
 
-IMPORTANTE sobre intenção "vendas": logo depois da sua resposta, o SISTEMA já vai perguntar automaticamente (nesta ordem) o nome do cliente, depois o veículo (pulado automaticamente se você já preencheu "veiculo" acima), depois a peça — então a sua "resposta" deve APENAS confirmar breve e calorosamente que vai ajudar com o orçamento, SEM perguntar modelo de veículo, chassi, ano ou qual peça precisa. Perguntar isso na sua resposta faz o cliente responder a pergunta errada (ele pensa que está respondendo você, mas na verdade a próxima pergunta do sistema pode ser sobre o nome dele) e os dados do orçamento saem trocados.`,
+IMPORTANTE sobre intenção "vendas": só quando "pedidoExplicito" for true o SISTEMA vai perguntar automaticamente (nesta ordem), logo depois da sua resposta, o nome do cliente, depois o veículo (pulado automaticamente se você já preencheu "veiculo" acima), depois a peça — nesse caso, sua "resposta" deve APENAS confirmar breve e calorosamente que vai ajudar com o orçamento, SEM perguntar modelo de veículo, chassi, ano ou qual peça precisa (perguntar isso faz o cliente responder a pergunta errada, pois a próxima pergunta do sistema pode ser sobre o nome dele, e os dados do orçamento saem trocados). Quando "pedidoExplicito" for false (o cliente só perguntou/consultou, sem pedir ação), responda normalmente e pode perguntar se ele quer que você registre o orçamento — o sistema NÃO vai criar nada sozinho nesse caso, então não há risco de pergunta cruzada.`,
     };
     _promptBaseCacheAt = agora;
   }
@@ -432,13 +434,19 @@ async function perguntarIA(mensagem, { nomeCliente, historico = [], contexto = {
       const peca = typeof parsed?.peca === "string" && parsed.peca.trim()
         ? parsed.peca.trim()
         : null;
+      // Pedido do usuário (bug real: ticket #2026-0056 — cliente só
+      // perguntou "tem motor de partida fiat palio?" e o sistema já
+      // registrou o orçamento sem confirmação nenhuma). Só true quando o
+      // cliente realmente PEDE o orçamento/compra — uma pergunta de
+      // disponibilidade não deve disparar criação automática de ticket.
+      const pedidoExplicito = parsed?.pedidoExplicito === true;
 
       if (!resposta) {
         logger.warn("[IA] JSON sem campo 'resposta'.");
         return null;
       }
 
-      return { resposta, intencao, veiculo, peca };
+      return { resposta, intencao, veiculo, peca, pedidoExplicito };
 
     } catch (err) {
       if (err.name === "AbortError") {

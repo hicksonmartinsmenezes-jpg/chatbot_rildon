@@ -52,6 +52,7 @@ describe("mainFlow — intenção vendas com veículo extraído pela IA", () => 
       resposta: "Claro, posso te ajudar com isso! 🔧",
       intencao: "vendas",
       veiculo: "Fiat Palio 2025",
+      pedidoExplicito: true,
     });
 
     const resposta = await mainFlow({ userId: USER_ID, message: "motor de partida fiat palio 2025" });
@@ -78,6 +79,7 @@ describe("mainFlow — intenção vendas com veículo extraído pela IA", () => 
       resposta: "Fechado!",
       intencao: "vendas",
       veiculo: "Gol 2018",
+      pedidoExplicito: true,
     });
 
     await mainFlow({ userId: USER_ID, message: "alternador gol 2018" });
@@ -98,6 +100,7 @@ describe("mainFlow — intenção vendas com veículo extraído pela IA", () => 
       resposta: "Posso te ajudar com o orçamento!",
       intencao: "vendas",
       veiculo: "Onix 2020",
+      pedidoExplicito: true,
     });
 
     const resposta = await mainFlow({ userId: USER_ID, message: "pastilha de freio onix 2020" });
@@ -122,6 +125,7 @@ describe("mainFlow — intenção vendas com veículo extraído pela IA", () => 
       resposta: "Posso ajudar!",
       intencao: "vendas",
       veiculo: null,
+      pedidoExplicito: true,
     });
 
     const resposta = await mainFlow({ userId: USER_ID, message: "preciso de uma buzina" });
@@ -154,7 +158,7 @@ describe("mainFlow — intenção vendas com veículo extraído pela IA", () => 
     sessionService.getSession.mockReturnValue({ sector: "main", customerName: "Carla" });
     // Simula um mock antigo de perguntarIA que não retorna o campo veiculo
     // (compatibilidade retroativa).
-    perguntarIA.mockResolvedValue({ resposta: "Posso ajudar!", intencao: "vendas" });
+    perguntarIA.mockResolvedValue({ resposta: "Posso ajudar!", intencao: "vendas", pedidoExplicito: true });
 
     const resposta = await mainFlow({ userId: USER_ID, message: "preciso de um farol" });
 
@@ -174,6 +178,7 @@ describe("mainFlow — intenção vendas com veículo extraído pela IA", () => 
         intencao: "vendas",
         veiculo: "Fiat Uno 2025",
         peca: "Motor de partida",
+        pedidoExplicito: true,
       });
 
       await mainFlow({ userId: USER_ID, message: "Bom dia, motor de partida fiat uno 2025" });
@@ -193,6 +198,7 @@ describe("mainFlow — intenção vendas com veículo extraído pela IA", () => 
         intencao: "vendas",
         veiculo: "Gol 2018",
         peca: null,
+        pedidoExplicito: true,
       });
 
       await mainFlow({ userId: USER_ID, message: "alternador pro meu gol 2018" });
@@ -212,6 +218,7 @@ describe("mainFlow — intenção vendas com veículo extraído pela IA", () => 
         intencao: "vendas",
         veiculo: "Onix 2020",
         peca: "Pastilha de freio",
+        pedidoExplicito: true,
       });
 
       await mainFlow({ userId: USER_ID, message: "pastilha de freio pro onix 2020" });
@@ -223,6 +230,83 @@ describe("mainFlow — intenção vendas com veículo extraído pela IA", () => 
           pecaInicial: "Pastilha de freio",
         })
       );
+    });
+  });
+
+  // Pedido do usuário (bug real: ticket #2026-0056 — cliente perguntou "tem
+  // motor de partida fiat palio?" e o sistema criou o orçamento sozinho,
+  // sem confirmação nenhuma). "pedidoExplicito" (ver ai.service.js) só é
+  // true quando o cliente PEDE o orçamento/compra — uma simples pergunta
+  // de disponibilidade não deve mais disparar criação automática de ticket.
+  describe("campo 'pedidoExplicito' — não cria ticket sozinho em simples pergunta", () => {
+    test("pedidoExplicito false → NÃO finaliza nem entra no fluxo de vendas, só responde e guarda sugestão", async () => {
+      sessionService.getSession.mockReturnValue({ sector: "main", customerName: "Design / Marketing" });
+      perguntarIA.mockResolvedValue({
+        resposta: "Sim, trabalhamos com motor de partida pro Palio! Quer que eu registre o orçamento?",
+        intencao: "vendas",
+        veiculo: "Fiat Palio",
+        peca: "Motor de partida",
+        pedidoExplicito: false,
+      });
+
+      const resposta = await mainFlow({ userId: USER_ID, message: "Bom dia, tem motor de partida fiat palio?" });
+
+      expect(vendasFlow.finalizarOrcamento).not.toHaveBeenCalled();
+      expect(resposta).not.toContain("Orçamento registrado");
+      expect(resposta).toContain("Quer que eu registre o orçamento?");
+
+      expect(sessionService.updateSession).toHaveBeenCalledWith(
+        USER_ID,
+        expect.objectContaining({
+          veiculoSugerido: "Fiat Palio",
+          pecaSugerido: "Motor de partida",
+        })
+      );
+      // Não muda de sector — cliente continua em modo "chat" livre
+      expect(sessionService.updateSession).not.toHaveBeenCalledWith(
+        USER_ID,
+        expect.objectContaining({ sector: "vendas" })
+      );
+    });
+
+    test("confirmação numa mensagem seguinte (pedidoExplicito true, sem repetir veículo/peça) reaproveita veiculoSugerido/pecaSugerido", async () => {
+      sessionService.getSession.mockReturnValue({
+        sector: "main",
+        customerName: "Design / Marketing",
+        veiculoSugerido: "Fiat Palio",
+        pecaSugerido: "Motor de partida",
+      });
+      // A confirmação em si ("sim, pode ser") não menciona veículo/peça de novo
+      perguntarIA.mockResolvedValue({
+        resposta: "Show, já registrando!",
+        intencao: "vendas",
+        veiculo: null,
+        peca: null,
+        pedidoExplicito: true,
+      });
+
+      const resposta = await mainFlow({ userId: USER_ID, message: "sim, pode ser" });
+
+      expect(vendasFlow.finalizarOrcamento).toHaveBeenCalledWith(
+        USER_ID,
+        { customerName: "Design / Marketing" },
+        "Fiat Palio",
+        "Motor de partida"
+      );
+      expect(resposta).toContain("Orçamento registrado");
+    });
+
+    test("campo ausente por completo (compatibilidade com mock antigo) → tratado como false, não finaliza", async () => {
+      sessionService.getSession.mockReturnValue({ sector: "main", customerName: "Ana" });
+      perguntarIA.mockResolvedValue({
+        resposta: "Temos sim!",
+        intencao: "vendas",
+        veiculo: "Uno 2015",
+      });
+
+      await mainFlow({ userId: USER_ID, message: "tem farol pro uno 2015?" });
+
+      expect(vendasFlow.finalizarOrcamento).not.toHaveBeenCalled();
     });
   });
 });

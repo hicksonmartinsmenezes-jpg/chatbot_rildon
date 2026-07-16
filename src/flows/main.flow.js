@@ -484,9 +484,35 @@ async function _mainFlowInterno({ userId, message }) {
         // texto limpo — cai pra mensagem original só se a IA não
         // identificar a peça com clareza (ver ai.service.js).
         const pecaExtraida     = resultado.peca || null;
-        const produtoTexto     = pecaExtraida || message;
 
-        if (veiculoExtraido && nomeSalvo) {
+        // BUG REAL (ticket #2026-0056): cliente só perguntou "tem motor de
+        // partida fiat palio?" — uma pergunta de disponibilidade, não um
+        // pedido — e o sistema criou o orçamento sozinho, sem confirmação.
+        // "vendas" cobre tanto pedidos quanto perguntas (ver definição em
+        // ai.service.js), então só auto-avançamos (pular perguntas/criar
+        // ticket direto) quando a IA sinaliza "pedidoExplicito" — o cliente
+        // realmente pediu o orçamento/compra, não só consultou.
+        if (!resultado.pedidoExplicito) {
+          // Guarda o que já foi identificado nesta consulta (pode ser null)
+          // pra reaproveitar se o cliente confirmar ("sim", "quero") na
+          // próxima mensagem — evita perguntar tudo de novo depois.
+          await updateSession(userId, {
+            aiHistorico: novoHistorico,
+            _iaFalhas: 0,
+            veiculoSugerido: veiculoExtraido || session.veiculoSugerido || null,
+            pecaSugerido:    pecaExtraida    || session.pecaSugerido    || null,
+          });
+          return resposta + "\n\n" + menuCompacto();
+        }
+
+        // pedidoExplicito confirmado — usa o que a IA extraiu agora, ou o
+        // que já tinha sido sugerido numa consulta anterior (ex: cliente só
+        // respondeu "sim" pra pergunta anterior, sem repetir veículo/peça).
+        const veiculoFinal = veiculoExtraido || session.veiculoSugerido || null;
+        const pecaFinal     = pecaExtraida    || session.pecaSugerido    || null;
+        const produtoTexto  = pecaFinal || message;
+
+        if (veiculoFinal && nomeSalvo) {
           // Nome + veículo + peça já conhecidos — finaliza o orçamento
           // direto, sem nenhuma pergunta extra. Persiste o histórico ANTES
           // de finalizar, pra finalizarComTicket (chamado dentro de
@@ -495,7 +521,7 @@ async function _mainFlowInterno({ userId, message }) {
           const confirmacao = await vendasFlow.finalizarOrcamento(
             userId,
             { customerName: nomeSalvo },
-            veiculoExtraido,
+            veiculoFinal,
             produtoTexto
           );
           return resposta + "\n\n" + confirmacao;
@@ -503,7 +529,7 @@ async function _mainFlowInterno({ userId, message }) {
 
         if (nomeSalvo) {
           const primeiroNome = nomeSalvo.trim().split(" ")[0];
-          await updateSession(userId, { sector: "vendas", step: "aguardando_veiculo", customerName: nomeSalvo, produtoInicial: message, pecaInicial: pecaExtraida, aiHistorico: novoHistorico, _iaFalhas: 0 });
+          await updateSession(userId, { sector: "vendas", step: "aguardando_veiculo", customerName: nomeSalvo, produtoInicial: message, pecaInicial: pecaFinal, aiHistorico: novoHistorico, _iaFalhas: 0 });
           return resposta + "\n\n" + `Certo, *${primeiroNome}*! ` + MSG.vendas.PEDIR_VEICULO + MSG.ESCAPE_DICA;
         }
 
@@ -514,8 +540,8 @@ async function _mainFlowInterno({ userId, message }) {
           sector: "vendas",
           step: "aguardando_nome",
           produtoInicial: message,
-          veiculoInicial: veiculoExtraido,
-          pecaInicial: pecaExtraida,
+          veiculoInicial: veiculoFinal,
+          pecaInicial: pecaFinal,
           aiHistorico: novoHistorico,
           _iaFalhas: 0
         });

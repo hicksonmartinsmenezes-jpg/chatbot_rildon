@@ -1,6 +1,7 @@
 const logger = require("../utils/logger");
 const pool = require("../database/postgres");
 const { getBotConfig } = require("./botConfig.service");
+const { getProfilePhotoCandidates } = require("../whatsapp/lid-map");
 
 const sessions = {};
 const timers   = {};
@@ -75,8 +76,27 @@ function _agendarLimpezaTTL() {
   }, 60 * 60 * 1000).unref();
 }
 
+// BUG CORRIGIDO (relatado pelo usuário testando cenários): o mesmo cliente
+// físico pode chegar com userId DIFERENTE entre mensagens — o WhatsApp às
+// vezes entrega como "...@lid" ainda não resolvido, às vezes já resolvido
+// pro número real "...@s.whatsapp.net" (ver LID_FALLBACK em
+// src/config/whatsapp.js). Essa é a MESMA causa raiz já corrigida em
+// ticket.repository/humanMode.service/broadcast.service/message.controller/
+// contacts.js via getProfilePhotoCandidates() — só que aqui em
+// session.service.js a sessão (nome/veículo já coletados) era buscada só
+// pela chave exata, então uma sessão em andamento "sumia" quando a próxima
+// mensagem do mesmo cliente chegava com a outra variante da chave, e o bot
+// voltava a perguntar tudo do zero (nome, veículo etc.).
+function _encontrarChaveExistente(userId) {
+  if (sessions[userId]) return userId;
+
+  const candidatos = getProfilePhotoCandidates(userId).filter(id => id !== userId);
+  return candidatos.find(id => sessions[id]) || null;
+}
+
 function getSession(userId) {
-  return sessions[userId] || { sector: "main" };
+  const chave = _encontrarChaveExistente(userId);
+  return (chave && sessions[chave]) || { sector: "main" };
 }
 
 // skipTimer: true evita (re)agendar os avisos de inatividade ("Ainda está
@@ -91,10 +111,22 @@ function getSession(userId) {
 // normal assim que o cliente interagir de novo (updateSession sem
 // skipTimer, no fluxo seguinte).
 async function updateSession(userId, data, { skipTimer = false } = {}) {
+  // Consolida uma sessão encontrada sob uma chave lid/jid antiga (ver
+  // _encontrarChaveExistente acima) pra chave atual — evita fragmentar a
+  // mesma sessão em várias chaves ao longo da conversa.
+  const chaveAntiga = _encontrarChaveExistente(userId);
+  const base = (chaveAntiga && sessions[chaveAntiga]) || { sector: "main" };
+
   sessions[userId] = {
-    ...getSession(userId),
+    ...base,
     ...data
   };
+
+  if (chaveAntiga && chaveAntiga !== userId) {
+    cancelTimer(chaveAntiga);
+    delete sessions[chaveAntiga];
+    await _removerSessao(chaveAntiga);
+  }
 
   await _persistirSessao(userId);
 
@@ -109,6 +141,18 @@ async function clearSession(userId) {
   cancelTimer(userId);
   delete sessions[userId];
   await _removerSessao(userId);
+
+  // Limpa também qualquer sessão remanescente sob uma chave lid/jid
+  // equivalente (ver _encontrarChaveExistente) — evita deixar uma sessão
+  // órfã pra trás caso a consolidação ainda não tenha acontecido via
+  // updateSession.
+  for (const candidato of getProfilePhotoCandidates(userId)) {
+    if (candidato !== userId && sessions[candidato]) {
+      cancelTimer(candidato);
+      delete sessions[candidato];
+      await _removerSessao(candidato);
+    }
+  }
 }
 
 // BUG CORRIGIDO: todo fluxo (vendas/crediário/gestão/atendente) chamava

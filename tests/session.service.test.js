@@ -18,6 +18,17 @@
  * de botConfig.service), pra evitar a complexidade de ter que flushar
  * manualmente a cadeia de promises dentro de resetTimer() (que chama
  * getTimeouts() de forma "fire-and-forget", sem await).
+ *
+ * Segundo bug coberto aqui: o mesmo cliente físico pode chegar com userId
+ * DIFERENTE entre mensagens (WhatsApp entrega às vezes como "...@lid" ainda
+ * não resolvido, às vezes já resolvido pro número "...@s.whatsapp.net" —
+ * ver LID_FALLBACK em src/config/whatsapp.js). Sem tratar isso, uma sessão
+ * em andamento (nome/veículo já coletados) "sumia" quando a mensagem
+ * seguinte chegava com a outra variante da chave — o bot voltava a
+ * perguntar tudo do zero. Fix: getSession/updateSession/clearSession agora
+ * checam as variantes lid/jid conhecidas (getProfilePhotoCandidates, mesmo
+ * mecanismo já usado em ticket.repository/humanMode.service/etc) e
+ * consolidam a sessão pra chave atual em vez de fragmentar.
  */
 jest.mock("../src/database/postgres", () => ({
   query: jest.fn().mockResolvedValue({ rows: [] })
@@ -33,6 +44,7 @@ jest.mock("../src/services/botConfig.service", () => ({
 }));
 
 const sessionService = require("../src/services/session.service");
+const { setLidMapping } = require("../src/whatsapp/lid-map");
 
 function esperar(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -110,5 +122,80 @@ describe("session.service — timers de inatividade x finalizarComTicket", () =>
     expect(sessao.customerName).toBe("Cliente Teste");
     expect(sessao.sector).toBeUndefined();
     expect(sessao.aiHistorico.length).toBe(2); // mensagem original + nota sintética do ticket
+  });
+});
+
+describe("session.service — consolidação de sessão entre chaves @lid e @s.whatsapp.net", () => {
+  beforeEach(async () => {
+    await sessionService.setSendMessage(jest.fn().mockResolvedValue(undefined));
+  });
+
+  test("getSession encontra a sessão salva sob a chave @s.whatsapp.net quando a mensagem chega pela chave @lid equivalente", async () => {
+    setLidMapping("111@lid", "5579990000001@s.whatsapp.net");
+
+    await sessionService.updateSession("5579990000001@s.whatsapp.net", {
+      customerName: "Hickson martins",
+    });
+
+    const sessao = sessionService.getSession("111@lid");
+    expect(sessao.customerName).toBe("Hickson martins");
+  });
+
+  test("getSession encontra a sessão salva sob a chave @lid quando a mensagem chega já resolvida (@s.whatsapp.net)", async () => {
+    setLidMapping("222@lid", "5579990000002@s.whatsapp.net");
+
+    await sessionService.updateSession("222@lid", {
+      customerName: "Ana",
+      veiculoSugerido: "Fiat Palio",
+    });
+
+    const sessao = sessionService.getSession("5579990000002@s.whatsapp.net");
+    expect(sessao.customerName).toBe("Ana");
+    expect(sessao.veiculoSugerido).toBe("Fiat Palio");
+  });
+
+  test("updateSession consolida a sessão pra chave atual em vez de fragmentar em duas cópias divergentes", async () => {
+    setLidMapping("333@lid", "5579990000003@s.whatsapp.net");
+
+    // 1ª mensagem chega pelo @lid (ainda não resolvido no momento do envio)
+    await sessionService.updateSession("333@lid", {
+      customerName: "Carla",
+      sector: "vendas",
+      step: "aguardando_veiculo",
+    });
+
+    // 2ª mensagem do MESMO cliente chega já resolvida — deve continuar a
+    // MESMA sessão (não recomeçar do zero) e consolidar pra essa chave.
+    await sessionService.updateSession("5579990000003@s.whatsapp.net", {
+      step: "aguardando_orcamento",
+    });
+
+    // 3ª atualização, agora só pela chave nova (resolvida) — se a
+    // consolidação realmente aconteceu (em vez de manter duas cópias
+    // divergentes), consultar pela chave ANTIGA deve refletir esta
+    // atualização mais recente também.
+    await sessionService.updateSession("5579990000003@s.whatsapp.net", {
+      step: "aguardando_confirmacao",
+    });
+
+    const sessaoNova = sessionService.getSession("5579990000003@s.whatsapp.net");
+    const sessaoAntiga = sessionService.getSession("333@lid");
+
+    expect(sessaoNova.customerName).toBe("Carla");
+    expect(sessaoNova.step).toBe("aguardando_confirmacao");
+    expect(sessaoAntiga.customerName).toBe("Carla");
+    expect(sessaoAntiga.step).toBe("aguardando_confirmacao");
+  });
+
+  test("clientes diferentes (sem mapeamento lid/jid entre eles) continuam com sessões independentes", async () => {
+    await sessionService.updateSession("5579990000010@s.whatsapp.net", {
+      customerName: "Cliente A",
+    });
+    await sessionService.updateSession("5579990000020@s.whatsapp.net", {
+      customerName: "Cliente B",
+    });
+
+    expect(sessionService.getSession("5579990000010@s.whatsapp.net").customerName).toBe("Cliente A");
+    expect(sessionService.getSession("5579990000020@s.whatsapp.net").customerName).toBe("Cliente B");
   });
 });

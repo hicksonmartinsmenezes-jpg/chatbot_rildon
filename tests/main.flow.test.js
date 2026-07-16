@@ -161,4 +161,68 @@ describe("mainFlow — intenção vendas com veículo extraído pela IA", () => 
     expect(vendasFlow.finalizarOrcamento).not.toHaveBeenCalled();
     expect(resposta).toContain(MSG.vendas.PEDIR_VEICULO);
   });
+
+  // Pedido do usuário (relatado após o primeiro ajuste): o ticket ficava
+  // com "Produto: Bom dia, motor de partida fiat 2025" — a frase inteira,
+  // saudação incluída. Quando a IA isola o nome da peça (campo "peca"),
+  // isso deve ser usado na descrição em vez da mensagem crua.
+  describe("campo 'peca' — descrição limpa do ticket", () => {
+    test("peca extraída + nome conhecido → finaliza usando a peça limpa, não a mensagem crua", async () => {
+      sessionService.getSession.mockReturnValue({ sector: "main", customerName: "Hickson Martins" });
+      perguntarIA.mockResolvedValue({
+        resposta: "Bom dia! Já te ajudo com isso!",
+        intencao: "vendas",
+        veiculo: "Fiat Uno 2025",
+        peca: "Motor de partida",
+      });
+
+      await mainFlow({ userId: USER_ID, message: "Bom dia, motor de partida fiat uno 2025" });
+
+      expect(vendasFlow.finalizarOrcamento).toHaveBeenCalledWith(
+        USER_ID,
+        { customerName: "Hickson Martins" },
+        "Fiat Uno 2025",
+        "Motor de partida" // não a mensagem crua com "Bom dia,"
+      );
+    });
+
+    test("peca NÃO extraída (null) → cai de volta pra mensagem original (compatibilidade)", async () => {
+      sessionService.getSession.mockReturnValue({ sector: "main", customerName: "Hickson Martins" });
+      perguntarIA.mockResolvedValue({
+        resposta: "Já te ajudo!",
+        intencao: "vendas",
+        veiculo: "Gol 2018",
+        peca: null,
+      });
+
+      await mainFlow({ userId: USER_ID, message: "alternador pro meu gol 2018" });
+
+      expect(vendasFlow.finalizarOrcamento).toHaveBeenCalledWith(
+        USER_ID,
+        { customerName: "Hickson Martins" },
+        "Gol 2018",
+        "alternador pro meu gol 2018"
+      );
+    });
+
+    test("nome ainda não conhecido → pecaInicial é guardado na sessão junto com veiculoInicial", async () => {
+      sessionService.getSession.mockReturnValue({ sector: "main" });
+      perguntarIA.mockResolvedValue({
+        resposta: "Posso te ajudar!",
+        intencao: "vendas",
+        veiculo: "Onix 2020",
+        peca: "Pastilha de freio",
+      });
+
+      await mainFlow({ userId: USER_ID, message: "pastilha de freio pro onix 2020" });
+
+      expect(sessionService.updateSession).toHaveBeenCalledWith(
+        USER_ID,
+        expect.objectContaining({
+          veiculoInicial: "Onix 2020",
+          pecaInicial: "Pastilha de freio",
+        })
+      );
+    });
+  });
 });

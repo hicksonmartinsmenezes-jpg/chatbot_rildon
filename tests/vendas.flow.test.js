@@ -166,4 +166,60 @@ describe("vendasFlow", () => {
       expect.objectContaining({ customerName: "Hickson Martins" })
     );
   });
+
+  // Pedido do usuário: descrição do ticket não deve repetir a frase
+  // inteira do cliente (com saudação) quando a IA já isolou o nome limpo
+  // da peça (pecaInicial, setado em main.flow.js).
+  test("aguardando_nome COM veiculoInicial E pecaInicial → usa a peça limpa na descrição, não produtoInicial", async () => {
+    createTicket.mockResolvedValue(fakeTicket());
+
+    await vendasFlow("Hickson Martins", USER_ID, {
+      sector: "vendas",
+      step: "aguardando_nome",
+      produtoInicial: "Bom dia, motor de partida fiat uno 2025",
+      veiculoInicial: "Fiat Uno 2025",
+      pecaInicial: "Motor de partida",
+    });
+
+    expect(createTicket).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description: "Veículo: Fiat Uno 2025 | Produto: Motor de partida",
+      })
+    );
+  });
+
+  test("aguardando_nome COM veiculoInicial mas SEM pecaInicial → cai de volta pro produtoInicial (compatibilidade)", async () => {
+    createTicket.mockResolvedValue(fakeTicket());
+
+    await vendasFlow("Hickson Martins", USER_ID, {
+      sector: "vendas",
+      step: "aguardando_nome",
+      produtoInicial: "motor de partida fiat uno 2025",
+      veiculoInicial: "Fiat Uno 2025",
+      // sem pecaInicial
+    });
+
+    expect(createTicket).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description: "Veículo: Fiat Uno 2025 | Produto: motor de partida fiat uno 2025",
+      })
+    );
+  });
+
+  test("aguardando_veiculo: pecaInicial (se presente) é preferido a produtoInicial na descrição", async () => {
+    createTicket.mockResolvedValue(fakeTicket());
+
+    await vendasFlow("Gol 2018", USER_ID, {
+      sector: "vendas",
+      step: "aguardando_veiculo",
+      produtoInicial: "Bom dia, preciso de um alternador pro meu gol 2018",
+      pecaInicial: "Alternador",
+    });
+
+    expect(createTicket).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description: "Veículo: Gol 2018 | Produto: Alternador",
+      })
+    );
+  });
 });

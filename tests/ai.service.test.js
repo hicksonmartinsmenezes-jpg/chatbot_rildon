@@ -72,7 +72,7 @@ describe("ai.service — provedor anthropic (Claude)", () => {
     // Mensagem do usuário presente com o texto enviado.
     expect(body.messages.some(m => m.role === "user" && m.content === "Oi")).toBe(true);
 
-    expect(res).toEqual({ resposta: "Olá! Como posso ajudar?", intencao: "chat", veiculo: null });
+    expect(res).toEqual({ resposta: "Olá! Como posso ajudar?", intencao: "chat", veiculo: null, peca: null });
   });
 
   test("recompõe o '{' do prefill antes de extrair o JSON da resposta", async () => {
@@ -89,7 +89,7 @@ describe("ai.service — provedor anthropic (Claude)", () => {
 
     const res = await perguntarIA("Vocês tem pastilha de freio pro Onix?", {});
 
-    expect(res).toEqual({ resposta: "Temos sim, chega amanhã!", intencao: "vendas", veiculo: null });
+    expect(res).toEqual({ resposta: "Temos sim, chega amanhã!", intencao: "vendas", veiculo: null, peca: null });
   });
 
   test("historico com role 'model' é convertido para 'assistant' nas mensagens enviadas", async () => {
@@ -126,7 +126,7 @@ describe("ai.service — provedor anthropic (Claude)", () => {
     });
 
     const res = await perguntarIA("teste", {});
-    expect(res).toEqual({ resposta: "Ok!", intencao: "chat", veiculo: null });
+    expect(res).toEqual({ resposta: "Ok!", intencao: "chat", veiculo: null, peca: null });
   });
 
   // Pedido do usuário: quando o cliente já menciona o veículo na 1ª
@@ -145,7 +145,7 @@ describe("ai.service — provedor anthropic (Claude)", () => {
       });
 
       const res = await perguntarIA("motor de partida fiat palio 2025", {});
-      expect(res).toEqual({ resposta: "Já te ajudo com isso!", intencao: "vendas", veiculo: "Fiat Palio 2025" });
+      expect(res).toEqual({ resposta: "Já te ajudo com isso!", intencao: "vendas", veiculo: "Fiat Palio 2025", peca: null });
     });
 
     test("veiculo null quando a IA não identifica o veículo na mensagem", async () => {
@@ -210,6 +210,77 @@ describe("ai.service — provedor anthropic (Claude)", () => {
     });
   });
 
+  // Pedido do usuário (relatado após o primeiro ajuste do veículo): a
+  // descrição do ticket ficava com a frase inteira do cliente, saudação
+  // incluída — "peca" permite à IA isolar só o nome da peça, igual já
+  // fazia com "veiculo".
+  describe("campo 'peca' (nome limpo da peça, sem saudação/veículo)", () => {
+    test("extrai a peça quando a IA retorna o campo preenchido", async () => {
+      const { perguntarIA } = loadAiService({ provider: "anthropic", apiKey: "sk-ant-teste-123" });
+
+      global.fetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          content: [{ text: '"resposta":"Já te ajudo!","intencao":"vendas","veiculo":"Fiat 2025","peca":"Motor de partida"}' }],
+        }),
+      });
+
+      const res = await perguntarIA("Bom dia, motor de partida fiat 2025", {});
+      expect(res).toEqual({
+        resposta: "Já te ajudo!",
+        intencao: "vendas",
+        veiculo: "Fiat 2025",
+        peca: "Motor de partida",
+      });
+    });
+
+    test("peca null quando a IA não identifica uma peça específica", async () => {
+      const { perguntarIA } = loadAiService({ provider: "anthropic", apiKey: "sk-ant-teste-123" });
+
+      global.fetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          content: [{ text: '"resposta":"Pode me dar mais detalhes?","intencao":"vendas","veiculo":null,"peca":null}' }],
+        }),
+      });
+
+      const res = await perguntarIA("preciso de uma peça", {});
+      expect(res.peca).toBeNull();
+    });
+
+    test("peca com string vazia ou tipo inesperado é tratada como null", async () => {
+      const { perguntarIA } = loadAiService({ provider: "anthropic", apiKey: "sk-ant-teste-123" });
+
+      global.fetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          content: [{ text: '"resposta":"Ok!","intencao":"vendas","peca":"   "}' }],
+        }),
+      });
+
+      const res = await perguntarIA("teste", {});
+      expect(res.peca).toBeNull();
+    });
+
+    test("campo 'peca' ausente por completo na resposta (compatibilidade) → null", async () => {
+      const { perguntarIA } = loadAiService({ provider: "anthropic", apiKey: "sk-ant-teste-123" });
+
+      global.fetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          content: [{ text: '"resposta":"Ok!","intencao":"chat"}' }],
+        }),
+      });
+
+      const res = await perguntarIA("teste", {});
+      expect(res.peca).toBeNull();
+    });
+  });
+
   test("HTTP 500 (sem sucesso em nenhuma tentativa) retorna null", async () => {
     const { perguntarIA } = loadAiService({ provider: "anthropic", apiKey: "sk-ant-teste-123" });
 
@@ -254,7 +325,7 @@ describe("ai.service — seleção de provedor via AI_PROVIDER", () => {
     const res = await perguntarIA("oi", {});
 
     expect(global.fetch.mock.calls[0][0]).toBe("https://api.groq.com/openai/v1/chat/completions");
-    expect(res).toEqual({ resposta: "oi", intencao: "chat", veiculo: null });
+    expect(res).toEqual({ resposta: "oi", intencao: "chat", veiculo: null, peca: null });
   });
 
   test('AI_PROVIDER="gemini" continua chamando a API do Gemini normalmente', async () => {
@@ -272,6 +343,6 @@ describe("ai.service — seleção de provedor via AI_PROVIDER", () => {
     const res = await perguntarIA("oi", {});
 
     expect(global.fetch.mock.calls[0][0]).toContain("generativelanguage.googleapis.com");
-    expect(res).toEqual({ resposta: "oi", intencao: "chat", veiculo: null });
+    expect(res).toEqual({ resposta: "oi", intencao: "chat", veiculo: null, peca: null });
   });
 });

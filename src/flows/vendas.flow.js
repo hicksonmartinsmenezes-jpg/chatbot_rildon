@@ -68,12 +68,15 @@ async function vendasFlow(message, userId, session) {
       // inicial (ex: "motor de partida fiat palio 2025" → veiculoInicial=
       // "Fiat Palio 2025", setado em main.flow.js), não repete a pergunta
       // "qual o veículo?" — já temos peça + veículo, faltava só o nome.
+      // pecaInicial (nome limpo da peça, ex: "Motor de partida") é
+      // preferido a produtoInicial (a frase inteira do cliente, com
+      // saudação e tudo) quando a IA conseguiu extrair — ver ai.service.js.
       if (session.veiculoInicial) {
         return _finalizarOrcamento(
           userId,
           { ...session, customerName: nomeSanitizado },
           session.veiculoInicial,
-          session.produtoInicial
+          session.pecaInicial || session.produtoInicial
         );
       }
 
@@ -99,7 +102,10 @@ async function vendasFlow(message, userId, session) {
       const produtoValido  = validarTamanho(normalizar(produtoInicial), 5).ok;
 
       if (produtoValido) {
-        return _finalizarOrcamento(userId, session, veiculoFinal, produtoInicial);
+        // Pedido do usuário: prefere o nome limpo da peça (pecaInicial,
+        // extraído pela IA em main.flow.js) em vez da frase inteira do
+        // cliente — evita "Produto: Bom dia, motor de partida fiat 2025".
+        return _finalizarOrcamento(userId, session, veiculoFinal, session.pecaInicial || produtoInicial);
       }
 
       await updateSession(userId, {

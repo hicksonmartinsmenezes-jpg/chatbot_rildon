@@ -477,6 +477,14 @@ async function _mainFlowInterno({ userId, message }) {
         // pulamos também a pergunta "qual o veículo?".
         const produtoDescritivo = validarTamanho(normalizar(sanitizarTexto(message)), 5).ok;
         const veiculoExtraido   = produtoDescritivo ? (resultado.veiculo || null) : null;
+        // Pedido do usuário (relatado após o primeiro ajuste): a descrição
+        // do ticket ficava com a frase inteira do cliente, saudação
+        // incluída (ex: "Produto: Bom dia, motor de partida fiat 2025").
+        // Quando a IA consegue isolar só o nome da peça, preferimos esse
+        // texto limpo — cai pra mensagem original só se a IA não
+        // identificar a peça com clareza (ver ai.service.js).
+        const pecaExtraida     = resultado.peca || null;
+        const produtoTexto     = pecaExtraida || message;
 
         if (veiculoExtraido && nomeSalvo) {
           // Nome + veículo + peça já conhecidos — finaliza o orçamento
@@ -488,25 +496,26 @@ async function _mainFlowInterno({ userId, message }) {
             userId,
             { customerName: nomeSalvo },
             veiculoExtraido,
-            message
+            produtoTexto
           );
           return resposta + "\n\n" + confirmacao;
         }
 
         if (nomeSalvo) {
           const primeiroNome = nomeSalvo.trim().split(" ")[0];
-          await updateSession(userId, { sector: "vendas", step: "aguardando_veiculo", customerName: nomeSalvo, produtoInicial: message, aiHistorico: novoHistorico, _iaFalhas: 0 });
+          await updateSession(userId, { sector: "vendas", step: "aguardando_veiculo", customerName: nomeSalvo, produtoInicial: message, pecaInicial: pecaExtraida, aiHistorico: novoHistorico, _iaFalhas: 0 });
           return resposta + "\n\n" + `Certo, *${primeiroNome}*! ` + MSG.vendas.PEDIR_VEICULO + MSG.ESCAPE_DICA;
         }
 
-        // Sem nome ainda — guarda o veículo já extraído (pode ser null) pra
-        // vendas.flow.js pular a pergunta de veículo assim que o nome for
+        // Sem nome ainda — guarda o veículo/peça já extraídos (podem ser
+        // null) pra vendas.flow.js pular as perguntas assim que o nome for
         // informado (ver step "aguardando_nome" em vendas.flow.js).
         await updateSession(userId, {
           sector: "vendas",
           step: "aguardando_nome",
           produtoInicial: message,
           veiculoInicial: veiculoExtraido,
+          pecaInicial: pecaExtraida,
           aiHistorico: novoHistorico,
           _iaFalhas: 0
         });

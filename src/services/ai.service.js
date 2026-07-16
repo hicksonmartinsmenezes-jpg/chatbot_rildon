@@ -194,9 +194,11 @@ NUNCA: invente preços, disponibilidade de estoque ou prazos específicos que n�
 ${trainingBlock}
 
 RETORNE SEMPRE JSON EXATO:
-{"resposta":"texto","intencao":"chat","veiculo":null}
+{"resposta":"texto","intencao":"chat","veiculo":null,"peca":null}
 
 "veiculo": preencha APENAS quando intencao for "vendas" E o cliente já tiver mencionado o veículo (marca, modelo e/ou ano) na própria mensagem — ex: "Fiat Palio 2025", "uno 2015", "gol quadrado". Isso permite ao sistema pular a pergunta "qual o veículo?" quando já souber a resposta, evitando perguntar de novo algo que o cliente já disse. Se o veículo NÃO foi mencionado, ou intencao for diferente de "vendas", retorne null. NUNCA invente ou presuma um veículo que o cliente não informou — na dúvida, null.
+
+"peca": preencha APENAS quando intencao for "vendas" E a peça/produto pedido estiver claro na mensagem — com o nome LIMPO e objetivo da peça, ex: "Motor de partida", "Pastilha de freio dianteira", "Alternador". NUNCA inclua na "peca" saudações ("bom dia"), o veículo (isso já vai no campo "veiculo" acima) ou frases inteiras do cliente — só o nome da peça em si. Se não conseguir identificar uma peça específica com clareza, retorne null (o sistema usa a mensagem original nesse caso).
 
 intencao DEVE SER:
 • "vendas"    → cliente quer comprar, verificar preço ou disponibilidade de peça: "preciso de X", "tem X para Y?", "quanto custa", "vocês trabalham com X?"
@@ -424,13 +426,19 @@ async function perguntarIA(mensagem, { nomeCliente, historico = [], contexto = {
       const veiculo = typeof parsed?.veiculo === "string" && parsed.veiculo.trim()
         ? parsed.veiculo.trim()
         : null;
+      // Mesma ideia do "veiculo" acima, mas pro nome da peça — evita que a
+      // descrição do ticket vire a frase inteira do cliente (com saudação
+      // e tudo mais) quando a IA já consegue extrair algo limpo.
+      const peca = typeof parsed?.peca === "string" && parsed.peca.trim()
+        ? parsed.peca.trim()
+        : null;
 
       if (!resposta) {
         logger.warn("[IA] JSON sem campo 'resposta'.");
         return null;
       }
 
-      return { resposta, intencao, veiculo };
+      return { resposta, intencao, veiculo, peca };
 
     } catch (err) {
       if (err.name === "AbortError") {

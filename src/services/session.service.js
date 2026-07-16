@@ -130,10 +130,11 @@ async function finalizarComTicket(userId, ticket) {
     veiculo:        undefined,
     cpf:            undefined,
     produtoInicial: undefined,
-    // Pedido do usuário: veículo extraído pela IA na 1ª mensagem (ver
+    // Pedido do usuário: veículo/peça extraídos pela IA na 1ª mensagem (ver
     // main.flow.js/vendas.flow.js) — limpa junto pra não vazar pra uma
     // futura sessão deste mesmo cliente.
     veiculoInicial: undefined,
+    pecaInicial:    undefined,
     aiHistorico,
   });
 }

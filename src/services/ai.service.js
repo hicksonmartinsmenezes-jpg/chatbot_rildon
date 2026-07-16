@@ -4,7 +4,7 @@ const logger  = require("../utils/logger");
 const EMPRESA = require("../config/empresa");
 
 // ─── Configuração de provedores ────────────────────────────────────────────────
-// Para trocar de provedor: altere AI_PROVIDER no .env para "groq" ou "gemini"
+// Para trocar de provedor: altere AI_PROVIDER no .env para "groq", "gemini" ou "anthropic"
 const PROVIDERS = {
   groq: {
     url:   "https://api.groq.com/openai/v1/chat/completions",
@@ -21,6 +21,18 @@ const PROVIDERS = {
     // 10 req/min free tier → 1 req a cada 6.5s com margem
     intervalMs: 6500,
     getKey: () => process.env.GEMINI_API_KEY,
+  },
+  // Pedido do usuário: melhor qualidade de resposta e de classificação de
+  // intenção (vendas/suporte/crediário/etc) que os provedores free tier
+  // acima. Claude Haiku 4.5 escolhido pelo equilíbrio custo x qualidade
+  // pro volume de um bot de atendimento via WhatsApp — sem tier gratuito,
+  // então intervalMs aqui é só uma margem de segurança contra rajada em
+  // caso de bug de loop, não um limite de free tier a respeitar.
+  anthropic: {
+    url:   "https://api.anthropic.com/v1/messages",
+    model: "claude-haiku-4-5-20251001",
+    intervalMs: 1000,
+    getKey: () => process.env.ANTHROPIC_API_KEY,
   },
 };
 
@@ -285,9 +297,54 @@ async function _chamarGemini(systemPrompt, contents, apiKey) {
   return res;
 }
 
+// A API da Anthropic não tem um modo "json_object" nativo como a API
+// OpenAI-compatible do Groq. Em vez de depender só do fallback de regex em
+// _extrairJSON (usado pelos outros provedores), usamos a técnica de
+// "prefill": a última mensagem é do papel "assistant" já começando com "{",
+// o que força o modelo a continuar a partir dali — o texto retornado NÃO
+// inclui esse prefixo (comportamento da API), então _extrairTextoResposta
+// recompõe o "{" antes do parse. Isso praticamente elimina falha de
+// parsing de JSON com este provedor.
+async function _chamarAnthropic(systemPrompt, contents, apiKey) {
+  const messages = [
+    ...contents.map(c => ({
+      role:    c.role === "model" ? "assistant" : "user",
+      content: c.parts[0].text,
+    })),
+    { role: "assistant", content: "{" },
+  ];
+
+  const res = await _fetchComTimeout(
+    PROVIDER.url,
+    {
+      method:  "POST",
+      headers: {
+        "content-type":      "application/json",
+        "x-api-key":         apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model:       PROVIDER.model,
+        system:      systemPrompt,
+        messages,
+        temperature: TEMPERATURE,
+        max_tokens:  MAX_TOKENS,
+      }),
+    },
+    REQUEST_TIMEOUT
+  );
+
+  return res;
+}
+
 function _extrairTextoResposta(provedor, data) {
   if (provedor === "groq") {
     return data?.choices?.[0]?.message?.content;
+  }
+  if (provedor === "anthropic") {
+    const texto = data?.content?.[0]?.text;
+    // Recompõe o "{" do prefill — ver nota em _chamarAnthropic.
+    return texto ? `{${texto}` : texto;
   }
   return data?.candidates?.[0]?.content?.parts?.[0]?.text;
 }
@@ -324,6 +381,8 @@ async function perguntarIA(mensagem, { nomeCliente, historico = [], contexto = {
 
       const res = PROVIDER_NAME === "gemini"
         ? await _chamarGemini(systemPrompt, contents, apiKey)
+        : PROVIDER_NAME === "anthropic"
+        ? await _chamarAnthropic(systemPrompt, contents, apiKey)
         : await _chamarGroq(systemPrompt, contents, apiKey);
 
       if (res.status === 429) {

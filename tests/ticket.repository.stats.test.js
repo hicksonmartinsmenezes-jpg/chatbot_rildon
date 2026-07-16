@@ -17,6 +17,15 @@ const ticketRepository = require("../src/repositories/ticket.repository");
 const FAKE_ROW = { total: 10, aberto: 2, em_andamento: 1, resolvido: 5, cancelado: 2 };
 
 beforeEach(() => {
+  // BUG CORRIGIDO: os testes abaixo leem pool.query.mock.calls[0] (índice
+  // fixo) para inspecionar a query gerada — sem limpar o histórico de
+  // chamadas entre testes, a partir do segundo teste desta suíte
+  // calls[0] continuava apontando pra chamada do teste ANTERIOR, não a
+  // deste teste. Os testes passavam a comparar params/SQL errados (do
+  // teste anterior), mascarando silenciosamente qualquer regressão real
+  // em stats() a partir do segundo caso em diante. mockClear() zera
+  // .mock.calls (mantém a implementação/resolved value) antes de cada teste.
+  pool.query.mockClear();
   pool.query.mockResolvedValue({ rows: [FAKE_ROW] });
 });
 

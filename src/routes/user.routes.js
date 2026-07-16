@@ -35,11 +35,33 @@ function sanitizeUser(user) {
 router.get("/users", asyncHandler(async (req, res) => {
   const includeInactive = req.query.includeInactive === "true";
   const users = await getUsers({ includeInactive });
-  res.json(users.map(sanitizeUser));
+
+  // Pedido do usuário: no painel Usuários, mostrar quem está "em
+  // atendimento" agora (tem ao menos 1 ticket em_andamento assumido) ao
+  // lado do status online/offline. Uma única query agregada evita 1
+  // consulta por usuário — mapeia assigned_to -> contagem de tickets ativos.
+  const ativosRes = await pool.query(
+    `SELECT assigned_to, COUNT(*)::int AS total
+     FROM tickets
+     WHERE status = 'em_andamento' AND assigned_to IS NOT NULL
+     GROUP BY assigned_to`
+  );
+  const ticketsAtivosPorUsuario = new Map(
+    ativosRes.rows.map(r => [String(r.assigned_to), r.total])
+  );
+
+  res.json(users.map(u => ({
+    ...sanitizeUser(u),
+    ticketsAtivos: ticketsAtivosPorUsuario.get(String(u.id)) || 0
+  })));
 }));
 
 router.post("/users", asyncHandler(async (req, res) => {
-  const { nome, usuario, senha, perfil, sector, ativo } = req.body || {};
+  // Pedido do usuário: poder vincular um número de telefone/WhatsApp
+  // pessoal ao criar o usuário — createUser()/user.service.js já suporta
+  // "numero" de ponta a ponta (usado também na edição do próprio perfil),
+  // só faltava esta rota repassar o campo do corpo da requisição.
+  const { nome, usuario, senha, perfil, sector, numero, ativo } = req.body || {};
 
   if (!nome || !usuario || !senha) {
     return res.status(400).json({ error: "Nome, usuário e senha são obrigatórios." });
@@ -52,7 +74,7 @@ router.post("/users", asyncHandler(async (req, res) => {
 
   let user;
   try {
-    user = await createUser({ nome, usuario, senha, perfil, sector, ativo });
+    user = await createUser({ nome, usuario, senha, perfil, sector, numero, ativo });
   } catch (err) {
     return res.status(400).json({ error: err.message });
   }

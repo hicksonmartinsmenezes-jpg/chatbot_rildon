@@ -62,13 +62,25 @@ function renderPanelUsers() {
     return;
   }
 
-  list.innerHTML = activeUsers.map(user => `
+  list.innerHTML = activeUsers.map(user => {
+    const online       = window.onlineUsers?.some(u => u.id === user.id && u.online);
+    const emAtendimento = Number(user.ticketsAtivos || 0) > 0;
+    const foto         = safeUrl(user.foto);
+    // Mesmo padrão visual de applyUserProfileVisual() (11-profile.js) — foto
+    // se tiver, iniciais do nome caso contrário.
+    const avatar       = foto
+      ? `<img src="${escapeAttr(foto)}" alt="Foto de ${safe(user.nome)}">`
+      : safe(initials(user.nome || user.usuario || "?"));
+
+    return `
     <div class="panel-user-item" data-user-row="${escapeAttr(user.id)}">
-      <div>
+      <div class="panel-user-avatar">${avatar}</div>
+      <div class="panel-user-info">
         <strong>${safe(user.nome)}</strong>
         <p>
           ${safe(user.usuario)} • ${safe(user.perfil)} •
-          ${window.onlineUsers?.some(u => u.id === user.id && u.online) ? "🟢 Online" : "⚫ Offline"}
+          ${online ? "🟢 Online" : "⚫ Offline"}
+          ${emAtendimento ? " • 🟠 Em atendimento" : ""}
         </p>
       </div>
       <div class="panel-user-actions">
@@ -80,12 +92,14 @@ function renderPanelUsers() {
         </button>
       </div>
     </div>
-  `).join("");
+  `;
+  }).join("");
 }
 
 async function createPanelUser() {
   const nome    = getValue("user-name").trim();
   const usuario = getValue("user-username").trim().toLowerCase();
+  const numero  = getValue("user-phone").trim();
   const senha   = getValue("user-password").trim();
   const perfil  = getValue("user-role");
   const sector  = getValue("user-sector");
@@ -100,7 +114,7 @@ async function createPanelUser() {
   try {
     const res = await apiFetch(`${BASE}/api/users`, {
       method: "POST",
-      body: JSON.stringify({ nome, usuario, senha, perfil, sector, ativo: true })
+      body: JSON.stringify({ nome, usuario, senha, perfil, sector, numero, ativo: true })
     });
     if (!res) throw new Error("Falha de conexão ao criar usuário.");
     const data = await res.json();
@@ -110,6 +124,7 @@ async function createPanelUser() {
     renderPanelUsers();
 
     setValue("user-name", ""); setValue("user-username", ""); setValue("user-password", "");
+    setValue("user-phone", "");
     setValue("user-role", "atendente");
     showToast(data.reactivated ? "✅ Usuário reativado com sucesso!" : "✅ Usuário criado com sucesso!");
     loadPanelUsers({ silent: true });

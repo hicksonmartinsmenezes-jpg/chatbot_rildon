@@ -100,6 +100,7 @@ CREATE INDEX IF NOT EXISTS idx_tickets_created_at ON tickets(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tickets_cpf
 ON tickets(REGEXP_REPLACE(cpf, '\D', '', 'g'));
 CREATE INDEX IF NOT EXISTS idx_tickets_satisfaction_rating ON tickets(satisfaction_rating);
+CREATE INDEX IF NOT EXISTS idx_tickets_status_assigned_to     ON tickets(status, assigned_to);
 
 -- Histórico
 CREATE TABLE IF NOT EXISTS history (

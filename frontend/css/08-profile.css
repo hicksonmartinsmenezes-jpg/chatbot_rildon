@@ -124,6 +124,34 @@
   gap: 12px;
 }
 
+/* Pedido do usuário: foto de perfil (ou iniciais, mesmo padrão do avatar
+   do topo em 02-layout.css) ao lado do nome na lista de Usuários. */
+.panel-user-avatar {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #1d6cf5, #4f46e5);
+  color: #fff;
+  font-weight: 800;
+  font-size: 14px;
+}
+
+.panel-user-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.panel-user-info {
+  flex: 1;
+  min-width: 0;
+}
+
 .panel-user-item strong {
   color: #fff;
 }

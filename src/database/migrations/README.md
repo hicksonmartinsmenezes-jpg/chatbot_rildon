@@ -19,6 +19,7 @@ numeração **não quebram a execução** — mas atrapalham a rastreabilidade.
 013_add_contacts_indexes.sql
 014_add_crediario_sector.sql
 015_satisfaction_survey.sql
+016_ticket_assigned_status_index.sql
 ```
 
 **Os números 005–008 nunca existiram neste repositório** (confirmado via
@@ -47,3 +48,9 @@ Adiciona `satisfaction_rating`/`satisfaction_asked_at`/`satisfaction_rated_at`
 em `tickets`. Ao fechar um atendimento (status → `resolvido`), o cliente
 recebe automaticamente uma mensagem pedindo pra avaliar de 1 a 5; a resposta
 fica registrada no próprio ticket (sem tabela nova).
+
+## 016 — índice (status, assigned_to)
+
+Suporta a consulta "quantos tickets em_andamento cada atendente tem agora"
+(painel Usuários, GET /api/users) — não existia índice cobrindo
+`assigned_to` sozinho antes desta migration.

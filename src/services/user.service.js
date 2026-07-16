@@ -96,12 +96,16 @@ async function createUser(data) {
       foto: data.foto || ""
     });
 
+    // Mesmo bug do branch de usuário novo abaixo — numero/foto ficavam de
+    // fora da resposta imediata da reativação.
     return {
       id: reactivated.id,
       nome: reactivated.nome,
       usuario: reactivated.usuario,
       perfil: reactivated.perfil,
       sector: reactivated.sector,
+      numero: reactivated.numero || "",
+      foto: reactivated.foto || "",
       ativo: reactivated.ativo,
       reactivated: true
     };
@@ -129,12 +133,22 @@ async function createUser(data) {
       newUser
     );
 
+  // BUG CORRIGIDO (achado escrevendo teste pro cadastro de telefone): este
+  // retorno omitia "numero" e "foto" — mesmo o valor sendo gravado
+  // corretamente no banco (userRepository.create já persiste os dois), a
+  // resposta imediata do POST /api/users vinha sem o telefone recém
+  // cadastrado. Na prática o painel corrige sozinho ao recarregar a lista
+  // logo em seguida (loadPanelUsers), mas o dado retornado devia estar
+  // certo desde já — mesmo padrão já usado no branch de reativação abaixo
+  // e em updateUserProfile().
   return {
     id: created.id,
     nome: created.nome,
     usuario: created.usuario,
     perfil: created.perfil,
     sector: created.sector,
+    numero: created.numero || "",
+    foto: created.foto || "",
     ativo: created.ativo
   };
 }

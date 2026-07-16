@@ -62,25 +62,34 @@ async function mudarStatus(id, status) {
   await _executarMudarStatus(id, status);
 }
 
+// BUG CORRIGIDO (relatado pelo usuário): o botão "Resolvido" não tinha
+// loading/disable — clicar 2x seguidas rápido (achando que a 1ª não
+// funcionou, já que nada muda na tela até a resposta chegar) disparava 2
+// requisições PATCH em voo ao mesmo tempo, e cada uma reenviava a pesquisa
+// de satisfação pro cliente. runExclusive (mesmo padrão já usado em
+// loadTickets) dedup por id: o 2º clique enquanto o 1º ainda está em voo
+// reaproveita a MESMA promise, em vez de disparar uma requisição nova.
 async function _executarMudarStatus(id, status) {
-  try {
-    const res = await apiFetch(`${BASE}/api/tickets/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status })
-    });
-    if (!res) return;
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      showToast(data.error || "Não foi possível atualizar o ticket.", "error");
-      return;
+  return runExclusive(`mudarStatus:${id}`, async () => {
+    try {
+      const res = await apiFetch(`${BASE}/api/tickets/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status })
+      });
+      if (!res) return;
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        showToast(data.error || "Não foi possível atualizar o ticket.", "error");
+        return;
+      }
+      showToast("✅ Status atualizado!", "success");
+      loadTickets();
+      if (currentTab === "metrics") loadMetricsCharts();
+    } catch {
+      showToast("Não foi possível atualizar o ticket.", "error");
     }
-    showToast("✅ Status atualizado!", "success");
-    loadTickets();
-    if (currentTab === "metrics") loadMetricsCharts();
-  } catch {
-    showToast("Não foi possível atualizar o ticket.", "error");
-  }
+  });
 }
 
 function updateStats(stats, tickets = [], liveStats = null, todayStats = null) {

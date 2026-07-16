@@ -312,5 +312,46 @@ describe("mainFlow — intenção vendas com veículo extraído pela IA", () => 
 
       expect(vendasFlow.finalizarOrcamento).not.toHaveBeenCalled();
     });
+
+    // Cenário relatado pelo usuário testando: quando a IA ainda precisa de
+    // mais info (ex: "qual o ano do veículo?"), empilhar a pergunta
+    // determinística "quer que eu registre?" em cima da pergunta da IA
+    // confundia sobre o que responder. Só oferece a confirmação quando
+    // veículo E peça já são conhecidos (extraídos ou sugeridos antes).
+    test("veiculo/peca incompletos (IA ainda pergunta algo) → NÃO acrescenta 'quer que eu registre', deixa só a pergunta da IA", async () => {
+      sessionService.getSession.mockReturnValue({ sector: "main", customerName: "Design / Marketing" });
+      perguntarIA.mockResolvedValue({
+        resposta: "Vamos ajudar com o orçamento do motor de partida para o T-Cross. Qual o ano do seu veículo?",
+        intencao: "vendas",
+        veiculo: null,       // "T-Cross" sozinho, sem ano, a IA não considerou completo
+        peca: "Motor de partida",
+        pedidoExplicito: false,
+      });
+
+      const resposta = await mainFlow({ userId: USER_ID, message: "motor de partida t-cross" });
+
+      expect(resposta).toBe("Vamos ajudar com o orçamento do motor de partida para o T-Cross. Qual o ano do seu veículo?");
+      expect(resposta).not.toContain(MSG.vendas.CONFIRMAR_ORCAMENTO);
+      expect(vendasFlow.finalizarOrcamento).not.toHaveBeenCalled();
+    });
+
+    test("veiculo/peca completos (um extraído agora, outro sugerido antes) → acrescenta a confirmação normalmente", async () => {
+      sessionService.getSession.mockReturnValue({
+        sector: "main",
+        customerName: "Design / Marketing",
+        pecaSugerido: "Motor de partida",
+      });
+      perguntarIA.mockResolvedValue({
+        resposta: "Show, achamos aqui!",
+        intencao: "vendas",
+        veiculo: "T-Cross 2025",
+        peca: null,
+        pedidoExplicito: false,
+      });
+
+      const resposta = await mainFlow({ userId: USER_ID, message: "tem pro t-cross 2025?" });
+
+      expect(resposta).toContain(MSG.vendas.CONFIRMAR_ORCAMENTO);
+    });
   });
 });

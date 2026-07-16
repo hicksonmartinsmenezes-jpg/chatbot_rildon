@@ -197,6 +197,16 @@ async function patchTicket(req, res) {
       }
     }
 
+    // BUG CORRIGIDO (relatado pelo usuário): o botão "Resolvido" no painel
+    // não tem loading/disable — clicar 2x seguidas (achando que a 1ª não
+    // funcionou) disparava DUAS chamadas de patch com status=resolvido, e
+    // cada uma reenviava a pesquisa de satisfação pro cliente, que recebia
+    // a pergunta "De 1 a 5..." duas vezes. Guardamos o status ANTES do
+    // update pra só considerar satisfação quando o ticket está realmente
+    // transicionando pra "resolvido" agora — fechar um que já estava
+    // fechado não deve gerar esse efeito colateral de novo.
+    const jaEstavaResolvido = atual.status === "resolvido";
+
     const ticket = await updateTicketStatus(id, status);
 
     // Ticket fechado → bot volta a responder este cliente
@@ -214,8 +224,9 @@ async function patchTicket(req, res) {
       clearReopenCooldown(ticket.userId);
     }
 
-    // Só pra "resolvido" — ver nota na função acima.
-    if (status === "resolvido") {
+    // Só pra "resolvido", e só na transição real (ver nota acima) — evita
+    // reenviar a pesquisa quando o ticket já estava resolvido.
+    if (status === "resolvido" && !jaEstavaResolvido) {
       await enviarPesquisaSatisfacao(ticket);
     }
 

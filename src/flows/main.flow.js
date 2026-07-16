@@ -496,18 +496,30 @@ async function _mainFlowInterno({ userId, message }) {
           // Guarda o que já foi identificado nesta consulta (pode ser null)
           // pra reaproveitar se o cliente confirmar ("sim", "quero") na
           // próxima mensagem — evita perguntar tudo de novo depois.
+          const veiculoConhecido = veiculoExtraido || session.veiculoSugerido || null;
+          const pecaConhecida    = pecaExtraida    || session.pecaSugerido    || null;
+
           await updateSession(userId, {
             aiHistorico: novoHistorico,
             _iaFalhas: 0,
-            veiculoSugerido: veiculoExtraido || session.veiculoSugerido || null,
-            pecaSugerido:    pecaExtraida    || session.pecaSugerido    || null,
+            veiculoSugerido: veiculoConhecido,
+            pecaSugerido:    pecaConhecida,
           });
-          // Pedido do usuário: em vez do menu completo (1-4), pergunta
-          // direto se o cliente quer o orçamento — mais natural depois de
-          // uma pergunta de disponibilidade ("tem X pra Y?") do que forçar
-          // escolher "1" de novo. "sim" cai no default/IA normalmente, que
-          // já reconhece como confirmação (ver instrução em ai.service.js).
-          return resposta + "\n\n" + MSG.vendas.CONFIRMAR_ORCAMENTO;
+
+          // BUG CORRIGIDO (relatado pelo usuário testando cenários): quando
+          // veículo/peça AINDA não estão completos, a própria IA já faz
+          // uma pergunta de esclarecimento (ex: "qual o ano do veículo?",
+          // "qual modelo de motor de partida?") — empilhar a pergunta
+          // determinística "quer que eu registre o orçamento?" em cima
+          // dessa deixava DUAS perguntas na mesma mensagem, confundindo o
+          // cliente sobre o que responder. Só oferece a confirmação quando
+          // já sabemos os dois (veículo + peça) — aí sim faz sentido
+          // perguntar se quer registrar. Caso contrário, deixa a pergunta
+          // da própria IA em pé sozinha.
+          if (veiculoConhecido && pecaConhecida) {
+            return resposta + "\n\n" + MSG.vendas.CONFIRMAR_ORCAMENTO;
+          }
+          return resposta;
         }
 
         // pedidoExplicito confirmado — usa o que a IA extraiu agora, ou o

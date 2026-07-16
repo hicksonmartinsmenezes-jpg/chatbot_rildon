@@ -241,8 +241,12 @@ describe("mainFlow — intenção vendas com veículo extraído pela IA", () => 
   describe("campo 'pedidoExplicito' — não cria ticket sozinho em simples pergunta", () => {
     test("pedidoExplicito false → NÃO finaliza nem entra no fluxo de vendas, só responde e guarda sugestão", async () => {
       sessionService.getSession.mockReturnValue({ sector: "main", customerName: "Design / Marketing" });
+      // Resposta "fechada" (sem "?" no final) — o prompt já instrui a IA a
+      // NÃO perguntar ela mesma "quer que eu registre o orçamento?" quando
+      // pedidoExplicito é false (isso é papel do sistema, via
+      // CONFIRMAR_ORCAMENTO logo abaixo).
       perguntarIA.mockResolvedValue({
-        resposta: "Sim, trabalhamos com motor de partida pro Palio! Quer que eu registre o orçamento?",
+        resposta: "Sim, trabalhamos com motor de partida pro Palio! 😊",
         intencao: "vendas",
         veiculo: "Fiat Palio",
         peca: "Motor de partida",
@@ -253,7 +257,7 @@ describe("mainFlow — intenção vendas com veículo extraído pela IA", () => 
 
       expect(vendasFlow.finalizarOrcamento).not.toHaveBeenCalled();
       expect(resposta).not.toContain("Orçamento registrado");
-      expect(resposta).toContain("Quer que eu registre o orçamento?");
+      expect(resposta).toContain("Sim, trabalhamos com motor de partida pro Palio!");
       // Pedido do usuário: em vez do menu completo (1-4), pergunta direto se
       // quer o orçamento — mais natural após uma pergunta de disponibilidade.
       expect(resposta).toContain(MSG.vendas.CONFIRMAR_ORCAMENTO);
@@ -352,6 +356,32 @@ describe("mainFlow — intenção vendas com veículo extraído pela IA", () => 
       const resposta = await mainFlow({ userId: USER_ID, message: "tem pro t-cross 2025?" });
 
       expect(resposta).toContain(MSG.vendas.CONFIRMAR_ORCAMENTO);
+    });
+
+    // Bug real relatado pelo usuário: "tem motor de partida pra audi a4
+    // 2025?" — a IA respondeu de forma confiante e completa, mas não
+    // conseguiu extrair veiculo/peca (modelo pouco comum). Com o gate
+    // antigo (só oferece confirmação quando os DOIS campos são
+    // conhecidos), o cliente ficava sem NENHUM caminho — a resposta não
+    // era uma pergunta (não terminava em "?"), então nada indicava que
+    // bastava responder "sim" pra registrar o orçamento.
+    test("veiculo/peca NÃO extraídos, mas resposta da IA é informativa (não pergunta nada) → acrescenta a confirmação mesmo assim", async () => {
+      sessionService.getSession.mockReturnValue({ sector: "main", customerName: "Design / Marketing" });
+      perguntarIA.mockResolvedValue({
+        resposta: "Trabalhamos com peças pra várias marcas, incluindo Audi. Pra confirmar esse item certinho, o ideal é já registrar um orçamento que nosso consultor confirma disponibilidade e valor pra você.",
+        intencao: "vendas",
+        veiculo: null,
+        peca: null,
+        pedidoExplicito: false,
+      });
+
+      const resposta = await mainFlow({
+        userId: USER_ID,
+        message: "Boa tarde, tem motor de partida para audi a4 2025?",
+      });
+
+      expect(resposta).toContain(MSG.vendas.CONFIRMAR_ORCAMENTO);
+      expect(vendasFlow.finalizarOrcamento).not.toHaveBeenCalled();
     });
   });
 });

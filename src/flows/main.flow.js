@@ -506,17 +506,27 @@ async function _mainFlowInterno({ userId, message }) {
             pecaSugerido:    pecaConhecida,
           });
 
-          // BUG CORRIGIDO (relatado pelo usuário testando cenários): quando
-          // veículo/peça AINDA não estão completos, a própria IA já faz
-          // uma pergunta de esclarecimento (ex: "qual o ano do veículo?",
-          // "qual modelo de motor de partida?") — empilhar a pergunta
-          // determinística "quer que eu registre o orçamento?" em cima
-          // dessa deixava DUAS perguntas na mesma mensagem, confundindo o
-          // cliente sobre o que responder. Só oferece a confirmação quando
-          // já sabemos os dois (veículo + peça) — aí sim faz sentido
-          // perguntar se quer registrar. Caso contrário, deixa a pergunta
-          // da própria IA em pé sozinha.
-          if (veiculoConhecido && pecaConhecida) {
+          // BUG CORRIGIDO (relatado pelo usuário, 2 cenários diferentes):
+          // 1) Empilhar "quer que eu registre o orçamento?" em cima de uma
+          //    pergunta que a própria IA já fez (ex: "qual o ano do
+          //    veículo?") confundia sobre o que responder — só um dos dois
+          //    devia aparecer.
+          // 2) O gate anterior (só oferecer confirmação quando veículo E
+          //    peça já eram conhecidos) deixava o cliente sem NENHUM
+          //    caminho quando a IA dava uma resposta completa mas não
+          //    conseguia extrair os campos estruturados (ex: "tem motor de
+          //    partida pra audi a4 2025?" → IA responde de forma
+          //    informativa e confiante, mas sem preencher veiculo/peca —
+          //    cliente ficava sem saber que podia simplesmente responder
+          //    "sim" pra registrar o orçamento).
+          // O que realmente importa não é se veículo/peça foram extraídos,
+          // e sim se a IA JÁ está perguntando algo agora — nesse caso
+          // (resposta termina em "?"), deixa só a pergunta dela em pé.
+          // Caso contrário (resposta "fechada"/informativa), sempre oferece
+          // a confirmação determinística — é o único jeito do cliente
+          // saber que pode só responder "sim".
+          const iaJaPerguntouAlgo = /\?\s*$/.test(resposta);
+          if (!iaJaPerguntouAlgo) {
             return resposta + "\n\n" + MSG.vendas.CONFIRMAR_ORCAMENTO;
           }
           return resposta;

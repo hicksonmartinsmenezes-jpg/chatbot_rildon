@@ -414,6 +414,35 @@ describe("broadcast.service", () => {
       const audience = await broadcastService.getBroadcastAudience("contacts", { tag: "vip", atendenteId: "u1" });
       expect(audience[0]).toMatchObject({ userId: "55996" });
     });
+
+    // Pedido do usuário: campanha combinando "Funcionário(a)" + "Diretor
+    // Geral" ao mesmo tempo — antes só existia `tag` singular, e combinar
+    // mais de uma etiqueta exigia buscar cada uma separado e deduplicar na
+    // mão (foi assim que a campanha de teste real precisou ser montada).
+    // Agora `tags` (array) monta uma única query com overlap (&&), que já
+    // resolve tanto o "OR" entre etiquetas quanto evita duplicar linhas por
+    // contato — sem precisar de dedup client-side.
+    test("contacts com tags (array) monta cláusula de overlap, não uma tag só", async () => {
+      await broadcastService.getBroadcastAudience("contacts", { tags: ["Funcionário(a)", "Diretor Geral"] });
+
+      const call = pool.query.mock.calls.find(([sql]) => /FROM contacts/.test(sql));
+      expect(call[0]).toMatch(/tags && \$1::text\[\]/);
+      expect(call[1]).toEqual([["Funcionário(a)", "Diretor Geral"]]);
+    });
+
+    test("contacts sem nenhuma tag selecionada não filtra por etiqueta (todas)", async () => {
+      await broadcastService.getBroadcastAudience("contacts", { tags: [] });
+
+      const call = pool.query.mock.calls.find(([sql]) => /FROM contacts/.test(sql));
+      expect(call[0]).not.toMatch(/tags &&/);
+    });
+
+    test("contacts com tag singular E tags juntos combina sem duplicar", async () => {
+      await broadcastService.getBroadcastAudience("contacts", { tag: "vip", tags: ["vip", "Diretor Geral"] });
+
+      const call = pool.query.mock.calls.find(([sql]) => /FROM contacts/.test(sql));
+      expect(call[1][0].sort()).toEqual(["Diretor Geral", "vip"]);
+    });
   });
 
   describe("retryFailedRecipients", () => {

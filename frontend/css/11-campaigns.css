@@ -676,6 +676,45 @@
   min-width: 140px;
 }
 
+/* ─── Etiquetas: múltipla escolha (checkboxes em formato de pill) ── */
+.camp-tag-checklist {
+  flex: 2;
+  min-width: 200px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-content: flex-start;
+}
+
+.camp-tag-checklist:empty::before {
+  content: "Nenhuma etiqueta cadastrada.";
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.camp-tag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  transition: background .15s, border-color .15s, color .15s;
+}
+
+.camp-tag-pill input { display: none; }
+
+.camp-tag-pill.active {
+  background: var(--primary, #1d6cf5);
+  border-color: var(--primary, #1d6cf5);
+  color: #fff;
+}
+
 /* ─── Preview de contatos no modal de confirmação ── */
 .cc-contacts-preview {
   margin: 8px 0 12px;

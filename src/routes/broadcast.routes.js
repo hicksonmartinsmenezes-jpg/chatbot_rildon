@@ -159,7 +159,14 @@ router.post("/broadcasts/upload", uploadLimiter, (req, res) => {
 router.get("/broadcasts/audience/:type", async (req, res) => {
   try {
     const { tag, atendenteId } = req.query;
-    const audience = await getBroadcastAudience(req.params.type, { tag, atendenteId });
+    // `tags` pode chegar como string única (?tags=a), array (?tags=a&tags=b,
+    // já parseado pelo Express) ou string separada por vírgula (?tags=a,b) —
+    // normaliza pros três formatos.
+    let tags = req.query.tags;
+    if (typeof tags === "string") tags = tags.split(",").map(t => t.trim()).filter(Boolean);
+    if (!Array.isArray(tags)) tags = [];
+
+    const audience = await getBroadcastAudience(req.params.type, { tag, tags, atendenteId });
     res.json(audience);
   } catch (err) {
     res.status(400).json({ error: err.message });

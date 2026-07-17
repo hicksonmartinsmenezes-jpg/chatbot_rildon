@@ -888,9 +888,9 @@
           <div id="contacts-filters-box" class="hidden camp-field contacts-filters-box">
             <label>Filtrar contatos</label>
             <div class="contacts-filters-row">
-              <select id="camp-filter-tag" class="contacts-filter-select" data-change-action="updateCampaignAudienceCount">
-                <option value="">Todas as etiquetas</option>
-              </select>
+              <div id="camp-filter-tags" class="camp-tag-checklist" title="Nenhuma marcada = todas as etiquetas">
+                <!-- checkboxes de etiqueta preenchidos via loadCampaignContactsFilters() -->
+              </div>
               <select id="camp-filter-atendente" class="contacts-filter-select" data-change-action="updateCampaignAudienceCount">
                 <option value="">Todos os atendentes</option>
               </select>

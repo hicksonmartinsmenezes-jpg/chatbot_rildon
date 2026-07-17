@@ -297,9 +297,20 @@ async function processBroadcastQueue(broadcastId) {
 }
 
 
-async function getBroadcastAudience(type, { tag = "", atendenteId = "" } = {}) {
+async function getBroadcastAudience(type, { tag = "", tags = [], atendenteId = "" } = {}) {
   let query = "";
   let params = [];
+
+  // Pedido do usuário: campanha só pra "Funcionário(a)" + "Diretor Geral" ao
+  // mesmo tempo — antes só existia "tag" singular, e combinar mais de uma
+  // etiqueta exigia buscar cada uma separado e deduplicar na mão (ver
+  // broadcast de teste enviado manualmente via fetch direto no console).
+  // Aceita tanto `tag` (retrocompatibilidade) quanto `tags` (array, lógica OU).
+  const tagList = [
+    ...(Array.isArray(tags) ? tags : [tags]).filter(Boolean),
+    ...(tag ? [tag] : [])
+  ];
+  const uniqueTags = [...new Set(tagList)];
 
   if (type === "all_clients") {
     query = `
@@ -340,9 +351,11 @@ SELECT
 
   if (type === "contacts") {
     const where = ["status = 'ativo'", "whatsapp IS NOT NULL"];
-    if (tag) {
-      params.push(tag);
-      where.push(`$${params.length} = ANY(tags)`);
+    if (uniqueTags.length > 0) {
+      // Overlap (&&): contato entra se tiver QUALQUER UMA das etiquetas
+      // selecionadas (lógica OU) — usa o índice GIN existente em tags.
+      params.push(uniqueTags);
+      where.push(`tags && $${params.length}::text[]`);
     }
     if (atendenteId) {
       params.push(atendenteId);

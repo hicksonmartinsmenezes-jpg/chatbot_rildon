@@ -110,8 +110,8 @@ async function createCampaign() {
     } else {
       const params = new URLSearchParams();
       if (audienceType === "contacts") {
-        const { tag, atendenteId } = _getContactsFilters();
-        if (tag)         params.set("tag", tag);
+        const { tags, atendenteId } = _getContactsFilters();
+        tags.forEach(t => params.append("tags", t));
         if (atendenteId) params.set("atendenteId", atendenteId);
       }
       const qs = params.toString() ? `?${params}` : "";
@@ -638,11 +638,20 @@ async function loadCampaignContactsFilters() {
     ]);
     if (tagsRes.ok) {
       const tags = await tagsRes.json();
-      const sel  = document.getElementById("camp-filter-tag");
-      if (sel) {
-        const cur = sel.value;
-        sel.innerHTML = `<option value="">Todas as etiquetas</option>` +
-          tags.map(t => `<option value="${escapeAttr(t)}" ${t === cur ? "selected" : ""}>${safe(t)}</option>`).join("");
+      const box  = document.getElementById("camp-filter-tags");
+      if (box) {
+        // Pedido do usuário: campanha pra "Funcionário(a)" + "Diretor Geral"
+        // ao mesmo tempo exigia gambiarra via fetch manual, porque o filtro
+        // só aceitava UMA etiqueta por vez. Preserva marcação já feita ao
+        // recarregar (ex: depois de trocar de aba e voltar).
+        const marcadas = new Set(
+          [...box.querySelectorAll("input:checked")].map(el => el.value)
+        );
+        box.innerHTML = tags.map(t => `
+          <label class="camp-tag-pill${marcadas.has(t) ? " active" : ""}">
+            <input type="checkbox" value="${escapeAttr(t)}" ${marcadas.has(t) ? "checked" : ""} data-change-action="updateCampaignAudienceCount">
+            <span>${safe(t)}</span>
+          </label>`).join("");
       }
     }
     if (usersRes?.ok) {
@@ -659,12 +668,25 @@ async function loadCampaignContactsFilters() {
   } catch (_) {}
 }
 
+// Pedido do usuário: permitir combinar mais de uma etiqueta (ex:
+// "Funcionário(a)" + "Diretor Geral") no público de uma campanha — antes só
+// dava pra escolher uma por vez, e combinar exigia gambiarra manual.
 function _getContactsFilters() {
+  const tags = [...document.querySelectorAll("#camp-filter-tags input:checked")].map(el => el.value);
   return {
-    tag:         document.getElementById("camp-filter-tag")?.value         || "",
-    atendenteId: document.getElementById("camp-filter-atendente")?.value   || ""
+    tags,
+    atendenteId: document.getElementById("camp-filter-atendente")?.value || ""
   };
 }
+
+// Alterna o destaque visual (.active) do pill ao (des)marcar a etiqueta —
+// a lógica de recalcular o público continua no listener delegado central
+// (data-change-action="updateCampaignAudienceCount" em 17-ui-events.js).
+document.addEventListener("change", (event) => {
+  const checkbox = event.target.closest(".camp-tag-pill input[type=checkbox]");
+  if (!checkbox) return;
+  checkbox.closest(".camp-tag-pill").classList.toggle("active", checkbox.checked);
+});
 
 async function updateCampaignAudienceCount() {
   if (!getCurrentUser()) return;
@@ -686,8 +708,8 @@ async function updateCampaignAudienceCount() {
   try {
     const params = new URLSearchParams();
     if (audienceType === "contacts") {
-      const { tag, atendenteId } = _getContactsFilters();
-      if (tag)         params.set("tag", tag);
+      const { tags, atendenteId } = _getContactsFilters();
+      tags.forEach(t => params.append("tags", t));
       if (atendenteId) params.set("atendenteId", atendenteId);
     }
     const qs  = params.toString() ? `?${params}` : "";

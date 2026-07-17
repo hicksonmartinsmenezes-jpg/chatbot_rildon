@@ -1,5 +1,6 @@
 const { getSession, clearSession, updateSession, finalizarComTicket } = require("../services/session.service");
 const { createTicket }                                      = require("../services/ticket.service");
+const { getProfilePhotoCandidates }                         = require("../whatsapp/lid-map");
 const { estaEmHorarioDeAtendimento, mensagemForaDeHorario } = require("../utils/horario");
 const { notificarAtendente, notificarSeDisponivel }         = require("../services/notificacao.service");
 const { validarNome, sanitizarTexto, normalizar, validarTamanho } = require("../utils/validators");
@@ -152,17 +153,52 @@ async function _criarTicket(dados) {
   }
 }
 
-// ── Busca nome de cliente retornando (ticket ou histórico anterior) ──────────
+// ── Busca nome de cliente retornando (contato real, ticket ou histórico) ─────
+// Pedido do usuário: a saudação estava usando o nome DIGITADO manualmente
+// num orçamento antigo (tickets.customer_name) — que pode ficar "preso" a
+// um atendimento anterior (ex: teste em que o próprio usuário informou um
+// nome diferente do seu) e não refletir quem está mandando mensagem agora.
+// Prioridade nova: contacts.nome (auto-registrado a partir do pushName do
+// WhatsApp a cada mensagem — ver src/whatsapp/contacts.js — é o nome real
+// do contato, atualizado sempre que deixa de ser genérico) > customer_name
+// do ticket (nome digitado, pode estar desatualizado) > contact_name do
+// histórico (mesmo pushName, só que uma cópia mais antiga).
+function _pareceApenasDigitos(nome) {
+  return /^\d+$/.test(String(nome || "").trim());
+}
+
 async function _buscarNomeCliente(userId) {
   try {
-    // Verifica primeiro em tickets (nome mais confiável — informado pelo próprio cliente)
+    const candidatos = getProfilePhotoCandidates(userId);
+    const telefones = Array.from(new Set(
+      (candidatos.length ? candidatos : [userId])
+        .map(c => String(c || "").replace(/@(s\.whatsapp\.net|lid)$/i, "").replace(/\D/g, ""))
+        .filter(Boolean)
+    ));
+
+    if (telefones.length) {
+      const contatoRes = await pool.query(
+        `SELECT nome FROM contacts
+         WHERE whatsapp = ANY($1::text[])
+           AND nome IS NOT NULL AND nome != ''
+         ORDER BY updated_at DESC LIMIT 1`,
+        [telefones]
+      );
+      const nomeContato = contatoRes.rows[0]?.nome;
+      // Checagem em JS além do filtro SQL: nome só com dígitos é o
+      // placeholder de telefone salvo antes do nome real ser conhecido
+      // (ver autoRegisterContact) — não deve virar saudação "Olá, 5599...!".
+      if (nomeContato && !_pareceApenasDigitos(nomeContato)) return nomeContato;
+    }
+
+    // Fallback: nome digitado manualmente num ticket anterior
     const ticketRes = await pool.query(
       `SELECT customer_name FROM tickets WHERE user_id = $1 AND customer_name IS NOT NULL AND customer_name != 'Não informado' ORDER BY created_at DESC LIMIT 1`,
       [userId]
     );
     if (ticketRes.rows[0]?.customer_name) return ticketRes.rows[0].customer_name;
 
-    // Fallback: histórico de mensagens
+    // Último fallback: histórico de mensagens
     const histRes = await pool.query(
       `SELECT contact_name FROM history WHERE user_id = $1 AND contact_name IS NOT NULL AND contact_name != '' ORDER BY created_at DESC LIMIT 1`,
       [userId]

@@ -381,6 +381,34 @@ async function rateSatisfaction(id, rating) {
   return result.rows[0] ? mapTicket(result.rows[0]) : null;
 }
 
+// Anexa uma nova descrição a um ticket ATIVO já existente, em vez de criar
+// um segundo ticket para o mesmo cliente (ver createTicket em
+// ticket.service.js — o bot continua respondendo normalmente enquanto o
+// ticket espera um atendente aceitar, então um 2º pedido nesse meio-tempo
+// virava um ticket duplicado, confundindo qual ticket os botões Aceitar/
+// Fechar do painel deviam afetar). O texto novo entra NO TOPO (o pedido
+// mais recente é o relevante pra mensagem de confirmação ao cliente,
+// ORCAMENTO_SOLICITADO, que só lê a 1ª ocorrência de "Produto:"/"Veículo:"
+// na descrição) — o texto anterior fica preservado logo abaixo, como
+// histórico, para o atendente ver os dois pedidos.
+async function prependDescription(id, novoTexto) {
+  const idStr = String(id);
+  const result = await pool.query(
+    `
+    UPDATE tickets
+    SET description = CASE
+          WHEN description IS NULL OR description = '' THEN $1::text
+          ELSE $1::text || E'\n---\n(pedido anterior) ' || description
+        END,
+        updated_at = NOW()
+    WHERE ${idOrProtocolWhere(idStr, 2)}
+    RETURNING *
+    `,
+    [novoTexto, idStr]
+  );
+  return result.rows[0] ? mapTicket(result.rows[0]) : null;
+}
+
 async function findByCpf(cpfLimpo) {
   const result = await pool.query(
     `SELECT * FROM tickets WHERE REGEXP_REPLACE(cpf, '\\D', '', 'g') = $1 ORDER BY created_at DESC`,
@@ -402,5 +430,6 @@ module.exports = {
   stats,
   gerarProtocolo,
   askSatisfaction,
-  rateSatisfaction
+  rateSatisfaction,
+  prependDescription
 };

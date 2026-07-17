@@ -49,6 +49,32 @@ async function createTicket({
   description,
   sector: sectorOverride
 }) {
+  // BUG CORRIGIDO (relatado pelo usuário: cliquei em Aceitar e ficou em
+  // Pendentes, cliquei em Fechar e foi pra Ativos): o bot continua
+  // respondendo normalmente enquanto um ticket criado espera um atendente
+  // aceitar — humanMode só pausa o bot DEPOIS do "Aceitar" (ver
+  // assumirTicket em ticket.controller.js). Se o cliente manda outro
+  // pedido nesse meio-tempo (ex: pede orçamento de uma 2ª peça antes de
+  // ser aceito), o fluxo criava um ticket NOVO em paralelo pro mesmo
+  // cliente. O painel só guarda "um ticket mais recente por cliente"
+  // (ticketsByUser no frontend) — com dois tickets ativos ao mesmo tempo,
+  // qual deles é "o mais recente" muda conforme o status de cada um muda,
+  // e os botões Aceitar/Fechar (montados com o ticketId do ticket errado)
+  // acabavam agindo no ticket que NÃO estava na tela. Agora, se já existe
+  // um ticket ativo (aberto ou em_andamento) pro mesmo cliente, reaproveita
+  // ele — anexando a nova descrição — em vez de criar um segundo.
+  const candidatos = getProfilePhotoCandidates(userId);
+  const existentes = await ticketRepository.findByUserIds(candidatos.length ? candidatos : [userId]);
+  const ativo = existentes.find(t => t.status === "aberto" || t.status === "em_andamento");
+  if (ativo) {
+    logger.info(`[createTicket] Ticket ativo #${ativo.protocolo} já existe para ${userId} — anexando pedido novo em vez de criar outro`);
+    if (description) {
+      const atualizado = await ticketRepository.prependDescription(ativo.id, description);
+      if (atualizado) return atualizado;
+    }
+    return ativo;
+  }
+
   const protocolo = await ticketRepository.gerarProtocolo();
   const sector = sectorOverride || TYPE_TO_SECTOR[type] || "geral";
 

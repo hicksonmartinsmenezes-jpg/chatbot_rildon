@@ -258,6 +258,45 @@ describe("stats", () => {
 // no banco: só quem realmente conseguir gravar a linha (RETURNING não
 // vazio) deve mandar a mensagem (ver enviarPesquisaSatisfacao em
 // ticket.controller.js).
+// Bug relatado pelo usuário: "cliquei em aceitar e ficou em pendentes o
+// pedido, cliquei em fechar e foi pra ativos" — causa raiz: o bot criava
+// um 2o ticket em paralelo pro mesmo cliente enquanto o 1o ainda esperava
+// aceite (ver createTicket em ticket.service.js). prependDescription()
+// anexa o pedido novo num ticket ATIVO ja existente em vez de deixar
+// criar um duplicado.
+describe("prependDescription", () => {
+  test("ticket sem descricao anterior: usa so o texto novo", async () => {
+    pool.query.mockResolvedValueOnce({ rows: [{ id: 42, description: "Motor de partida" }] });
+
+    const result = await repo.prependDescription(ID, "Motor de partida");
+
+    const [sql, params] = pool.query.mock.calls[0];
+    expect(sql).toMatch(/SET description = CASE/);
+    expect(sql).toMatch(/\(id = \$2::int OR protocolo = \$2::text\)/);
+    expect(params).toEqual(["Motor de partida", ID]);
+    expect(result).toMatchObject({ description: "Motor de partida" });
+  });
+
+  test("ticket com descricao anterior: SQL preserva a antiga junto com o texto novo no topo", async () => {
+    pool.query.mockResolvedValueOnce({
+      rows: [{ id: 42, description: "Farol (pedido anterior) Palheta" }]
+    });
+
+    await repo.prependDescription(ID, "Farol");
+
+    const [sql] = pool.query.mock.calls[0];
+    expect(sql).toMatch(/ELSE \$1::text \|\|/);
+    expect(sql).toMatch(/pedido anterior/);
+    expect(sql).toMatch(/\|\| description/);
+  });
+
+  test("ticket inexistente retorna null", async () => {
+    pool.query.mockResolvedValueOnce({ rows: [] });
+    const result = await repo.prependDescription(ID, "Farol");
+    expect(result).toBeNull();
+  });
+});
+
 describe("askSatisfaction", () => {
   test("SQL inclui 'AND satisfaction_asked_at IS NULL' — reivindicação atômica, não só um UPDATE incondicional", async () => {
     pool.query.mockResolvedValueOnce({ rows: [{ id: 42, satisfaction_asked_at: new Date() }] });

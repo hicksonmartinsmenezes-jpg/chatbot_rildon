@@ -20,7 +20,7 @@ const {
 const { isDuplicateContent, marcarMensagemProcessada, startDedupCleanup } = require("../whatsapp/dedup");
 const { autoRegisterContact } = require("../whatsapp/contacts");
 const { saveHistory } = require("../services/history.service");
-const { analisarImagemPeca, suportaVisao } = require("../services/ai.service");
+const { analisarImagemPeca, suportaVisao, transcreverAudio, suportaAudio } = require("../services/ai.service");
 
 const {
   default: makeWASocket,
@@ -235,7 +235,7 @@ async function onMessagesUpdate(updates) {
 // o fallback padrão de "não consigo processar arquivos".
 async function analisarFotoRecebida(msg) {
   try {
-    const conteudo = unwrapMessage(msg);
+    const conteudo = unwrapMessage(msg.message);
     const imageMessage = conteudo?.imageMessage;
     if (!imageMessage) return null;
 
@@ -254,6 +254,69 @@ async function analisarFotoRecebida(msg) {
   } catch (err) {
     logger.warn(`[Visão-Foto] Falha ao baixar/analisar imagem: ${err.message}`);
     return null;
+  }
+}
+
+// Análoga a analisarFotoRecebida, mas para nota de voz/áudio: baixa a mídia em
+// memória e pede a transcrição via transcreverAudio() (Groq Whisper — ver
+// ai.service.js). Retorna null em qualquer falha (áudio expirado, provedor
+// indisponível, transcrição vazia), sinalizando pro chamador usar o fallback
+// padrão de "não consigo processar arquivos".
+async function analisarAudioRecebido(msg) {
+  try {
+    const conteudo = unwrapMessage(msg.message);
+    const audioMessage = conteudo?.audioMessage;
+    if (!audioMessage) return null;
+
+    const buffer = await downloadMediaMessage(
+      msg,
+      "buffer",
+      {},
+      { logger, reuploadRequest: conn.sock?.updateMediaMessage }
+    );
+    if (!buffer || !buffer.length) return null;
+
+    const mimeType = audioMessage.mimetype || "audio/ogg";
+
+    return await transcreverAudio(buffer, mimeType);
+  } catch (err) {
+    logger.warn(`[Áudio-Transcrição] Falha ao baixar/transcrever áudio: ${err.message}`);
+    return null;
+  }
+}
+
+// Processa um texto DERIVADO de mídia (descrição de foto via visão, ou
+// transcrição de áudio) pelo MESMO pipeline de uma mensagem digitada de
+// verdade (mainFlow, sessão, histórico, socket) — nenhuma lógica de negócio
+// duplicada pra extrair veículo/peça. "origem" é só pro log (ex: "foto",
+// "áudio"). Devolve true quando o chamador deve `continue` (já tratou a
+// mensagem, com sucesso ou com o fallback de erro do bot).
+async function processarTextoDerivadoDeMidia(origem, { userId, contactName, sendTo, messageId, texto }) {
+  try {
+    logger.info(`[MESSAGE_IN_${origem.toUpperCase()}] ${userId}: [${origem}] → "${texto}"`);
+
+    sendTypingPresence(sendTo).catch(err =>
+      logger.debug?.(`[Typing] não enviado para ${sendTo}: ${err.message}`)
+    );
+
+    const response = await withTimeout(
+      conn.messageHandler({ userId, contactName, message: texto, messageId }),
+      MESSAGE_PROCESSING_TIMEOUT_MS,
+      `processamento do bot (${origem})`
+    );
+
+    if (response) {
+      await enviarComRetry(sendTo, response);
+    }
+    return true;
+  } catch (err) {
+    logger.error(`[BOT_PROCESSING_ERROR_${origem.toUpperCase()}] ${userId}: ${err.stack || err.message}`);
+    try {
+      await enviarComRetry(sendTo, BOT_PROCESSING_FALLBACK);
+    } catch (sendErr) {
+      logger.error(`[BOT_FALLBACK_SEND_ERROR] ${userId}: ${sendErr.message}`);
+    }
+    return true;
   }
 }
 
@@ -340,34 +403,23 @@ async function onMessagesUpsert({ messages, type }) {
       if (tipoMidia === "imagem" && suportaVisao()) {
         const descricao = await analisarFotoRecebida(msg);
         if (descricao) {
-          try {
-            logger.info(`[MESSAGE_IN_VISAO] ${userId}: [foto] → "${descricao}"`);
-
-            sendTypingPresence(sendTo).catch(err =>
-              logger.debug?.(`[Typing] não enviado para ${sendTo}: ${err.message}`)
-            );
-
-            const response = await withTimeout(
-              conn.messageHandler({ userId, contactName, message: descricao, messageId }),
-              MESSAGE_PROCESSING_TIMEOUT_MS,
-              "processamento do bot (foto)"
-            );
-
-            if (response) {
-              await enviarComRetry(sendTo, response);
-            }
-            continue;
-          } catch (err) {
-            logger.error(`[BOT_PROCESSING_ERROR_VISAO] ${userId}: ${err.stack || err.message}`);
-            try {
-              await enviarComRetry(sendTo, BOT_PROCESSING_FALLBACK);
-            } catch (sendErr) {
-              logger.error(`[BOT_FALLBACK_SEND_ERROR] ${userId}: ${sendErr.message}`);
-            }
-            continue;
-          }
+          await processarTextoDerivadoDeMidia("foto", { userId, contactName, sendTo, messageId, texto: descricao });
+          continue;
         }
         // descricao null (não é peça, provedor falhou, mídia expirada etc.)
+        // → segue pro aviso padrão de mídia não suportada, abaixo.
+      }
+
+      // Nota de voz + Groq configurada (independente do AI_PROVIDER de chat —
+      // ver suportaAudio() em ai.service.js): transcreve e processa o texto
+      // pelo pipeline normal, igual à foto acima.
+      if (tipoMidia === "áudio" && suportaAudio()) {
+        const transcricao = await analisarAudioRecebido(msg);
+        if (transcricao) {
+          await processarTextoDerivadoDeMidia("áudio", { userId, contactName, sendTo, messageId, texto: transcricao });
+          continue;
+        }
+        // transcricao null (sem chave, erro, áudio sem fala reconhecível etc.)
         // → segue pro aviso padrão de mídia não suportada, abaixo.
       }
 

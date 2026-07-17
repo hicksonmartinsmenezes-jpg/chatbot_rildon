@@ -484,6 +484,91 @@ async function analisarImagemPeca(base64, mimeType) {
   }
 }
 
+// ─── Transcrição de áudio (Groq Whisper) ───────────────────────────────────────
+// Pedido do usuário: cliente manda um ÁUDIO de voz (comum no WhatsApp) falando
+// sobre a peça/veículo, e o bot só respondia "ainda não consigo processar
+// arquivos" — igual acontecia com foto antes da feature de visão. Diferente da
+// visão (que depende do PROVIDER DE CHAT ativo suportar imagem), a transcrição
+// usa a API de Whisper da Groq — dedicada a fala→texto, INDEPENDENTE do
+// AI_PROVIDER configurado pro chat (funciona mesmo rodando com Gemini/Anthropic
+// como provedor de conversa), desde que GROQ_API_KEY esteja configurada no
+// .env. Fila/rate-limit próprios, separados dos do provedor de chat ativo.
+const AUDIO_WHISPER_URL   = "https://api.groq.com/openai/v1/audio/transcriptions";
+const AUDIO_WHISPER_MODEL = "whisper-large-v3-turbo";
+const AUDIO_INTERVAL_MS   = 2500; // margem de segurança simples contra rajada
+
+let _ultimaTranscricao       = 0;
+let _filaTranscricaoPromise  = Promise.resolve();
+
+function _agendarTranscricao() {
+  _filaTranscricaoPromise = _filaTranscricaoPromise
+    .then(() => {
+      const espera = Math.max(0, _ultimaTranscricao + AUDIO_INTERVAL_MS - Date.now());
+      return new Promise(r => setTimeout(r, espera));
+    })
+    .catch(() => {});
+  return _filaTranscricaoPromise;
+}
+
+function suportaAudio() {
+  const chave = process.env.GROQ_API_KEY;
+  return !!chave && chave !== "cole_sua_chave_aqui";
+}
+
+function _extensaoPorMimeType(mimeType) {
+  if (mimeType.includes("ogg"))  return "ogg";
+  if (mimeType.includes("mp4") || mimeType.includes("m4a")) return "m4a";
+  if (mimeType.includes("mpeg") || mimeType.includes("mp3")) return "mp3";
+  if (mimeType.includes("wav"))  return "wav";
+  return "ogg"; // formato mais comum de nota de voz do WhatsApp (opus/ogg)
+}
+
+// Transcreve um áudio recebido do cliente (buffer em memória, nunca persistido
+// em disco) e devolve o texto transcrito — pra ser tratado como se fosse a
+// mensagem digitada pelo cliente (reaproveita TODO o fluxo de vendas/extração
+// de veículo/peça já existente, igual a foto). Devolve null se a chave da Groq
+// não está configurada, a chamada falha por qualquer motivo, ou a transcrição
+// vem vazia (ex: áudio só com ruído/silêncio) — quem chama trata null como
+// "não consegui processar o áudio".
+async function transcreverAudio(buffer, mimeType = "audio/ogg") {
+  if (!suportaAudio()) return null;
+
+  const apiKey = process.env.GROQ_API_KEY;
+
+  try {
+    await _agendarTranscricao();
+    _ultimaTranscricao = Date.now();
+
+    const form = new FormData();
+    form.append("file", new Blob([buffer], { type: mimeType }), `audio.${_extensaoPorMimeType(mimeType)}`);
+    form.append("model", AUDIO_WHISPER_MODEL);
+    form.append("language", "pt");
+    form.append("response_format", "json");
+
+    const res = await _fetchComTimeout(
+      AUDIO_WHISPER_URL,
+      {
+        method:  "POST",
+        headers: { Authorization: `Bearer ${apiKey}` },
+        body: form,
+      },
+      REQUEST_TIMEOUT
+    );
+
+    if (!res.ok) {
+      logger.warn(`[IA-Áudio] Erro ${res.status} ao transcrever: ${(await res.text().catch(() => "")).slice(0, 200)}`);
+      return null;
+    }
+
+    const data  = await res.json();
+    const texto = data?.text?.trim();
+    return texto || null;
+  } catch (err) {
+    logger.warn(`[IA-Áudio] Falha ao transcrever áudio: ${err.message}`);
+    return null;
+  }
+}
+
 // ─── Intenções válidas ─────────────────────────────────────────────────────────
 const INTENCOES_VALIDAS = new Set(["vendas", "crediario", "atendente", "gestao", "suporte", "chat"]);
 
@@ -595,4 +680,4 @@ async function perguntarIA(mensagem, { nomeCliente, historico = [], contexto = {
   return null;
 }
 
-module.exports = { perguntarIA, analisarImagemPeca, suportaVisao };
+module.exports = { perguntarIA, analisarImagemPeca, suportaVisao, transcreverAudio, suportaAudio };

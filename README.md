@@ -184,6 +184,27 @@ docker exec -it chatbot_rildon_app npm run merge-contacts
 docker exec -it chatbot_rildon_app npm run merge-contacts -- --apply
 ```
 
+### Testar IA de foto (visão) e áudio (transcrição) com um arquivo real
+
+O bot descreve fotos de peça (visão) e transcreve notas de voz enviadas pelo
+cliente automaticamente — mas isso só roda de verdade com internet (as APIs
+da Groq/Gemini/Anthropic não são alcançáveis de um ambiente sem acesso à
+rede). Pra confirmar que está funcionando, com um arquivo de teste:
+
+```bash
+npm run testar-ia-midia -- foto caminho/da/imagem.jpg
+npm run testar-ia-midia -- audio caminho/do/audio.ogg
+
+# Via Docker (o arquivo precisa estar acessível DENTRO do container):
+docker cp ./teste.jpg chatbot_rildon_app:/tmp/teste.jpg
+docker exec -it chatbot_rildon_app node scripts/testar-ia-midia.js foto /tmp/teste.jpg
+```
+
+A análise de foto só roda de verdade com `AI_PROVIDER=gemini` ou
+`AI_PROVIDER=anthropic` no `.env` (Groq não suporta imagem). A transcrição
+de áudio é independente do `AI_PROVIDER` — só precisa de `GROQ_API_KEY`
+configurada.
+
 ---
 
 ## Melhorias aplicadas (v7 → v8)

@@ -590,3 +590,149 @@ describe("ai.service — analisarImagemPeca()", () => {
     expect(res).toBeNull();
   });
 });
+
+/**
+ * Pedido do usuário: cliente manda uma NOTA DE VOZ (comum no WhatsApp) falando
+ * de veículo/peça, e o bot só respondia "ainda não consigo processar
+ * arquivos" — igual acontecia com foto antes da visão (task #144/#156, agora
+ * estendido pra áudio). Diferente da visão (que depende do provedor de CHAT
+ * ativo suportar imagem), a transcrição usa a API de Whisper da Groq —
+ * dedicada e INDEPENDENTE do AI_PROVIDER configurado pro chat: deve funcionar
+ * mesmo com AI_PROVIDER=gemini ou anthropic, desde que GROQ_API_KEY exista.
+ */
+describe("ai.service — suportaAudio()", () => {
+  afterEach(() => {
+    process.env = { ...ORIGINAL_ENV };
+  });
+
+  test("sem GROQ_API_KEY → false", () => {
+    delete process.env.GROQ_API_KEY;
+    const { suportaAudio } = loadAiService({ provider: "gemini" });
+    expect(suportaAudio()).toBe(false);
+  });
+
+  test("GROQ_API_KEY placeholder do .env.example → false", () => {
+    process.env.GROQ_API_KEY = "cole_sua_chave_aqui";
+    const { suportaAudio } = loadAiService({ provider: "gemini" });
+    expect(suportaAudio()).toBe(false);
+  });
+
+  test("GROQ_API_KEY configurada → true, independente do AI_PROVIDER de chat ativo", () => {
+    process.env.GROQ_API_KEY = "gsk_teste_123";
+
+    expect(loadAiService({ provider: "gemini" }).suportaAudio()).toBe(true);
+    expect(loadAiService({ provider: "anthropic" }).suportaAudio()).toBe(true);
+    expect(loadAiService({ provider: "groq" }).suportaAudio()).toBe(true);
+  });
+});
+
+describe("ai.service — transcreverAudio()", () => {
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    global.fetch = jest.fn();
+  });
+
+  afterEach(() => {
+    process.env = { ...ORIGINAL_ENV };
+    global.fetch = originalFetch;
+  });
+
+  test("sem GROQ_API_KEY configurada → null sem chamar fetch", async () => {
+    delete process.env.GROQ_API_KEY;
+    const { transcreverAudio } = loadAiService({ provider: "gemini" });
+
+    const res = await transcreverAudio(Buffer.from("audio-fake"), "audio/ogg");
+
+    expect(res).toBeNull();
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  test("monta a requisição multipart pra API de transcrição da Groq corretamente", async () => {
+    process.env.GROQ_API_KEY = "gsk_teste_123";
+    const { transcreverAudio } = loadAiService({ provider: "gemini" }); // provedor de CHAT não importa aqui
+
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ text: "preciso de um motor de partida pro meu fiat uno 2015" }),
+    });
+
+    const res = await transcreverAudio(Buffer.from("audio-fake-bytes"), "audio/ogg; codecs=opus");
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    const [url, options] = global.fetch.mock.calls[0];
+    expect(url).toBe("https://api.groq.com/openai/v1/audio/transcriptions");
+    expect(options.method).toBe("POST");
+    expect(options.headers.Authorization).toBe("Bearer gsk_teste_123");
+
+    const form = options.body;
+    expect(form).toBeInstanceOf(FormData);
+    expect(form.get("model")).toBe("whisper-large-v3-turbo");
+    expect(form.get("language")).toBe("pt");
+    expect(form.get("response_format")).toBe("json");
+    const arquivo = form.get("file");
+    expect(arquivo.name).toBe("audio.ogg");
+    expect(arquivo.type).toBe("audio/ogg; codecs=opus");
+
+    expect(res).toBe("preciso de um motor de partida pro meu fiat uno 2015");
+  });
+
+  test("escolhe a extensão certa a partir do mimetype (m4a/mp3/wav)", async () => {
+    process.env.GROQ_API_KEY = "gsk_teste_123";
+    const { transcreverAudio } = loadAiService({ provider: "gemini" });
+
+    global.fetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ text: "ok" }),
+    });
+
+    await transcreverAudio(Buffer.from("x"), "audio/mp4");
+    expect(global.fetch.mock.calls[0][1].body.get("file").name).toBe("audio.m4a");
+
+    await transcreverAudio(Buffer.from("x"), "audio/mpeg");
+    expect(global.fetch.mock.calls[1][1].body.get("file").name).toBe("audio.mp3");
+
+    await transcreverAudio(Buffer.from("x"), "audio/wav");
+    expect(global.fetch.mock.calls[2][1].body.get("file").name).toBe("audio.wav");
+  }, 10000); // 3 chamadas em sequência passam pela fila de rate-limit (AUDIO_INTERVAL_MS)
+
+  test("HTTP de erro → null, não lança exceção", async () => {
+    process.env.GROQ_API_KEY = "gsk_teste_123";
+    const { transcreverAudio } = loadAiService({ provider: "gemini" });
+
+    global.fetch.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      text: async () => "arquivo de áudio inválido",
+    });
+
+    const res = await transcreverAudio(Buffer.from("audio-fake"), "audio/ogg");
+    expect(res).toBeNull();
+  });
+
+  test("fetch lança erro de rede → null, não propaga a exceção", async () => {
+    process.env.GROQ_API_KEY = "gsk_teste_123";
+    const { transcreverAudio } = loadAiService({ provider: "gemini" });
+
+    global.fetch.mockRejectedValueOnce(new Error("network error"));
+
+    const res = await transcreverAudio(Buffer.from("audio-fake"), "audio/ogg");
+    expect(res).toBeNull();
+  });
+
+  test("transcrição vazia/em branco (áudio só com ruído/silêncio) → null", async () => {
+    process.env.GROQ_API_KEY = "gsk_teste_123";
+    const { transcreverAudio } = loadAiService({ provider: "gemini" });
+
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ text: "   " }),
+    });
+
+    const res = await transcreverAudio(Buffer.from("audio-fake"), "audio/ogg");
+    expect(res).toBeNull();
+  });
+});

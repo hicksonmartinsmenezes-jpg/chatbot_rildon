@@ -436,7 +436,18 @@ async function _mainFlowInterno({ userId, message }) {
   if (session.aguardandoConfirmacaoOrcamento) {
     if (msgNorm === "sim" || msgNorm === "1") {
       const veiculoFinal = session.veiculoSugerido || null;
-      const pecaFinal     = session.pecaSugerido    || null;
+      // BUG CORRIGIDO (relatado pelo usuário — reproduzido 2x: "radiador" e
+      // "pneu", ambos claramente ditos pelo cliente): quando a IA falha em
+      // preencher o campo estruturado "peca", pecaSugerido fica null e essa
+      // confirmação caía direto no fallback genérico "Consulta de peça" —
+      // perdendo a peça real que o cliente digitou. session.produtoSugerido
+      // guarda a mensagem crua que originou esta pergunta de confirmação
+      // (ver updateSession mais abaixo, no bloco "vendas" da IA) — mesmo
+      // padrão de fallback já usado em "produtoTexto" (pecaFinal || message)
+      // no caminho de pedidoExplicito confirmado, só que aqui a mensagem
+      // original já não está mais disponível neste ponto (o cliente já
+      // respondeu "sim"/"1" depois), por isso precisa vir da sessão.
+      const pecaFinal     = session.pecaSugerido || session.produtoSugerido || null;
 
       if (veiculoFinal && nomeSalvo) {
         const confirmacao = await vendasFlow.finalizarOrcamento(
@@ -682,6 +693,10 @@ async function _mainFlowInterno({ userId, message }) {
             _iaFalhas: 0,
             veiculoSugerido: veiculoConhecido,
             pecaSugerido:    pecaConhecida,
+            // Guarda a mensagem crua desta consulta — usada como fallback de
+            // "peça" em cima de pecaSugerido se a IA não extrair o campo
+            // (ver comentário no intercept de "sim"/"1" acima).
+            produtoSugerido: message,
             aguardandoConfirmacaoOrcamento: !iaJaPerguntouAlgo,
           });
 

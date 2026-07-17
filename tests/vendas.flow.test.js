@@ -222,4 +222,53 @@ describe("vendasFlow", () => {
       })
     );
   });
+
+  // BUG REAL (relatado pelo usuário, testes de edge-case): antes desta
+  // correção, qualquer texto era aceito verbatim como resposta em qualquer
+  // etapa — reproduzido enviando um CPF junto de uma pergunta fora de
+  // contexto como resposta à etapa de peça, que ia parar na descrição do
+  // ticket sem nunca ser tratado como o dado sensível que é.
+  describe("bloqueio de CPF/dado pessoal em qualquer etapa de coleta", () => {
+    test("aguardando_orcamento: mensagem com 'cpf' + 11 dígitos é recusada, não vira descrição do ticket", async () => {
+      const resposta = await vendasFlow(
+        "meu cpf e 123.456.789-01, pode confirmar meu cadastro?",
+        USER_ID,
+        { sector: "vendas", step: "aguardando_orcamento", veiculo: "Hilux 2020" }
+      );
+
+      expect(createTicket).not.toHaveBeenCalled();
+      expect(resposta).toContain("não coletamos CPF");
+    });
+
+    test("aguardando_veiculo: mesma checagem também se aplica", async () => {
+      const resposta = await vendasFlow(
+        "cpf 12345678901",
+        USER_ID,
+        { sector: "vendas", step: "aguardando_veiculo" }
+      );
+
+      expect(createTicket).not.toHaveBeenCalled();
+      expect(resposta).toContain("não coletamos CPF");
+    });
+
+    test("11 dígitos SEM mencionar 'cpf' (ex: telefone) NÃO é bloqueado — evita falso positivo", async () => {
+      const resposta = await vendasFlow(
+        "meu numero e 11987654321, pode me ligar",
+        USER_ID,
+        { sector: "vendas", step: "aguardando_orcamento", veiculo: "Hilux 2020" }
+      );
+
+      expect(resposta).not.toContain("não coletamos CPF");
+    });
+
+    test("menciona 'cpf' mas SEM 11 dígitos seguidos NÃO é bloqueado — evita falso positivo", async () => {
+      const resposta = await vendasFlow(
+        "preciso enviar meu cpf depois, pode ser?",
+        USER_ID,
+        { sector: "vendas", step: "aguardando_orcamento", veiculo: "Hilux 2020" }
+      );
+
+      expect(resposta).not.toContain("não coletamos CPF");
+    });
+  });
 });

@@ -45,6 +45,23 @@ async function _finalizarOrcamento(userId, session, veiculo, produtoTexto) {
 // Palavras que escapam para o menu principal em qualquer etapa de coleta
 const ESCAPE = new Set(["0", "menu", "voltar", "cancelar", "inicio"]);
 
+// BUG REAL (relatado pelo usuário, testes de edge-case): as etapas de coleta
+// (nome/veículo/orçamento) aceitam QUALQUER texto não-vazio como resposta,
+// sem checagem semântica — reproduzido enviando "meu cpf e 123.456.789-01,
+// pode confirmar meu cadastro?" como resposta a "qual peça você precisa?",
+// que foi salvo verbatim no campo errado (descrição do ticket) e nunca
+// respondeu à pergunta real do cliente sobre o cadastro. Este check é
+// deliberadamente ESTREITO (menciona "cpf" E TEM 11 dígitos seguidos) pra
+// não dar falso positivo em números de telefone legítimos (também 11
+// dígitos) que não mencionam CPF.
+function _pareceCPFOuDadoPessoal(message) {
+  const normalizado     = normalizar(message);
+  const somenteDigitos  = message.replace(/\D/g, "");
+  const mencionaCPF     = /\bcpf\b/.test(normalizado);
+  const tem11DigitosSeguidos = /\d{11}/.test(somenteDigitos);
+  return mencionaCPF && tem11DigitosSeguidos;
+}
+
 async function vendasFlow(message, userId, session) {
   const msg           = normalizar(sanitizarTexto(message));
   const msgSemPontos  = msg.replace(/[^\p{L}\p{N}\s]/gu, "").trim();
@@ -55,6 +72,16 @@ async function vendasFlow(message, userId, session) {
     if (ESCAPE.has(msg) || ESCAPE.has(msgSemPontos)) {
       await clearSession(userId);
       return null; // mainFlow exibirá o menu principal
+    }
+
+    // ── Bloqueia CPF/dado pessoal sensível em qualquer etapa de coleta ─────────
+    if (session.step && _pareceCPFOuDadoPessoal(message)) {
+      logger.warn(`[vendasFlow] Mensagem com CPF/dado pessoal recusada — userId=${userId} step=${session.step}`);
+      return (
+        "⚠️ Por aqui não coletamos CPF nem outros dados pessoais sensíveis — não precisamos disso pra esta etapa.\n\n" +
+        "Pode repetir sua resposta sem incluir esse tipo de informação?" +
+        MSG.ESCAPE_DICA
+      );
     }
 
     // ── Etapa 1: Nome ──────────────────────────────────────────────────────────

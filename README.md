@@ -174,8 +174,14 @@ Contatos duplicados (mesmo cliente com uma linha sob o número provisório do
 podem existir de antes da correção em `autoRegisterContact()`. Pra revisar e
 limpar o que já está no banco:
 ```bash
-node scripts/merge-duplicate-contacts.js            # dry-run — só mostra o que seria feito
-node scripts/merge-duplicate-contacts.js --apply    # aplica de verdade
+# Local (com node_modules instalado e acesso direto ao Postgres):
+npm run merge-contacts                    # dry-run — só mostra o que seria feito
+npm run merge-contacts -- --apply         # aplica de verdade
+
+# Via Docker (mesmo padrão do create-admin — rodando dentro do container,
+# onde o node_modules e a conexão com o banco já existem):
+docker exec -it chatbot_rildon_app npm run merge-contacts
+docker exec -it chatbot_rildon_app npm run merge-contacts -- --apply
 ```
 
 ---

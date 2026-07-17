@@ -12,6 +12,7 @@
     "dev": "nodemon src/server.js",
     "migrate": "node src/database/migrate.js",
     "create-admin": "node scripts/create-admin.js",
+    "merge-contacts": "node scripts/merge-duplicate-contacts.js",
     "db:test": "node src/database/test-postgres.js",
     "check": "node -c src/server.js && node -c src/app.js",
     "test": "jest",

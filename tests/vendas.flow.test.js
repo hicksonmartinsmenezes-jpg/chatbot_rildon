@@ -271,4 +271,57 @@ describe("vendasFlow", () => {
       expect(resposta).not.toContain("não coletamos CPF");
     });
   });
+
+  // BUG REAL (relatado pelo usuário, reproduzido AO VIVO): perguntou "na
+  // verdade, voces fazem crediario?" na etapa "qual peça você precisa?" e a
+  // pergunta virou literalmente a peça do ticket — nunca respondida, e o
+  // ticket saiu com um veículo/peça sem sentido nenhum.
+  describe("detecção de mudança de assunto (cliente pergunta sobre outro setor)", () => {
+    test("aguardando_orcamento: pergunta sobre crediário sai do fluxo em vez de virar a peça", async () => {
+      const resposta = await vendasFlow(
+        "na verdade, voces fazem crediario?",
+        USER_ID,
+        { sector: "vendas", step: "aguardando_orcamento", veiculo: "Hilux 2020" }
+      );
+
+      expect(createTicket).not.toHaveBeenCalled();
+      expect(sessionService.clearSession).toHaveBeenCalledWith(USER_ID);
+      expect(resposta).toContain("outro assunto");
+    });
+
+    test("aguardando_veiculo: pergunta sobre horário de funcionamento também é detectada", async () => {
+      const resposta = await vendasFlow(
+        "voces abrem que horario de funcionamento?",
+        USER_ID,
+        { sector: "vendas", step: "aguardando_veiculo" }
+      );
+
+      expect(createTicket).not.toHaveBeenCalled();
+      expect(resposta).toContain("outro assunto");
+    });
+
+    test("aguardando_orcamento: pergunta sobre falar com a equipe também é detectada", async () => {
+      const resposta = await vendasFlow(
+        "quero falar com a equipe sobre outra coisa",
+        USER_ID,
+        { sector: "vendas", step: "aguardando_orcamento", veiculo: "Hilux 2020" }
+      );
+
+      expect(createTicket).not.toHaveBeenCalled();
+      expect(resposta).toContain("outro assunto");
+    });
+
+    test("descrição de peça legítima com '?' continua sendo aceita normalmente (evita falso positivo)", async () => {
+      createTicket.mockResolvedValue(fakeTicket({ description: "Veículo: Gol 2018 | Produto: tem pastilha pro gol 2018?" }));
+
+      const resposta = await vendasFlow(
+        "tem pastilha pro gol 2018?",
+        USER_ID,
+        { sector: "vendas", step: "aguardando_orcamento", veiculo: "Gol 2018" }
+      );
+
+      expect(createTicket).toHaveBeenCalled();
+      expect(resposta).toContain("Orçamento registrado");
+    });
+  });
 });

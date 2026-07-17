@@ -62,6 +62,23 @@ function _pareceCPFOuDadoPessoal(message) {
   return mencionaCPF && tem11DigitosSeguidos;
 }
 
+// BUG REAL (relatado pelo usuário, testes de edge-case — reproduzido ao
+// vivo: cliente perguntou "na verdade, voces fazem crediario?" na etapa
+// "qual peça você precisa?" e a pergunta virou literalmente a peça do
+// ticket, nunca sendo respondida): assim como o CPF, o cliente pode mudar
+// de assunto no meio da coleta pedindo algo de OUTRO setor. Detecta menções
+// claras a esses outros assuntos — deliberadamente restrito a palavras-chave
+// sem relação com nome/veículo/peça, pra não recusar respostas legítimas
+// (ex: "tem pastilha pro gol 2018?" continua sendo aceito normalmente,
+// mesmo tendo "?" e sendo uma pergunta).
+const MUDANCA_ASSUNTO_RE =
+  /\bcrediari\w*\b|\bfinanciamento\b|\bparcelamento\b|\bhorario de funcionamento\b|\bque horas (abre|fecha)\b|\bonde fica\b|\bendereco\b|\blocalizacao\b|\bfalar com a equipe\b|\bfalar com o responsavel\b|\breclamacao\b|\bquero reclamar\b/;
+
+function _pareceMudancaDeAssunto(message) {
+  const normalizado = normalizar(message);
+  return MUDANCA_ASSUNTO_RE.test(normalizado);
+}
+
 async function vendasFlow(message, userId, session) {
   const msg           = normalizar(sanitizarTexto(message));
   const msgSemPontos  = msg.replace(/[^\p{L}\p{N}\s]/gu, "").trim();
@@ -81,6 +98,16 @@ async function vendasFlow(message, userId, session) {
         "⚠️ Por aqui não coletamos CPF nem outros dados pessoais sensíveis — não precisamos disso pra esta etapa.\n\n" +
         "Pode repetir sua resposta sem incluir esse tipo de informação?" +
         MSG.ESCAPE_DICA
+      );
+    }
+
+    // ── Detecta mudança de assunto (cliente pergunta sobre outro setor) ────────
+    if (session.step && _pareceMudancaDeAssunto(message)) {
+      logger.warn(`[vendasFlow] Mudança de assunto detectada, saindo do fluxo de vendas — userId=${userId} step=${session.step} msg="${message}"`);
+      await clearSession(userId);
+      return (
+        "Percebi que sua pergunta é sobre outro assunto! 😊\n\n" +
+        "Digite *0* para ver o menu principal e escolher a opção certa (crediário, falar com a equipe, horário, etc.)."
       );
     }
 

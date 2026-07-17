@@ -1,4 +1,5 @@
 const ticketRepository = require("../repositories/ticket.repository");
+const { getSession, updateSession } = require("./session.service");
 const logger = require("../utils/logger");
 const { emitEvent } = require("./socket.service");
 const { getProfilePhotoCandidates } = require("../whatsapp/lid-map");
@@ -200,7 +201,22 @@ function parseSatisfactionRating(message) {
 // passar pelo fluxo normal do bot. Retorna null se não há pesquisa
 // pendente ou se a mensagem não foi reconhecida como nota (nesse caso o
 // fluxo normal segue — inclusive podendo reabrir o ticket normalmente).
+// BUG CORRIGIDO (relatado pelo usuário: "1" pra escolher o menu foi
+// engolido como nota 1 estrela de uma pesquisa de dias atrás): o guard
+// antigo olhava só pro banco (ticket resolvido + pesquisa pendente + até
+// 48h desde o envio) — então QUALQUER dígito 1-5 vindo do mesmo cliente
+// dentro dessa janela, em qualquer conversa nova e sem relação nenhuma
+// com a pesquisa, era interceptado como resposta dela. Agora também
+// exige a flag de sessão aguardandoNotaSatisfacao — setada só no momento
+// exato em que a pesquisa é de fato entregue (enviarPesquisaSatisfacao em
+// ticket.controller.js) e limpa na primeira resposta seguinte (some
+// junto com a sessão inteira em qualquer saudação/menu, ou é limpa aqui
+// mesmo se a resposta não parecer uma nota válida) — só a mensagem
+// IMEDIATAMENTE seguinte à pesquisa pode ser interpretada como nota.
 async function handleSatisfactionReply({ userId, message }) {
+  const session = getSession(userId);
+  if (!session.aguardandoNotaSatisfacao) return null;
+
   const candidatos = getProfilePhotoCandidates(userId);
   const tickets = await ticketRepository.findByUserIds(candidatos.length ? candidatos : [userId]);
 
@@ -210,12 +226,21 @@ async function handleSatisfactionReply({ userId, message }) {
     !t.satisfactionRating &&
     (Date.now() - new Date(t.satisfactionAskedAt).getTime()) < SATISFACTION_WINDOW_MS
   );
-  if (!pendente) return null;
+  if (!pendente) {
+    await updateSession(userId, { aguardandoNotaSatisfacao: undefined }, { skipTimer: true });
+    return null;
+  }
 
   const rating = parseSatisfactionRating(message);
-  if (!rating) return null;
+  if (!rating) {
+    // Não pareceu uma nota — não fica esperando pra sempre; limpa a flag
+    // e deixa a mensagem seguir o fluxo normal (menu, IA, etc.).
+    await updateSession(userId, { aguardandoNotaSatisfacao: undefined }, { skipTimer: true });
+    return null;
+  }
 
   const atualizado = await ticketRepository.rateSatisfaction(pendente.id, rating);
+  await updateSession(userId, { aguardandoNotaSatisfacao: undefined }, { skipTimer: true });
   logger.info(`[Satisfação] Ticket #${pendente.protocolo} avaliado com nota ${rating}`);
 
   const settings = await getSettings();

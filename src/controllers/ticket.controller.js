@@ -5,6 +5,7 @@ const ticketRepository = require("../repositories/ticket.repository");
 const { getProfilePhotoCandidates } = require("../whatsapp/lid-map");
 const { sendMessage } = require("../config/whatsapp");
 const { saveHistory } = require("../services/history.service");
+const { updateSession } = require("../services/session.service");
 const { getSettings } = require("../services/settings.service");
 const { canAccessTicket, canManageTicket, canSeeSensitiveDashboard, canUseFullConversationPanel } = require("../utils/access-control");
 const { dataHojeISO } = require("../utils/horario");
@@ -318,6 +319,19 @@ async function enviarPesquisaSatisfacao(ticket) {
     if (!claimed) return; // outra requisição já reivindicou o envio
 
     const sent = await sendMessage(ticket.userId, template);
+
+    // Pedido do usuário (bug real: "1" do menu foi engolido como nota de
+    // uma pesquisa de dias atrás): marca a sessão como "aguardando nota"
+    // só agora, no momento exato em que a pesquisa foi de fato entregue.
+    // handleSatisfactionReply (ticket.service.js) só considera a PRÓXIMA
+    // mensagem do cliente como possível nota se essa flag estiver ativa —
+    // sem ela, um dígito 1-5 numa conversa nova, sem relação com esta
+    // pesquisa, não é mais interceptado.
+    try {
+      await updateSession(ticket.userId, { aguardandoNotaSatisfacao: true }, { skipTimer: true });
+    } catch (err) {
+      logger.warn(`[enviarPesquisaSatisfacao] Erro ao marcar sessão aguardando nota: ${err.message}`);
+    }
 
     const historyItem = await saveHistory({
       userId: ticket.userId,

@@ -550,10 +550,18 @@ async function _mainFlowInterno({ userId, message }) {
           );
         }
 
+        // BUG CORRIGIDO (relatado pelo usuário): esse fallback aparece NO
+        // MEIO de uma conversa já em andamento (ex: cliente respondendo uma
+        // pergunta de acompanhamento), então usar menuPrincipal() aqui
+        // repetia a saudação inteira ("Bom dia, Fulano! Seja bem-vindo de
+        // volta...") como se a conversa tivesse reiniciado do zero — estranho
+        // e confuso logo após uma falha. menuCompacto() (sem saudação, só as
+        // opções) já é usado no mesmo tipo de situação mais abaixo (intenção
+        // "chat"/não reconhecida) — aqui fica consistente com aquele padrão.
         return (
           "Não consegui processar sua mensagem agora. 😅\n\n" +
           "Tente novamente ou use o menu:\n\n" +
-          menuPrincipal(nomeSalvo)
+          menuCompacto()
         );
       }
 

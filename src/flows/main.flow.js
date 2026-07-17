@@ -570,8 +570,16 @@ async function _mainFlowInterno({ userId, message }) {
         // Preferência: campo estruturado da IA; fallback: regex de marcas
         // conhecidas (ver extrairVeiculoFallback acima) — cobre os casos em
         // que a IA falha em extrair modelos raros/importados ("Audi A4 2025").
+        const veiculoFallback   = produtoDescritivo && !resultado.veiculo
+          ? extrairVeiculoFallback(message)
+          : null;
+        if (veiculoFallback) {
+          // Sinal de qualidade: a IA deveria ter preenchido "veiculo" e não
+          // preencheu — o fallback está compensando uma falha de extração.
+          logger.warn(`[mainFlow] fallback de veiculo recuperou "${veiculoFallback}" que a IA não extraiu — userId=${userId} msg="${message}"`);
+        }
         const veiculoExtraido   = produtoDescritivo
-          ? (resultado.veiculo || extrairVeiculoFallback(message))
+          ? (resultado.veiculo || veiculoFallback)
           : null;
         // Pedido do usuário (relatado após o primeiro ajuste): a descrição
         // do ticket ficava com a frase inteira do cliente, saudação
@@ -605,6 +613,14 @@ async function _mainFlowInterno({ userId, message }) {
         const PERGUNTA_DISPONIBILIDADE_RE = /\b(tem|te m|voce tem|voces tem|vc tem|vcs tem|trabalham com|existe|ha|vende|vendem|possui|possuem|encontro)\b.*\?\s*$/;
         const pareceApenasPerguntaDisponibilidade = PERGUNTA_DISPONIBILIDADE_RE.test(normalizar(message));
         const pedidoExplicitoConfirmado = resultado.pedidoExplicito && !pareceApenasPerguntaDisponibilidade;
+
+        // Sinal de qualidade: toda vez que a rede de segurança precisa agir
+        // é porque a IA classificou errado — logar dá visibilidade de quão
+        // frequente é essa falha de classificação sem precisar reproduzir
+        // via print de WhatsApp toda vez.
+        if (resultado.pedidoExplicito && pareceApenasPerguntaDisponibilidade) {
+          logger.warn(`[mainFlow] pedidoExplicito rebaixado (parece pergunta de disponibilidade) — userId=${userId} msg="${message}"`);
+        }
 
         if (!pedidoExplicitoConfirmado) {
           // Guarda o que já foi identificado nesta consulta (pode ser null)

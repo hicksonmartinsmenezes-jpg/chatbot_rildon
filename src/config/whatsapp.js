@@ -18,6 +18,7 @@ const {
 } = require("../whatsapp/message-utils");
 const { isDuplicateContent, marcarMensagemProcessada, startDedupCleanup } = require("../whatsapp/dedup");
 const { autoRegisterContact } = require("../whatsapp/contacts");
+const { saveHistory } = require("../services/history.service");
 
 const {
   default: makeWASocket,
@@ -294,15 +295,47 @@ async function onMessagesUpsert({ messages, type }) {
     if (!text) {
       const tipoMidia = getMediaType(msg);
       if (tipoMidia) {
+        // BUG CORRIGIDO (usuário: "sinto que não está salvando todas as
+        // conversas"): mídia sem legenda (foto, áudio, vídeo, sticker,
+        // documento) caía direto no "continue" abaixo SEM nunca passar por
+        // saveHistory — cliente manda foto de peça quebrada (comum numa
+        // loja de autopeças), recebe o aviso automático, e a troca inteira
+        // desaparecia do painel de Histórico, mesmo a mensagem tendo
+        // chegado normalmente. Agora registra como o restante do fluxo:
+        // "message" guarda um marcador do tipo de mídia (não o arquivo em
+        // si — mídia não é persistida, só o fato de ter chegado) e
+        // "response" guarda o aviso automático enviado.
+        const avisoMidia =
+          `⚠️ Recebi seu ${tipoMidia}, mas ainda não consigo processar arquivos.\n\n` +
+          `Por favor, descreva sua dúvida em *texto* e será um prazer ajudar! 😊\n\n` +
+          `Digite *0* para ver o menu.`;
+
         try {
-          await enviarComRetry(
-            sendTo,
-            `⚠️ Recebi seu ${tipoMidia}, mas ainda não consigo processar arquivos.\n\n` +
-            `Por favor, descreva sua dúvida em *texto* e será um prazer ajudar! 😊\n\n` +
-            `Digite *0* para ver o menu.`
-          );
+          await enviarComRetry(sendTo, avisoMidia);
         } catch (err) {
           logger.error(`Erro ao enviar aviso de mídia: ${err.message}`);
+        }
+
+        try {
+          await saveHistory({
+            userId,
+            contactName,
+            message:  `[${tipoMidia} recebido]`,
+            response: avisoMidia,
+            sector:   "midia_nao_suportada",
+            messageId,
+          });
+          emitEvent("nova_mensagem", {
+            userId,
+            contactName,
+            message:  `[${tipoMidia} recebido]`,
+            messageId,
+            response: avisoMidia,
+            sector:   "midia_nao_suportada",
+            createdAt: new Date(),
+          });
+        } catch (err) {
+          logger.warn(`Erro ao salvar histórico de mídia para ${userId}: ${err.message}`);
         }
       }
       continue;

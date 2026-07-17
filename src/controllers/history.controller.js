@@ -1,4 +1,4 @@
-const { listHistory } = require("../services/history.service");
+const { listHistory, listHistoryGrouped } = require("../services/history.service");
 const logger = require("../utils/logger");
 
 async function getHistoryHandler(req, res) {
@@ -45,6 +45,35 @@ async function getHistoryHandler(req, res) {
       count: 0,
       data: []
     });
+  }
+}
+
+// Visão do painel de Histórico: uma linha por cliente (mensagem mais
+// recente + total de interações), não um recorte plano das últimas N
+// mensagens da loja inteira — ver comentário em history.repository.js
+// (findGroupedByUser) sobre o bug que isso corrige.
+async function getHistoryGroupedHandler(req, res) {
+  try {
+    const { q, from, to } = req.query;
+
+    const limit = Math.min(
+      Math.max(parseInt(req.query.limit || "500", 10), 1),
+      2000
+    );
+    const offset = Math.max(parseInt(req.query.offset || "0", 10), 0);
+
+    const result = await listHistoryGrouped({
+      q:    q    || undefined,
+      from: from || undefined,
+      to:   to   || undefined,
+      limit,
+      offset,
+    });
+
+    res.json({ count: result.length, data: result });
+  } catch (err) {
+    logger.error("❌ Erro ao buscar histórico agrupado:", err.message);
+    res.status(500).json({ count: 0, data: [] });
   }
 }
 
@@ -96,5 +125,6 @@ async function getConversationsHandler(req, res) {
 
 module.exports = {
   getHistoryHandler,
+  getHistoryGroupedHandler,
   getConversationsHandler,
 };

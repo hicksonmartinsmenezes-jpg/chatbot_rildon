@@ -115,23 +115,16 @@ async function exportHistoryTxt(userId, clientName) {
   }
 }
 
-function groupHistoryByClient(history) {
-  const map = {};
-  for (const item of history) {
-    const uid = item.userId || item.user_id || "";
-    if (!uid) continue;
-    if (!map[uid]) map[uid] = [];
-    map[uid].push(item);
-  }
-  return Object.values(map)
-    .map(items => {
-      items.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-      return { latest: items[0], count: items.length };
-    })
-    .sort((a, b) => new Date(b.latest.createdAt) - new Date(a.latest.createdAt));
-}
-
-// ─── loadHistory com filtros server-side (paginação futura via cursor) ────────
+// ─── loadHistory com filtros server-side ──────────────────────────────────────
+// BUG CORRIGIDO (usuário: "sinto que não está salvando todas as
+// conversas"): esta função buscava as N mensagens mais recentes de TODA A
+// LOJA (LIMIT 100, sem paginação na tela) e agrupava por cliente aqui no
+// navegador — assim que a loja passava de 100 mensagens desde a última
+// visita à aba, clientes com conversas mais antigas simplesmente
+// desapareciam da lista (os dados nunca saíram do banco, só não eram
+// buscados). Agora usa /api/history/grouped, que já traz uma linha por
+// cliente (mensagem mais recente + total de interações) direto do banco —
+// ver history.repository.js (findGroupedByUser) para o motivo da mudança.
 async function loadHistory(render = true) {
   const search    = document.getElementById("search-history")?.value    || "";
   const startDate = document.getElementById("history-date-start")?.value || "";
@@ -149,14 +142,14 @@ async function loadHistory(render = true) {
 
   try {
     const params = new URLSearchParams();
-    params.append("limit", "100"); // Reduzido de 300 para 100
+    params.append("limit", "500");
 
     // Envia filtros ao servidor quando disponíveis para reduzir payload
     if (search)    params.append("q",    search);
     if (startDate) params.append("from", startDate);
     if (endDate)   params.append("to",   endDate);
 
-    const res = await apiFetch(`${BASE}/api/history?${params}`);
+    const res = await apiFetch(`${BASE}/api/history/grouped?${params}`);
     if (!res) return [];
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
@@ -181,12 +174,17 @@ async function loadHistory(render = true) {
     });
 
     updateHistorySummary(history);
+    // updateHistorySummary conta 1 por linha — como cada linha aqui já é 1
+    // cliente (visão agrupada), "Total de registros" ficaria igual a
+    // "Clientes únicos". Corrige só esse card somando o total real de
+    // interações (campo "count" de cada cliente).
+    setText("history-total-count", history.reduce((acc, item) => acc + (item.count || 1), 0));
 
     if (render && container) {
       if (!history.length) {
         renderHistoryEmpty(container);
       } else {
-        const groups = groupHistoryByClient(history);
+        const groups = history.map(item => ({ latest: item, count: item.count || 1 }));
         container.innerHTML = `
           <div class="history-table">
             <div class="hrow hrow-head">

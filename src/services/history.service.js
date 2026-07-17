@@ -34,6 +34,14 @@ async function listHistory({ userId, limit, offset, q, from, to } = {}) {
   });
 }
 
+async function listHistoryGrouped({ q, from, to, limit, offset } = {}) {
+  return historyRepository.findGroupedByUser({
+    q, from, to,
+    limit: limit || 500,
+    offset: offset || 0
+  });
+}
+
 async function listHistoryByUser(userId) {
   return historyRepository.findAll({ userId, limit: 500 });
 }
@@ -47,6 +55,7 @@ logger.info("💬 PostgreSQL: histórico carregado");
 module.exports = {
   saveHistory,
   listHistory,
+  listHistoryGrouped,
   listHistoryByUser,
   updateMessageStatus
 };

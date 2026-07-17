@@ -9,6 +9,19 @@ const { getSettings } = require("./settings.service");
 const SATISFACTION_WINDOW_MS =
   Number(process.env.SATISFACTION_SURVEY_WINDOW_HOURS || 48) * 60 * 60 * 1000;
 
+// Pedido do usuário: em vez de SEMPRE reabrir o mesmo ticket fechado quando
+// o cliente manda mensagem de novo (protocolo antigo reciclado pra um
+// assunto possivelmente sem nenhuma relação, dias ou semanas depois — o que
+// distorce métricas como tempo médio de atendimento), só reabre se o
+// fechamento foi RECENTE. Fora dessa janela, reopenTicketIfClosed() retorna
+// false e o fluxo normal segue — um ticket novo é criado naturalmente
+// quando o cliente pedir algo (mesmo caminho de um cliente novo). Dentro da
+// janela, cobre o caso real de atendimento encerrado por engano (timeout de
+// inatividade, por exemplo) e o cliente responder poucos minutos depois —
+// aí sim é a mesma conversa, não um atendimento novo.
+const REOPEN_WINDOW_MS =
+  Number(process.env.TICKET_REOPEN_WINDOW_MINUTOS || 60) * 60 * 1000;
+
 // Cooldown de reabertura: evita reabrir o mesmo ticket múltiplas vezes em rajada
 const _reopenCooldown = new Map();
 // .unref() — não deve impedir o processo de encerrar (graceful shutdown/testes)
@@ -116,6 +129,18 @@ async function reopenTicketIfClosed(userId) {
     if (!tickets.length) { _reopenCooldown.delete(userId); return false; }
 
     const latest = tickets[0]; // já ordenado DESC
+    const fechadoRecentemente =
+      latest.updatedAt && (Date.now() - new Date(latest.updatedAt).getTime()) <= REOPEN_WINDOW_MS;
+
+    if ((latest.status === "resolvido" || latest.status === "cancelado") && !fechadoRecentemente) {
+      // Fechado há mais tempo que a janela — trata como se não houvesse
+      // ticket reabrível. O fluxo normal segue e cria um ticket NOVO quando
+      // o cliente de fato pedir algo (não força criação aqui: uma simples
+      // saudação, por exemplo, não deveria virar ticket sozinha).
+      _reopenCooldown.delete(userId);
+      return false;
+    }
+
     if (latest.status === "resolvido" || latest.status === "cancelado") {
       const reaberto = await ticketRepository.updateStatus(latest.id, "aberto");
       logger.info(`Ticket #${latest.protocolo} reaberto para ${userId}`);

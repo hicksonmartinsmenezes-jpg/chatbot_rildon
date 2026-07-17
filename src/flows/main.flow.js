@@ -1,7 +1,7 @@
 const { getSession, clearSession, updateSession, finalizarComTicket } = require("../services/session.service");
 const { createTicket }                                      = require("../services/ticket.service");
 const { buscarNomeContatoReal }                              = require("../whatsapp/contacts");
-const { estaEmHorarioDeAtendimento, mensagemForaDeHorario } = require("../utils/horario");
+const { estaEmHorarioDeAtendimento, mensagemForaDeHorario, saudacaoPorHorario } = require("../utils/horario");
 const { notificarAtendente, notificarSeDisponivel }         = require("../services/notificacao.service");
 const { validarNome, sanitizarTexto, normalizar, validarTamanho } = require("../utils/validators");
 const { perguntarIA }                                       = require("../services/ai.service");
@@ -103,9 +103,11 @@ function menuPrincipal(nome) {
   const aberto       = estaEmHorarioDeAtendimento();
   const status       = aberto ? "🟢 Atendimento aberto" : "🔴 *Fora do horário de atendimento*";
   const primeiroNome = nome ? nome.trim().split(" ")[0] : null;
+  // Pedido do usuário: saudação com base no horário REAL (bom dia/boa
+  // tarde/boa noite), não um "Olá" genérico sempre igual.
   const saudacao     = primeiroNome
-    ? `Olá, *${primeiroNome}*! Seja bem-vindo de volta à *Rildon Eletropeças*. ⚡`
-    : "Olá! Seja bem-vindo à *Rildon Eletropeças*. ⚡";
+    ? `${saudacaoPorHorario()}, *${primeiroNome}*! Seja bem-vindo de volta à *Rildon Eletropeças*. ⚡`
+    : `${saudacaoPorHorario()}! Seja bem-vindo à *Rildon Eletropeças*. ⚡`;
 
   return (
     `${status}\n\n${saudacao}\n\n` +
@@ -306,17 +308,19 @@ async function _mainFlowInterno({ userId, message }) {
     }
     // Sem fluxo ativo → greeting personalizado, sem chamar IA
     await clearSession(userId);
+    // Pedido do usuário: saudação com base no horário REAL, não um "Olá"
+    // genérico — mesmo critério usado em menuPrincipal() acima.
     if (nomeSalvo) {
       const primeiroNome = nomeSalvo.trim().split(" ")[0];
       return (
-        `Olá, *${primeiroNome}*! Bem-vindo de volta à *Rildon Eletropeças*! ⚡\n\n` +
+        `${saudacaoPorHorario()}, *${primeiroNome}*! Bem-vindo de volta à *Rildon Eletropeças*! ⚡\n\n` +
         "Como posso te ajudar hoje?\n\n" +
         menuCompacto()
       );
     }
     // Cliente novo — exibe menu direto (nome será capturado no fluxo escolhido)
     return (
-      "Bem-vindo à *Rildon Eletropeças*! ⚡\n\n" +
+      `${saudacaoPorHorario()}! Bem-vindo à *Rildon Eletropeças*! ⚡\n\n` +
       "Como posso te ajudar?\n\n" +
       menuCompacto()
     );

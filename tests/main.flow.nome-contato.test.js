@@ -12,6 +12,10 @@
  *
  * Arquivo isolado (não usa o mock global de tests/main.flow.test.js) porque
  * precisa de um mock de pool.query condicional por tabela.
+ *
+ * A saudação também passou a usar saudacaoPorHorario() (Bom dia/Boa
+ * tarde/Boa noite conforme o horário real) em vez do "Olá" fixo — por isso
+ * as asserções abaixo usam regex aceitando qualquer uma das três.
  */
 jest.mock("../src/services/session.service", () => ({
   getSession: jest.fn(),
@@ -74,7 +78,7 @@ describe("main.flow — _buscarNomeCliente prioriza o nome real do contato", () 
 
     const resposta = await mainFlow({ userId: USER_ID, message: "bom dia" });
 
-    expect(resposta).toContain("Olá, *Design*");
+    expect(resposta).toMatch(/(Bom dia|Boa tarde|Boa noite), \*Design\*/);
     expect(resposta).not.toContain("Hickson");
   });
 
@@ -83,7 +87,7 @@ describe("main.flow — _buscarNomeCliente prioriza o nome real do contato", () 
 
     const resposta = await mainFlow({ userId: USER_ID, message: "bom dia" });
 
-    expect(resposta).toContain("Olá, *Hickson*");
+    expect(resposta).toMatch(/(Bom dia|Boa tarde|Boa noite), \*Hickson\*/);
   });
 
   test("sem contacts.nome nem tickets.customer_name → usa history.contact_name (último fallback)", async () => {
@@ -91,7 +95,7 @@ describe("main.flow — _buscarNomeCliente prioriza o nome real do contato", () 
 
     const resposta = await mainFlow({ userId: USER_ID, message: "bom dia" });
 
-    expect(resposta).toContain("Olá, *Contato*");
+    expect(resposta).toMatch(/(Bom dia|Boa tarde|Boa noite), \*Contato\*/);
   });
 
   test("nome de contato só com dígitos (placeholder de telefone) é ignorado, cai pro fallback", async () => {
@@ -99,7 +103,7 @@ describe("main.flow — _buscarNomeCliente prioriza o nome real do contato", () 
 
     const resposta = await mainFlow({ userId: USER_ID, message: "bom dia" });
 
-    expect(resposta).toContain("Olá, *Hickson*");
+    expect(resposta).toMatch(/(Bom dia|Boa tarde|Boa noite), \*Hickson\*/);
     expect(resposta).not.toContain("5511999999999");
   });
 

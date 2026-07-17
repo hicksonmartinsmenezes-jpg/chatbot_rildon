@@ -59,6 +59,18 @@ function dataHojeISO(date = new Date()) {
   }).format(date);
 }
 
+// Saudação baseada no horário REAL (relógio do fuso do negócio), não no
+// que o cliente escreveu — pedido do usuário: "preciso que o bot na
+// saudação, capte o horario atual e informe o bom dia ou boa tarde com
+// base no horario real". Faixas convencionais: manhã 05h-11h59, tarde
+// 12h-17h59, noite 18h-04h59.
+function saudacaoPorHorario() {
+  const { hora } = agoraInfo();
+  if (hora >= 5 && hora < 12) return "Bom dia";
+  if (hora >= 12 && hora < 18) return "Boa tarde";
+  return "Boa noite";
+}
+
 function mensagemForaDeHorario() {
   return (
     "🕐 *Fora do horário de atendimento*\n\n" +
@@ -71,4 +83,4 @@ function mensagemForaDeHorario() {
   );
 }
 
-module.exports = { estaEmHorarioDeAtendimento, mensagemForaDeHorario, proximoAtendimento, dataHojeISO };
+module.exports = { estaEmHorarioDeAtendimento, mensagemForaDeHorario, proximoAtendimento, dataHojeISO, saudacaoPorHorario };

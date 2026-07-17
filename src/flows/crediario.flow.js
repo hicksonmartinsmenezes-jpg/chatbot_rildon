@@ -7,6 +7,24 @@ const { notificarAtendente }                          = require("../services/not
 const logger                                          = require("../utils/logger");
 const MSG                                             = require("./messages");
 
+// Mesmo bug corrigido em vendas.flow.js (ver _pareceMudancaDeAssunto lá): o
+// cliente pode mudar de assunto no meio da coleta (nome/motivo) pedindo algo
+// de OUTRO setor, e o texto vira literalmente o campo errado do ticket.
+// Deliberadamente NÃO inclui "peça"/"orçamento"/"conserto" — mencionar peças é
+// o motivo NORMAL de pedir crediário ("preciso financiar peças pro carro"),
+// então isso seria um falso positivo constante, não uma mudança de assunto de
+// verdade. Cobre só assuntos claramente de OUTROS setores (horário, endereço,
+// falar com a equipe, reclamação). Também não é aplicado na etapa de CPF, que
+// já tem validação de formato própria (validarCPF já rejeita texto que não
+// seja CPF válido).
+const MUDANCA_ASSUNTO_RE =
+  /\bhorario de funcionamento\b|\bque horas (abre|fecha)\b|\bonde fica\b|\bendereco\b|\blocalizacao\b|\bfalar com a equipe\b|\bfalar com o responsavel\b|\breclamacao\b|\bquero reclamar\b/;
+
+function _pareceMudancaDeAssunto(message) {
+  const normalizado = normalizar(message);
+  return MUDANCA_ASSUNTO_RE.test(normalizado);
+}
+
 const MSG_TICKET_FALHOU =
   "⚠️ Não consegui registrar sua solicitação agora.\n\n" +
   "Por favor, ligue diretamente: *(79) 99135-3569*\n\n" +
@@ -40,6 +58,24 @@ async function crediarioFlow(message, userId, session) {
   if (session.sector !== "crediario") {
     await updateSession(userId, { sector: "crediario" });
     return MSG.crediario.MENU();
+  }
+
+  // ── Detecta mudança de assunto nas etapas de texto livre (nome/motivo) ─────
+  // Não aplicado nas etapas de CPF: validarCPF já rejeita texto que não seja
+  // CPF válido, então uma pergunta fora de contexto ali já cai no fluxo de
+  // "CPF inválido" em vez de virar dado salvo incorretamente.
+  const ETAPAS_TEXTO_LIVRE = new Set([
+    "aguardando_nome_cred",
+    "aguardando_motivo_cred",
+    "aguardando_nome_consulta_cred",
+  ]);
+  if (ETAPAS_TEXTO_LIVRE.has(session.step) && _pareceMudancaDeAssunto(message)) {
+    logger.warn(`[crediarioFlow] Mudança de assunto detectada, saindo do fluxo de crediário — userId=${userId} step=${session.step} msg="${message}"`);
+    await clearSession(userId);
+    return (
+      "Percebi que sua pergunta é sobre outro assunto! 😊\n\n" +
+      "Digite *0* para ver o menu principal e escolher a opção certa (orçamento de peças, falar com a equipe, horário, etc.)."
+    );
   }
 
   // ── Etapa: Nome ────────────────────────────────────────────────────────────

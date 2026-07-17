@@ -11,6 +11,7 @@ const {
   getLidMapStats
 } = require("../whatsapp/lid-map");
 const {
+  unwrapMessage,
   getTextMessage,
   getMediaType,
   isValidUserMessage,
@@ -19,12 +20,14 @@ const {
 const { isDuplicateContent, marcarMensagemProcessada, startDedupCleanup } = require("../whatsapp/dedup");
 const { autoRegisterContact } = require("../whatsapp/contacts");
 const { saveHistory } = require("../services/history.service");
+const { analisarImagemPeca, suportaVisao } = require("../services/ai.service");
 
 const {
   default: makeWASocket,
   useMultiFileAuthState,
   DisconnectReason,
-  fetchLatestBaileysVersion
+  fetchLatestBaileysVersion,
+  downloadMediaMessage
 } = require("@whiskeysockets/baileys");
 
 const qrcode = require("qrcode-terminal");
@@ -221,6 +224,39 @@ async function onMessagesUpdate(updates) {
   }
 }
 
+// Analisa foto enviada sem legenda via IA de visão (quando o provedor ativo
+// suporta imagem — ver suportaVisao() em ai.service.js). Baixa a mídia em
+// memória (nunca persistida em disco), converte para base64 e pede uma
+// descrição textual curta pro provedor; essa descrição então passa pelo
+// MESMO pipeline de uma mensagem digitada (mainFlow, sessão, histórico,
+// socket) — nenhuma lógica de negócio duplicada pra extrair veículo/peça.
+// Retorna null em qualquer falha (mídia expirada, provedor indisponível,
+// imagem não reconhecida como peça/veículo), sinalizando pro chamador usar
+// o fallback padrão de "não consigo processar arquivos".
+async function analisarFotoRecebida(msg) {
+  try {
+    const conteudo = unwrapMessage(msg);
+    const imageMessage = conteudo?.imageMessage;
+    if (!imageMessage) return null;
+
+    const buffer = await downloadMediaMessage(
+      msg,
+      "buffer",
+      {},
+      { logger, reuploadRequest: conn.sock?.updateMediaMessage }
+    );
+    if (!buffer || !buffer.length) return null;
+
+    const base64 = buffer.toString("base64");
+    const mimeType = imageMessage.mimetype || "image/jpeg";
+
+    return await analisarImagemPeca(base64, mimeType);
+  } catch (err) {
+    logger.warn(`[Visão-Foto] Falha ao baixar/analisar imagem: ${err.message}`);
+    return null;
+  }
+}
+
 // Handler de messages.upsert: pipeline completo de uma mensagem recebida —
 // dedup, resolução de LID, auto-registro de contato, checagem de bot
 // ativo/inativo, tratamento de mídia sem texto, dedup de conteúdo e,
@@ -294,6 +330,47 @@ async function onMessagesUpsert({ messages, type }) {
 
     if (!text) {
       const tipoMidia = getMediaType(msg);
+
+      // Foto sem legenda + provedor de IA ativo com suporte a visão: tenta
+      // descrever a peça/veículo na imagem e processa a descrição pelo
+      // pipeline normal de texto (mesma sessão, mesmo fluxo, mesmo
+      // histórico). Se a análise falhar ou a imagem não for reconhecida
+      // como peça/veículo, cai no aviso padrão abaixo — comportamento
+      // idêntico ao de antes desta feature.
+      if (tipoMidia === "imagem" && suportaVisao()) {
+        const descricao = await analisarFotoRecebida(msg);
+        if (descricao) {
+          try {
+            logger.info(`[MESSAGE_IN_VISAO] ${userId}: [foto] → "${descricao}"`);
+
+            sendTypingPresence(sendTo).catch(err =>
+              logger.debug?.(`[Typing] não enviado para ${sendTo}: ${err.message}`)
+            );
+
+            const response = await withTimeout(
+              conn.messageHandler({ userId, contactName, message: descricao, messageId }),
+              MESSAGE_PROCESSING_TIMEOUT_MS,
+              "processamento do bot (foto)"
+            );
+
+            if (response) {
+              await enviarComRetry(sendTo, response);
+            }
+            continue;
+          } catch (err) {
+            logger.error(`[BOT_PROCESSING_ERROR_VISAO] ${userId}: ${err.stack || err.message}`);
+            try {
+              await enviarComRetry(sendTo, BOT_PROCESSING_FALLBACK);
+            } catch (sendErr) {
+              logger.error(`[BOT_FALLBACK_SEND_ERROR] ${userId}: ${sendErr.message}`);
+            }
+            continue;
+          }
+        }
+        // descricao null (não é peça, provedor falhou, mídia expirada etc.)
+        // → segue pro aviso padrão de mídia não suportada, abaixo.
+      }
+
       if (tipoMidia) {
         // BUG CORRIGIDO (usuário: "sinto que não está salvando todas as
         // conversas"): mídia sem legenda (foto, áudio, vídeo, sticker,

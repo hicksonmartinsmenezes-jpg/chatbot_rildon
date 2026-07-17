@@ -415,3 +415,178 @@ describe("ai.service — seleção de provedor via AI_PROVIDER", () => {
     expect(res).toEqual({ resposta: "oi", intencao: "chat", veiculo: null, peca: null, pedidoExplicito: false });
   });
 });
+
+/**
+ * Pedido do usuário: cliente manda foto de peça pedindo ajuda pelo WhatsApp
+ * (task #144/#156). Só Gemini e Anthropic suportam imagem nas APIs já
+ * integradas aqui — Groq (llama-3.1-8b-instant) é só texto, então
+ * suportaVisao()/analisarImagemPeca() devem se comportar como um no-op
+ * silencioso nesse caso (null), nunca lançar erro — quem chama
+ * (config/whatsapp.js) usa null como sinal pra manter o aviso padrão de
+ * "não processo mídia" já existente.
+ */
+describe("ai.service — suportaVisao()", () => {
+  afterEach(() => {
+    process.env = { ...ORIGINAL_ENV };
+  });
+
+  test("groq (ou provedor ausente) não suporta visão", () => {
+    const { suportaVisao } = loadAiService({ provider: "groq" });
+    expect(suportaVisao()).toBe(false);
+  });
+
+  test("gemini suporta visão", () => {
+    const { suportaVisao } = loadAiService({ provider: "gemini" });
+    expect(suportaVisao()).toBe(true);
+  });
+
+  test("anthropic suporta visão", () => {
+    const { suportaVisao } = loadAiService({ provider: "anthropic" });
+    expect(suportaVisao()).toBe(true);
+  });
+});
+
+describe("ai.service — analisarImagemPeca()", () => {
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    global.fetch = jest.fn();
+  });
+
+  afterEach(() => {
+    process.env = { ...ORIGINAL_ENV };
+    global.fetch = originalFetch;
+  });
+
+  test("provedor groq (sem suporte a visão) → null sem chamar fetch", async () => {
+    process.env.GROQ_API_KEY = "chave-groq-teste";
+    const { analisarImagemPeca } = loadAiService({ provider: "groq" });
+
+    const res = await analisarImagemPeca("base64falso", "image/jpeg");
+
+    expect(res).toBeNull();
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  test("gemini sem GEMINI_API_KEY configurada (ou placeholder) → null sem chamar fetch", async () => {
+    const { analisarImagemPeca } = loadAiService({ provider: "gemini" });
+    delete process.env.GEMINI_API_KEY;
+
+    const res = await analisarImagemPeca("base64falso", "image/jpeg");
+
+    expect(res).toBeNull();
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  test("gemini: monta a requisição de visão corretamente e devolve a descrição", async () => {
+    process.env.GEMINI_API_KEY = "chave-gemini-teste";
+    const { analisarImagemPeca } = loadAiService({ provider: "gemini" });
+
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        candidates: [{ content: { parts: [{ text: "motor de partida, aparenta ser de carro de passeio" }] } }],
+      }),
+    });
+
+    const res = await analisarImagemPeca("base64falso", "image/png");
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    const [url, options] = global.fetch.mock.calls[0];
+    expect(url).toContain("generativelanguage.googleapis.com");
+    expect(url).toContain("chave-gemini-teste");
+
+    const body = JSON.parse(options.body);
+    expect(body.contents[0].parts[0].text).toContain("Descreva em UMA frase");
+    expect(body.contents[0].parts[1].inline_data).toEqual({ mime_type: "image/png", data: "base64falso" });
+
+    expect(res).toBe("motor de partida, aparenta ser de carro de passeio");
+  });
+
+  test("anthropic: monta a requisição de visão corretamente (formato Messages API com imagem)", async () => {
+    process.env.ANTHROPIC_API_KEY = "sk-ant-teste-123";
+    const { analisarImagemPeca } = loadAiService({ provider: "anthropic" });
+
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        content: [{ text: "alternador com um conector danificado" }],
+      }),
+    });
+
+    const res = await analisarImagemPeca("base64falso", "image/jpeg");
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    const [url, options] = global.fetch.mock.calls[0];
+    expect(url).toBe("https://api.anthropic.com/v1/messages");
+    expect(options.headers["x-api-key"]).toBe("sk-ant-teste-123");
+
+    const body = JSON.parse(options.body);
+    const userMsg = body.messages[0];
+    expect(userMsg.content[0]).toEqual({
+      type: "image",
+      source: { type: "base64", media_type: "image/jpeg", data: "base64falso" },
+    });
+    expect(userMsg.content[1].type).toBe("text");
+
+    expect(res).toBe("alternador com um conector danificado");
+  });
+
+  test("resposta EXATA 'NAO_E_PECA' → null (imagem não é peça/veículo)", async () => {
+    process.env.GEMINI_API_KEY = "chave-gemini-teste";
+    const { analisarImagemPeca } = loadAiService({ provider: "gemini" });
+
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        candidates: [{ content: { parts: [{ text: "NAO_E_PECA" }] } }],
+      }),
+    });
+
+    const res = await analisarImagemPeca("base64falso", "image/jpeg");
+    expect(res).toBeNull();
+  });
+
+  test("HTTP de erro → null, não lança exceção", async () => {
+    process.env.GEMINI_API_KEY = "chave-gemini-teste";
+    const { analisarImagemPeca } = loadAiService({ provider: "gemini" });
+
+    global.fetch.mockResolvedValueOnce({
+      ok: false,
+      status: 503,
+      text: async () => "indisponível",
+    });
+
+    const res = await analisarImagemPeca("base64falso", "image/jpeg");
+    expect(res).toBeNull();
+  });
+
+  test("fetch lança erro de rede → null, não propaga a exceção", async () => {
+    process.env.GEMINI_API_KEY = "chave-gemini-teste";
+    const { analisarImagemPeca } = loadAiService({ provider: "gemini" });
+
+    global.fetch.mockRejectedValueOnce(new Error("network error"));
+
+    const res = await analisarImagemPeca("base64falso", "image/jpeg");
+    expect(res).toBeNull();
+  });
+
+  test("resposta vazia/em branco → null", async () => {
+    process.env.GEMINI_API_KEY = "chave-gemini-teste";
+    const { analisarImagemPeca } = loadAiService({ provider: "gemini" });
+
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        candidates: [{ content: { parts: [{ text: "   " }] } }],
+      }),
+    });
+
+    const res = await analisarImagemPeca("base64falso", "image/jpeg");
+    expect(res).toBeNull();
+  });
+});

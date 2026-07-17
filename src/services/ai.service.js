@@ -372,6 +372,118 @@ function _extrairTextoResposta(provedor, data) {
   return data?.candidates?.[0]?.content?.parts?.[0]?.text;
 }
 
+// ─── Análise de foto (visão) ────────────────────────────────────────────────────
+// Pedido do usuário: cliente manda foto de uma peça pedindo ajuda, e o bot só
+// avisava "ainda não consigo processar arquivos" — perdendo o pedido. Só o
+// Gemini e o Claude (Anthropic) suportam imagem nas APIs já integradas aqui;
+// o modelo do Groq configurado (llama-3.1-8b-instant) é só texto. Em vez de
+// forçar troca de provedor pra quem já está no Groq (free tier), a função
+// simplesmente devolve null nesse caso — quem chama (config/whatsapp.js)
+// mantém o aviso de "não processo mídia" já existente como fallback.
+const PROMPT_VISAO =
+  "Você é a Ril, assistente de uma loja de autopeças (elétrica automotiva, linha leve/pesada/agrícola). " +
+  "O cliente enviou esta foto pelo WhatsApp, sem nenhum texto junto. " +
+  "Descreva em UMA frase curta e objetiva o que aparece na imagem, do jeito que um cliente "  +
+  "digitaria pedindo a peça — ex: \"motor de partida\", \"pastilha de freio dianteira, aparenta ser de carro de passeio\", " +
+  "\"alternador com um conector danificado\". Se conseguir notar marca/modelo do veículo ou da peça, inclua. " +
+  "Se a imagem NÃO for de uma peça, veículo ou algo relacionado a autopeças (ex: foto de documento, print de tela, " +
+  "pessoa, paisagem), responda EXATAMENTE: \"NAO_E_PECA\". " +
+  "Responda só com essa frase, em texto simples, sem JSON, sem aspas, sem markdown.";
+
+function suportaVisao() {
+  return PROVIDER_NAME === "gemini" || PROVIDER_NAME === "anthropic";
+}
+
+async function _chamarGeminiVisao(base64, mimeType, apiKey) {
+  return _fetchComTimeout(
+    `${PROVIDER.url}?key=${apiKey}`,
+    {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{
+          role: "user",
+          parts: [
+            { text: PROMPT_VISAO },
+            { inline_data: { mime_type: mimeType, data: base64 } },
+          ],
+        }],
+        generationConfig: { temperature: 0.3, maxOutputTokens: 150 },
+      }),
+    },
+    REQUEST_TIMEOUT
+  );
+}
+
+async function _chamarAnthropicVisao(base64, mimeType, apiKey) {
+  return _fetchComTimeout(
+    PROVIDER.url,
+    {
+      method:  "POST",
+      headers: {
+        "content-type":      "application/json",
+        "x-api-key":         apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model:      PROVIDER.model,
+        max_tokens: 150,
+        messages: [{
+          role: "user",
+          content: [
+            { type: "image", source: { type: "base64", media_type: mimeType, data: base64 } },
+            { type: "text", text: PROMPT_VISAO },
+          ],
+        }],
+      }),
+    },
+    REQUEST_TIMEOUT
+  );
+}
+
+// Analisa uma foto recebida do cliente e devolve uma descrição curta da peça
+// (pra ser tratada como se fosse o texto digitado pelo cliente — reaproveita
+// TODO o fluxo de vendas/extração de veículo/peça já existente e testado, em
+// vez de duplicar essa lógica aqui). Devolve null se o provedor não suporta
+// visão, a chave não está configurada, ou a chamada falha por qualquer
+// motivo — quem chama trata null como "não consegui analisar a foto".
+async function analisarImagemPeca(base64, mimeType) {
+  if (!suportaVisao()) return null;
+
+  const apiKey = PROVIDER.getKey();
+  if (!apiKey || apiKey === "cole_sua_chave_aqui") {
+    logger.warn(`[IA-Visão] Chave do provedor "${PROVIDER_NAME}" não configurada no .env`);
+    return null;
+  }
+
+  try {
+    await _agendarRequisicao();
+    _ultimaRequisicao = Date.now();
+
+    const res = PROVIDER_NAME === "anthropic"
+      ? await _chamarAnthropicVisao(base64, mimeType, apiKey)
+      : await _chamarGeminiVisao(base64, mimeType, apiKey);
+
+    if (!res.ok) {
+      logger.warn(`[IA-Visão] Erro ${res.status} (provedor: ${PROVIDER_NAME}): ${(await res.text().catch(() => "")).slice(0, 200)}`);
+      return null;
+    }
+
+    const data = await res.json();
+    const texto = PROVIDER_NAME === "anthropic"
+      ? data?.content?.[0]?.text
+      : data?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    const descricao = texto?.trim();
+    if (!descricao || descricao === "NAO_E_PECA") return null;
+
+    return descricao;
+  } catch (err) {
+    logger.warn(`[IA-Visão] Falha ao analisar imagem (provedor: ${PROVIDER_NAME}): ${err.message}`);
+    return null;
+  }
+}
+
 // ─── Intenções válidas ─────────────────────────────────────────────────────────
 const INTENCOES_VALIDAS = new Set(["vendas", "crediario", "atendente", "gestao", "suporte", "chat"]);
 
@@ -483,4 +595,4 @@ async function perguntarIA(mensagem, { nomeCliente, historico = [], contexto = {
   return null;
 }
 
-module.exports = { perguntarIA };
+module.exports = { perguntarIA, analisarImagemPeca, suportaVisao };

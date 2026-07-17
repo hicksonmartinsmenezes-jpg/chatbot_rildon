@@ -89,6 +89,26 @@ function getProfilePhotoCandidates(userId) {
   ].filter(Boolean)));
 }
 
+// Forma canônica de um userId pra fins de EXIBIÇÃO/agrupamento (painel): se
+// for um @lid com jid já conhecido, devolve o jid — senão devolve o próprio
+// valor, SEM passar por normalizeJid. Isso é deliberado: normalizeJid extrai
+// dígitos e monta "...@s.whatsapp.net" mesmo de strings que não são um id de
+// WhatsApp de verdade (ex: ids de teste como "u1" virariam "1@s.whatsapp.net"),
+// o que é o comportamento certo pra normalizar entrada de usuário, mas errado
+// aqui — canonicalizeUserId só deve mexer no caso específico que causa o bug
+// (o mesmo cliente com user_id salvo ora como "...@lid", ora já resolvido
+// pra "...@s.whatsapp.net" — ver LID_FALLBACK em config/whatsapp.js) e deixar
+// qualquer outro valor intocado. Usado pra alinhar a chave usada por
+// getConversationsHandler com a usada por getTickets, que é o que o
+// frontend cruza em ticketsByUser[userId].
+function canonicalizeUserId(userId) {
+  const raw = String(userId || "").trim();
+  if (raw.endsWith("@lid")) {
+    return resolveLid(raw) || raw;
+  }
+  return raw;
+}
+
 function getLidMapStats() {
   return {
     lidToJid: Object.keys(lidToJid).length,
@@ -104,5 +124,6 @@ module.exports = {
   resolveJidToLid,
   resolveSendJid,
   getProfilePhotoCandidates,
+  canonicalizeUserId,
   getLidMapStats
 };

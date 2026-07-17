@@ -1,5 +1,6 @@
 const pool   = require("../database/postgres");
 const logger = require("../utils/logger");
+const { getProfilePhotoCandidates } = require("../whatsapp/lid-map");
 
 function mapHistory(row) {
   return {
@@ -51,8 +52,16 @@ async function findAll({ userId, limit = 50, offset = 0, q, from, to } = {}) {
   const where = [];
 
   if (userId) {
-    values.push(userId);
-    where.push(`user_id = $${values.length}`);
+    // BUG CORRIGIDO (#96): abrir a conversa de um cliente cujo user_id
+    // canônico (jid resolvido) veio da lista de Conversas não pode perder as
+    // mensagens antigas que ficaram salvas sob o formato "...@lid" original
+    // — um match exato (`user_id = $1`) mostrava só uma FATIA do histórico
+    // real. getProfilePhotoCandidates já enumera todas as variantes
+    // equivalentes conhecidas (lid ↔ jid ↔ número), mesma lógica usada pra
+    // achar ticket ativo do cliente em qualquer formato (reopenTicketIfClosed).
+    const candidatos = getProfilePhotoCandidates(userId);
+    values.push(candidatos.length ? candidatos : [userId]);
+    where.push(`user_id = ANY($${values.length}::text[])`);
   }
 
   if (q) {

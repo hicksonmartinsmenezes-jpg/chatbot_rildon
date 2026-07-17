@@ -2,7 +2,7 @@ const logger = require("../utils/logger");
 const humanMode = require("../services/humanMode.service");
 const { emitEvent } = require("../services/socket.service");
 const ticketRepository = require("../repositories/ticket.repository");
-const { getProfilePhotoCandidates } = require("../whatsapp/lid-map");
+const { getProfilePhotoCandidates, canonicalizeUserId } = require("../whatsapp/lid-map");
 const { buscarNomeContatoReal } = require("../whatsapp/contacts");
 const { sendMessage } = require("../config/whatsapp");
 const { saveHistory } = require("../services/history.service");
@@ -60,6 +60,17 @@ async function getTickets(req, res) {
     }
 
     let tickets = await listTickets({ status, search, dateStart, dateEnd });
+
+    // BUG CORRIGIDO (#96): o painel cruza esta lista com /api/history/
+    // conversations por userId (ticketsByUser[userId], em
+    // frontend/js/07-conversations.js) — se o ticket estiver salvo sob
+    // "...@lid" e a conversa aparecer já resolvida pra "...@s.whatsapp.net"
+    // (ou vice-versa), o cruzamento falha: o cliente aparece na lista sem
+    // ticket algum, ou (pior) como DUAS conversas separadas pro mesmo
+    // cliente real. Canonicaliza aqui o userId de exibição — mesma função
+    // (canonicalizeUserId) já usada em getConversationsHandler, garantindo
+    // que os dois endpoints concordem na mesma chave.
+    tickets = tickets.map(t => ({ ...t, userId: canonicalizeUserId(t.userId) }));
 
     // BUG CORRIGIDO: com ATTENDANT_CONVERSATIONS_FULL_ACCESS=false (modo
     // restrito — cada atendente só vê/gerencia o que assumiu + o que ainda

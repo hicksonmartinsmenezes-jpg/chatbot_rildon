@@ -272,6 +272,30 @@ describe("ticket.routes", () => {
       expect(res.body.stats.total).toBe(2);
     });
 
+    // BUG CORRIGIDO (#96): o painel cruza GET /api/tickets com
+    // GET /api/history/conversations por userId (ticketsByUser[userId] em
+    // frontend/js/07-conversations.js) — se o ticket estiver salvo sob
+    // "...@lid" mas a conversa já aparecer resolvida para
+    // "...@s.whatsapp.net" (ou vice-versa), o cruzamento falha e o cliente
+    // aparece como se não tivesse ticket algum. GET /api/tickets agora
+    // devolve o userId já canonicalizado (jid, quando o mapeamento lid→jid
+    // é conhecido) pra concordar com o que getConversationsHandler também
+    // canonicaliza.
+    test("ticket salvo com userId em formato @lid volta na lista já com o jid resolvido", async () => {
+      const { setLidMapping } = require("../src/whatsapp/lid-map");
+      const lid = "700800900100200@lid";
+      const jid = "5511955556666@s.whatsapp.net";
+      setLidMapping(lid, jid, "test");
+
+      const created = await request(buildApp(ADMIN)).post("/api/tickets").send({ userId: lid, type: "orcamento" });
+      const id = created.body.ticket.id;
+
+      const res = await request(buildApp(ADMIN)).get("/api/tickets");
+      const ticket = res.body.tickets.find(t => t.id === id);
+
+      expect(ticket.userId).toBe(jid);
+    });
+
     // Pedido do usuário: a UI da conversa precisa saber se o atendente
     // logado pode gerenciar QUALQUER ticket (full access/privilegiado) ou
     // só o que é dele, pra travar os botões de ação antes de clicar em vez

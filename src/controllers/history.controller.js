@@ -1,4 +1,5 @@
 const { listHistory, listHistoryGrouped } = require("../services/history.service");
+const { canonicalizeUserId } = require("../whatsapp/lid-map");
 const logger = require("../utils/logger");
 
 async function getHistoryHandler(req, res) {
@@ -104,19 +105,36 @@ async function getConversationsHandler(req, res) {
       LIMIT $1
     `, [MAX_CONVERSATIONS]);
 
-    const rows = result.rows.map(r => ({
-      id:          r.id,
-      userId:      r.user_id,
-      contactName: r.contact_name,
-      message:     r.message,
-      response:    r.response,
-      sector:      r.sector,
-      status:      r.status,
-      messageId:   r.message_id,
-      createdAt:   r.created_at,
-    }));
+    // BUG CORRIGIDO (#96): o mesmo cliente real pode ter linhas em `history`
+    // com o user_id salvo em DOIS formatos — "...@lid" e já resolvido para
+    // "...@s.whatsapp.net" (ver LID_FALLBACK em config/whatsapp.js). Como a
+    // subquery acima faz DISTINCT ON (user_id) LITERAL, esse cliente vira
+    // DUAS linhas na lista de conversas do painel — e pior, o frontend cruza
+    // essa lista com /api/tickets por userId (ticketsByUser[userId]); se o
+    // ticket estiver salvo sob o OUTRO formato, a conversa aparece como "sem
+    // ticket" mesmo já tendo um. canonicalizeUserId() resolve @lid → jid
+    // conhecido (mesma lógica já usada em contacts.js/humanMode/broadcast),
+    // e o Map abaixo colapsa as duas linhas em uma só — como a query externa
+    // já ordena por created_at DESC, a primeira ocorrência de cada id
+    // canônico é sempre a mais recente.
+    const porUsuarioCanonico = new Map();
+    for (const r of result.rows) {
+      const userId = canonicalizeUserId(r.user_id);
+      if (porUsuarioCanonico.has(userId)) continue;
+      porUsuarioCanonico.set(userId, {
+        id:          r.id,
+        userId,
+        contactName: r.contact_name,
+        message:     r.message,
+        response:    r.response,
+        sector:      r.sector,
+        status:      r.status,
+        messageId:   r.message_id,
+        createdAt:   r.created_at,
+      });
+    }
 
-    res.json(rows);
+    res.json([...porUsuarioCanonico.values()]);
   } catch (err) {
     logger.error("❌ Erro ao buscar conversas:", err.message);
     res.status(500).json([]);

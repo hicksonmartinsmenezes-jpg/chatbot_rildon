@@ -434,7 +434,13 @@ async function _mainFlowInterno({ userId, message }) {
   // a sessão (e portanto essa flag) mais acima, então não precisam de
   // tratamento especial aqui.
   if (session.aguardandoConfirmacaoOrcamento) {
-    if (msgNorm === "sim" || msgNorm === "1") {
+    // BUG REAL (achado em sessão de testes de personas): cliente confirma
+    // com pontuação/ênfase natural ("Sim!", "sim.", "Sim!!") — msgNorm só
+    // remove acento/caixa, não pontuação, então "sim!" !== "sim" e o
+    // cliente caía direto no fallback "não confirma agora", perdendo o
+    // orçamento silenciosamente. msgSemPontuacao (já usado pra saudação e
+    // pelo ESCAPE.has() de vendas/crediario.flow.js) resolve isso.
+    if (msgNorm === "sim" || msgNorm === "1" || msgSemPontuacao === "sim" || msgSemPontuacao === "1") {
       const veiculoFinal = session.veiculoSugerido || null;
       // BUG CORRIGIDO (relatado pelo usuário — reproduzido 2x: "radiador" e
       // "pneu", ambos claramente ditos pelo cliente): quando a IA falha em

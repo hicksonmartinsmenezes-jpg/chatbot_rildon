@@ -102,7 +102,13 @@ const aiMock = {
     if (_iaMockFn) return _iaMockFn(msg, opts);
     const m = msg.toLowerCase();
     if (/sensor|filtro|alternador|farol|bateria|peça|motor|fusível|chave|cabo|lâmpada/.test(m))
-      return { resposta: "Sim, trabalhamos com esse item! Posso te ajudar a solicitar um orçamento. 😊", intencao: "vendas" };
+      // pedidoExplicito: true — este mock representa uma IA real classificando
+      // uma menção direta de peça ("preciso de X") como pedido explícito, não
+      // uma pergunta de disponibilidade (ver PERGUNTA_DISPONIBILIDADE_RE em
+      // main.flow.js — mensagens terminadas em "?" com "tem"/"vocês têm" etc.
+      // são REBAIXADAS pra false por segurança, mesmo com pedidoExplicito
+      // aqui true — isso é intencional, ver ticket #2026-0056/#2026-0068).
+      return { resposta: "Sim, trabalhamos com esse item! Posso te ajudar a solicitar um orçamento. 😊", intencao: "vendas", pedidoExplicito: true };
     if (/crediário|parcelar|prazo|parcela/.test(m))
       return { resposta: "Temos crediário próprio para nossos clientes!", intencao: "crediario" };
     if (/atendente|vendedor|humano|pessoa/.test(m))
@@ -372,10 +378,15 @@ async function testIA() {
   naoContem(r2V, "🛒 *Vendas / Orçamento*", "não repete menu completo em contexto de vendas");
   contem(r2V, "veículo", "avança para a etapa de veículo do formulário");
 
-  subtitulo("Intenção 'vendas' via IA sempre entra no formulário (não há mais chat livre dentro do setor)");
+  subtitulo("Intenção 'vendas' + pedido explícito via IA sempre entra no formulário (não há mais chat livre dentro do setor)");
   await resetarSessao();
-  _iaMockFn = () => ({ resposta: "Temos sim! Para orçamento, escolha a opção 1.", intencao: "vendas" });
-  await enviar("vocês têm bateria?", null);  // IA roteia para vendas e já define a etapa (aguardando_nome)
+  // "quero comprar" (pedido explícito) em vez de "vocês têm bateria?" —
+  // uma pergunta de disponibilidade (regex PERGUNTA_DISPONIBILIDADE_RE em
+  // main.flow.js) é rebaixada pra pedidoExplicito=false por segurança
+  // independente do que a IA classificar, então não serviria pra este
+  // cenário (ver ticket #2026-0056/#2026-0068 — downgrade intencional).
+  _iaMockFn = () => ({ resposta: "Temos sim! Para orçamento, escolha a opção 1.", intencao: "vendas", pedidoExplicito: true });
+  await enviar("quero comprar uma bateria", null);  // IA roteia para vendas e já define a etapa (aguardando_nome)
   _iaMockFn = () => ({ resposta: "Sim, temos filtros de ar de diversas marcas! 🔧", intencao: "vendas" });
   const rFiltro = await enviar("filtros brasil", "texto livre em vendas — consumido como nome do formulário");
   _iaMockFn = null;
@@ -513,6 +524,50 @@ async function testPosFluxo() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// SUITE 8 — Personas variadas (sessão de testes solicitada pelo usuário)
+// ════════════════════════════════════════════════════════════════════════════
+async function testPersonas() {
+  titulo("SUITE 8 — Personas Variadas");
+
+  subtitulo("Persona 'apressada' — confirma orçamento com 'Sim!' (pontuação) em vez de 'sim' exato");
+  await resetarSessao();
+  _iaMockFn = () => ({ resposta: "Sim, trabalhamos com alternador!", intencao: "vendas" }); // pedidoExplicito ausente/false → cai na confirmação
+  await enviar("preciso de um alternador pro meu gol", "consulta inicial (sem pedidoExplicito)");
+  _iaMockFn = null;
+  const rConfirmaPontuacao = await enviar("Sim!", "confirma com pontuação");
+  contem(rConfirmaPontuacao, "nome completo", "'Sim!' deveria confirmar o orçamento igual a 'sim' exato");
+
+  subtitulo("Persona 'atropelada' — manda nome+veículo+peça de uma vez só quando só o nome foi pedido");
+  await resetarSessao();
+  await enviar("1", null);
+  await enviar("1", null);
+  const rAtropela = await enviar("João Silva, Fiat Uno 2015, preciso de um alternador", "nome atropelado (tudo junto)");
+  naoNulo(rAtropela, "não trava com mensagem atropelada");
+
+  subtitulo("Persona 'muda de assunto no meio do formulário' — pergunta de crediário na etapa de veículo");
+  await resetarSessao();
+  await enviar("1", null);
+  await enviar("1", null);
+  await enviar("Maria Souza", null);
+  const rMudaAssunto = await enviar("vocês fazem crediário também?", "mudança de assunto na etapa de veículo");
+  contem(rMudaAssunto, "outro assunto", "detecta mudança de assunto no meio do formulário de vendas");
+
+  subtitulo("Persona 'CPF errado várias vezes' — 3 tentativas inválidas seguidas antes de acertar");
+  await resetarSessao();
+  await enviar("2", null);
+  await enviar("1", null);
+  await enviar("Pedro Alves", null);
+  const rCpf1 = await enviar("111", "CPF inválido tentativa 1 (curto)");
+  contem(rCpf1, "inválido", "rejeita 1ª tentativa");
+  const rCpf2 = await enviar("00000000000", "CPF inválido tentativa 2 (dígitos iguais)");
+  contem(rCpf2, "inválido", "rejeita 2ª tentativa (dígitos iguais)");
+  const rCpf3 = await enviar("12345678900", "CPF inválido tentativa 3 (dígito verificador errado)");
+  contem(rCpf3, "inválido", "rejeita 3ª tentativa (dv errado)");
+  const rCpfOk = await enviar("52998224725", "CPF válido na 4ª tentativa");
+  contem(rCpfOk, "crediário", "aceita CPF válido após 3 tentativas erradas, não trava o fluxo");
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // MAIN
 // ════════════════════════════════════════════════════════════════════════════
 async function main() {
@@ -529,6 +584,7 @@ async function main() {
     ia:        testIA,
     edge:      testEdgeCases,
     posfluxo:  testPosFluxo,
+    personas:  testPersonas,
   };
 
   if (SUITE_ARG === "all") {

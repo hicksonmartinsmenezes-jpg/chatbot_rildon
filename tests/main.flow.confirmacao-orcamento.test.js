@@ -104,6 +104,57 @@ describe("mainFlow — confirmação de orçamento ('sim'/'1') com pecaSugerido 
     );
   });
 
+  // BUG REAL (achado em sessão de testes de personas, 2026-07-17): o
+  // intercept só reconhecia "sim"/"1" com match EXATO — msgNorm remove
+  // acento/caixa mas não pontuação, então "Sim!", "sim." ou "Sim!!"
+  // (pontuação/ênfase natural de quem está confirmando de verdade) caíam
+  // no fallback "não confirma agora", abandonando o orçamento em silêncio.
+  test.each(["Sim!", "sim.", "SIM!!", "1."])(
+    "confirma o orçamento mesmo com pontuação: %s",
+    async (mensagem) => {
+      sessionService.getSession.mockReturnValue({
+        sector: "main",
+        customerName: "Hickson Martins",
+        aguardandoConfirmacaoOrcamento: true,
+        veiculoSugerido: "Fiat Uno 2015",
+        pecaSugerido: "Radiador",
+        produtoSugerido: "radiador",
+      });
+
+      await mainFlow({ userId: USER_ID, message: mensagem });
+
+      expect(vendasFlow.finalizarOrcamento).toHaveBeenCalledWith(
+        USER_ID,
+        { customerName: "Hickson Martins" },
+        "Fiat Uno 2015",
+        "Radiador"
+      );
+    }
+  );
+
+  test("mensagem que não é 'sim'/'1' (com ou sem pontuação) NÃO confirma — segue processamento normal", async () => {
+    const { perguntarIA } = require("../src/services/ai.service");
+    sessionService.getSession.mockReturnValue({
+      sector: "main",
+      customerName: "Hickson Martins",
+      aguardandoConfirmacaoOrcamento: true,
+      veiculoSugerido: "Fiat Uno 2015",
+      pecaSugerido: "Radiador",
+      produtoSugerido: "radiador",
+      _iaFalhas: 0,
+    });
+    perguntarIA.mockResolvedValue({ resposta: "Olá! Como posso ajudar?", intencao: "chat" });
+
+    await mainFlow({ userId: USER_ID, message: "não, deixa pra depois" });
+
+    expect(vendasFlow.finalizarOrcamento).not.toHaveBeenCalled();
+    // A flag deve ser limpa (não reaproveita confirmação antiga numa consulta futura)
+    expect(sessionService.updateSession).toHaveBeenCalledWith(
+      USER_ID,
+      expect.objectContaining({ aguardandoConfirmacaoOrcamento: undefined })
+    );
+  });
+
   test("resposta de disponibilidade sem pergunta explícita salva produtoSugerido na sessão", async () => {
     const { perguntarIA } = require("../src/services/ai.service");
     sessionService.getSession.mockReturnValue({ sector: "main", customerName: "Hickson Martins", _iaFalhas: 0 });

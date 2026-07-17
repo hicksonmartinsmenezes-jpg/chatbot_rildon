@@ -167,6 +167,17 @@ a cópia cifrada para outro lugar (S3, Backblaze, outro servidor etc.):
 
 Os dumps ficam em `./backups` e são ignorados pelo Git.
 
+## Manutenção
+
+Contatos duplicados (mesmo cliente com uma linha sob o número provisório do
+`@lid` e outra já com o telefone real resolvido — ver `src/whatsapp/lid-map.js`)
+podem existir de antes da correção em `autoRegisterContact()`. Pra revisar e
+limpar o que já está no banco:
+```bash
+node scripts/merge-duplicate-contacts.js            # dry-run — só mostra o que seria feito
+node scripts/merge-duplicate-contacts.js --apply    # aplica de verdade
+```
+
 ---
 
 ## Melhorias aplicadas (v7 → v8)

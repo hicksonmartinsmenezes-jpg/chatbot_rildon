@@ -8,7 +8,7 @@
 const logger        = require("../utils/logger");
 const pool          = require("../database/postgres");
 const { emitEvent } = require("../services/socket.service");
-const { resolveJidToLid } = require("./lid-map");
+const { resolveJidToLid, getProfilePhotoCandidates } = require("./lid-map");
 
 async function autoRegisterContact(userId, contactName = "") {
   const rawUserId = String(userId || "").trim();
@@ -99,4 +99,46 @@ async function autoRegisterContact(userId, contactName = "") {
   }
 }
 
-module.exports = { autoRegisterContact };
+// Nome REAL do contato (perfil do WhatsApp, tabela contacts) — fonte
+// única usada em vários pontos do sistema (saudação do bot, saudação de
+// atendente, pesquisa de satisfação, envio manual do painel) que antes
+// cada um resolvia o nome à sua maneira, gerando bugs de contaminação:
+//   - main.flow.js usava tickets.customer_name (nome DIGITADO num
+//     orçamento antigo, podia estar errado/desatualizado);
+//   - ticket.controller.js usava ticket.customerName direto (mesmo
+//     problema, e ainda "vazava" pra dentro da tabela history);
+//   - message.controller.js buscava "o contact_name mais recente no
+//     histórico" — que podia já estar contaminado por uma das mensagens
+//     acima, propagando o nome errado pra sempre (efeito cascata).
+// Nome só com dígitos (placeholder de telefone salvo antes do nome real
+// ser conhecido — ver autoRegisterContact) é ignorado, retorna null.
+function _pareceApenasDigitos(nome) {
+  return /^\d+$/.test(String(nome || "").trim());
+}
+
+async function buscarNomeContatoReal(userId) {
+  try {
+    const candidatos = getProfilePhotoCandidates(userId);
+    const telefones = Array.from(new Set(
+      (candidatos.length ? candidatos : [userId])
+        .map(c => String(c || "").replace(/@(s\.whatsapp\.net|lid)$/i, "").replace(/\D/g, ""))
+        .filter(Boolean)
+    ));
+    if (!telefones.length) return null;
+
+    const res = await pool.query(
+      `SELECT nome FROM contacts
+       WHERE whatsapp = ANY($1::text[])
+         AND nome IS NOT NULL AND nome != ''
+       ORDER BY updated_at DESC LIMIT 1`,
+      [telefones]
+    );
+    const nome = res.rows[0]?.nome;
+    return (nome && !_pareceApenasDigitos(nome)) ? nome : null;
+  } catch (err) {
+    logger.warn(`[buscarNomeContatoReal] ${err.message}`);
+    return null;
+  }
+}
+
+module.exports = { autoRegisterContact, buscarNomeContatoReal };

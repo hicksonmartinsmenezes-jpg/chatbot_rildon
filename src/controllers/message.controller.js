@@ -6,6 +6,7 @@ const logger          = require("../utils/logger");
 const ticketRepository = require("../repositories/ticket.repository");
 const { canAccessTicket, isPrivileged, canUseFullConversationPanel } = require("../utils/access-control");
 const { getProfilePhotoCandidates } = require("../whatsapp/lid-map");
+const { buscarNomeContatoReal } = require("../whatsapp/contacts");
 
 // Autorização de conversa: privilegiados (admin/supervisor/api) sempre podem.
 // Atendente só acessa se houver ticket ATIVO atribuído a ele — ou não atribuído
@@ -54,15 +55,17 @@ async function sendManualMessage(req, res) {
     // Atendente enviou mensagem → assume a conversa e pausa o bot para este cliente
     humanMode.ativar(userId, { agentName: req.user?.nome || req.user?.usuario || "" });
 
-    // Busca nome do contato no histórico para não deixar em branco
+    // Busca o nome REAL do contato (WhatsApp) para não deixar em branco.
+    // BUG CORRIGIDO: antes buscava "o contact_name mais recente no
+    // histórico" — se ALGUMA mensagem anterior já tivesse sido salva com
+    // um nome errado (ex: ticket.customerName desatualizado), esse erro
+    // se perpetuava em cascata pra toda mensagem manual seguinte. Agora
+    // usa a mesma fonte única (contacts.nome) de main.flow.js e
+    // ticket.controller.js — ver buscarNomeContatoReal em
+    // src/whatsapp/contacts.js.
     let contactName = "";
     try {
-      const pool = require("../database/postgres");
-      const r = await pool.query(
-        `SELECT contact_name FROM history WHERE user_id = $1 AND contact_name IS NOT NULL AND contact_name <> '' ORDER BY created_at DESC LIMIT 1`,
-        [userId]
-      );
-      contactName = r.rows[0]?.contact_name || "";
+      contactName = (await buscarNomeContatoReal(userId)) || "";
     } catch (_) {}
 
     // Salva histórico separado do envio — falha aqui não afeta a resposta ao frontend

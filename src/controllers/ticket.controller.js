@@ -3,6 +3,7 @@ const humanMode = require("../services/humanMode.service");
 const { emitEvent } = require("../services/socket.service");
 const ticketRepository = require("../repositories/ticket.repository");
 const { getProfilePhotoCandidates } = require("../whatsapp/lid-map");
+const { buscarNomeContatoReal } = require("../whatsapp/contacts");
 const { sendMessage } = require("../config/whatsapp");
 const { saveHistory } = require("../services/history.service");
 const { updateSession } = require("../services/session.service");
@@ -265,9 +266,18 @@ async function enviarSaudacaoAtendente(ticket, user) {
 
     const sent = await sendMessage(ticket.userId, mensagem);
 
+    // Pedido do usuário: contactName vem do contato REAL (WhatsApp), não
+    // de ticket.customerName — que pode ser um nome digitado num
+    // orçamento antigo e sem relação com quem está conversando agora
+    // (ver buscarNomeContatoReal em src/whatsapp/contacts.js). Salvar o
+    // nome errado aqui também "vazava" pro resto do painel, já que
+    // message.controller.js usa o contact_name mais recente do histórico
+    // como referência.
+    const contactNameReal = (await buscarNomeContatoReal(ticket.userId)) || ticket.customerName || "";
+
     const historyItem = await saveHistory({
       userId: ticket.userId,
-      contactName: ticket.customerName || "",
+      contactName: contactNameReal,
       message: null,
       response: mensagem,
       sector: "manual",
@@ -277,7 +287,7 @@ async function enviarSaudacaoAtendente(ticket, user) {
 
     emitEvent("nova_mensagem", {
       userId: ticket.userId,
-      contactName: ticket.customerName || "",
+      contactName: contactNameReal,
       message: null,
       response: mensagem,
       sector: "manual",
@@ -333,9 +343,13 @@ async function enviarPesquisaSatisfacao(ticket) {
       logger.warn(`[enviarPesquisaSatisfacao] Erro ao marcar sessão aguardando nota: ${err.message}`);
     }
 
+    // Mesmo motivo do enviarSaudacaoAtendente: contactName vem do contato
+    // REAL, não de ticket.customerName (pode estar desatualizado).
+    const contactNameReal = (await buscarNomeContatoReal(ticket.userId)) || ticket.customerName || "";
+
     const historyItem = await saveHistory({
       userId: ticket.userId,
-      contactName: ticket.customerName || "",
+      contactName: contactNameReal,
       message: null,
       response: template,
       sector: "manual",
@@ -345,7 +359,7 @@ async function enviarPesquisaSatisfacao(ticket) {
 
     emitEvent("nova_mensagem", {
       userId: ticket.userId,
-      contactName: ticket.customerName || "",
+      contactName: contactNameReal,
       message: null,
       response: template,
       sector: "manual",

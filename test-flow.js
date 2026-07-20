@@ -568,6 +568,47 @@ async function testPersonas() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// SUITE 9 — Personas Variadas II
+// ════════════════════════════════════════════════════════════════════════════
+async function testPersonas2() {
+  titulo("SUITE 9 — Personas Variadas II");
+
+  subtitulo("Persona 'digita opção do menu com pontuação' — '1.', '2)', '3!'");
+  await resetarSessao();
+  const rMenuPonto1 = await enviar("1.", "'1.' no menu principal");
+  contem(rMenuPonto1, "nome", "'1.' deveria entrar no form de orçamento igual a '1'");
+
+  await resetarSessao();
+  const rMenuPonto2 = await enviar("2)", "'2)' no menu principal");
+  contem(rMenuPonto2, "Oferecemos crediário", "'2)' deveria abrir crediário igual a '2' (string exclusiva do menu de crediário, não do menu principal)");
+
+  subtitulo("Persona 'volta duas vezes seguidas' — '0' repetido sem digitar nada no meio");
+  await resetarSessao();
+  const rZero1 = await enviar("0", "1º '0'");
+  contem(rZero1, "Rildon Eletropeças", "1º '0' → menu");
+  const rZero2 = await enviar("0", "2º '0' seguido");
+  contem(rZero2, "Rildon Eletropeças", "2º '0' seguido → menu de novo, sem travar");
+
+  subtitulo("Persona 'confirma orçamento com emoji' — '👍' não é 'sim'/'1', não deve confirmar sozinho");
+  await resetarSessao();
+  _iaMockFn = () => ({ resposta: "Sim, trabalhamos com alternador!", intencao: "vendas" });
+  await enviar("preciso de um alternador pro meu gol", "consulta inicial (sem pedidoExplicito)");
+  _iaMockFn = () => ({ resposta: "Entendi! 😊", intencao: "chat" });
+  const rEmoji = await enviar("👍", "confirma só com emoji (não é 'sim'/'1')");
+  _iaMockFn = null;
+  naoContem(rEmoji, "🎫", "emoji sozinho não finaliza orçamento sem confirmação textual explícita");
+
+  subtitulo("Persona 'manda mensagem gigante' — 600+ caracteres como veículo, não deve travar");
+  await resetarSessao();
+  await enviar("1", null);
+  await enviar("1", null);
+  await enviar("Roberto Ferreira", null);
+  const textoGigante = "Fiat Uno 2015 branco comprado usado ano passado ".repeat(15);
+  const rGigante = await enviar(textoGigante, "mensagem de 600+ chars no campo veículo");
+  naoNulo(rGigante, "mensagem gigante → não trava/crasha");
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // MAIN
 // ════════════════════════════════════════════════════════════════════════════
 async function main() {
@@ -585,6 +626,7 @@ async function main() {
     edge:      testEdgeCases,
     posfluxo:  testPosFluxo,
     personas:  testPersonas,
+    personas2: testPersonas2,
   };
 
   if (SUITE_ARG === "all") {

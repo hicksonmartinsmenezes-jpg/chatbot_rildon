@@ -494,7 +494,16 @@ async function _mainFlowInterno({ userId, message }) {
   }
 
   // ── Switch de opções do menu principal ───────────────────────────────────────
-  switch (msgNorm) {
+  // BUG REAL (achado em nova sessão de personas): cliente digita a opção do
+  // menu com pontuação/ênfase natural ("1.", "2)", "3!") — msgNorm só remove
+  // acento/caixa, não pontuação, então "1." !== "1" e a mensagem caía no
+  // default (IA), perdendo a navegação direta do menu. Mesmo padrão já usado
+  // no intercept de confirmação de orçamento acima: só troca pra
+  // msgSemPontuacao quando ela isolada é um dos dígitos válidos do menu —
+  // não afeta texto livre (ex: "sensor de 12v" não vira "12").
+  const msgMenu = ["1", "2", "3", "4"].includes(msgSemPontuacao) ? msgSemPontuacao : msgNorm;
+
+  switch (msgMenu) {
 
     case "1": {
       // Entra direto no formulário de orçamento — sem submenu intermediário

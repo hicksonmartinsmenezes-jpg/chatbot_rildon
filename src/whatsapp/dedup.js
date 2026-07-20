@@ -23,9 +23,32 @@ const PROCESSED_MAX     = 10_000;
 
 // Dedup secundário por conteúdo
 const recentContent = new Map(); // `userId:text` → timestamp
-const CONTENT_TTL_MS = 8_000; // 8 segundos
+
+// BUG REAL (achado em teste ao vivo, 2026-07-20): esse dedup usa a chave
+// `userId:text` — um cliente que responde "2" pra uma pergunta e, poucos
+// segundos depois, "2" de novo pra uma pergunta DIFERENTE (ex: abre o
+// submenu de crediário com "2", depois escolhe uma opção "2" dentro dele —
+// um padrão normalíssimo de navegação por menu numerado, ou simplesmente
+// confirmar "sim" duas vezes em pontos diferentes da conversa) tinha a
+// segunda mensagem completamente ignorada: sem resposta, sem fallback,
+// cliente achando que o bot travou. Reproduzido ao vivo: "2" (abre
+// Crediário) seguido de "2" (Consultar situação) — a segunda simplesmente
+// não teve resposta alguma.
+//
+// Uma duplicata REAL do Baileys (mesmo texto, IDs @lid diferentes) chega
+// quase instantaneamente — mesmo lote de messages.upsert ou milissegundos
+// depois — nunca precisou de uma janela de 8s pra ser capturada. Reduzida
+// pra 2s, e respostas curtas (dígitos de menu, "sim", "0", "menu" etc. —
+// exatamente as mais prováveis de se repetir legitimamente em pouco tempo)
+// ficam de fora deste dedup por conteúdo. A dedup por ID de mensagem
+// (marcarMensagemProcessada, camada primária, já aplicada antes desta)
+// continua cobrindo o caso comum de duplicata real do Baileys.
+const CONTENT_TTL_MS = 2_000; // 2 segundos
+const MIN_LEN_DEDUP_CONTEUDO = 10; // abaixo disso, não aplica este dedup
 
 function isDuplicateContent(userId, text) {
+  if (!text || text.trim().length < MIN_LEN_DEDUP_CONTEUDO) return false;
+
   const key = `${userId}:${text}`;
   const ts  = recentContent.get(key);
   if (ts && Date.now() - ts < CONTENT_TTL_MS) return true;

@@ -152,14 +152,22 @@ async function vendasFlow(message, userId, session) {
       // o cliente respondia "já falei" (frustrado) e ISSO virava a
       // descrição do orçamento. Se produtoInicial já é descritivo o
       // bastante, pula a etapa 3 e finaliza direto.
-      const produtoInicial = session.produtoInicial ? sanitizarTexto(session.produtoInicial) : "";
+      //
+      // BUG REAL (achado em teste ao vivo, 2026-07-20): esse check só olhava
+      // pra session.produtoInicial — mas o caminho de confirmação de
+      // orçamento (main.flow.js, intercept "aguardandoConfirmacaoOrcamento")
+      // só grava session.pecaInicial, nunca produtoInicial. Resultado: um
+      // cliente que pergunta "vocês trabalham com bomba de combustível?",
+      // confirma com "sim" e informa o veículo, era perguntado "qual peça
+      // você precisa?" de novo — a peça que ele JÁ tinha dito era ignorada.
+      // Agora prefere pecaInicial (nome limpo da peça) e só cai pra
+      // produtoInicial (frase crua) se pecaInicial não existir.
+      const produtoOuPecaInicial = session.pecaInicial || session.produtoInicial || "";
+      const produtoInicial = produtoOuPecaInicial ? sanitizarTexto(produtoOuPecaInicial) : "";
       const produtoValido  = validarTamanho(normalizar(produtoInicial), 5).ok;
 
       if (produtoValido) {
-        // Pedido do usuário: prefere o nome limpo da peça (pecaInicial,
-        // extraído pela IA em main.flow.js) em vez da frase inteira do
-        // cliente — evita "Produto: Bom dia, motor de partida fiat 2025".
-        return _finalizarOrcamento(userId, session, veiculoFinal, session.pecaInicial || produtoInicial);
+        return _finalizarOrcamento(userId, session, veiculoFinal, produtoInicial);
       }
 
       await updateSession(userId, {

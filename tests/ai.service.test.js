@@ -790,3 +790,72 @@ describe("ai.service — transcreverAudio()", () => {
     expect(res).toBeNull();
   });
 });
+
+/**
+ * Catálogo de produtos (src/config/catalogo-produtos.json, extraído pelo
+ * usuário do sistema de estoque em 2026-07-20) — confere que o prompt da IA
+ * (1) sempre lista as seções reais do catálogo, e (2) confirma pontualmente
+ * quando a mensagem do cliente cita o nome exato de uma linha de produto
+ * cadastrada, pra IA responder com confiança em vez de "provavelmente".
+ */
+describe("ai.service — catálogo de produtos no prompt", () => {
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    global.fetch = jest.fn();
+  });
+
+  afterEach(() => {
+    process.env = { ...ORIGINAL_ENV };
+    global.fetch = originalFetch;
+  });
+
+  test("prompt sempre inclui as seções reais do catálogo (ex: ALTERNADOR, MOTOR DE PARTIDA)", async () => {
+    const { perguntarIA } = loadAiService({ provider: "anthropic", apiKey: "sk-ant-teste-123" });
+
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ content: [{ text: '"resposta":"oi","intencao":"chat"}' }] }),
+    });
+
+    await perguntarIA("oi", {});
+
+    const body = JSON.parse(global.fetch.mock.calls[0][1].body);
+    expect(body.system).toContain("ALTERNADOR");
+    expect(body.system).toContain("MOTOR DE PARTIDA");
+    expect(body.system).toContain("SEÇÕES REAIS DO CATÁLOGO");
+  });
+
+  test("mensagem cita item exato do catálogo (ex: 'regulador de voltagem') → prompt inclui CATÁLOGO CONFIRMA com a seção certa", async () => {
+    const { perguntarIA } = loadAiService({ provider: "anthropic", apiKey: "sk-ant-teste-123" });
+
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ content: [{ text: '"resposta":"temos sim","intencao":"vendas"}' }] }),
+    });
+
+    await perguntarIA("vocês tem regulador de voltagem pro meu Uno?", {});
+
+    const body = JSON.parse(global.fetch.mock.calls[0][1].body);
+    expect(body.system).toContain("CATÁLOGO CONFIRMA");
+    expect(body.system).toContain("REGULADOR DE VOLTAGEM");
+    expect(body.system).toContain("ALTERNADOR");
+  });
+
+  test("mensagem sem item do catálogo → prompt NÃO inclui CATÁLOGO CONFIRMA", async () => {
+    const { perguntarIA } = loadAiService({ provider: "anthropic", apiKey: "sk-ant-teste-123" });
+
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ content: [{ text: '"resposta":"bom dia!","intencao":"chat"}' }] }),
+    });
+
+    await perguntarIA("bom dia", {});
+
+    const body = JSON.parse(global.fetch.mock.calls[0][1].body);
+    expect(body.system).not.toContain("CATÁLOGO CONFIRMA");
+  });
+});

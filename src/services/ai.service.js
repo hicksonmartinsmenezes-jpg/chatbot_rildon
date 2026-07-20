@@ -2,6 +2,7 @@ const fs      = require("fs");
 const path    = require("path");
 const logger  = require("../utils/logger");
 const EMPRESA = require("../config/empresa");
+const { listarSecoes, buscarNoCatalogo } = require("./catalogo.service");
 
 // ─── Configuração de provedores ────────────────────────────────────────────────
 // Para trocar de provedor: altere AI_PROVIDER no .env para "groq", "gemini" ou "anthropic"
@@ -146,7 +147,7 @@ let _promptBaseCache   = null;   // texto base sem nome/contexto
 let _promptBaseCacheAt = 0;
 const PROMPT_TTL       = 3 * 60 * 1000;
 
-async function _buildSystemPrompt(nomeCliente, contexto) {
+async function _buildSystemPrompt(nomeCliente, contexto, mensagem) {
   const agora = Date.now();
 
   // Reconstrói a base apenas quando o cache expira (TTL) — independente do usuário
@@ -179,6 +180,7 @@ SAUDAÇÕES: Responda de volta de forma natural e calorosa. Se o cliente diz "bo
 PRODUTOS: linha leve (carros e motos), pesada (MB, Volvo, Scania, VW Truck, Iveco) e agrícola.
 ELÉTRICOS: ${EMPRESA.produtos.slice(0, 10).join(", ")}.
 MECÂNICA GERAL: filtros ar/óleo/combustível, pastilhas, lonas de freio, suspensão, direção.
+SEÇÕES REAIS DO CATÁLOGO DE ESTOQUE (categorias completas que a loja vende, use como referência de confiança pra saber se um tipo de peça existe): ${listarSecoes().join(", ")}.
 MARCAS: ${EMPRESA.marcas.join(", ")}.
 NÃO TRABALHAMOS: elétrica residencial/industrial (tomadas NBR, disjuntores prediais, eletrodutos).
 
@@ -220,6 +222,14 @@ IMPORTANTE sobre intenção "vendas": só quando "pedidoExplicito" for true o SI
     _promptBaseCacheAt = agora;
   }
 
+  // Confirmação pontual no catálogo real — só quando a mensagem atual do
+  // cliente citar o nome exato de uma linha de produto cadastrada no estoque.
+  // Leve o suficiente pra rodar em toda mensagem, sem inflar o prompt à toa.
+  const matchesCatalogo = buscarNoCatalogo(mensagem);
+  const catalogoConfirma = matchesCatalogo.length
+    ? `\nCATÁLOGO CONFIRMA (o cliente citou item(ns) que EXISTEM cadastrados no estoque real — responda com total confiança que a loja tem): ${matchesCatalogo.map(m => `${m.linha} (seção ${m.secao})`).join("; ")}.`
+    : "";
+
   // Cabeçalho dinâmico — nome do cliente e contexto de horário, gerado por chamada
   // Nunca armazenado em cache para não vazar entre usuários
   const cabecalho = [
@@ -228,6 +238,7 @@ IMPORTANTE sobre intenção "vendas": só quando "pedidoExplicito" for true o SI
     `\nCONTEXTO ATUAL:
 - Data/Hora: ${contexto.horarioAtual}
 - Atendimento humano: ${contexto.atendimentoAberto ? "disponível agora" : "fora do horário (Seg-Sex 07:50-17:50 | Sáb 08:00-12:00)"}`,
+    catalogoConfirma,
   ].filter(Boolean).join("");
 
   return cabecalho + _promptBaseCache.corpo;
@@ -634,7 +645,7 @@ async function perguntarIA(mensagem, { nomeCliente, historico = [], contexto = {
     .slice(-(MAX_HISTORICO * 2));
 
   const contents     = [...historicoLimpo, { role: "user", parts: [{ text: mensagem }] }];
-  const systemPrompt = await _buildSystemPrompt(nomeCliente, contextoCompleto);
+  const systemPrompt = await _buildSystemPrompt(nomeCliente, contextoCompleto, mensagem);
 
   for (let tentativa = 1; tentativa <= MAX_TENTATIVAS; tentativa++) {
     try {

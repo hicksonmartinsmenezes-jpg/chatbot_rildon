@@ -25,7 +25,18 @@ function getMediaType(msg) {
   if (!message) return null;
   if (message.audioMessage) return "áudio";
   if (message.stickerMessage) return "sticker";
-  if (message.documentMessage) return "documento";
+  if (message.documentMessage) {
+    // BUG REAL (achado em teste ao vivo, 2026-07-20): áudio enviado pelo
+    // menu de ANEXO do WhatsApp (não gravado na hora segurando o
+    // microfone) chega como documentMessage em vez de audioMessage —
+    // caía direto no fallback genérico de "não consigo processar
+    // arquivos" e nunca era transcrito, mesmo com Whisper configurado.
+    // Documento com mimetype audio/* é áudio de verdade, só empacotado
+    // diferente.
+    const mimetype = message.documentMessage.mimetype || "";
+    if (mimetype.startsWith("audio/")) return "áudio";
+    return "documento";
+  }
   if (message.imageMessage && !message.imageMessage.caption) return "imagem";
   if (message.videoMessage && !message.videoMessage.caption) return "vídeo";
   return null;

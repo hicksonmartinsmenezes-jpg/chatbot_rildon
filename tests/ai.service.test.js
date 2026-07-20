@@ -424,24 +424,57 @@ describe("ai.service — seleção de provedor via AI_PROVIDER", () => {
  * silencioso nesse caso (null), nunca lançar erro — quem chama
  * (config/whatsapp.js) usa null como sinal pra manter o aviso padrão de
  * "não processo mídia" já existente.
+ *
+ * BUG REAL (achado em teste ao vivo, 2026-07-20): antes, suportaVisao() só
+ * checava o PROVIDER_NAME do CHAT (gemini/anthropic), sem checar se havia
+ * de fato uma chave configurada — e o inverso também era um bug: loja
+ * rodando com AI_PROVIDER=groq tinha a visão DESLIGADA mesmo com
+ * GEMINI_API_KEY/ANTHROPIC_API_KEY configuradas no .env, porque a checagem
+ * dependia do provedor de CHAT, não da chave de visão em si. Corrigido pra
+ * checar a chave de qualquer provedor com suporte a imagem, independente do
+ * AI_PROVIDER do chat — mesmo padrão que suportaAudio() já usava pra Groq.
  */
 describe("ai.service — suportaVisao()", () => {
   afterEach(() => {
     process.env = { ...ORIGINAL_ENV };
   });
 
-  test("groq (ou provedor ausente) não suporta visão", () => {
+  test("groq sem GEMINI_API_KEY/ANTHROPIC_API_KEY → não suporta visão", () => {
+    delete process.env.GEMINI_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
     const { suportaVisao } = loadAiService({ provider: "groq" });
     expect(suportaVisao()).toBe(false);
   });
 
-  test("gemini suporta visão", () => {
+  test("gemini com GEMINI_API_KEY configurada → suporta visão", () => {
+    process.env.GEMINI_API_KEY = "chave-gemini-teste";
     const { suportaVisao } = loadAiService({ provider: "gemini" });
     expect(suportaVisao()).toBe(true);
   });
 
-  test("anthropic suporta visão", () => {
+  test("gemini SEM GEMINI_API_KEY configurada → não suporta visão", () => {
+    delete process.env.GEMINI_API_KEY;
+    const { suportaVisao } = loadAiService({ provider: "gemini" });
+    expect(suportaVisao()).toBe(false);
+  });
+
+  test("anthropic com ANTHROPIC_API_KEY configurada → suporta visão", () => {
+    process.env.ANTHROPIC_API_KEY = "sk-ant-teste-123";
     const { suportaVisao } = loadAiService({ provider: "anthropic" });
+    expect(suportaVisao()).toBe(true);
+  });
+
+  test("chat em groq + GEMINI_API_KEY configurada → visão funciona mesmo assim (decoupling)", () => {
+    delete process.env.ANTHROPIC_API_KEY;
+    process.env.GEMINI_API_KEY = "chave-gemini-teste";
+    const { suportaVisao } = loadAiService({ provider: "groq" });
+    expect(suportaVisao()).toBe(true);
+  });
+
+  test("chat em groq + ANTHROPIC_API_KEY configurada → visão funciona mesmo assim (decoupling)", () => {
+    delete process.env.GEMINI_API_KEY;
+    process.env.ANTHROPIC_API_KEY = "sk-ant-teste-123";
+    const { suportaVisao } = loadAiService({ provider: "groq" });
     expect(suportaVisao()).toBe(true);
   });
 });
@@ -588,6 +621,27 @@ describe("ai.service — analisarImagemPeca()", () => {
 
     const res = await analisarImagemPeca("base64falso", "image/jpeg");
     expect(res).toBeNull();
+  });
+
+  test("chat em groq + GEMINI_API_KEY configurada: visão chama Gemini mesmo assim (decoupling)", async () => {
+    delete process.env.ANTHROPIC_API_KEY;
+    process.env.GEMINI_API_KEY = "chave-gemini-teste";
+    const { analisarImagemPeca } = loadAiService({ provider: "groq" });
+
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        candidates: [{ content: { parts: [{ text: "pastilha de freio dianteira" }] } }],
+      }),
+    });
+
+    const res = await analisarImagemPeca("base64falso", "image/jpeg");
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    const [url] = global.fetch.mock.calls[0];
+    expect(url).toContain("generativelanguage.googleapis.com");
+    expect(res).toBe("pastilha de freio dianteira");
   });
 });
 

@@ -266,7 +266,16 @@ async function analisarAudioRecebido(msg) {
   try {
     const conteudo = unwrapMessage(msg.message);
     const audioMessage = conteudo?.audioMessage;
-    if (!audioMessage) return null;
+    // BUG REAL (achado em teste ao vivo, 2026-07-20): áudio enviado pelo
+    // menu de ANEXO do WhatsApp (não gravado na hora segurando o
+    // microfone) chega como documentMessage, não audioMessage — mesmo
+    // sendo um mp3/ogg de verdade. getMediaType() já reconhece isso e
+    // classifica como "áudio" quando o mimetype do documento é audio/*;
+    // aqui só precisamos usar o mimetype certo pra baixar/transcrever.
+    const documentMessage = conteudo?.documentMessage;
+    const mimeTypeDocumento = documentMessage?.mimetype;
+    const ehAudioComoDocumento = !!mimeTypeDocumento && mimeTypeDocumento.startsWith("audio/");
+    if (!audioMessage && !ehAudioComoDocumento) return null;
 
     const buffer = await downloadMediaMessage(
       msg,
@@ -276,7 +285,7 @@ async function analisarAudioRecebido(msg) {
     );
     if (!buffer || !buffer.length) return null;
 
-    const mimeType = audioMessage.mimetype || "audio/ogg";
+    const mimeType = audioMessage?.mimetype || mimeTypeDocumento || "audio/ogg";
 
     return await transcreverAudio(buffer, mimeType);
   } catch (err) {
@@ -391,28 +400,39 @@ async function onMessagesUpsert({ messages, type }) {
       continue;
     }
 
+    // BUG REAL (achado em teste ao vivo, 2026-07-20): esta checagem de foto
+    // rodava só dentro do bloco `if (!text)` abaixo — cliente que manda foto
+    // COM legenda (ex: "vcs tem essa peça?") tinha só a legenda processada
+    // como texto normal, e a imagem NUNCA era examinada, mesmo com visão
+    // disponível. Roda ANTES do `if (!text)` de propósito, pra cobrir os
+    // dois casos. Com legenda, combina legenda + descrição da imagem antes
+    // de processar; sem legenda, usa só a descrição (comportamento já
+    // existente, preservado).
+    const conteudoRecebido = unwrapMessage(msg.message);
+    const imageMessageRecebida = conteudoRecebido?.imageMessage;
+    if (imageMessageRecebida && suportaVisao()) {
+      const descricao = await analisarFotoRecebida(msg);
+      if (descricao) {
+        const legenda = imageMessageRecebida.caption?.trim();
+        const textoParaPipeline = legenda
+          ? `${legenda}\n\n[Imagem enviada pelo cliente: ${descricao}]`
+          : descricao;
+        await processarTextoDerivadoDeMidia("foto", { userId, contactName, sendTo, messageId, texto: textoParaPipeline });
+        continue;
+      }
+      // descricao null (não é peça, provedor falhou, mídia expirada etc.) →
+      // segue fluxo normal: com legenda, o texto dela é processado como
+      // mensagem comum logo abaixo; sem legenda, cai no aviso padrão de
+      // mídia não suportada dentro do `if (!text)`.
+    }
+
     if (!text) {
       const tipoMidia = getMediaType(msg);
 
-      // Foto sem legenda + provedor de IA ativo com suporte a visão: tenta
-      // descrever a peça/veículo na imagem e processa a descrição pelo
-      // pipeline normal de texto (mesma sessão, mesmo fluxo, mesmo
-      // histórico). Se a análise falhar ou a imagem não for reconhecida
-      // como peça/veículo, cai no aviso padrão abaixo — comportamento
-      // idêntico ao de antes desta feature.
-      if (tipoMidia === "imagem" && suportaVisao()) {
-        const descricao = await analisarFotoRecebida(msg);
-        if (descricao) {
-          await processarTextoDerivadoDeMidia("foto", { userId, contactName, sendTo, messageId, texto: descricao });
-          continue;
-        }
-        // descricao null (não é peça, provedor falhou, mídia expirada etc.)
-        // → segue pro aviso padrão de mídia não suportada, abaixo.
-      }
-
-      // Nota de voz + Groq configurada (independente do AI_PROVIDER de chat —
-      // ver suportaAudio() em ai.service.js): transcreve e processa o texto
-      // pelo pipeline normal, igual à foto acima.
+      // Nota de voz (gravada na hora, ou enviada como arquivo de áudio pelo
+      // menu de anexo — ver getMediaType) + Groq configurada (independente
+      // do AI_PROVIDER de chat — ver suportaAudio() em ai.service.js):
+      // transcreve e processa o texto pelo pipeline normal, igual à foto.
       if (tipoMidia === "áudio" && suportaAudio()) {
         const transcricao = await analisarAudioRecebido(msg);
         if (transcricao) {
@@ -434,8 +454,12 @@ async function onMessagesUpsert({ messages, type }) {
         // "message" guarda um marcador do tipo de mídia (não o arquivo em
         // si — mídia não é persistida, só o fato de ter chegado) e
         // "response" guarda o aviso automático enviado.
+        // Concordância de gênero: só "imagem" é feminino ("sua imagem")
+        // entre os tipos que chegam aqui — os demais ("áudio", "sticker",
+        // "documento", "vídeo") são masculinos ("seu ...").
+        const artigoMidia = tipoMidia === "imagem" ? "sua" : "seu";
         const avisoMidia =
-          `⚠️ Recebi seu ${tipoMidia}, mas ainda não consigo processar arquivos.\n\n` +
+          `⚠️ Recebi ${artigoMidia} ${tipoMidia}, mas ainda não consigo processar arquivos.\n\n` +
           `Por favor, descreva sua dúvida em *texto* e será um prazer ajudar! 😊\n\n` +
           `Digite *0* para ver o menu.`;
 

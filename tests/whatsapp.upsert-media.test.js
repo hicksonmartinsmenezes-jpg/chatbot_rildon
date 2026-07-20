@@ -91,6 +91,20 @@ function mensagemAudio() {
   };
 }
 
+// Áudio enviado pelo menu de ANEXO do WhatsApp (não gravado na hora segurando
+// o microfone) — o WhatsApp empacota isso como documentMessage, não
+// audioMessage, mesmo sendo um arquivo de áudio de verdade (achado em teste
+// ao vivo, 2026-07-20, subindo um .mp3 pelo anexo "Áudio" do WhatsApp Web).
+function mensagemAudioComoDocumento({ mimetype = "audio/mpeg" } = {}) {
+  return {
+    key: { id: "MSG-AUDIO-DOC-1", remoteJid: JID, fromMe: false },
+    pushName: "Cliente Teste",
+    message: {
+      documentMessage: { mimetype, fileName: "audio.mp3" },
+    },
+  };
+}
+
 const whatsapp = require("../src/config/whatsapp");
 
 describe("config/whatsapp — messages.upsert com foto sem legenda (visão)", () => {
@@ -186,8 +200,52 @@ describe("config/whatsapp — messages.upsert com foto sem legenda (visão)", ()
     );
   });
 
-  test("foto COM legenda não entra no caminho de visão (texto já presente vai pelo fluxo normal)", async () => {
+  // BUG REAL (achado em teste ao vivo, 2026-07-20): antes, este bloco só
+  // rodava dentro do `if (!text)` — foto com legenda tinha `text` não-vazio
+  // (a legenda), então a checagem de visão nunca era alcançada. A imagem
+  // NUNCA era examinada, só a legenda ia pro pipeline normal. Corrigido: a
+  // checagem de imagem roda ANTES do `if (!text)`, cobrindo os dois casos.
+  test("foto COM legenda: analisa a imagem e combina legenda + descrição antes de processar", async () => {
     suportaVisao.mockReturnValue(true);
+    analisarImagemPeca.mockResolvedValue("alternador Bosch com conector danificado");
+
+    await sockAtual.__handlers["messages.upsert"]({
+      messages: [mensagemImagem({ caption: "quanto custa esse alternador?" })],
+      type: "notify",
+    });
+
+    expect(baileys.downloadMediaMessage).toHaveBeenCalledTimes(1);
+    expect(analisarImagemPeca).toHaveBeenCalledWith(
+      Buffer.from("bytes-fake-de-imagem").toString("base64"),
+      "image/jpeg"
+    );
+
+    // O texto passado pro pipeline deve conter TANTO a legenda do cliente
+    // QUANTO a descrição da imagem — nenhum dos dois pode ser descartado.
+    const chamada = processMessage.mock.calls[0][0];
+    expect(chamada.message).toContain("quanto custa esse alternador?");
+    expect(chamada.message).toContain("alternador Bosch com conector danificado");
+  });
+
+  test("foto COM legenda + análise de visão falha (null): usa só a legenda normalmente, sem cair no aviso de mídia não suportada", async () => {
+    suportaVisao.mockReturnValue(true);
+    analisarImagemPeca.mockResolvedValue(null);
+
+    await sockAtual.__handlers["messages.upsert"]({
+      messages: [mensagemImagem({ caption: "quanto custa esse alternador?" })],
+      type: "notify",
+    });
+
+    expect(processMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "quanto custa esse alternador?" })
+    );
+    expect(saveHistory).not.toHaveBeenCalledWith(
+      expect.objectContaining({ sector: "midia_nao_suportada" })
+    );
+  });
+
+  test("foto COM legenda + suportaVisao() false: vai direto pelo texto da legenda (comportamento antigo preservado)", async () => {
+    suportaVisao.mockReturnValue(false);
 
     await sockAtual.__handlers["messages.upsert"]({
       messages: [mensagemImagem({ caption: "quanto custa esse alternador?" })],
@@ -287,6 +345,52 @@ describe("config/whatsapp — messages.upsert com nota de voz (transcrição)", 
     expect(sockAtual.sendMessage).toHaveBeenCalledWith(
       JID,
       expect.objectContaining({ text: expect.stringContaining("ainda não consigo processar arquivos") })
+    );
+  });
+
+  // BUG REAL (achado em teste ao vivo, 2026-07-20): áudio enviado pelo menu
+  // de ANEXO do WhatsApp (subindo um arquivo .mp3/.ogg, não gravando na hora)
+  // chega como documentMessage — antes disso, getMediaType() classificava
+  // isso como "documento" genérico, nunca "áudio", e a transcrição nunca
+  // era tentada mesmo com Whisper configurado.
+  test("áudio enviado como documento (mimetype audio/*) é transcrito normalmente", async () => {
+    suportaAudio.mockReturnValue(true);
+    transcreverAudio.mockResolvedValue("preciso de uma bomba de combustível pro meu fiat uno 2016");
+
+    await sockAtual.__handlers["messages.upsert"]({
+      messages: [mensagemAudioComoDocumento({ mimetype: "audio/mpeg" })],
+      type: "notify",
+    });
+
+    expect(baileys.downloadMediaMessage).toHaveBeenCalledTimes(1);
+    expect(transcreverAudio).toHaveBeenCalledWith(
+      Buffer.from("bytes-fake-de-audio"),
+      "audio/mpeg"
+    );
+    expect(processMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "preciso de uma bomba de combustível pro meu fiat uno 2016" })
+    );
+    expect(saveHistory).not.toHaveBeenCalledWith(
+      expect.objectContaining({ sector: "midia_nao_suportada" })
+    );
+  });
+
+  test("documento que NÃO é áudio (mimetype application/pdf) continua caindo no aviso padrão de mídia não suportada", async () => {
+    suportaAudio.mockReturnValue(true);
+
+    await sockAtual.__handlers["messages.upsert"]({
+      messages: [mensagemAudioComoDocumento({ mimetype: "application/pdf" })],
+      type: "notify",
+    });
+
+    expect(baileys.downloadMediaMessage).not.toHaveBeenCalled();
+    expect(transcreverAudio).not.toHaveBeenCalled();
+    expect(sockAtual.sendMessage).toHaveBeenCalledWith(
+      JID,
+      expect.objectContaining({ text: expect.stringContaining("ainda não consigo processar arquivos") })
+    );
+    expect(saveHistory).toHaveBeenCalledWith(
+      expect.objectContaining({ sector: "midia_nao_suportada", message: "[documento recebido]" })
     );
   });
 });

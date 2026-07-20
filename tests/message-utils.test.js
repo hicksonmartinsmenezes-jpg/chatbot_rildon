@@ -122,6 +122,19 @@ describe("message-utils — getMediaType", () => {
     expect(getMediaType(wrap({ documentMessage: {} }))).toBe("documento");
   });
 
+  // BUG REAL (achado em teste ao vivo, 2026-07-20): áudio enviado pelo menu
+  // de ANEXO do WhatsApp (upload de um arquivo .mp3/.ogg, não gravado na
+  // hora segurando o microfone) chega como documentMessage, não
+  // audioMessage — mas o mimetype ainda denuncia que é áudio de verdade.
+  test("documento com mimetype audio/* → 'áudio' (áudio anexado, não PTT)", () => {
+    expect(getMediaType(wrap({ documentMessage: { mimetype: "audio/mpeg" } }))).toBe("áudio");
+    expect(getMediaType(wrap({ documentMessage: { mimetype: "audio/ogg; codecs=opus" } }))).toBe("áudio");
+  });
+
+  test("documento com mimetype não-áudio continua 'documento'", () => {
+    expect(getMediaType(wrap({ documentMessage: { mimetype: "application/pdf" } }))).toBe("documento");
+  });
+
   test("imagem SEM legenda → 'imagem'", () => {
     expect(getMediaType(wrap({ imageMessage: {} }))).toBe("imagem");
   });

@@ -376,13 +376,13 @@ function _extrairTextoResposta(provedor, data) {
 // Pedido do usuário: cliente manda foto de uma peça pedindo ajuda, e o bot só
 // avisava "ainda não consigo processar arquivos" — perdendo o pedido. Só o
 // Gemini e o Claude (Anthropic) suportam imagem nas APIs já integradas aqui;
-// o modelo do Groq configurado (llama-3.1-8b-instant) é só texto. Em vez de
-// forçar troca de provedor pra quem já está no Groq (free tier), a função
-// simplesmente devolve null nesse caso — quem chama (config/whatsapp.js)
-// mantém o aviso de "não processo mídia" já existente como fallback.
+// o modelo do Groq configurado (llama-3.1-8b-instant) é só texto. Quem chama
+// (config/whatsapp.js) combina a descrição devolvida aqui com a legenda da
+// foto, se houver — este prompt descreve só a IMAGEM, não sabe se veio
+// legenda junto ou não.
 const PROMPT_VISAO =
   "Você é a Ril, assistente de uma loja de autopeças (elétrica automotiva, linha leve/pesada/agrícola). " +
-  "O cliente enviou esta foto pelo WhatsApp, sem nenhum texto junto. " +
+  "O cliente enviou esta foto pelo WhatsApp. " +
   "Descreva em UMA frase curta e objetiva o que aparece na imagem, do jeito que um cliente "  +
   "digitaria pedindo a peça — ex: \"motor de partida\", \"pastilha de freio dianteira, aparenta ser de carro de passeio\", " +
   "\"alternador com um conector danificado\". Se conseguir notar marca/modelo do veículo ou da peça, inclua. " +
@@ -390,13 +390,53 @@ const PROMPT_VISAO =
   "pessoa, paisagem), responda EXATAMENTE: \"NAO_E_PECA\". " +
   "Responda só com essa frase, em texto simples, sem JSON, sem aspas, sem markdown.";
 
-function suportaVisao() {
-  return PROVIDER_NAME === "gemini" || PROVIDER_NAME === "anthropic";
+// BUG REAL (achado em teste ao vivo, 2026-07-20): suportaVisao() checava o
+// PROVIDER_NAME do CHAT — loja rodando com AI_PROVIDER=groq (free tier, o
+// padrão recomendado) tinha a visão inteira desligada mesmo com
+// GEMINI_API_KEY/ANTHROPIC_API_KEY configuradas no .env. Visão e chat são
+// capacidades independentes: o que importa pra foto é ter QUALQUER provedor
+// com suporte a imagem configurado, não qual foi escolhido pro texto.
+// Preferência: usa o mesmo provedor do chat se ele já suportar visão (evita
+// trocar de provedor à toa pra quem já está em gemini/anthropic); senão cai
+// pro primeiro entre gemini/anthropic que tiver chave configurada.
+function _resolverProvedorVisao() {
+  if (PROVIDER_NAME === "gemini" || PROVIDER_NAME === "anthropic") {
+    const chave = PROVIDER.getKey();
+    if (chave && chave !== "cole_sua_chave_aqui") return PROVIDER_NAME;
+  }
+  for (const nome of ["gemini", "anthropic"]) {
+    const chave = PROVIDERS[nome].getKey();
+    if (chave && chave !== "cole_sua_chave_aqui") return nome;
+  }
+  return null;
 }
 
-async function _chamarGeminiVisao(base64, mimeType, apiKey) {
+function suportaVisao() {
+  return _resolverProvedorVisao() !== null;
+}
+
+// Fila/rate-limit própria da visão — antes reaproveitava _agendarRequisicao()
+// (fila do CHAT), usando PROVIDER.intervalMs do provedor de chat ativo mesmo
+// quando a visão está rodando num provedor diferente (ex: chat em groq,
+// visão em gemini). Igual ao padrão já usado pra transcrição de áudio
+// (_agendarTranscricao): fila isolada, com o intervalo do provedor que a
+// chamada realmente vai usar.
+let _ultimaRequisicaoVisao = 0;
+let _filaVisaoPromise      = Promise.resolve();
+
+function _agendarRequisicaoVisao(intervalMs) {
+  _filaVisaoPromise = _filaVisaoPromise
+    .then(() => {
+      const espera = Math.max(0, _ultimaRequisicaoVisao + intervalMs - Date.now());
+      return new Promise(r => setTimeout(r, espera));
+    })
+    .catch(() => {});
+  return _filaVisaoPromise;
+}
+
+async function _chamarGeminiVisao(base64, mimeType, apiKey, url) {
   return _fetchComTimeout(
-    `${PROVIDER.url}?key=${apiKey}`,
+    `${url}?key=${apiKey}`,
     {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
@@ -415,9 +455,9 @@ async function _chamarGeminiVisao(base64, mimeType, apiKey) {
   );
 }
 
-async function _chamarAnthropicVisao(base64, mimeType, apiKey) {
+async function _chamarAnthropicVisao(base64, mimeType, apiKey, url, model) {
   return _fetchComTimeout(
-    PROVIDER.url,
+    url,
     {
       method:  "POST",
       headers: {
@@ -426,7 +466,7 @@ async function _chamarAnthropicVisao(base64, mimeType, apiKey) {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model:      PROVIDER.model,
+        model,
         max_tokens: 150,
         messages: [{
           role: "user",
@@ -444,33 +484,35 @@ async function _chamarAnthropicVisao(base64, mimeType, apiKey) {
 // Analisa uma foto recebida do cliente e devolve uma descrição curta da peça
 // (pra ser tratada como se fosse o texto digitado pelo cliente — reaproveita
 // TODO o fluxo de vendas/extração de veículo/peça já existente e testado, em
-// vez de duplicar essa lógica aqui). Devolve null se o provedor não suporta
-// visão, a chave não está configurada, ou a chamada falha por qualquer
+// vez de duplicar essa lógica aqui). Devolve null se nenhum provedor com
+// suporte a visão está configurado, ou a chamada falha por qualquer
 // motivo — quem chama trata null como "não consegui analisar a foto".
 async function analisarImagemPeca(base64, mimeType) {
-  if (!suportaVisao()) return null;
+  const nomeVisao = _resolverProvedorVisao();
+  if (!nomeVisao) return null;
 
-  const apiKey = PROVIDER.getKey();
+  const provedorVisao = PROVIDERS[nomeVisao];
+  const apiKey = provedorVisao.getKey();
   if (!apiKey || apiKey === "cole_sua_chave_aqui") {
-    logger.warn(`[IA-Visão] Chave do provedor "${PROVIDER_NAME}" não configurada no .env`);
+    logger.warn(`[IA-Visão] Chave do provedor "${nomeVisao}" não configurada no .env`);
     return null;
   }
 
   try {
-    await _agendarRequisicao();
-    _ultimaRequisicao = Date.now();
+    await _agendarRequisicaoVisao(provedorVisao.intervalMs);
+    _ultimaRequisicaoVisao = Date.now();
 
-    const res = PROVIDER_NAME === "anthropic"
-      ? await _chamarAnthropicVisao(base64, mimeType, apiKey)
-      : await _chamarGeminiVisao(base64, mimeType, apiKey);
+    const res = nomeVisao === "anthropic"
+      ? await _chamarAnthropicVisao(base64, mimeType, apiKey, provedorVisao.url, provedorVisao.model)
+      : await _chamarGeminiVisao(base64, mimeType, apiKey, provedorVisao.url);
 
     if (!res.ok) {
-      logger.warn(`[IA-Visão] Erro ${res.status} (provedor: ${PROVIDER_NAME}): ${(await res.text().catch(() => "")).slice(0, 200)}`);
+      logger.warn(`[IA-Visão] Erro ${res.status} (provedor: ${nomeVisao}): ${(await res.text().catch(() => "")).slice(0, 200)}`);
       return null;
     }
 
     const data = await res.json();
-    const texto = PROVIDER_NAME === "anthropic"
+    const texto = nomeVisao === "anthropic"
       ? data?.content?.[0]?.text
       : data?.candidates?.[0]?.content?.parts?.[0]?.text;
 
@@ -479,7 +521,7 @@ async function analisarImagemPeca(base64, mimeType) {
 
     return descricao;
   } catch (err) {
-    logger.warn(`[IA-Visão] Falha ao analisar imagem (provedor: ${PROVIDER_NAME}): ${err.message}`);
+    logger.warn(`[IA-Visão] Falha ao analisar imagem (provedor: ${nomeVisao}): ${err.message}`);
     return null;
   }
 }

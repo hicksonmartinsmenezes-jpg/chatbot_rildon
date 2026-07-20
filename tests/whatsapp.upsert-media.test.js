@@ -40,6 +40,14 @@ jest.mock("../src/services/ai.service", () => ({
   transcreverAudio: jest.fn(),
   suportaAudio: jest.fn(),
 }));
+// Ver migration 017 — config/whatsapp.js agora baixa e salva em disco
+// QUALQUER mídia recebida (independente de suportaVisao()/suportaAudio()),
+// pro painel poder exibir o arquivo. Mockado pra não tocar disco de verdade
+// nesses testes; cada teste ajusta o retorno quando precisa checar o
+// threading de mediaPath/mediaMimetype/mediaFilename.
+jest.mock("../src/services/mediaStorage.service", () => ({
+  salvarMidiaRecebida: jest.fn(),
+}));
 jest.mock("qrcode-terminal", () => ({ generate: jest.fn() }));
 jest.mock("@whiskeysockets/baileys", () => ({
   __esModule: true,
@@ -53,6 +61,7 @@ jest.mock("@whiskeysockets/baileys", () => ({
 const baileys = require("@whiskeysockets/baileys");
 const { analisarImagemPeca, suportaVisao, transcreverAudio, suportaAudio } = require("../src/services/ai.service");
 const { saveHistory } = require("../src/services/history.service");
+const { salvarMidiaRecebida } = require("../src/services/mediaStorage.service");
 
 const JID = "5579999998888@s.whatsapp.net";
 
@@ -122,9 +131,39 @@ describe("config/whatsapp — messages.upsert com foto sem legenda (visão)", ()
     analisarImagemPeca.mockResolvedValue(null);
     suportaAudio.mockReturnValue(false);
     transcreverAudio.mockResolvedValue(null);
+    salvarMidiaRecebida.mockResolvedValue({
+      mediaPath: "MSG-IMG-1-abcd1234.jpg",
+      mediaMimetype: "image/jpeg",
+      mediaFilename: null,
+    });
 
     processMessage = jest.fn(async () => "Já te ajudo com o orçamento! 😊");
     await whatsapp.connectWhatsApp(processMessage);
+  });
+
+  // BUG REAL (achado em teste ao vivo, 2026-07-20 — usuário perguntou
+  // "verifique por que arquivos de mídia e áudio não aparecem no meu
+  // painel"): o bot baixava a mídia só quando ia analisá-la (visão/áudio),
+  // nunca salvava o arquivo em disco — o painel só via o rótulo "[imagem
+  // recebida]". Agora salva SEMPRE que há mídia, independente de análise.
+  test("mídia é sempre baixada e salva em disco, e mediaPath/mediaMimetype chegam no pipeline de texto (ver migration 017)", async () => {
+    suportaVisao.mockReturnValue(true);
+    analisarImagemPeca.mockResolvedValue("motor de partida, aparenta ser de um Fiat Uno");
+
+    await sockAtual.__handlers["messages.upsert"]({ messages: [mensagemImagem()], type: "notify" });
+
+    expect(salvarMidiaRecebida).toHaveBeenCalledWith(
+      Buffer.from("bytes-fake-de-imagem"),
+      "image/jpeg",
+      "MSG-IMG-1",
+      expect.objectContaining({ originalFilename: null })
+    );
+    expect(processMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mediaPath: "MSG-IMG-1-abcd1234.jpg",
+        mediaMimetype: "image/jpeg",
+      })
+    );
   });
 
   test("suportaVisao() true + descrição válida → baixa mídia, processa a descrição como texto e envia a resposta do bot", async () => {
@@ -172,12 +211,15 @@ describe("config/whatsapp — messages.upsert com foto sem legenda (visão)", ()
     );
   });
 
-  test("suportaVisao() false (provedor ativo sem suporte a imagem, ex: groq) → nem tenta baixar/analisar, vai direto pro aviso padrão", async () => {
+  test("suportaVisao() false (provedor ativo sem suporte a imagem, ex: groq) → NÃO analisa, mas ainda baixa/salva a foto pro painel", async () => {
     suportaVisao.mockReturnValue(false);
 
     await sockAtual.__handlers["messages.upsert"]({ messages: [mensagemImagem()], type: "notify" });
 
-    expect(baileys.downloadMediaMessage).not.toHaveBeenCalled();
+    // Ver migration 017: baixar/salvar em disco é decisão de STORAGE, agora
+    // independente de a IA conseguir analisar a imagem ou não.
+    expect(baileys.downloadMediaMessage).toHaveBeenCalledTimes(1);
+    expect(salvarMidiaRecebida).toHaveBeenCalled();
     expect(analisarImagemPeca).not.toHaveBeenCalled();
     expect(processMessage).not.toHaveBeenCalled();
 
@@ -185,14 +227,22 @@ describe("config/whatsapp — messages.upsert com foto sem legenda (visão)", ()
       JID,
       expect.objectContaining({ text: expect.stringContaining("ainda não consigo processar arquivos") })
     );
+    expect(saveHistory).toHaveBeenCalledWith(
+      expect.objectContaining({ sector: "midia_nao_suportada", mediaPath: "MSG-IMG-1-abcd1234.jpg" })
+    );
   });
 
-  test("erro ao baixar a mídia (ex: link expirado) → analisarFotoRecebida devolve null, cai no aviso padrão, não lança exceção", async () => {
+  test("erro ao baixar a mídia (ex: link expirado) → não tenta de novo, cai no aviso padrão, não lança exceção", async () => {
     suportaVisao.mockReturnValue(true);
     baileys.downloadMediaMessage.mockRejectedValueOnce(new Error("media link expirado (410)"));
 
     await sockAtual.__handlers["messages.upsert"]({ messages: [mensagemImagem()], type: "notify" });
 
+    // Download falhou UMA vez (no bloco de storage) — não deve haver um
+    // 2º download "escondido" dentro de analisarFotoRecebida mascarando a
+    // falha original (ver comentário "!== undefined" em config/whatsapp.js).
+    expect(baileys.downloadMediaMessage).toHaveBeenCalledTimes(1);
+    expect(salvarMidiaRecebida).not.toHaveBeenCalled();
     expect(analisarImagemPeca).not.toHaveBeenCalled();
     expect(sockAtual.sendMessage).toHaveBeenCalledWith(
       JID,
@@ -244,7 +294,7 @@ describe("config/whatsapp — messages.upsert com foto sem legenda (visão)", ()
     );
   });
 
-  test("foto COM legenda + suportaVisao() false: vai direto pelo texto da legenda (comportamento antigo preservado)", async () => {
+  test("foto COM legenda + suportaVisao() false: legenda vai pro pipeline normal, mas a foto ainda é baixada/salva pro painel", async () => {
     suportaVisao.mockReturnValue(false);
 
     await sockAtual.__handlers["messages.upsert"]({
@@ -252,7 +302,8 @@ describe("config/whatsapp — messages.upsert com foto sem legenda (visão)", ()
       type: "notify",
     });
 
-    expect(baileys.downloadMediaMessage).not.toHaveBeenCalled();
+    expect(baileys.downloadMediaMessage).toHaveBeenCalledTimes(1);
+    expect(salvarMidiaRecebida).toHaveBeenCalled();
     expect(analisarImagemPeca).not.toHaveBeenCalled();
     expect(processMessage).toHaveBeenCalledWith(
       expect.objectContaining({ message: "quanto custa esse alternador?" })
@@ -275,6 +326,11 @@ describe("config/whatsapp — messages.upsert com nota de voz (transcrição)", 
     analisarImagemPeca.mockResolvedValue(null);
     suportaAudio.mockReturnValue(false);
     transcreverAudio.mockResolvedValue(null);
+    salvarMidiaRecebida.mockResolvedValue({
+      mediaPath: "MSG-AUDIO-1-efgh5678.ogg",
+      mediaMimetype: "audio/ogg; codecs=opus",
+      mediaFilename: null,
+    });
 
     processMessage = jest.fn(async () => "Perfeito, já te ajudo com o motor de partida! 😊");
     await whatsapp.connectWhatsApp(processMessage);
@@ -321,26 +377,34 @@ describe("config/whatsapp — messages.upsert com nota de voz (transcrição)", 
     );
   });
 
-  test("suportaAudio() false (GROQ_API_KEY não configurada) → nem tenta baixar/transcrever, vai direto pro aviso padrão", async () => {
+  test("suportaAudio() false (GROQ_API_KEY não configurada) → NÃO transcreve, mas ainda baixa/salva o áudio pro painel", async () => {
     suportaAudio.mockReturnValue(false);
 
     await sockAtual.__handlers["messages.upsert"]({ messages: [mensagemAudio()], type: "notify" });
 
-    expect(baileys.downloadMediaMessage).not.toHaveBeenCalled();
+    // Ver migration 017: baixar/salvar em disco é decisão de STORAGE, agora
+    // independente de a Groq estar configurada ou não.
+    expect(baileys.downloadMediaMessage).toHaveBeenCalledTimes(1);
+    expect(salvarMidiaRecebida).toHaveBeenCalled();
     expect(transcreverAudio).not.toHaveBeenCalled();
     expect(processMessage).not.toHaveBeenCalled();
     expect(sockAtual.sendMessage).toHaveBeenCalledWith(
       JID,
       expect.objectContaining({ text: expect.stringContaining("ainda não consigo processar arquivos") })
     );
+    expect(saveHistory).toHaveBeenCalledWith(
+      expect.objectContaining({ sector: "midia_nao_suportada", mediaPath: "MSG-AUDIO-1-efgh5678.ogg" })
+    );
   });
 
-  test("erro ao baixar a mídia de áudio → cai no aviso padrão, não lança exceção", async () => {
+  test("erro ao baixar a mídia de áudio → não tenta de novo, cai no aviso padrão, não lança exceção", async () => {
     suportaAudio.mockReturnValue(true);
     baileys.downloadMediaMessage.mockRejectedValueOnce(new Error("media link expirado (410)"));
 
     await sockAtual.__handlers["messages.upsert"]({ messages: [mensagemAudio()], type: "notify" });
 
+    expect(baileys.downloadMediaMessage).toHaveBeenCalledTimes(1);
+    expect(salvarMidiaRecebida).not.toHaveBeenCalled();
     expect(transcreverAudio).not.toHaveBeenCalled();
     expect(sockAtual.sendMessage).toHaveBeenCalledWith(
       JID,
@@ -375,15 +439,25 @@ describe("config/whatsapp — messages.upsert com nota de voz (transcrição)", 
     );
   });
 
-  test("documento que NÃO é áudio (mimetype application/pdf) continua caindo no aviso padrão de mídia não suportada", async () => {
+  test("documento que NÃO é áudio (mimetype application/pdf) cai no aviso padrão, mas o arquivo ainda é baixado/salvo pro painel", async () => {
     suportaAudio.mockReturnValue(true);
+    salvarMidiaRecebida.mockResolvedValue({
+      mediaPath: "MSG-AUDIO-DOC-1-ijkl9012.pdf",
+      mediaMimetype: "application/pdf",
+      mediaFilename: "audio.mp3", // fileName do documentMessage, mesmo mimetype não batendo — cliente às vezes erra a extensão
+    });
 
     await sockAtual.__handlers["messages.upsert"]({
       messages: [mensagemAudioComoDocumento({ mimetype: "application/pdf" })],
       type: "notify",
     });
 
-    expect(baileys.downloadMediaMessage).not.toHaveBeenCalled();
+    // Documento genérico também é mídia recebida — ver getMediaObject() em
+    // message-utils.js, que (ao contrário de getMediaType) não distingue
+    // documento-áudio de documento comum pra decidir SE baixa, só o QUE
+    // fazer depois de baixado.
+    expect(baileys.downloadMediaMessage).toHaveBeenCalledTimes(1);
+    expect(salvarMidiaRecebida).toHaveBeenCalled();
     expect(transcreverAudio).not.toHaveBeenCalled();
     expect(sockAtual.sendMessage).toHaveBeenCalledWith(
       JID,

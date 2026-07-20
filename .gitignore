@@ -33,6 +33,12 @@ src/uploads/*
 !src/uploads/profiles/.gitkeep
 src/services/uploads/
 
+# Mídia recebida de clientes (foto/áudio/vídeo/documento) — ver migration
+# 017. Fica FORA de src/uploads/ (que é público) de propósito; não deve ir
+# pro git de qualquer forma, é conversa privada do cliente.
+src/media-recebida/*
+!src/media-recebida/.gitkeep
+
 # Sessões e credenciais do WhatsApp/Baileys
 auth_info/
 .auth/

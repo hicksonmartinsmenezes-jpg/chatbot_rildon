@@ -8,7 +8,10 @@ async function saveHistory({
   response,
   sector,
   messageId,
-  status
+  status,
+  mediaPath,
+  mediaMimetype,
+  mediaFilename
 }) {
   return historyRepository.create({
     userId,
@@ -19,6 +22,11 @@ async function saveHistory({
     messageId: messageId || null,
     // CORRIGIDO: status vazio → null (alinhado ao schema corrigido)
     status: status || null,
+    // Ver migration 017 — arquivo de mídia recebida do cliente (foto/áudio/
+    // vídeo/sticker/documento), salvo em src/media-recebida/.
+    mediaPath: mediaPath || null,
+    mediaMimetype: mediaMimetype || null,
+    mediaFilename: mediaFilename || null,
     createdAt: new Date()
   });
 }
@@ -46,6 +54,10 @@ async function listHistoryByUser(userId) {
   return historyRepository.findAll({ userId, limit: 500 });
 }
 
+async function getHistoryById(id) {
+  return historyRepository.findById(id);
+}
+
 async function updateMessageStatus(messageId, status) {
   return historyRepository.updateMessageStatus(messageId, status);
 }
@@ -57,5 +69,6 @@ module.exports = {
   listHistory,
   listHistoryGrouped,
   listHistoryByUser,
+  getHistoryById,
   updateMessageStatus
 };

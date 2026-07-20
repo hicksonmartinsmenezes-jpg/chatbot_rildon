@@ -42,6 +42,39 @@ function getMediaType(msg) {
   return null;
 }
 
+// Diferente de getMediaType() (que devolve null pra imagem/vídeo COM
+// legenda, de propósito — pro ROTEAMENTO do bot, legenda vira mensagem de
+// texto normal), esta função detecta a presença de QUALQUER mídia baixável,
+// COM ou SEM legenda. Usada só pra decidir se vale a pena baixar e SALVAR o
+// arquivo em disco (painel de atendimento) — decisão de storage, não de
+// roteamento de fluxo. Ver mediaStorage.service.js / config/whatsapp.js.
+function getMediaObject(msg) {
+  const message = unwrapMessage(msg.message);
+  if (!message) return null;
+
+  if (message.imageMessage) {
+    return { tipo: "imagem", mimetype: message.imageMessage.mimetype || "image/jpeg" };
+  }
+  if (message.videoMessage) {
+    return { tipo: "vídeo", mimetype: message.videoMessage.mimetype || "video/mp4" };
+  }
+  if (message.audioMessage) {
+    return { tipo: "áudio", mimetype: message.audioMessage.mimetype || "audio/ogg" };
+  }
+  if (message.stickerMessage) {
+    return { tipo: "sticker", mimetype: message.stickerMessage.mimetype || "image/webp" };
+  }
+  if (message.documentMessage) {
+    const mimetype = message.documentMessage.mimetype || "application/octet-stream";
+    return {
+      tipo: mimetype.startsWith("audio/") ? "áudio" : "documento",
+      mimetype,
+      filename: message.documentMessage.fileName || null,
+    };
+  }
+  return null;
+}
+
 function isValidUserMessage(msg, type) {
   const jid = msg.key.remoteJid;
   if (type !== "notify") return false;
@@ -67,6 +100,7 @@ module.exports = {
   unwrapMessage,
   getTextMessage,
   getMediaType,
+  getMediaObject,
   isValidUserMessage,
   parseMessageStatus
 };

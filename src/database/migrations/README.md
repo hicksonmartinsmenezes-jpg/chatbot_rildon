@@ -54,3 +54,12 @@ fica registrada no próprio ticket (sem tabela nova).
 Suporta a consulta "quantos tickets em_andamento cada atendente tem agora"
 (painel Usuários, GET /api/users) — não existia índice cobrindo
 `assigned_to` sozinho antes desta migration.
+
+## 017 — armazenamento de mídia recebida
+
+Adiciona `media_path`/`media_mimetype`/`media_filename` em `history`. Antes,
+o bot recebia foto/áudio/vídeo do cliente mas nunca salvava o arquivo em
+disco — só um rótulo tipo "[áudio recebido]" (decisão deliberada de uma
+correção anterior, task #116). A pedido do usuário, o arquivo agora é salvo
+em `src/media-recebida/` (fora da pasta `src/uploads/` pública) e servido
+de volta pro painel por uma rota autenticada (`GET /api/history/media/:id`).

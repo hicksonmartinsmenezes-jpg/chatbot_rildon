@@ -112,6 +112,12 @@ CREATE TABLE IF NOT EXISTS history (
   sector       VARCHAR(100) NOT NULL DEFAULT 'geral',
   status       VARCHAR(50) DEFAULT NULL,  -- NULL = sem status; 'sent', 'delivered', 'read'
   message_id   TEXT,
+  -- Ver migration 017: arquivo de mídia recebida do cliente (foto/áudio/
+  -- vídeo/sticker/documento). media_path guarda só o NOME do arquivo salvo
+  -- em src/media-recebida/ (nunca o caminho completo do disco).
+  media_path      TEXT,
+  media_mimetype  TEXT,
+  media_filename  TEXT,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

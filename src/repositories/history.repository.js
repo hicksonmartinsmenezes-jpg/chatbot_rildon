@@ -12,6 +12,11 @@ function mapHistory(row) {
     sector: row.sector,
     status: row.status,
     messageId: row.message_id,
+    // Ver migration 017 — arquivo de mídia recebida do cliente, salvo em
+    // src/media-recebida/ e servido por GET /api/history/media/:id.
+    mediaPath: row.media_path,
+    mediaMimetype: row.media_mimetype,
+    mediaFilename: row.media_filename,
     createdAt: row.created_at
   };
 }
@@ -27,9 +32,12 @@ async function create(data) {
       sector,
       status,
       message_id,
+      media_path,
+      media_mimetype,
+      media_filename,
       created_at
     )
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
     RETURNING *
     `,
     [
@@ -40,6 +48,9 @@ async function create(data) {
       data.sector || "geral",
       data.status || null,
       data.messageId || null,
+      data.mediaPath || null,
+      data.mediaMimetype || null,
+      data.mediaFilename || null,
       data.createdAt || new Date()
     ]
   );
@@ -151,7 +162,8 @@ async function findGroupedByUser({ q, from, to, limit = 500, offset = 0 } = {}) 
     `
     SELECT * FROM (
       SELECT DISTINCT ON (user_id)
-        id, user_id, contact_name, message, response, sector, status, message_id, created_at,
+        id, user_id, contact_name, message, response, sector, status, message_id,
+        media_path, media_mimetype, media_filename, created_at,
         COUNT(*) OVER (PARTITION BY user_id) AS total_count
       FROM history
       ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
@@ -165,6 +177,14 @@ async function findGroupedByUser({ q, from, to, limit = 500, offset = 0 } = {}) 
   );
 
   return result.rows.map(row => ({ ...mapHistory(row), count: Number(row.total_count) }));
+}
+
+// Usado só pela rota de servir mídia (GET /api/history/media/:id) — precisa
+// da linha exata pra checar media_path/media_mimetype antes de tentar abrir
+// o arquivo em disco.
+async function findById(id) {
+  const result = await pool.query(`SELECT * FROM history WHERE id = $1`, [id]);
+  return result.rows[0] ? mapHistory(result.rows[0]) : null;
 }
 
 async function updateMessageStatus(messageId, status) {
@@ -184,6 +204,7 @@ async function updateMessageStatus(messageId, status) {
 module.exports = {
   create,
   findAll,
+  findById,
   findGroupedByUser,
   updateMessageStatus
 };

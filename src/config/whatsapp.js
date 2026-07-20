@@ -14,6 +14,7 @@ const {
   unwrapMessage,
   getTextMessage,
   getMediaType,
+  getMediaObject,
   isValidUserMessage,
   parseMessageStatus
 } = require("../whatsapp/message-utils");
@@ -21,6 +22,7 @@ const { isDuplicateContent, marcarMensagemProcessada, startDedupCleanup } = requ
 const { autoRegisterContact } = require("../whatsapp/contacts");
 const { saveHistory } = require("../services/history.service");
 const { analisarImagemPeca, suportaVisao, transcreverAudio, suportaAudio } = require("../services/ai.service");
+const { salvarMidiaRecebida } = require("../services/mediaStorage.service");
 
 const {
   default: makeWASocket,
@@ -233,13 +235,24 @@ async function onMessagesUpdate(updates) {
 // Retorna null em qualquer falha (mídia expirada, provedor indisponível,
 // imagem não reconhecida como peça/veículo), sinalizando pro chamador usar
 // o fallback padrão de "não consigo processar arquivos".
-async function analisarFotoRecebida(msg) {
+// "bufferPreBaixado" é opcional: onMessagesUpsert já baixa a mídia UMA vez
+// pra salvar em disco (painel de atendimento — ver mediaStorage.service.js)
+// e repassa o mesmo buffer aqui, evitando baixar a mesma mídia duas vezes.
+// Sem esse parâmetro, a função baixa por conta própria (mantém a função
+// utilizável isoladamente).
+async function analisarFotoRecebida(msg, bufferPreBaixado) {
   try {
     const conteudo = unwrapMessage(msg.message);
     const imageMessage = conteudo?.imageMessage;
     if (!imageMessage) return null;
 
-    const buffer = await downloadMediaMessage(
+    // "!== undefined" (não "||") de propósito: onMessagesUpsert já tentou
+    // baixar a mídia pro storage e pode ter falhado (buffer null explícito,
+    // não "nunca tentado") — nesse caso NÃO tenta baixar de novo aqui
+    // (evitaria um retry silencioso mascarando a falha original). Só baixa
+    // por conta própria quando ninguém baixou ainda (chamada isolada, sem
+    // 2º argumento).
+    const buffer = bufferPreBaixado !== undefined ? bufferPreBaixado : await downloadMediaMessage(
       msg,
       "buffer",
       {},
@@ -262,7 +275,10 @@ async function analisarFotoRecebida(msg) {
 // ai.service.js). Retorna null em qualquer falha (áudio expirado, provedor
 // indisponível, transcrição vazia), sinalizando pro chamador usar o fallback
 // padrão de "não consigo processar arquivos".
-async function analisarAudioRecebido(msg) {
+// "bufferPreBaixado": mesma ideia de analisarFotoRecebida acima — evita
+// baixar a mesma mídia duas vezes quando onMessagesUpsert já baixou pra
+// salvar em disco.
+async function analisarAudioRecebido(msg, bufferPreBaixado) {
   try {
     const conteudo = unwrapMessage(msg.message);
     const audioMessage = conteudo?.audioMessage;
@@ -277,7 +293,8 @@ async function analisarAudioRecebido(msg) {
     const ehAudioComoDocumento = !!mimeTypeDocumento && mimeTypeDocumento.startsWith("audio/");
     if (!audioMessage && !ehAudioComoDocumento) return null;
 
-    const buffer = await downloadMediaMessage(
+    // Ver comentário equivalente em analisarFotoRecebida sobre "!== undefined".
+    const buffer = bufferPreBaixado !== undefined ? bufferPreBaixado : await downloadMediaMessage(
       msg,
       "buffer",
       {},
@@ -300,7 +317,7 @@ async function analisarAudioRecebido(msg) {
 // duplicada pra extrair veículo/peça. "origem" é só pro log (ex: "foto",
 // "áudio"). Devolve true quando o chamador deve `continue` (já tratou a
 // mensagem, com sucesso ou com o fallback de erro do bot).
-async function processarTextoDerivadoDeMidia(origem, { userId, contactName, sendTo, messageId, texto }) {
+async function processarTextoDerivadoDeMidia(origem, { userId, contactName, sendTo, messageId, texto, mediaInfo }) {
   try {
     logger.info(`[MESSAGE_IN_${origem.toUpperCase()}] ${userId}: [${origem}] → "${texto}"`);
 
@@ -309,7 +326,15 @@ async function processarTextoDerivadoDeMidia(origem, { userId, contactName, send
     );
 
     const response = await withTimeout(
-      conn.messageHandler({ userId, contactName, message: texto, messageId }),
+      conn.messageHandler({
+        userId,
+        contactName,
+        message: texto,
+        messageId,
+        mediaPath:     mediaInfo?.mediaPath || null,
+        mediaMimetype: mediaInfo?.mediaMimetype || null,
+        mediaFilename: mediaInfo?.mediaFilename || null,
+      }),
       MESSAGE_PROCESSING_TIMEOUT_MS,
       `processamento do bot (${origem})`
     );
@@ -400,6 +425,39 @@ async function onMessagesUpsert({ messages, type }) {
       continue;
     }
 
+    // ── Download + persistência da mídia (se houver) ─────────────────────
+    // Pedido do usuário (2026-07-20): "verifique por que arquivos de mídia
+    // e áudio não aparecem no meu painel". Resposta: decisão deliberada de
+    // uma correção anterior (task #116) — o bot nunca salvava o arquivo em
+    // disco, só o fato de ter chegado. Agora baixa e salva UMA vez por
+    // mensagem, independente de legenda ou de a IA conseguir analisar —
+    // getMediaObject() (ao contrário de getMediaType(), usado mais abaixo
+    // pro ROTEAMENTO do bot) não descarta imagem/vídeo com legenda, porque
+    // aqui a decisão é só "salvar em disco", não "como responder". O
+    // mesmo buffer é reaproveitado nas análises de visão/áudio logo
+    // abaixo, pra não baixar a mesma mídia duas vezes.
+    const conteudoRecebido = unwrapMessage(msg.message);
+    const midiaBruta = getMediaObject(msg);
+    let mediaBuffer = null;
+    let mediaInfo = null;
+    if (midiaBruta) {
+      try {
+        mediaBuffer = await downloadMediaMessage(
+          msg,
+          "buffer",
+          {},
+          { logger, reuploadRequest: conn.sock?.updateMediaMessage }
+        );
+      } catch (err) {
+        logger.warn(`[Mídia] Falha ao baixar mídia recebida de ${userId}: ${err.message}`);
+      }
+      if (mediaBuffer && mediaBuffer.length) {
+        mediaInfo = await salvarMidiaRecebida(mediaBuffer, midiaBruta.mimetype, messageId, {
+          originalFilename: midiaBruta.filename || null,
+        });
+      }
+    }
+
     // BUG REAL (achado em teste ao vivo, 2026-07-20): esta checagem de foto
     // rodava só dentro do bloco `if (!text)` abaixo — cliente que manda foto
     // COM legenda (ex: "vcs tem essa peça?") tinha só a legenda processada
@@ -408,16 +466,15 @@ async function onMessagesUpsert({ messages, type }) {
     // dois casos. Com legenda, combina legenda + descrição da imagem antes
     // de processar; sem legenda, usa só a descrição (comportamento já
     // existente, preservado).
-    const conteudoRecebido = unwrapMessage(msg.message);
     const imageMessageRecebida = conteudoRecebido?.imageMessage;
     if (imageMessageRecebida && suportaVisao()) {
-      const descricao = await analisarFotoRecebida(msg);
+      const descricao = await analisarFotoRecebida(msg, mediaBuffer);
       if (descricao) {
         const legenda = imageMessageRecebida.caption?.trim();
         const textoParaPipeline = legenda
           ? `${legenda}\n\n[Imagem enviada pelo cliente: ${descricao}]`
           : descricao;
-        await processarTextoDerivadoDeMidia("foto", { userId, contactName, sendTo, messageId, texto: textoParaPipeline });
+        await processarTextoDerivadoDeMidia("foto", { userId, contactName, sendTo, messageId, texto: textoParaPipeline, mediaInfo });
         continue;
       }
       // descricao null (não é peça, provedor falhou, mídia expirada etc.) →
@@ -434,9 +491,9 @@ async function onMessagesUpsert({ messages, type }) {
       // do AI_PROVIDER de chat — ver suportaAudio() em ai.service.js):
       // transcreve e processa o texto pelo pipeline normal, igual à foto.
       if (tipoMidia === "áudio" && suportaAudio()) {
-        const transcricao = await analisarAudioRecebido(msg);
+        const transcricao = await analisarAudioRecebido(msg, mediaBuffer);
         if (transcricao) {
-          await processarTextoDerivadoDeMidia("áudio", { userId, contactName, sendTo, messageId, texto: transcricao });
+          await processarTextoDerivadoDeMidia("áudio", { userId, contactName, sendTo, messageId, texto: transcricao, mediaInfo });
           continue;
         }
         // transcricao null (sem chave, erro, áudio sem fala reconhecível etc.)
@@ -451,9 +508,9 @@ async function onMessagesUpsert({ messages, type }) {
         // loja de autopeças), recebe o aviso automático, e a troca inteira
         // desaparecia do painel de Histórico, mesmo a mensagem tendo
         // chegado normalmente. Agora registra como o restante do fluxo:
-        // "message" guarda um marcador do tipo de mídia (não o arquivo em
-        // si — mídia não é persistida, só o fato de ter chegado) e
-        // "response" guarda o aviso automático enviado.
+        // "message" guarda um marcador do tipo de mídia, e (a partir da
+        // task de storage acima) mediaInfo guarda o arquivo salvo em disco
+        // de verdade, quando o download deu certo.
         // Concordância de gênero: só "imagem" é feminino ("sua imagem")
         // entre os tipos que chegam aqui — os demais ("áudio", "sticker",
         // "documento", "vídeo") são masculinos ("seu ...").
@@ -477,6 +534,9 @@ async function onMessagesUpsert({ messages, type }) {
             response: avisoMidia,
             sector:   "midia_nao_suportada",
             messageId,
+            mediaPath:     mediaInfo?.mediaPath || null,
+            mediaMimetype: mediaInfo?.mediaMimetype || null,
+            mediaFilename: mediaInfo?.mediaFilename || null,
           });
           emitEvent("nova_mensagem", {
             userId,
@@ -486,6 +546,9 @@ async function onMessagesUpsert({ messages, type }) {
             response: avisoMidia,
             sector:   "midia_nao_suportada",
             createdAt: new Date(),
+            mediaPath:     mediaInfo?.mediaPath || null,
+            mediaMimetype: mediaInfo?.mediaMimetype || null,
+            mediaFilename: mediaInfo?.mediaFilename || null,
           });
         } catch (err) {
           logger.warn(`Erro ao salvar histórico de mídia para ${userId}: ${err.message}`);
@@ -509,7 +572,15 @@ async function onMessagesUpsert({ messages, type }) {
       );
 
       const response = await withTimeout(
-        conn.messageHandler({ userId, contactName, message: text, messageId }),
+        conn.messageHandler({
+          userId,
+          contactName,
+          message: text,
+          messageId,
+          mediaPath:     mediaInfo?.mediaPath || null,
+          mediaMimetype: mediaInfo?.mediaMimetype || null,
+          mediaFilename: mediaInfo?.mediaFilename || null,
+        }),
         MESSAGE_PROCESSING_TIMEOUT_MS,
         "processamento do bot"
       );

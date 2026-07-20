@@ -255,6 +255,34 @@ function bindConversationListDelegation() {
 
 // lastMessage extraído para js/conversations/conversations-utils.js
 
+// Pedido do usuário (2026-07-20): "verifique por que arquivos de mídia e
+// áudio não aparecem no meu painel". O backend agora salva o arquivo (ver
+// migration 017) e serve de volta por GET /api/history/media/:id
+// (autenticado — mesma sessão do painel). Escolhe a tag certa pelo prefixo
+// do mimetype; documento (ou mimetype desconhecido) vira link de download.
+function renderMediaBubble(item) {
+  if (!item.mediaPath || !item.id) return "";
+
+  const url = `${BASE}/api/history/media/${item.id}`;
+  const mime = item.mediaMimetype || "";
+
+  if (mime.startsWith("image/")) {
+    return `<a href="${escapeAttr(url)}" target="_blank" rel="noopener"><img class="chat-media chat-media-image" src="${escapeAttr(url)}" alt="Imagem enviada pelo cliente" loading="lazy"></a>`;
+  }
+  if (mime.startsWith("audio/")) {
+    return `<audio class="chat-media chat-media-audio" controls preload="none" src="${escapeAttr(url)}"></audio>`;
+  }
+  if (mime.startsWith("video/")) {
+    return `<video class="chat-media chat-media-video" controls preload="none" src="${escapeAttr(url)}"></video>`;
+  }
+  const nomeArquivo = item.mediaFilename || "arquivo";
+  return `
+    <a class="chat-media chat-media-file" href="${escapeAttr(url)}" target="_blank" rel="noopener">
+      <i class="fa-solid fa-paperclip"></i> ${safe(nomeArquivo)}
+    </a>
+  `;
+}
+
 async function openConversation(userId, updateActive = true) {
   _openConvAbort?.abort();
   _openConvAbort = new AbortController();
@@ -389,11 +417,12 @@ async function openConversation(userId, updateActive = true) {
       html.push(`<div class="day-separator"><span>${safe(currentDay)}</span></div>`);
       lastDay = currentDay;
     }
-    if (item.message) {
+    if (item.message || item.mediaPath) {
       html.push(`
         <div class="bubble-row client-row">
           <div class="bubble client">
-            <p>${safe(item.message)}</p>
+            ${renderMediaBubble(item)}
+            ${item.message ? `<p>${safe(item.message)}</p>` : ""}
             <small>${safe(shortTime(item.createdAt))}</small>
           </div>
         </div>

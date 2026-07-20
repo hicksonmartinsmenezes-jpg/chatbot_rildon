@@ -72,7 +72,11 @@ class MemoryRateLimiter {
 const rateLimiter = new MemoryRateLimiter();
 
 // ─── Processamento ───────────────────────────────────────────────────────────
-async function processMessage({ userId, contactName, message, messageId }) {
+// mediaPath/mediaMimetype/mediaFilename (ver migration 017): repassados por
+// config/whatsapp.js quando a mensagem recebida tinha foto/áudio/vídeo/
+// sticker/documento — já baixados e salvos em disco lá, aqui só precisam
+// ser gravados junto com a linha de histórico correspondente.
+async function processMessage({ userId, contactName, message, messageId, mediaPath, mediaMimetype, mediaFilename }) {
   const botConfig = await getBotConfig();
 
   if (botConfig.ativo === false || botConfig.ativo === "false") {
@@ -104,7 +108,8 @@ async function processMessage({ userId, contactName, message, messageId }) {
         messageId,
         response: pesquisa.response,
         sector: "pesquisa_satisfacao",
-        createdAt: new Date()
+        createdAt: new Date(),
+        mediaPath, mediaMimetype, mediaFilename
       });
     } catch (e) { logger.warn(`Erro ao emitir nova_mensagem (pesquisa): ${e.message}`); }
 
@@ -116,7 +121,8 @@ async function processMessage({ userId, contactName, message, messageId }) {
         messageId,
         response: pesquisa.response,
         sector: "pesquisa_satisfacao",
-        status: "sent"
+        status: "sent",
+        mediaPath, mediaMimetype, mediaFilename
       });
     } catch (err) {
       logger.warn(`Erro ao salvar histórico (pesquisa de satisfação): ${err.message}`);
@@ -140,7 +146,8 @@ async function processMessage({ userId, contactName, message, messageId }) {
       messageId,
       response: null,
       sector: null,
-      createdAt: new Date()
+      createdAt: new Date(),
+      mediaPath, mediaMimetype, mediaFilename
     });
   } catch (e) { logger.warn(`Erro ao emitir nova_mensagem: ${e.message}`); }
 
@@ -149,7 +156,10 @@ async function processMessage({ userId, contactName, message, messageId }) {
   // o histórico e NÃO acionamos o fluxo do bot.
   if (humanMode.estaAtivo(userId)) {
     try {
-      await saveHistory({ userId, contactName, message, messageId, response: null, sector: "humano" });
+      await saveHistory({
+        userId, contactName, message, messageId, response: null, sector: "humano",
+        mediaPath, mediaMimetype, mediaFilename
+      });
     } catch (err) {
       logger.warn(`Erro ao salvar histórico (modo humano): ${err.message}`);
     }
@@ -183,7 +193,8 @@ async function processMessage({ userId, contactName, message, messageId }) {
         message,
         messageId,
         response,
-        sector: flowError ? "erro" : sector
+        sector: flowError ? "erro" : sector,
+        mediaPath, mediaMimetype, mediaFilename
       });
 
       // Emite de novo com a resposta do bot já salva.
@@ -210,7 +221,8 @@ async function processMessage({ userId, contactName, message, messageId }) {
           response,
           sector: flowError ? "erro" : sector,
           error: flowError ? true : false,
-          createdAt: new Date()
+          createdAt: new Date(),
+          mediaPath, mediaMimetype, mediaFilename
         });
       } catch (e) { logger.warn(`Erro ao emitir nova_mensagem (resposta): ${e.message}`); }
     } catch (err) {

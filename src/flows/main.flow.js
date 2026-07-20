@@ -361,6 +361,26 @@ async function _mainFlowInterno({ userId, message }) {
       return menuPrincipal(nomeSalvo);
     }
 
+    // BUG REAL (achado em teste ao vivo, 2026-07-20): esse fluxo pede nome e
+    // motivo em 2 mensagens, mas validarNome só checa se o texto parece
+    // palavras de nome (letras, ≥2 palavras) — não o sentido. Cliente que
+    // muda de assunto na etapa "nome" (ex: "na verdade vocês fazem
+    // crediário?") tinha a pergunta real engolida como se fosse o nome, e
+    // nunca era respondida — o ticket criado nem menciona crediário.
+    // Mesmo padrão de _pareceMudancaDeAssunto já usado em vendas.flow.js e
+    // crediario.flow.js. Restrito a "crediário" (setor claramente distinto)
+    // e deliberadamente SEM "peça"/"orçamento" — na etapa de MOTIVO (não
+    // coberta aqui) esses termos são o conteúdo normal de uma reclamação
+    // pra equipe, então incluí-los geraria falso positivo constante.
+    const PARECE_CREDIARIO_RE = /\bcrediari\w*\b|\bfinanciamento\b|\bparcelamento\b/;
+    if (session.step === "aguardando_nome" && PARECE_CREDIARIO_RE.test(normalizar(message))) {
+      await clearSession(userId);
+      return (
+        "Percebi que sua pergunta é sobre crediário! 😊\n\n" +
+        "Digite *0* para ver o menu principal e escolher a opção *2 - Crediário*."
+      );
+    }
+
     if (session.step === "aguardando_nome") {
       if (!validarNome(sanitizarTexto(message))) return MSG.NOME_INVALIDO + MSG.ESCAPE_DICA;
       await updateSession(userId, { customerName: sanitizarTexto(message), step: "aguardando_motivo_gestao" });

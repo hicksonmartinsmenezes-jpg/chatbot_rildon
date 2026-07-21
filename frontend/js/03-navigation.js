@@ -25,6 +25,12 @@ function switchTab(tab, event) {
     if (typeof loadContactsTags === "function") loadContactsTags();
     if (typeof loadContactsAtendenteOptions === "function") loadContactsAtendenteOptions();
   }
+  if (tab === "catalogo") {
+    if (typeof loadCatalogoSecoes === "function") loadCatalogoSecoes();
+    if (typeof loadCatalogoFabricantes === "function") loadCatalogoFabricantes();
+    // Foco direto no campo Marca ao abrir a aba — atendente já começa digitando.
+    setTimeout(() => document.getElementById("catalogo-marca")?.focus(), 50);
+  }
 
   currentTab = tab;
 

@@ -108,6 +108,26 @@ async function loadMetricsCharts() {
         : `<tr><td colspan="3" class="metric-satisfaction-empty">Nenhuma avaliação ainda.</td></tr>`;
     }
 
+    // Pedido do usuário (2026-07-21): feedback livre de "o que podemos
+    // melhorar?" — perguntado só quando a nota veio baixa (1 ou 2). Sem essa
+    // lista, o texto ficava só no banco, sem lugar nenhum pro dono da loja
+    // ler (ver migration 018 e ticket.service.js).
+    const feedbacksBody = document.getElementById("metric-feedbacks-negativos-body");
+    if (feedbacksBody) {
+      const feedbacks = data.feedbacksNegativos || [];
+      feedbacksBody.innerHTML = feedbacks.length
+        ? feedbacks.map((f) => `
+            <tr>
+              <td>#${safe(f.protocolo)}</td>
+              <td>${safe(f.customerName || "Não informado")}</td>
+              <td>${"⭐".repeat(f.rating)}</td>
+              <td>${safe(cutText(f.feedback, 140))}</td>
+              <td>${formatDate(f.feedbackAt)}</td>
+            </tr>
+          `).join("")
+        : `<tr><td colspan="5" class="metric-satisfaction-empty">Nenhum comentário registrado ainda.</td></tr>`;
+    }
+
     // ── Gráfico de status (doughnut) ──────────────────────────────────────────
     upsertChart("metric-chart-status", "doughnut", {
       labels:   Object.keys(data.porStatus || {}),

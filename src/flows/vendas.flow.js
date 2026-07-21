@@ -79,6 +79,28 @@ function _pareceMudancaDeAssunto(message) {
   return MUDANCA_ASSUNTO_RE.test(normalizado);
 }
 
+// BUG REAL (achado em teste ao vivo, 2026-07-21, testando o Claude Haiku
+// 4.5 recém-ativado como provedor): na etapa "qual o veículo?", se o
+// cliente corrige a PEÇA que quer em vez de responder com o veículo (ex:
+// "na verdade nem era alternador não, era uma pastilha de freio mesmo"),
+// o código tratava a frase inteira como se fosse o veículo — o ticket
+// saiu com "Veículo: na verdade nem era alternador não, era uma pastilha
+// de freio mesmo" e a peça antiga (errada) ainda como "alternador".
+// Diferente de _pareceMudancaDeAssunto acima (que pega troca pra OUTRO
+// SETOR, tipo crediário), aqui o cliente continua em vendas, só mudou de
+// ideia sobre qual peça — não existe forma 100% confiável de distinguir
+// isso de uma resposta de veículo via regex, então o check é deliberada-
+// mente restrito a marcadores explícitos de correção ("na verdade",
+// "mudei de ideia", "me enganei", "quis dizer", "esquece", "errei"), que
+// dificilmente aparecem numa resposta legítima de veículo.
+const CORRECAO_PECA_RE =
+  /\bna verdade\b|\bmudei de ideia\b|\bme enganei\b|\bquis dizer\b|\bpera(i|)\b.*\besquece\b|\besquece\b.*\bera\b|\berrei\b/;
+
+function _pareceCorrecaoDePeca(message) {
+  const normalizado = normalizar(message);
+  return CORRECAO_PECA_RE.test(normalizado);
+}
+
 async function vendasFlow(message, userId, session) {
   const msg           = normalizar(sanitizarTexto(message));
   const msgSemPontos  = msg.replace(/[^\p{L}\p{N}\s]/gu, "").trim();
@@ -107,7 +129,7 @@ async function vendasFlow(message, userId, session) {
       await clearSession(userId);
       return (
         "Percebi que sua pergunta é sobre outro assunto! 😊\n\n" +
-        "Digite *0* para ver o menu principal e escolher a opção certa (crediário, falar com a equipe, horário, etc.)."
+        "Digite *0* para ver o menu principal e escolher a opção certa (crediário, outros contatos, horário, etc.)."
       );
     }
 
@@ -143,6 +165,18 @@ async function vendasFlow(message, userId, session) {
 
     // ── Etapa 2: Veículo ───────────────────────────────────────────────────────
     if (session.step === "aguardando_veiculo") {
+
+      // Cliente corrigiu a peça em vez de responder o veículo — ver
+      // _pareceCorrecaoDePeca acima. Atualiza a peça e repete a pergunta
+      // de veículo, em vez de gravar a frase de correção como se fosse
+      // o veículo (e manter a peça antiga errada).
+      if (_pareceCorrecaoDePeca(message)) {
+        const novaPeca = sanitizarTexto(message);
+        await updateSession(userId, { pecaInicial: novaPeca, produtoInicial: novaPeca });
+        logger.warn(`[vendasFlow] Correção de peça detectada na etapa veículo — userId=${userId} novaPeca="${novaPeca}"`);
+        return "Entendido, ajustei aqui! 😊 " + MSG.vendas.PEDIR_VEICULO + MSG.ESCAPE_DICA;
+      }
+
       const veiculo = msg === "pular" ? null : sanitizarTexto(message);
       const veiculoFinal = veiculo || "Não informado";
 

@@ -68,7 +68,11 @@
     "openTwoFactorDisableStep",
     "confirmTwoFactorSetup",
     "finishTwoFactorSetup",
-    "confirmDisableTwoFactor"
+    "confirmDisableTwoFactor",
+    "limparCatalogoForm",
+    "limparCatalogoFormCodigo",
+    "catalogoMostrarAbaVeiculo",
+    "catalogoMostrarAbaCodigo"
   ]);
 
   document.addEventListener("submit", (event) => {

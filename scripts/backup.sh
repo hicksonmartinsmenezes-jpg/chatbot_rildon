@@ -104,3 +104,4 @@ if [ -n "$BACKUP_REMOTE" ]; then
 else
   echo "[backup] AVISO: BACKUP_REMOTE nao definido - este backup existe SO neste servidor." >&2
 fi
+

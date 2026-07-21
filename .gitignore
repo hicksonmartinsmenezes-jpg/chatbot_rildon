@@ -73,3 +73,11 @@ gerar_volume*.py
 # Configuração local do assistente / arquivos pessoais soltos na pasta do projeto
 .claude/
 fotos/
+
+# Banco de dados do catálogo X2 (dados + fotos extraídos do ERP em
+# 2026-07-20, ver catalogo-x2.service.js/catalogo-fotos.service.js) — ~157MB,
+# decisão do usuário (2026-07-24): fica só local, como uploads/media já
+# ficam. Pra rodar em outro lugar, copiar esta pasta manualmente antes de
+# iniciar o servidor (senão o painel "Catálogo de Produtos" e a busca por
+# veículo/código do bot ficam sem dado nenhum pra indexar).
+src/config/catalogo-x2/

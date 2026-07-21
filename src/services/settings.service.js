@@ -43,6 +43,12 @@ const DEFAULT_SETTINGS = {
     // em branco pra desativar.
     mensagemPesquisaSatisfacao:
       "De 1 a 5, o quanto você ficou satisfeito com nosso atendimento? Responda só com o número. 🙂",
+    // Pedido do usuário: quando a nota da pesquisa acima vem baixa (1 ou 2 —
+    // ver SATISFACTION_LOW_THRESHOLD em ticket.service.js), pergunta em
+    // seguida o que pode melhorar, antes do agradecimento final. A resposta
+    // fica salva em tickets.satisfaction_feedback (migration 018).
+    mensagemPedirMelhoria:
+      "Poxa, sentimos muito! 😕 O que podemos melhorar?",
     mensagemAgradecimentoPesquisa:
       "Muito obrigado pela sua avaliação! 🙏"
   },

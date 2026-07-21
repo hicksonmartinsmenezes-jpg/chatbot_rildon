@@ -66,6 +66,28 @@ router.get("/metrics", asyncHandler(async (req, res) => {
     ORDER BY media DESC
   `);
 
+  // Pedido do usuário (2026-07-21): feedback livre de "o que podemos
+  // melhorar?", perguntado só quando a nota veio baixa (1 ou 2 — ver
+  // SATISFACTION_LOW_THRESHOLD em ticket.service.js). Sem essa lista, o
+  // texto ficava só no banco, sem lugar nenhum pro dono da loja ler — ver
+  // migration 018. Limitado aos 50 mais recentes pra não pesar a página.
+  // "<= 2" precisa ficar igual a SATISFACTION_LOW_THRESHOLD em
+  // ticket.service.js — se mudar lá, mudar aqui também (não há import
+  // compartilhado entre routes/ e services/ neste arquivo hoje).
+  const feedbacksNegativosRes = await pool.query(`
+    SELECT
+      protocolo,
+      customer_name    AS "customerName",
+      satisfaction_rating AS rating,
+      satisfaction_feedback AS feedback,
+      satisfaction_feedback_at AS "feedbackAt"
+    FROM tickets
+    WHERE satisfaction_rating <= 2
+      AND satisfaction_feedback IS NOT NULL
+    ORDER BY satisfaction_feedback_at DESC
+    LIMIT 50
+  `);
+
   const s     = summaryRes.rows[0];
   const total = s.total;
 
@@ -111,7 +133,8 @@ router.get("/metrics", asyncHandler(async (req, res) => {
     porDia,
     satisfacaoMedia:         satisfacaoRes.rows[0]?.media ? Number(satisfacaoRes.rows[0].media) : null,
     satisfacaoTotalRespostas: satisfacaoRes.rows[0]?.total || 0,
-    satisfacaoPorAtendente
+    satisfacaoPorAtendente,
+    feedbacksNegativos: feedbacksNegativosRes.rows
   });
 }));
 

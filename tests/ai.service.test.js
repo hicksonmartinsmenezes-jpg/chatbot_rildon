@@ -144,7 +144,14 @@ describe("ai.service — provedor anthropic (Claude)", () => {
         }),
       });
 
-      const res = await perguntarIA("motor de partida fiat palio 2025", {});
+      // Mensagem deliberadamente sem nenhuma seção/linha real do catálogo
+      // x2 (evita "motor de partida", "alternador" etc.) — assim o override
+      // determinístico de confirmação de estoque (ver ai.service.js,
+      // perguntarIA) não entra em ação e não sobrescreve "resposta" com um
+      // produto real, o que quebraria este teste (que quer validar só a
+      // extração do campo "veiculo" vindo do JSON mockado da IA, não a
+      // busca no catálogo).
+      const res = await perguntarIA("preciso de uma peça pro meu fiat palio 2025", {});
       expect(res).toEqual({ resposta: "Já te ajudo com isso!", intencao: "vendas", veiculo: "Fiat Palio 2025", peca: null, pedidoExplicito: false });
     });
 
@@ -226,7 +233,10 @@ describe("ai.service — provedor anthropic (Claude)", () => {
         }),
       });
 
-      const res = await perguntarIA("Bom dia, motor de partida fiat 2025", {});
+      // Mesma razão do teste de "veiculo" acima: evita citar seção/linha
+      // real do catálogo x2 pra não disparar o override determinístico de
+      // estoque e sobrescrever "resposta".
+      const res = await perguntarIA("Bom dia, preciso de uma peça pro meu fiat 2025", {});
       expect(res).toEqual({
         resposta: "Já te ajudo!",
         intencao: "vendas",
@@ -839,12 +849,18 @@ describe("ai.service — catálogo de produtos no prompt", () => {
     await perguntarIA("vocês tem regulador de voltagem pro meu Uno?", {});
 
     const body = JSON.parse(global.fetch.mock.calls[0][1].body);
-    expect(body.system).toContain("CATÁLOGO CONFIRMA");
+    // Checa o bloco DINÂMICO específico (com "(o cliente citou"), não a
+    // substring solta "CATÁLOGO CONFIRMA" — o prompt também menciona essa
+    // frase, entre aspas, numa instrução ESTÁTICA sempre presente
+    // ("Só com "CATÁLOGO CONFIRMA": confirme só a categoria."), então
+    // checar a substring solta dá falso positivo/negativo dependendo do
+    // teste. Ver _buildSystemPrompt em ai.service.js.
+    expect(body.system).toContain("CATÁLOGO CONFIRMA (o cliente citou");
     expect(body.system).toContain("REGULADOR DE VOLTAGEM");
     expect(body.system).toContain("ALTERNADOR");
   });
 
-  test("mensagem sem item do catálogo → prompt NÃO inclui CATÁLOGO CONFIRMA", async () => {
+  test("mensagem sem item do catálogo → prompt NÃO inclui o bloco dinâmico CATÁLOGO CONFIRMA", async () => {
     const { perguntarIA } = loadAiService({ provider: "anthropic", apiKey: "sk-ant-teste-123" });
 
     global.fetch.mockResolvedValueOnce({
@@ -856,6 +872,9 @@ describe("ai.service — catálogo de produtos no prompt", () => {
     await perguntarIA("bom dia", {});
 
     const body = JSON.parse(global.fetch.mock.calls[0][1].body);
-    expect(body.system).not.toContain("CATÁLOGO CONFIRMA");
+    // A instrução estática ("Se aparecer... Só com "CATÁLOGO CONFIRMA":
+    // confirme só a categoria.") sempre menciona a frase — o que não deve
+    // aparecer é o bloco DINÂMICO com match real do catálogo.
+    expect(body.system).not.toContain("CATÁLOGO CONFIRMA (o cliente citou");
   });
 });

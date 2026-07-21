@@ -39,6 +39,19 @@ function listarSecoes() {
 }
 
 /**
+ * Lista as linhas (sub-categorias) de uma seção específica — usado pelo
+ * dropdown em cascata "Seção → Linha" do painel Catálogo de Produtos
+ * (pedido do usuário, 2026-07-21, reformulado no estilo do ERP da loja).
+ * Mesma taxonomia usada em catalogo-x2.service.js (campo "linha" de cada
+ * produto vem do mesmo sistema, extraído no mesmo dia) — confirmado batendo
+ * "ALTERNADOR" → inclui "ALOJAMENTO", "REGULADOR DE VOLTAGEM" etc., iguais
+ * ao que aparece nos produtos reais.
+ */
+function listarLinhasPorSecao(secao) {
+  return CATALOGO[secao] || [];
+}
+
+/**
  * Procura, na mensagem do cliente, nomes de linha de produto que batem
  * EXATAMENTE (como substring normalizada) com algo do catálogo real.
  * Propositalmente simples (substring, não NLP/fuzzy): o objetivo é reduzir
@@ -62,4 +75,4 @@ function buscarNoCatalogo(mensagem, { limite = 3 } = {}) {
   return encontrados;
 }
 
-module.exports = { listarSecoes, buscarNoCatalogo };
+module.exports = { listarSecoes, buscarNoCatalogo, listarLinhasPorSecao };

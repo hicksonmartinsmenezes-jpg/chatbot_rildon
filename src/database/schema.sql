@@ -84,6 +84,11 @@ CREATE TABLE IF NOT EXISTS tickets (
   satisfaction_asked_at  TIMESTAMPTZ,
   satisfaction_rated_at  TIMESTAMPTZ,
 
+  -- Migration 018: pergunta livre "o que podemos melhorar?" disparada
+  -- quando a nota acima é baixa (1 ou 2) — ver ticket.service.js.
+  satisfaction_feedback    TEXT,
+  satisfaction_feedback_at TIMESTAMPTZ,
+
   CONSTRAINT chk_ticket_status CHECK (status IN ('aberto','em_andamento','resolvido','cancelado')),
   CONSTRAINT chk_ticket_sector CHECK (sector IN ('suporte','vendas','financeiro','garantia','geral','atendimento','gestao','crediario')),
   CONSTRAINT chk_ticket_satisfaction_rating CHECK (satisfaction_rating IS NULL OR satisfaction_rating BETWEEN 1 AND 5)

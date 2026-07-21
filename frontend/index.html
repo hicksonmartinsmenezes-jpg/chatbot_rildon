@@ -23,7 +23,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css">
   <!-- CSS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <link rel="stylesheet" href="dist/bundle.59e445f389.css">
+  <link rel="stylesheet" href="dist/bundle.6bc405e590.css">
   <!-- CSS_BUNDLE_END -->
 <style>
     /* Centraliza colunas da tabela de histórico */
@@ -130,6 +130,11 @@
     <a href="#" data-tab="contacts">
       <i class="fa-solid fa-address-book"></i>
       <span class="label">Contatos</span>
+    </a>
+
+    <a href="#" data-tab="catalogo">
+      <i class="fa-solid fa-book"></i>
+      <span class="label">Catálogo</span>
     </a>
 
     <a href="#" class="supervisor-only" data-tab="channels">
@@ -1654,6 +1659,23 @@ Como podemos ajudar você hoje?
       </div>
     </article>
 
+    <article class="chart-card chart-wide">
+      <header class="chart-card-head">
+        <span class="chart-card-icon"><i class="fa-solid fa-comment-dots"></i></span>
+        <h3>O que os clientes disseram <i class="fa-solid fa-circle-info metric-card-info" title="Comentário livre pedido automaticamente quando o cliente dá nota 1 ou 2 na pesquisa de satisfação"></i></h3>
+      </header>
+      <div class="metric-satisfaction-table-wrap">
+        <table class="metric-satisfaction-table">
+          <thead>
+            <tr><th>Protocolo</th><th>Cliente</th><th>Nota</th><th>Comentário</th><th>Data</th></tr>
+          </thead>
+          <tbody id="metric-feedbacks-negativos-body">
+            <tr><td colspan="5" class="metric-satisfaction-empty">Nenhum comentário registrado ainda.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </article>
+
   </section>
 
 </section>
@@ -1665,6 +1687,115 @@ Como podemos ajudar você hoje?
 
 
 
+
+<section id="tab-catalogo" class="tab-content hidden">
+
+  <div class="catalogo-erp-panel">
+    <header class="catalogo-erp-titlebar">
+      <i class="fa-solid fa-book"></i>
+      <span>Catálogo de Produtos</span>
+    </header>
+
+    <div class="catalogo-erp-tabs">
+      <span class="catalogo-erp-tab active" data-action="catalogoMostrarAbaVeiculo" id="catalogo-tab-veiculo">
+        <i class="fa-solid fa-magnifying-glass"></i> Critérios de Pesquisa
+      </span>
+      <span class="catalogo-erp-tab" data-action="catalogoMostrarAbaCodigo" id="catalogo-tab-codigo">
+        <i class="fa-solid fa-barcode"></i> Busca por Código
+      </span>
+    </div>
+
+    <form id="catalogo-form" class="catalogo-erp-body" data-submit-action="buscarCatalogo">
+      <div class="catalogo-erp-cols">
+
+        <fieldset class="catalogo-erp-box">
+          <legend>Dados do Veículo</legend>
+
+          <div class="catalogo-erp-row">
+            <label for="catalogo-marca">Marca</label>
+            <input type="text" id="catalogo-marca" placeholder="Ex: Fiat, GM, Ford" autocomplete="off">
+          </div>
+
+          <div class="catalogo-erp-row">
+            <label for="catalogo-modelo">Modelo</label>
+            <input type="text" id="catalogo-modelo" placeholder="Ex: Palio, Astra, Ka" autocomplete="off">
+          </div>
+
+          <div class="catalogo-erp-row">
+            <label for="catalogo-ano">Ano</label>
+            <input type="number" id="catalogo-ano" placeholder="Ex: 2015" min="1950" autocomplete="off">
+          </div>
+        </fieldset>
+
+        <fieldset class="catalogo-erp-box">
+          <legend>Localização do Produto <span class="catalogo-erp-optional">(opcional)</span></legend>
+
+          <div class="catalogo-erp-row">
+            <label for="catalogo-secao">Seção</label>
+            <select id="catalogo-secao">
+              <option value="">Todas</option>
+            </select>
+          </div>
+
+          <div class="catalogo-erp-row">
+            <label for="catalogo-linha">Linha</label>
+            <select id="catalogo-linha" disabled>
+              <option value="">Todas</option>
+            </select>
+          </div>
+
+          <div class="catalogo-erp-row">
+            <label for="catalogo-fabricante">Fabricante</label>
+            <select id="catalogo-fabricante">
+              <option value="">Todos</option>
+            </select>
+          </div>
+        </fieldset>
+
+      </div>
+
+      <div class="catalogo-erp-actions">
+        <button type="submit" class="catalogo-erp-search-btn">
+          <i class="fa-solid fa-magnifying-glass"></i> Pesquisar Produto
+        </button>
+        <button type="button" class="catalogo-erp-clear-btn" data-action="limparCatalogoForm">
+          <i class="fa-solid fa-eraser"></i> Limpar
+        </button>
+      </div>
+    </form>
+
+    <form id="catalogo-form-codigo" class="catalogo-erp-body hidden" data-submit-action="buscarCatalogoPorCodigo">
+      <fieldset class="catalogo-erp-box catalogo-erp-box-codigo">
+        <legend>Código de Fabricante / Referência</legend>
+
+        <div class="catalogo-erp-row">
+          <label for="catalogo-codigo-busca">Código</label>
+          <input type="text" id="catalogo-codigo-busca" placeholder="Ex: MB1123, FI1002, 0986BF0201..." autocomplete="off">
+        </div>
+      </fieldset>
+
+      <div class="catalogo-erp-actions">
+        <button type="submit" class="catalogo-erp-search-btn">
+          <i class="fa-solid fa-magnifying-glass"></i> Pesquisar Produto
+        </button>
+        <button type="button" class="catalogo-erp-clear-btn" data-action="limparCatalogoFormCodigo">
+          <i class="fa-solid fa-eraser"></i> Limpar
+        </button>
+      </div>
+    </form>
+
+    <p class="catalogo-hint" id="catalogo-hint-veiculo"><i class="fa-solid fa-circle-info"></i> Modelo já é suficiente pra buscar por veículo — ou selecione só uma Seção/Linha/Fabricante pra navegar por todo o catálogo daquela categoria (sem precisar de marca/modelo).</p>
+    <p class="catalogo-hint hidden" id="catalogo-hint-codigo"><i class="fa-solid fa-circle-info"></i> Aceita o código de fabricante (ex: gravado na peça antiga), a referência própria do produto ou o código interno da loja.</p>
+  </div>
+
+  <section id="catalogo-resultados" class="catalogo-resultados" aria-live="polite">
+    <div class="catalogo-empty-state">
+      <i class="fa-solid fa-magnifying-glass-chart"></i>
+      <p>Preencha marca/modelo pra buscar por veículo, ou selecione uma Seção pra navegar pelo catálogo.</p>
+    </div>
+  </section>
+
+</section>
 
     </main>
   </div>
@@ -1789,7 +1920,7 @@ Como podemos ajudar você hoje?
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1"></script>
 
   <!-- JS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <script src="dist/bundle.558b096fab.js"></script>
+  <script src="dist/bundle.a2c2f9a406.js"></script>
   <!-- JS_BUNDLE_END -->
 
 

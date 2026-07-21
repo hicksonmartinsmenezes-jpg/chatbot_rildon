@@ -74,7 +74,7 @@ async function crediarioFlow(message, userId, session) {
     await clearSession(userId);
     return (
       "Percebi que sua pergunta é sobre outro assunto! 😊\n\n" +
-      "Digite *0* para ver o menu principal e escolher a opção certa (orçamento de peças, falar com a equipe, horário, etc.)."
+      "Digite *0* para ver o menu principal e escolher a opção certa (orçamento de peças, outros contatos, horário, etc.)."
     );
   }
 

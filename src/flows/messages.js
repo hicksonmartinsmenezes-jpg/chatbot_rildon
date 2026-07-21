@@ -73,17 +73,21 @@ const MSG = {
       `Posso ajudar com mais alguma coisa? Digite *0* para o menu.`,
   },
 
-  gestao: {
-    PEDIR_NOME:   "📝 Para registrar sua solicitação, informe seu *nome completo*:",
-    PEDIR_MOTIVO: "💬 Conta o que aconteceu ou como a nossa equipe pode te ajudar:",
-
-    REGISTRADO: (ticket) =>
-      `✅ *Solicitação registrada com sucesso!*\n\n` +
-      `👤 Nome: ${ticket.customerName}\n` +
-      `🎫 Protocolo: *#${ticket.protocolo}*\n\n` +
-      `Um membro da gestão entrará em contato com você em breve.\n` +
-      `Horário: Seg–Sex 07:50–17:50\n\n` +
-      `Posso ajudar com mais alguma coisa? Digite *0* para o menu.`,
+  // Pedido do usuário (2026-07-21): o antigo fluxo "gestao" (opção 3 do menu,
+  // "Falar com a Equipe") pedia nome + motivo e criava um ticket pra alguém
+  // da gestão responder depois. Decisão deliberada de substituir por uma
+  // lista estática de contatos diretos — o cliente liga direto pro setor
+  // certo, sem passar pelo bot/ticket. Não é mais um fluxo com etapas, só
+  // uma mensagem informativa.
+  outrosContatos: {
+    LISTA: () =>
+      "📞 *Outros Contatos*\n\n" +
+      "Fale direto com o setor responsável:\n\n" +
+      "🧑‍💼 Recursos Humanos / DP: (79) 9152-0145\n" +
+      "💳 Crediário: (79) 9135-2723\n" +
+      "🛠️ Garantia: (79) 9199-1922\n" +
+      "📢 Ouvidoria: (79) 9180-0035\n\n" +
+      "_Digite *0* para voltar ao menu._",
   },
 
   main: {

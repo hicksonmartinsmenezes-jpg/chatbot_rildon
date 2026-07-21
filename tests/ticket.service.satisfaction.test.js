@@ -23,14 +23,18 @@
  */
 jest.mock("../src/repositories/ticket.repository", () => ({
   findByUserIds: jest.fn(),
-  rateSatisfaction: jest.fn()
+  rateSatisfaction: jest.fn(),
+  saveSatisfactionFeedback: jest.fn()
 }));
 jest.mock("../src/whatsapp/lid-map", () => ({
   getProfilePhotoCandidates: jest.fn(userId => [userId])
 }));
 jest.mock("../src/services/settings.service", () => ({
   getSettings: jest.fn().mockResolvedValue({
-    atendimento: { mensagemAgradecimentoPesquisa: "Muito obrigado pela sua avaliação!" }
+    atendimento: {
+      mensagemAgradecimentoPesquisa: "Muito obrigado pela sua avaliação!",
+      mensagemPedirMelhoria: "Poxa, sentimos muito! O que podemos melhorar?"
+    }
   })
 }));
 jest.mock("../src/services/socket.service", () => ({ emitEvent: jest.fn() }));
@@ -193,5 +197,144 @@ describe("handleSatisfactionReply", () => {
     const res = await handleSatisfactionReply({ userId: "cliente-1", message: "5" });
 
     expect(res).toBeNull();
+  });
+
+  // Pedido do usuário (2026-07-21): nota baixa (1 ou 2) não agradece direto —
+  // pergunta "o que podemos melhorar?" primeiro, e só a mensagem seguinte é
+  // o feedback livre salvo no ticket (ver saveSatisfactionFeedback).
+  describe("nota baixa → pergunta o que pode melhorar antes de agradecer", () => {
+    test("nota 2 → registra a nota, NÃO agradece ainda, pergunta o que pode melhorar", async () => {
+      sessionService.getSession.mockReturnValue({ aguardandoNotaSatisfacao: true });
+      const pendente = ticketPendente();
+      ticketRepository.findByUserIds.mockResolvedValueOnce([pendente]);
+      ticketRepository.rateSatisfaction.mockResolvedValueOnce({ ...pendente, id: 42, satisfactionRating: 2 });
+
+      const res = await handleSatisfactionReply({ userId: "cliente-1", message: "2" });
+
+      expect(ticketRepository.rateSatisfaction).toHaveBeenCalledWith(42, 2);
+      expect(res).toMatchObject({ rating: 2, response: "Poxa, sentimos muito! O que podemos melhorar?" });
+      expect(sessionService.updateSession).toHaveBeenCalledWith(
+        "cliente-1",
+        {
+          aguardandoNotaSatisfacao: undefined,
+          aguardandoFeedbackSatisfacao: true,
+          ticketFeedbackPendente: 42,
+        },
+        { skipTimer: true }
+      );
+    });
+
+    test("nota 1 (pior nota) também dispara a pergunta de melhoria", async () => {
+      sessionService.getSession.mockReturnValue({ aguardandoNotaSatisfacao: true });
+      const pendente = ticketPendente();
+      ticketRepository.findByUserIds.mockResolvedValueOnce([pendente]);
+      ticketRepository.rateSatisfaction.mockResolvedValueOnce({ ...pendente, id: 42, satisfactionRating: 1 });
+
+      const res = await handleSatisfactionReply({ userId: "cliente-1", message: "1" });
+
+      expect(res).toMatchObject({ rating: 1, response: "Poxa, sentimos muito! O que podemos melhorar?" });
+    });
+
+    test("nota 3 (neutra) NÃO dispara a pergunta de melhoria — agradece direto como nota alta", async () => {
+      sessionService.getSession.mockReturnValue({ aguardandoNotaSatisfacao: true });
+      const pendente = ticketPendente();
+      ticketRepository.findByUserIds.mockResolvedValueOnce([pendente]);
+      ticketRepository.rateSatisfaction.mockResolvedValueOnce({ ...pendente, id: 42, satisfactionRating: 3 });
+
+      const res = await handleSatisfactionReply({ userId: "cliente-1", message: "3" });
+
+      expect(res).toMatchObject({ rating: 3, response: "Muito obrigado pela sua avaliação!" });
+      expect(sessionService.updateSession).toHaveBeenCalledWith(
+        "cliente-1",
+        { aguardandoNotaSatisfacao: undefined },
+        { skipTimer: true }
+      );
+    });
+
+    test("mensagem seguinte (com a flag aguardandoFeedbackSatisfacao) → salva o texto livre e agradece", async () => {
+      sessionService.getSession.mockReturnValue({
+        aguardandoFeedbackSatisfacao: true,
+        ticketFeedbackPendente: 42,
+      });
+      ticketRepository.saveSatisfactionFeedback.mockResolvedValueOnce({ id: 42, satisfactionFeedback: "Demorou muito pra responder" });
+
+      const res = await handleSatisfactionReply({ userId: "cliente-1", message: "Demorou muito pra responder" });
+
+      expect(ticketRepository.saveSatisfactionFeedback).toHaveBeenCalledWith(42, "Demorou muito pra responder");
+      expect(res).toMatchObject({ rating: null, response: "Muito obrigado pela sua avaliação!" });
+      expect(sessionService.updateSession).toHaveBeenCalledWith(
+        "cliente-1",
+        { aguardandoFeedbackSatisfacao: undefined, ticketFeedbackPendente: undefined },
+        { skipTimer: true }
+      );
+      // Não deve consultar tickets pendentes de nota nesta etapa — já não é
+      // mais sobre a nota, é a captura do texto livre.
+      expect(ticketRepository.findByUserIds).not.toHaveBeenCalled();
+    });
+
+    test("mensagem de feedback é sanitizada (limite de 500 chars) antes de salvar", async () => {
+      sessionService.getSession.mockReturnValue({
+        aguardandoFeedbackSatisfacao: true,
+        ticketFeedbackPendente: 42,
+      });
+      ticketRepository.saveSatisfactionFeedback.mockResolvedValueOnce({ id: 42 });
+      const textoGigante = "a".repeat(600);
+
+      await handleSatisfactionReply({ userId: "cliente-1", message: textoGigante });
+
+      const [, textoSalvo] = ticketRepository.saveSatisfactionFeedback.mock.calls[0];
+      expect(textoSalvo.length).toBe(500);
+    });
+
+    test("flag aguardandoFeedbackSatisfacao sem ticketFeedbackPendente → não chama saveSatisfactionFeedback, mas ainda agradece", async () => {
+      sessionService.getSession.mockReturnValue({ aguardandoFeedbackSatisfacao: true });
+
+      const res = await handleSatisfactionReply({ userId: "cliente-1", message: "melhorar o atendimento" });
+
+      expect(ticketRepository.saveSatisfactionFeedback).not.toHaveBeenCalled();
+      expect(res).toMatchObject({ rating: null, response: "Muito obrigado pela sua avaliação!" });
+    });
+
+    // Pedido do usuário (2026-07-21): mesma classe de bug já corrigida antes
+    // (pergunta de crediário engolida como nome, correção de peça engolida
+    // como veículo) — aqui a etapa de captura de feedback não pode engolir
+    // um cliente que só quis voltar/navegar em vez de responder.
+    describe("escape de navegação NÃO deve ser salvo como feedback (proteção contra engolir mensagem)", () => {
+      test.each(["0", "menu", "Menu!", "voltar", "cancelar", "oi", "bom dia", "1", "3."])(
+        "'%s' → não salva como feedback, retorna null e deixa o fluxo normal seguir",
+        async (mensagem) => {
+          sessionService.getSession.mockReturnValue({
+            aguardandoFeedbackSatisfacao: true,
+            ticketFeedbackPendente: 42,
+          });
+
+          const res = await handleSatisfactionReply({ userId: "cliente-1", message: mensagem });
+
+          expect(res).toBeNull();
+          expect(ticketRepository.saveSatisfactionFeedback).not.toHaveBeenCalled();
+          expect(sessionService.updateSession).toHaveBeenCalledWith(
+            "cliente-1",
+            { aguardandoFeedbackSatisfacao: undefined, ticketFeedbackPendente: undefined },
+            { skipTimer: true }
+          );
+        }
+      );
+
+      test("texto de feedback real que por acaso menciona um número não é confundido com escape", async () => {
+        sessionService.getSession.mockReturnValue({
+          aguardandoFeedbackSatisfacao: true,
+          ticketFeedbackPendente: 42,
+        });
+        ticketRepository.saveSatisfactionFeedback.mockResolvedValueOnce({ id: 42 });
+
+        const res = await handleSatisfactionReply({
+          userId: "cliente-1",
+          message: "demorou 1 semana pra me responder",
+        });
+
+        expect(ticketRepository.saveSatisfactionFeedback).toHaveBeenCalledWith(42, "demorou 1 semana pra me responder");
+        expect(res).not.toBeNull();
+      });
+    });
   });
 });

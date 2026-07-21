@@ -29,6 +29,7 @@ const messageRoutes  = require("./routes/message.routes");
 const contactRoutes  = require("./routes/contact.routes");
 const settingsRoutes    = require("./routes/settings.routes");
 const atendenteRoutes   = require("./routes/atendentes.routes");
+const catalogoRoutes    = require("./routes/catalogo.routes");
 
 const app = express();
 
@@ -145,6 +146,7 @@ app.use("/api", authSession, atendenteRoutes);
 app.use("/api", authSession, contactRoutes);
 app.use("/api", authSession, ticketRoutes);
 app.use("/api", authSession, historyRoutes);
+app.use("/api", authSession, catalogoRoutes);
 app.use("/api", authSession, messageRoutes);
 
 // Rotas apenas admin

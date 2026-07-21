@@ -313,7 +313,10 @@ function mapTicket(row) {
     // Pesquisa de satisfação (migration 015) — ver askSatisfaction/rateSatisfaction.
     satisfactionRating: row.satisfaction_rating ?? null,
     satisfactionAskedAt: row.satisfaction_asked_at ?? null,
-    satisfactionRatedAt: row.satisfaction_rated_at ?? null
+    satisfactionRatedAt: row.satisfaction_rated_at ?? null,
+    // Feedback livre em nota baixa (migration 018) — ver saveSatisfactionFeedback.
+    satisfactionFeedback: row.satisfaction_feedback ?? null,
+    satisfactionFeedbackAt: row.satisfaction_feedback_at ?? null
   };
 }
 
@@ -381,6 +384,23 @@ async function rateSatisfaction(id, rating) {
   return result.rows[0] ? mapTicket(result.rows[0]) : null;
 }
 
+// Registra o texto livre de "o que podemos melhorar?" — só perguntado
+// quando a nota (rateSatisfaction acima) foi baixa (ver
+// SATISFACTION_LOW_THRESHOLD em ticket.service.js).
+async function saveSatisfactionFeedback(id, feedback) {
+  const idStr = String(id);
+  const result = await pool.query(
+    `
+    UPDATE tickets
+    SET satisfaction_feedback = $1, satisfaction_feedback_at = NOW()
+    WHERE ${idOrProtocolWhere(idStr, 2)}
+    RETURNING *
+    `,
+    [feedback, idStr]
+  );
+  return result.rows[0] ? mapTicket(result.rows[0]) : null;
+}
+
 // Anexa uma nova descrição a um ticket ATIVO já existente, em vez de criar
 // um segundo ticket para o mesmo cliente (ver createTicket em
 // ticket.service.js — o bot continua respondendo normalmente enquanto o
@@ -431,5 +451,6 @@ module.exports = {
   gerarProtocolo,
   askSatisfaction,
   rateSatisfaction,
+  saveSatisfactionFeedback,
   prependDescription
 };

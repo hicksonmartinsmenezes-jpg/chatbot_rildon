@@ -20,6 +20,8 @@ numeração **não quebram a execução** — mas atrapalham a rastreabilidade.
 014_add_crediario_sector.sql
 015_satisfaction_survey.sql
 016_ticket_assigned_status_index.sql
+017_history_media_storage.sql
+018_satisfaction_feedback.sql
 ```
 
 **Os números 005–008 nunca existiram neste repositório** (confirmado via
@@ -37,7 +39,7 @@ o schema real do banco com `schema.sql` (ex: `pg_dump --schema-only`).
 
 ## Convenção daqui para frente
 
-- Próxima migration: `016_*.sql`. Não reutilizar nem pular números.
+- Próxima migration: `019_*.sql`. Não reutilizar nem pular números.
 - Toda mudança de schema deve ir para **os dois lugares**: o arquivo de
   migration incremental (para bancos existentes) E o `schema.sql` (para
   instalações novas).
@@ -63,3 +65,11 @@ disco — só um rótulo tipo "[áudio recebido]" (decisão deliberada de uma
 correção anterior, task #116). A pedido do usuário, o arquivo agora é salvo
 em `src/media-recebida/` (fora da pasta `src/uploads/` pública) e servido
 de volta pro painel por uma rota autenticada (`GET /api/history/media/:id`).
+
+## 018 — feedback livre em nota baixa da pesquisa de satisfação
+
+Adiciona `satisfaction_feedback`/`satisfaction_feedback_at` em `tickets`.
+Quando o cliente responde a pesquisa (migration 015) com nota 1 ou 2, o bot
+pergunta em seguida "o que podemos melhorar?" e guarda a resposta livre
+aqui, antes de mandar o agradecimento final. Não há UI no painel pra listar
+esse feedback ainda — só fica registrado no ticket (visível via banco/API).

@@ -65,13 +65,13 @@ describe("mainFlow — opções do menu principal com pontuação", () => {
     }
   );
 
-  test("'3.' → roteia para o fluxo de gestão (Falar com a Equipe)", async () => {
+  // Opção 3 virou "Outros Contatos" — mensagem estática, sem sector/sessão
+  // (ver messages.js MSG.outrosContatos, decisão do usuário de 2026-07-21).
+  test("'3.' → mostra a lista de Outros Contatos, sem entrar em fluxo/sessão", async () => {
     const resposta = await mainFlow({ userId: USER_ID, message: "3." });
-    expect(sessionService.updateSession).toHaveBeenCalledWith(
-      USER_ID,
-      expect.objectContaining({ sector: "gestao", step: "aguardando_nome" })
-    );
-    expect(resposta).toBeTruthy();
+    expect(resposta).toContain("Outros Contatos");
+    expect(resposta).toContain("Ouvidoria");
+    expect(sessionService.updateSession).not.toHaveBeenCalled();
   });
 
   test("'4!' → mostra horário de atendimento", async () => {

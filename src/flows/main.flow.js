@@ -3,7 +3,7 @@ const { createTicket }                                      = require("../servic
 const { buscarNomeContatoReal }                              = require("../whatsapp/contacts");
 const { estaEmHorarioDeAtendimento, mensagemForaDeHorario, saudacaoPorHorario } = require("../utils/horario");
 const { notificarAtendente, notificarSeDisponivel }         = require("../services/notificacao.service");
-const { validarNome, sanitizarTexto, normalizar, validarTamanho } = require("../utils/validators");
+const { sanitizarTexto, normalizar, validarTamanho } = require("../utils/validators");
 const { perguntarIA }                                       = require("../services/ai.service");
 const { getBotConfig }                                      = require("../services/botConfig.service");
 const logger                                                = require("../utils/logger");
@@ -14,7 +14,7 @@ const vendasFlow      = require("./vendas.flow");
 const crediarioFlow   = require("./crediario.flow");
 
 // ── Palavras-chave de navegação ────────────────────────────────────────────────
-// PALAVRAS_MENU: usado dentro dos fluxos de sector (gestao/atendente) para sair do fluxo
+// PALAVRAS_MENU: usado dentro dos fluxos de sector (ex: atendente) para sair do fluxo
 const PALAVRAS_MENU = new Set([
   "0", "menu", "inicio", "voltar", "home", "cancelar",
   "oi", "ola", "opa", "bom dia", "boa tarde", "boa noite",
@@ -50,7 +50,9 @@ const PALAVRAS_ENCERRAR = new Set([
 ]);
 
 // Sectors gerenciados — qualquer outro é inválido e deve ser resetado
-const SECTORS_VALIDOS = new Set(["vendas", "crediario", "gestao", "atendente"]);
+// "gestao" removido (2026-07-21): virou mensagem estática (MSG.outrosContatos),
+// não é mais um fluxo com etapas/sessão.
+const SECTORS_VALIDOS = new Set(["vendas", "crediario", "atendente"]);
 
 // ── Fallback determinístico de extração de veículo ─────────────────────────────
 // BUG RECORRENTE (testes reais com "Audi A4 2025"): a IA às vezes NÃO preenche
@@ -92,7 +94,6 @@ function extrairVeiculoFallback(message) {
 
 // ── Steps válidos por sector ───────────────────────────────────────────────────
 const STEPS_POR_SECTOR = {
-  gestao:     ["aguardando_nome", "aguardando_motivo_gestao"],
   atendente:  ["aguardando_motivo_atendente"],
   crediario:  ["aguardando_nome_cred", "aguardando_cpf", "aguardando_motivo_cred", "aguardando_nome_consulta_cred", "aguardando_cpf_consulta"],
   vendas:     ["aguardando_nome", "aguardando_veiculo", "aguardando_orcamento"],
@@ -114,7 +115,7 @@ function menuPrincipal(nome) {
     "Como posso ajudar você hoje?\n\n" +
     "1 - Orçamento / Falar com atendente\n" +
     "2 - Crediário\n" +
-    "3 - Falar com a Equipe\n" +
+    "3 - Outros Contatos\n" +
     "4 - Horário e Localização\n\n" +
     "_Digite o número da opção desejada._"
   );
@@ -128,7 +129,7 @@ function menuCompacto() {
     `${status}\n\n` +
     "1 - Orçamento / Falar com atendente\n" +
     "2 - Crediário\n" +
-    "3 - Falar com a Equipe\n" +
+    "3 - Outros Contatos\n" +
     "4 - Horário e Localização\n\n" +
     "_Digite o número da opção desejada._"
   );
@@ -354,61 +355,6 @@ async function _mainFlowInterno({ userId, message }) {
     return resp ?? menuPrincipal(nomeSalvo);
   }
 
-  // ── Fluxo de gestão ──────────────────────────────────────────────────────────
-  if (session.sector === "gestao") {
-    if (PALAVRAS_MENU.has(msgNorm)) {
-      await clearSession(userId);
-      return menuPrincipal(nomeSalvo);
-    }
-
-    // BUG REAL (achado em teste ao vivo, 2026-07-20): esse fluxo pede nome e
-    // motivo em 2 mensagens, mas validarNome só checa se o texto parece
-    // palavras de nome (letras, ≥2 palavras) — não o sentido. Cliente que
-    // muda de assunto na etapa "nome" (ex: "na verdade vocês fazem
-    // crediário?") tinha a pergunta real engolida como se fosse o nome, e
-    // nunca era respondida — o ticket criado nem menciona crediário.
-    // Mesmo padrão de _pareceMudancaDeAssunto já usado em vendas.flow.js e
-    // crediario.flow.js. Restrito a "crediário" (setor claramente distinto)
-    // e deliberadamente SEM "peça"/"orçamento" — na etapa de MOTIVO (não
-    // coberta aqui) esses termos são o conteúdo normal de uma reclamação
-    // pra equipe, então incluí-los geraria falso positivo constante.
-    const PARECE_CREDIARIO_RE = /\bcrediari\w*\b|\bfinanciamento\b|\bparcelamento\b/;
-    if (session.step === "aguardando_nome" && PARECE_CREDIARIO_RE.test(normalizar(message))) {
-      await clearSession(userId);
-      return (
-        "Percebi que sua pergunta é sobre crediário! 😊\n\n" +
-        "Digite *0* para ver o menu principal e escolher a opção *2 - Crediário*."
-      );
-    }
-
-    if (session.step === "aguardando_nome") {
-      if (!validarNome(sanitizarTexto(message))) return MSG.NOME_INVALIDO + MSG.ESCAPE_DICA;
-      await updateSession(userId, { customerName: sanitizarTexto(message), step: "aguardando_motivo_gestao" });
-      return MSG.gestao.PEDIR_MOTIVO + MSG.ESCAPE_DICA;
-    }
-
-    if (session.step === "aguardando_motivo_gestao") {
-      if (msgNorm.length < 5) return "⚠️ Por favor, descreva melhor o motivo." + MSG.ESCAPE_DICA;
-      const ticket = await _criarTicket({
-        userId,
-        type:         "atendimento_gestao",
-        sector:       "geral",
-        customerName: session.customerName || MSG.NAO_INFORMADO,
-        description:  sanitizarTexto(message),
-      });
-      if (!ticket) {
-        await clearSession(userId);
-        return "⚠️ Não consegui registrar sua solicitação agora.\n\nPor favor, ligue diretamente: *(79) 99135-3569*\n\n_Digite *0* para voltar ao menu._";
-      }
-      notificarAtendente(ticket);
-      await finalizarComTicket(userId, ticket);
-      return MSG.gestao.REGISTRADO(ticket);
-    }
-
-    await clearSession(userId);
-    return menuPrincipal(nomeSalvo);
-  }
-
   // ── Coleta de motivo para atendente humano ───────────────────────────────────
   if (session.sector === "atendente") {
     if (PALAVRAS_MENU.has(msgNorm)) {
@@ -542,10 +488,10 @@ async function _mainFlowInterno({ userId, message }) {
       return r2 ?? menuPrincipal(nomeSalvo);
     }
 
-    case "3": {
-      await updateSession(userId, { sector: "gestao", step: "aguardando_nome" });
-      return MSG.gestao.PEDIR_NOME + MSG.ESCAPE_DICA;
-    }
+    case "3":
+      // Sem fluxo/sessão — só uma mensagem informativa com telefones diretos
+      // (ver MSG.outrosContatos, decisão do usuário de 2026-07-21).
+      return MSG.outrosContatos.LISTA();
 
     case "4":
       return (
@@ -795,9 +741,12 @@ async function _mainFlowInterno({ userId, message }) {
         return resposta + "\n\n" + MSG.main.PEDIR_MOTIVO_ATENDENTE;
       }
 
+      // "gestao" (quer falar com a equipe/reclamação) e "suporte" (problema
+      // com produto já comprado, caso de Garantia) não criam mais ticket —
+      // direcionam pro contato direto certo (decisão do usuário, 2026-07-21).
       if (intencao === "gestao" || intencao === "suporte") {
-        await updateSession(userId, { sector: "gestao", step: "aguardando_nome", aiHistorico: novoHistorico, _iaFalhas: 0 });
-        return resposta + "\n\n" + MSG.gestao.PEDIR_NOME + MSG.ESCAPE_DICA;
+        await updateSession(userId, { aiHistorico: novoHistorico, _iaFalhas: 0 });
+        return resposta + "\n\n" + MSG.outrosContatos.LISTA();
       }
 
       // Intenção "chat" — saudações ou mensagem não reconhecida: resposta + menu compacto

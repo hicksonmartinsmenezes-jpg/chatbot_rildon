@@ -4,11 +4,42 @@ const logger = require("../utils/logger");
 const { emitEvent } = require("./socket.service");
 const { getProfilePhotoCandidates } = require("../whatsapp/lid-map");
 const { getSettings } = require("./settings.service");
+const { sanitizarTexto, normalizar } = require("../utils/validators");
 
 // Janela em que uma pesquisa de satisfação enviada continua "pendente"
 // (aceitando a nota do cliente) antes de ser considerada expirada.
 const SATISFACTION_WINDOW_MS =
   Number(process.env.SATISFACTION_SURVEY_WINDOW_HOURS || 48) * 60 * 60 * 1000;
+
+// Pedido do usuário (2026-07-21): nota 1 ou 2 (de 5) é considerada baixa —
+// dispara a pergunta extra "o que podemos melhorar?" antes do agradecimento
+// final (ver handleSatisfactionReply abaixo). Nota 3 fica de fora
+// deliberadamente (neutra, não necessariamente uma reclamação) — ajustável
+// aqui se a loja quiser cobrir nota 3 também.
+const SATISFACTION_LOW_THRESHOLD = 2;
+
+// BUG DA MESMA CLASSE JÁ CORRIGIDO ANTES NESTE PROJETO (ver comentários em
+// vendas.flow.js: pergunta de crediário engolida como nome; correção de
+// peça engolida como veículo): a etapa 2 de handleSatisfactionReply captura
+// CEGAMENTE a próxima mensagem do cliente como o texto de "o que podemos
+// melhorar" — sem esse escape, um cliente que digitasse "menu"/"0" ou
+// simplesmente mandasse uma saudação pra recomeçar teria essa mensagem
+// engolida e salva como se fosse feedback, em vez de voltar pro menu.
+// Restrito a marcadores INEQUÍVOCOS de navegação (ninguém escreve só "oi"
+// ou "menu" como feedback de satisfação) — não tenta adivinhar se o texto
+// é "na verdade um pedido novo" (ex: "preciso de outro orçamento"), porque
+// isso usa vocabulário legítimo demais em comum com reclamação real sobre
+// o atendimento pra distinguir com segurança via regex (mesmo trade-off
+// já aceito em _pareceMudancaDeAssunto de vendas.flow.js).
+const ESCAPE_FEEDBACK_RE =
+  /^(0|menu|inicio|voltar|home|cancelar|oi|ola|opa|bom dia|boa tarde|boa noite|[1-4])$/;
+
+function _pareceEscapeDeFeedback(message) {
+  // Mesmo padrão de msgSemPontuacao em main.flow.js: remove pontuação antes
+  // de comparar, pra "menu." ou "1!" também contarem como escape explícito.
+  const semPontuacao = normalizar(message).replace(/[^\p{L}\p{N}\s]/gu, "").trim();
+  return ESCAPE_FEEDBACK_RE.test(semPontuacao);
+}
 
 // Pedido do usuário: em vez de SEMPRE reabrir o mesmo ticket fechado quando
 // o cliente manda mensagem de novo (protocolo antigo reciclado pra um
@@ -241,6 +272,54 @@ function parseSatisfactionRating(message) {
 // IMEDIATAMENTE seguinte à pesquisa pode ser interpretada como nota.
 async function handleSatisfactionReply({ userId, message }) {
   const session = getSession(userId);
+
+  // Etapa 2 (só existe se a etapa 1 abaixo detectou nota baixa): a
+  // PRÓXIMA mensagem do cliente, seja lá qual for, é o texto livre de "o
+  // que podemos melhorar" — não precisa parsear nada, só sanitizar e
+  // salvar. Mesmo padrão de "só a mensagem imediatamente seguinte conta"
+  // já usado pra aguardandoNotaSatisfacao (ver comentário acima).
+  if (session.aguardandoFeedbackSatisfacao) {
+    const ticketId = session.ticketFeedbackPendente || null;
+
+    // Cliente claramente quis sair/navegar (ver _pareceEscapeDeFeedback
+    // acima) em vez de responder o que pode melhorar — limpa a flag SEM
+    // salvar nada como feedback e devolve null, deixando a mensagem seguir
+    // o fluxo normal (menu, IA, etc.) como se a pergunta nunca tivesse
+    // interceptado.
+    if (_pareceEscapeDeFeedback(message)) {
+      await updateSession(
+        userId,
+        { aguardandoFeedbackSatisfacao: undefined, ticketFeedbackPendente: undefined },
+        { skipTimer: true }
+      );
+      return null;
+    }
+
+    await updateSession(
+      userId,
+      { aguardandoFeedbackSatisfacao: undefined, ticketFeedbackPendente: undefined },
+      { skipTimer: true }
+    );
+
+    let ticketAtualizado = null;
+    if (ticketId) {
+      try {
+        ticketAtualizado = await ticketRepository.saveSatisfactionFeedback(ticketId, sanitizarTexto(message, 500));
+        logger.info(`[Satisfação] Feedback registrado no ticket id=${ticketId}`);
+      } catch (err) {
+        logger.warn(`[Satisfação] Erro ao salvar feedback (ticket id=${ticketId}): ${err.message}`);
+      }
+    }
+
+    const settings = await getSettings();
+    const agradecimento =
+      settings?.atendimento?.mensagemAgradecimentoPesquisa ||
+      "Muito obrigado pela sua avaliação!";
+
+    return { ticket: ticketAtualizado, rating: null, response: agradecimento };
+  }
+
+  // Etapa 1: aguardando a nota (1-5) da pesquisa.
   if (!session.aguardandoNotaSatisfacao) return null;
 
   const candidatos = getProfilePhotoCandidates(userId);
@@ -266,10 +345,29 @@ async function handleSatisfactionReply({ userId, message }) {
   }
 
   const atualizado = await ticketRepository.rateSatisfaction(pendente.id, rating);
-  await updateSession(userId, { aguardandoNotaSatisfacao: undefined }, { skipTimer: true });
   logger.info(`[Satisfação] Ticket #${pendente.protocolo} avaliado com nota ${rating}`);
 
   const settings = await getSettings();
+
+  // Nota baixa: pergunta o que pode melhorar ANTES do agradecimento final,
+  // em vez de agradecer direto — ver SATISFACTION_LOW_THRESHOLD acima.
+  if (rating <= SATISFACTION_LOW_THRESHOLD) {
+    await updateSession(
+      userId,
+      {
+        aguardandoNotaSatisfacao: undefined,
+        aguardandoFeedbackSatisfacao: true,
+        ticketFeedbackPendente: atualizado.id,
+      },
+      { skipTimer: true }
+    );
+    const pedirMelhoria =
+      settings?.atendimento?.mensagemPedirMelhoria ||
+      "Poxa, sentimos muito! O que podemos melhorar?";
+    return { ticket: atualizado, rating, response: pedirMelhoria };
+  }
+
+  await updateSession(userId, { aguardandoNotaSatisfacao: undefined }, { skipTimer: true });
   const agradecimento =
     settings?.atendimento?.mensagemAgradecimentoPesquisa ||
     "Muito obrigado pela sua avaliação!";

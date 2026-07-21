@@ -114,7 +114,9 @@ const aiMock = {
     if (/atendente|vendedor|humano|pessoa/.test(m))
       return { resposta: "Claro, vou te conectar com um atendente!", intencao: "atendente" };
     if (/gerente|reclamação|gestão|problema grave/.test(m))
-      return { resposta: "Vou registrar sua solicitação para a gestão.", intencao: "gestao" };
+      // "gestao" não cria mais ticket — direciona pro contato direto (ver
+      // MSG.outrosContatos em messages.js, decisão do usuário 2026-07-21).
+      return { resposta: "Entendo sua situação!", intencao: "gestao" };
     return { resposta: "Olá! Como posso te ajudar? 😊", intencao: "chat" };
   }
 };
@@ -347,15 +349,20 @@ async function testAtendenteGestao() {
   contem(rFimAte, "Protocolo", "atendente registrado");
   contem(rFimAte, "Posso ajudar", "fechamento natural atendente");
 
-  subtitulo("Opção 3 — Falar com a Equipe (Gestão)");
+  subtitulo("Opção 3 — Outros Contatos (lista estática, sem ticket)");
   await resetarSessao();
-  await enviar("3", null);
-  const rGestNome = await enviar("Roberto Carlos", "nome gestão");
-  contem(rGestNome, "aconteceu", "gestão pede descrição do problema");
+  const rContatos = await enviar("3", "opção 3 do menu");
+  contem(rContatos, "Outros Contatos", "mostra o título da lista");
+  contem(rContatos, "Ouvidoria", "lista inclui contato de Ouvidoria");
+  contem(rContatos, "Crediário", "lista inclui contato de Crediário");
 
-  const rGest = await enviar("Tive problema com produto com defeito", "motivo gestão");
-  contem(rGest, "Protocolo", "gestão registrada");
-  contem(rGest, "Posso ajudar", "fechamento natural gestão");
+  subtitulo("IA detecta 'gestao' (reclamação) — mostra contatos, sem criar ticket");
+  await resetarSessao();
+  _iaMockFn = () => ({ resposta: "Entendo sua situação!", intencao: "gestao" });
+  const rGest = await enviar("quero falar com o gerente, tive um problema grave", "intent gestao via IA");
+  _iaMockFn = null;
+  contem(rGest, "Outros Contatos", "intent gestao direciona pra lista de contatos");
+  naoContem(rGest, "Protocolo", "não cria ticket pra reclamação/gestão");
 }
 
 // ════════════════════════════════════════════════════════════════════════════

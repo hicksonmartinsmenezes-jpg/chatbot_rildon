@@ -67,6 +67,19 @@ function installFakePool() {
     if (/AVG\(satisfaction_rating\)/.test(sql)) {
       return { rows: [{ media: "4.20", total: 5 }] };
     }
+    // Feedback livre de nota baixa (migration 018) — ver "O que os clientes
+    // disseram" na aba Métricas.
+    if (/satisfaction_feedback/.test(sql)) {
+      return {
+        rows: [{
+          protocolo: "2026-0099",
+          customerName: "Cliente Insatisfeito",
+          rating: 1,
+          feedback: "Demorou muito pra responder",
+          feedbackAt: "2026-07-21T12:00:00.000Z"
+        }]
+      };
+    }
 
     throw new Error("Query não mapeada no mock de metrics.routes.test.js: " + sql);
   });
@@ -104,5 +117,21 @@ describe("GET /api/metrics", () => {
     expect(res.body.satisfacaoPorAtendente).toEqual({
       Bruno: { media: 4.5, total: 2 }
     });
+  });
+
+  // Pedido do usuário (2026-07-21): feedback livre de "o que podemos
+  // melhorar?" (nota baixa) precisa aparecer na resposta pro painel poder
+  // listar — ver migration 018 e ticket.service.js.
+  test("resposta inclui feedbacksNegativos (nota baixa + texto livre)", async () => {
+    const res = await request(buildApp(SUPERVISOR)).get("/api/metrics");
+
+    expect(res.status).toBe(200);
+    expect(res.body.feedbacksNegativos).toEqual([{
+      protocolo: "2026-0099",
+      customerName: "Cliente Insatisfeito",
+      rating: 1,
+      feedback: "Demorou muito pra responder",
+      feedbackAt: "2026-07-21T12:00:00.000Z"
+    }]);
   });
 });

@@ -218,7 +218,7 @@ function _tokens(texto) {
 }
 
 function _carregarIndices() {
-  let arquivos = [];
+  let arquivos;
   try {
     arquivos = fs.readdirSync(DIR_CATALOGO).filter(f => f.endsWith(".json"));
   } catch (e) {

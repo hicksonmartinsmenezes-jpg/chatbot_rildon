@@ -30,7 +30,7 @@ function _garantirIndice() {
   if (indice) return indice;
   indice = new Map();
 
-  let arquivos = [];
+  let arquivos;
   try {
     arquivos = fs.readdirSync(FOTOS_DIR).filter(f => f.endsWith(".zip"));
   } catch (e) {

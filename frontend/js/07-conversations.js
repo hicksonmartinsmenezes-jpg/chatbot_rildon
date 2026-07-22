@@ -289,6 +289,14 @@ async function openConversation(userId, updateActive = true) {
   const seq = ++_openConvSeq;
 
   selectedConversationUser = userId;
+
+  // Pedido do usuário: no celular a lista de conversas e a janela de chat
+  // não cabem lado a lado — essa classe faz a tela trocar pra mostrar só
+  // o chat (a lista some) quando uma conversa é aberta; o botão de voltar
+  // no cabeçalho (closeMobileChat) desfaz isso. Em telas largas essa
+  // classe não tem efeito (ver @media em 06-conversations.css).
+  document.querySelector(".whatsapp-panel")?.classList.add("mobile-conv-open");
+
   const textarea = document.getElementById("conversation-message");
   const hadUnread = unreadMessages[userId] > 0;
   unreadMessages[userId] = 0;
@@ -350,6 +358,9 @@ async function openConversation(userId, updateActive = true) {
           : "");
 
     header.innerHTML = `
+      <button type="button" class="chat-mobile-back" data-action="closeMobileChat" title="Voltar para a lista">
+        <i class="fa-solid fa-arrow-left"></i>
+      </button>
       <div class="chat-header-profile">
         ${avatarHtml(userId, name, true)}
         <div class="chat-header-info">
@@ -443,6 +454,11 @@ async function openConversation(userId, updateActive = true) {
   messagesBox.innerHTML = html.join("");
   // Aguarda render antes de rolar para garantir altura correta
   requestAnimationFrame(() => { messagesBox.scrollTop = messagesBox.scrollHeight; });
+}
+
+// ─── Navegação mobile (lista ↔ chat) ─────────────────────────────────────────
+function closeMobileChat() {
+  document.querySelector(".whatsapp-panel")?.classList.remove("mobile-conv-open");
 }
 
 // ─── Devolver atendimento ao bot ─────────────────────────────────────────────

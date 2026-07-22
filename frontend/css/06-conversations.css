@@ -989,19 +989,54 @@ body.tab-fullscreen #tab-conversations {
 }
 
 /* ─── Responsivo ──────────────────────── */
+/* Botão "voltar" do cabeçalho do chat — só existe pra navegação mobile
+   (ver .chat-mobile-back mais abaixo); em telas largas fica escondido. */
+.chat-mobile-back {
+  display: none;
+  border: none;
+  background: rgba(0, 0, 0, 0.25);
+  color: inherit;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  border-radius: 50%;
+  font-size: 15px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  margin-right: 4px;
+}
+
 @media (max-width: 900px) {
+  /* No celular a lista de conversas e a janela de chat não cabem lado a
+     lado. Pedido do usuário (2026-07-22): mostra só uma tela por vez —
+     lista por padrão, chat em tela cheia quando uma conversa é aberta
+     (classe .mobile-conv-open, alternada em 07-conversations.js). */
   .whatsapp-panel {
     grid-template-columns: 1fr;
-    height: auto;
-    min-height: 100vh;
+    height: calc(100vh - 100px);
+    min-height: 0;
   }
 
   .chat-sidebar {
-    height: 320px;
+    height: 100%;
   }
 
   .chat-window {
-    min-height: 600px;
+    display: none;
+  }
+
+  .whatsapp-panel.mobile-conv-open .chat-sidebar {
+    display: none;
+  }
+
+  .whatsapp-panel.mobile-conv-open .chat-window {
+    display: flex;
+    height: 100%;
+  }
+
+  .chat-mobile-back {
+    display: inline-flex;
   }
 
   .chat-messages {

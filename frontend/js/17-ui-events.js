@@ -29,6 +29,7 @@
     "loadTickets",
     "loadConversations",
     "sendConversationMessage",
+    "closeMobileChat",
     "clearHistoryFilters",
     "bulkDeleteContacts",
     "openContactModal",

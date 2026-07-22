@@ -422,11 +422,16 @@
   font-weight: 600;
 }
 
-/* ─── Grid de resultados ───────────────────────────────────────── */
+/* ─── Grid de resultados ───────────────────────────────────────────
+   Ajuste de densidade/alinhamento (2026-07-22, pedido do usuário): cards
+   um pouco mais estreitos (mais por linha) e altura sempre igual dentro
+   da mesma fileira — o grid já esticava os cards (align-items: stretch é
+   o padrão), o que faltava era o CONTEÚDO interno respeitar essa altura
+   igual, ver .catalogo-card-body/-secao/-nome/-badges abaixo. ────────── */
 .catalogo-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(272px, 1fr));
-  gap: 18px;
+  grid-template-columns: repeat(auto-fill, minmax(238px, 1fr));
+  gap: 15px;
 }
 
 .catalogo-card {
@@ -462,7 +467,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 152px;
+  height: 132px;
+  padding: 14px;
+  box-sizing: border-box;
   background: var(--cat-bg-0);
   border-bottom: 1px solid var(--cat-line);
   overflow: hidden;
@@ -489,8 +496,10 @@
 .catalogo-card-photo img {
   position: relative;
   z-index: 1;
-  width: 100%;
-  height: 100%;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
   object-fit: contain;
   background: var(--cat-bg-0);
   transition: transform var(--transition-slow);
@@ -499,15 +508,20 @@
 .catalogo-card:hover .catalogo-card-photo img { transform: scale(1.04); }
 
 .catalogo-card-body {
+  /* flex:1 faz o corpo preencher toda a altura do card (o grid já estica os
+     cards de uma mesma linha pra altura igual — isso aqui é o que faltava
+     pra empurrar .catalogo-card-badges pro rodapé de forma consistente,
+     ver margin-top: auto lá embaixo). */
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   gap: 7px;
-  padding: 15px 17px 17px;
+  padding: 14px 16px 16px;
 }
 
 .catalogo-card-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
 }
@@ -519,6 +533,14 @@
   letter-spacing: 0.05em;
   color: var(--primary);
   line-height: 1.3;
+  /* Reserva sempre 2 linhas (algumas seções/linhas são curtas, outras não)
+     pra que o título, ref e badges comecem na mesma altura em todos os
+     cards da fileira, em vez de "subir" nos cards com texto de 1 linha só. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 2.6em;
 }
 
 /* Botão de copiar código — ponte direta pro ERP (conferir preço/estoque) */
@@ -558,6 +580,13 @@
   color: #f4f6fa;
   line-height: 1.38;
   letter-spacing: -0.005em;
+  /* Mesmo raciocínio do .catalogo-card-secao acima: reserva 2 linhas fixas
+     pra título curto e título longo ocuparem o mesmo espaço. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 2.76em;
 }
 
 .catalogo-card-ref {
@@ -621,7 +650,11 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 10px;
+  /* auto empurra os badges pro rodapé do card, alinhando a base de todos os
+     cards da fileira mesmo quando o conteúdo acima (ref/fabricante/aplicação)
+     varia de tamanho ou nem aparece. */
+  margin-top: auto;
+  padding-top: 10px;
 }
 
 .catalogo-badge {

@@ -52,6 +52,58 @@ body.light-theme .metric-card::before { background: none; }
 body.light-theme .metric-card .value { color: #111827; }
 body.light-theme .metric-card .label { color: #374151; }
 
+/* ─── Dashboard: hero "Painel de Atendimento" + os 4 cards de métrica ────
+   Pedido do usuário (2026-07-22): no tema escuro os dois já tinham fundo
+   escuro (unificado numa correção anterior); no tema claro, porém, ambos
+   ainda ficavam com o gradiente escuro fixo do 09-dashboard.css (sem
+   nenhum override aqui) — destoando do resto da página, que já é clara.
+   Cards agora usam o mesmo tom da pill de aba (.tab, #eef0f3) e o hero
+   fica branco com um brilho azul leve (faixa de luz), em vez do preto. */
+body.light-theme .dashboard-executive-hero {
+  background:
+    radial-gradient(circle at 100% 50%, rgba(37, 99, 235, 0.12), transparent 55%),
+    linear-gradient(135deg, #ffffff 0%, #ffffff 55%, #f5f8fd 100%);
+  border-color: rgba(15, 23, 42, 0.08);
+  box-shadow:
+    0 18px 40px rgba(15, 23, 42, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+body.light-theme .dashboard-executive-hero::after {
+  background: radial-gradient(circle, rgba(37, 99, 235, 0.18), transparent 70%);
+}
+body.light-theme .dashboard-kicker {
+  background: rgba(37, 99, 235, 0.08);
+  border-color: rgba(37, 99, 235, 0.18);
+  color: #1d4ed8;
+}
+body.light-theme .dashboard-executive-hero h1 { color: #0f172a; }
+body.light-theme .dashboard-executive-hero p { color: #475569; }
+body.light-theme .dashboard-live-badge {
+  background: rgba(15, 23, 42, 0.04);
+  border-color: rgba(15, 23, 42, 0.12);
+  color: #334155;
+}
+
+body.light-theme .executive-card {
+  background: #eef0f3 !important;
+  border-color: rgba(15, 23, 42, 0.08) !important;
+  box-shadow:
+    0 10px 26px rgba(15, 23, 42, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7) !important;
+}
+body.light-theme .executive-card-icon {
+  background: rgba(37, 99, 235, 0.10);
+  color: #2563eb;
+}
+body.light-theme .executive-card strong {
+  color: #0f172a !important;
+  text-shadow: none;
+}
+body.light-theme .executive-card-label {
+  color: #64748b;
+  border-top-color: rgba(15, 23, 42, 0.08);
+}
+
 /* ─── Conversas (WhatsApp) — visual claro estilo WhatsApp Web ──────────── */
 body.light-theme .whatsapp-panel {
   background: #ffffff;

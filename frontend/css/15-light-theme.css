@@ -77,11 +77,11 @@ body.light-theme .dashboard-kicker {
   color: #1d4ed8;
 }
 body.light-theme .dashboard-executive-hero h1 { color: #0f172a; }
-body.light-theme .dashboard-executive-hero p { color: #475569; }
+body.light-theme .dashboard-executive-hero p { color: #1e293b; }
 body.light-theme .dashboard-live-badge {
   background: rgba(15, 23, 42, 0.04);
   border-color: rgba(15, 23, 42, 0.12);
-  color: #334155;
+  color: #1e293b;
 }
 
 body.light-theme .executive-card {
@@ -100,7 +100,7 @@ body.light-theme .executive-card strong {
   text-shadow: none;
 }
 body.light-theme .executive-card-label {
-  color: #64748b;
+  color: #334155;
   border-top-color: rgba(15, 23, 42, 0.08);
 }
 

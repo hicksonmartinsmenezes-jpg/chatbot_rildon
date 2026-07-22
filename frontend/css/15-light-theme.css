@@ -254,7 +254,15 @@ body.light-theme .chat-input-area textarea:focus {
   border-color: rgba(29,108,245,.35);
   box-shadow: 0 0 0 3px rgba(29,108,245,.10);
 }
-body.light-theme .chat-start h3 { color: #374151; }
+/* "Nenhuma conversa selecionada": herdava o fundo escuro do watermark do
+   chat (.chat-messages) mesmo no tema claro. Pedido do usuário
+   (2026-07-22): fundo cinza + textos escuros nesse estado vazio. */
+body.light-theme .chat-start,
+body.light-theme .chat-messages:has(.chat-start) {
+  background: #eef1f5;
+}
+body.light-theme .chat-start h3 { color: #0f172a; }
+body.light-theme .chat-start p { color: #475569; }
 
 /* ─── Dropdown de notificações ─────────────────────────────────────────── */
 body.light-theme .notif-dropdown {

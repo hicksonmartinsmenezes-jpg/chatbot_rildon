@@ -811,8 +811,18 @@ body.light-theme .metric-card strong {
   }
 
   .field {
-    min-height: 46px;
-    padding: 8px 10px;
+    min-height: 40px;
+    padding: 6px 8px;
+  }
+
+  .field label {
+    font-size: 9.5px;
+    margin-bottom: 3px;
+  }
+
+  .field input,
+  .field .placeholder {
+    font-size: 12px;
   }
 
   .content {
@@ -849,11 +859,20 @@ body.light-theme .metric-card strong {
   }
 
   .cards,
-  .filters,
   .campaign-stats-grid,
   .metrics-cards,
   .history-summary-grid {
     grid-template-columns: 1fr;
+  }
+
+  /* Pedido do usuário (2026-07-22, 4ª rodada): barra de filtros do painel
+     (Data Início/Fim, Usuário, Departamento, Conexão) — 2 colunas em vez
+     de empilhar 1 por linha, igual fizemos nos cards de métricas. Com 5
+     campos + botão "Atualizar" (6 itens ao todo), Conexão e o botão
+     acabam formando a última linha lado a lado — encaixa certinho. */
+  .filters {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
   }
 
   /* 2 colunas em vez de 1 — mais denso, mais parecido com o layout de PC

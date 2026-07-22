@@ -158,21 +158,60 @@ function limparCatalogoFormCodigo() {
 
 // Copia o código do produto pro clipboard — é a ponte direta pro próximo
 // passo do atendente (conferir preço/estoque no ERP com esse código).
-async function copiarCodigoCatalogo(codigo, btnEl) {
+// Fallback pra quando navigator.clipboard não existe/falha — é o caso do
+// painel rodando em HTTP puro no IP da rede local (não é localhost nem
+// HTTPS), onde todo navegador bloqueia a Clipboard API por ser contexto
+// não seguro. document.execCommand("copy") é deprecated mas ainda
+// funciona em qualquer contexto, então serve de rede de segurança aqui.
+function _copiarTextoFallback(texto) {
+  const textarea = document.createElement("textarea");
+  textarea.value = texto;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.top = "-9999px";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  textarea.setSelectionRange(0, texto.length);
+  let ok = false;
   try {
-    await navigator.clipboard.writeText(String(codigo));
-    showToast?.(`Código ${codigo} copiado`, "success");
-    if (btnEl) {
-      const original = btnEl.innerHTML;
-      btnEl.classList.add("catalogo-copy-btn-done");
-      btnEl.innerHTML = '<i class="fa-solid fa-check"></i> Copiado';
-      setTimeout(() => {
-        btnEl.classList.remove("catalogo-copy-btn-done");
-        btnEl.innerHTML = original;
-      }, 1400);
-    }
+    ok = document.execCommand("copy");
   } catch (err) {
+    ok = false;
+  }
+  document.body.removeChild(textarea);
+  return ok;
+}
+
+async function copiarCodigoCatalogo(codigo, btnEl) {
+  const texto = String(codigo);
+  let copiado = false;
+
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(texto);
+      copiado = true;
+    } catch (err) {
+      copiado = false; // cai pro fallback abaixo (contexto não seguro, permissão negada, etc.)
+    }
+  }
+
+  if (!copiado) copiado = _copiarTextoFallback(texto);
+
+  if (!copiado) {
     showToast?.("Não foi possível copiar o código.", "error");
+    return;
+  }
+
+  showToast?.(`Código ${codigo} copiado`, "success");
+  if (btnEl) {
+    const original = btnEl.innerHTML;
+    btnEl.classList.add("catalogo-copy-btn-done");
+    btnEl.innerHTML = '<i class="fa-solid fa-check"></i> Copiado';
+    setTimeout(() => {
+      btnEl.classList.remove("catalogo-copy-btn-done");
+      btnEl.innerHTML = original;
+    }, 1400);
   }
 }
 
@@ -227,6 +266,8 @@ function _catalogoCardHTML(produto, mostrarBadgeNeutro) {
           alt="${safe(produto.nome)}"
           loading="lazy"
           onerror="this.remove();"
+          onclick="event.stopPropagation(); window.open(this.currentSrc || this.src, '_blank');"
+          title="Clique pra abrir a foto em outra página"
         >
       </div>
       <div class="catalogo-card-body">

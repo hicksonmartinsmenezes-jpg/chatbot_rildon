@@ -435,6 +435,21 @@
   color: #fff;
 }
 
+.settings-panel-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+/* Botão de salvar dentro da toolbar do painel (só some/aparece junto com
+   ela): mesma cor, mas mais compacto que a versão antiga do topo. */
+.settings-panel-toolbar .btn-save-settings {
+  height: auto;
+  padding: 10px 16px;
+  border-radius: 12px;
+  font-size: 13px;
+}
+
 .btn-back-settings {
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: #1f2937;

@@ -1,0 +1,32 @@
+# Raio-X Geral do Projeto — V18 (2026-07-21)
+
+Avaliação de acompanhamento do bot Rildon Eletropeças (Node.js/Express/Baileys/PostgreSQL + painel vanilla JS), um dia depois do V17 (2026-07-20). No intervalo o foco não foi feature nova, foi qualidade do provedor de IA e do fluxo de vendas: troca de provedor (Groq → Claude Haiku 4.5), ajuste de prompt pra não afastar cliente em caso de incerteza de estoque, uma rodada de teste ao vivo com múltiplas personas que achou e corrigiu um bug real de fluxo, e a correção de 3 testes automatizados que ficaram desatualizados por causa de mudanças de rodadas anteriores. Esta avaliação foca no que mudou, não repete achados do V17 que continuam válidos.
+
+## O que mudou desde o V17
+
+**Provedor de IA**: trocado de Groq (gratuito) para Claude Haiku 4.5 via `AI_PROVIDER=anthropic` no `.env` — troca de configuração, zero mudança de código (o suporte aos três provedores — groq/gemini/anthropic — já existia desde antes). Custo estimado pro volume atual da loja (~41 tickets/mês): **US$ 0,60 a US$ 1,25/mês**, usando o preço oficial do Haiku 4.5 (US$ 1/milhão tokens de entrada, US$ 5/milhão de saída). Testado ao vivo e confirmado: a confirmação determinística de peça por código/veículo/catálogo (a que dá a resposta 100% certa quando o produto está cadastrado) não depende do modelo de IA escolhido — continua funcionando igual, porque é calculada em código depois da resposta da IA, não pela IA em si.
+
+**Prompt ajustado** para o caso em que a IA não tem certeza se a loja atende uma peça específica: antes existia risco de a IA responder algo genérico demais ou, pior, dizer "não temos" por engano (afastando venda de peça que a loja atende, só não confirmada na hora). Agora a instrução do sistema deixa explícito: nunca dizer "não temos"/"não trabalhamos com isso" em caso de incerteza, e em vez de um "sim" ou "não" arriscado, direcionar para confirmação com atendente — mantendo confiança na marca/linha e emendando com a pergunta de orçamento que o sistema já faz automaticamente.
+
+**Bug real encontrado e corrigido em teste ao vivo com múltiplas personas (2026-07-21)**: cliente que muda de ideia sobre qual peça quer no meio do fluxo (ex.: "na verdade nem era alternador não, era uma pastilha de freio mesmo") enquanto o bot está perguntando o veículo — a frase inteira de correção estava sendo gravada como se fosse o veículo, e a peça errada antiga ficava no ticket. Corrigido com uma checagem de marcadores explícitos de correção ("na verdade", "mudei de ideia", "me enganei", "quis dizer", "esquece"+"era", "errei") na etapa de pergunta de veículo — quando detectado, atualiza a peça e repete a pergunta em vez de misturar tudo. Validado ao vivo após restart: ticket final saiu com veículo correto. Detalhe cosmético não corrigido (não foi pedido): o campo peça guarda a frase de correção inteira, não só "pastilha de freio" extraído — sem impacto funcional, só estética do registro.
+
+**Suíte de teste**: cresceu de 524 para **564 testes** (48 arquivos), todos passando após a correção de 3 testes que tinham ficado desatualizados por conta da funcionalidade de confirmação por catálogo (a mesma da rodada do V17) — os testes usavam frases de exemplo que sem querer batiam com produtos reais do estoque e disparavam a confirmação determinística no meio do que deveria ser um teste de outro comportamento. Corrigido ajustando as frases de exemplo dos testes (não a lógica de produção) e afinando duas asserções pra mirar especificamente o bloco dinâmico "CATÁLOGO CONFIRMA" em vez do texto genérico que também aparece em outro contexto.
+
+**Confiabilidade observada em teste ao vivo**: em ~9-10 mensagens de teste sob o novo provedor, a mensagem de erro genérica "não consegui processar sua mensagem agora" apareceu 3 vezes — taxa mais alta que o esperado. Toda vez, reenviar a mesma mensagem resolveu na hora. **Causa raiz não identificada** (sem acesso a log do servidor/Docker neste ambiente) — fica como ponto de atenção pra monitorar, não como algo já corrigido.
+
+**Entregável novo, fora do código**: apresentação em PowerPoint (11 slides) resumindo os ~2 meses de projeto pro time de Marketing/Design, cobrindo contexto, números (212 commits, 564 testes, 26 seções de catálogo, ~19.400 produtos), segurança, atendimento, IA, catálogo com fotos, campanhas, cultura de teste e linha do tempo.
+
+## O que continua igual (válido desde o V17)
+
+Arquitetura, segurança (2FA, rate limiting, sessão com cookie seguro, SQL parametrizado, LGPD), indexação de banco, paginação, e a disciplina de teste-ao-vivo-antes-de-declarar-corrigido seguem no mesmo estado — sem achados novos nessas frentes. `src/config/whatsapp.js` continua sendo o maior arquivo do projeto e o de maior superfície de risco, ainda sem extração adicional de lógica pura pra módulos testáveis.
+
+## Prioridades recomendadas
+
+Nenhum item é bloqueante — o projeto está estável e em produção.
+
+1. Monitorar a taxa de "não consegui processar sua mensagem agora" nos próximos dias de uso real sob Claude Haiku 4.5. Se persistir acima do que era observado com Groq, vale pedir acesso a log do container (fora do alcance deste ambiente) pra achar a causa raiz — pode ser rate limit, timeout de rede, ou resposta vazia do modelo.
+2. O campo "peça" na correção de mudança de ideia guarda a frase toda em vez do nome limpo da peça — cosmético, baixo risco, mas fácil de arrumar se incomodar no dia a dia do atendente.
+3. Itens já conhecidos do V17 (cobertura de `whatsapp.js` e `dedup.js`, avisos de lint cosméticos) seguem pendentes — nada mudou aqui, nada piorou.
+4. Vale considerar formalizar teste com personas variadas (como o feito nesta rodada) como parte do checklist de teste-ao-vivo já recomendado no V17 — foi o que achou o bug de correção de peça, que não existia nos cenários padrão do `test-flow.js`.
+
+Resumo pro dono da loja: a troca pro Claude Haiku 4.5 saiu por menos de R$ 7/mês e não muda a parte que já era 100% confiável (confirmação de peça por código/veículo/catálogo continua igual). O ganho real é qualidade de conversa e resposta mais natural quando não há certeza de estoque — sem soar como "não temos" e perder venda à toa. Um bug de fluxo (cliente mudando de ideia sobre a peça) foi achado e corrigido antes de virar reclamação. O único ponto de atenção real pra acompanhar nos próximos dias é a taxa um pouco mais alta de erro genérico de IA — não é grave (o bot se recupera sozinho no reenvio), mas merece olho.

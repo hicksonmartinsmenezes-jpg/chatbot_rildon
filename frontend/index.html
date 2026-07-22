@@ -23,7 +23,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css">
   <!-- CSS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <link rel="stylesheet" href="dist/bundle.fdd1a191af.css">
+  <link rel="stylesheet" href="dist/bundle.61f7348317.css">
   <!-- CSS_BUNDLE_END -->
 <style>
     /* Centraliza colunas da tabela de histórico */
@@ -1183,24 +1183,6 @@ Como podemos ajudar você hoje?
 <!-- Configurações -->
       <!-- Configurações -->
       <section id="tab-settings" class="tab-content hidden">
-        <section class="panel settings-hero">
-          <div class="section-title">
-            <div>
-              <h2><i class="fa-solid fa-gear"></i> Configurações</h2>
-              <p>Personalize empresa, atendimento, aparência, histórico, notificações e usuários.</p>
-            </div>
-
-            <div class="settings-actions">
-              <button type="button" class="btn-refresh" data-action="loadSettings">
-                <i class="fa-solid fa-arrows-rotate"></i> Atualizar
-              </button>
-              <button type="button" class="btn-save-settings" data-action="saveSettings">
-                <i class="fa-solid fa-floppy-disk"></i> Salvar alterações
-              </button>
-            </div>
-          </div>
-        </section>
-
         <section class="settings-home" id="settings-home">
           <div class="settings-home-header">
             <div>
@@ -1280,7 +1262,12 @@ Como podemos ajudar você hoje?
           <button type="button" class="btn-back-settings" data-action="backToSettingsHome">
             <i class="fa-solid fa-arrow-left"></i> Voltar para configurações
           </button>
-          <strong id="settings-panel-title">Configurações</strong>
+          <div class="settings-panel-toolbar-right">
+            <strong id="settings-panel-title">Configurações</strong>
+            <button type="button" class="btn-save-settings" data-action="saveSettings">
+              <i class="fa-solid fa-floppy-disk"></i> Salvar alterações
+            </button>
+          </div>
         </div>
 
         <section class="settings-grid settings-detail-grid hidden" id="settings-detail-grid">

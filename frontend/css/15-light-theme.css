@@ -8,6 +8,10 @@
 
 /* ─── Layout: sidebar / topbar ─────────────────────────────────────────── */
 body.light-theme .sidebar .burger { color: #0f172a; }
+/* Ícones da barra lateral (fora de hover/active) herdavam #6b7280 de
+   02-layout.css (pensado pro tema escuro) — mal contrastam num sidebar
+   branco. Pedido do usuário (2026-07-22): escurecer. */
+body.light-theme .sidebar a { color: #334155; }
 body.light-theme .sidebar a:hover { color: #0f172a; background: rgba(0,0,0,.05); }
 body.light-theme .sidebar a.active,
 body.light-theme .sidebar a.highlight { color: #1d6cf5; background: #1d6cf514; }

@@ -459,6 +459,12 @@ async function openConversation(userId, updateActive = true) {
 // ─── Navegação mobile (lista ↔ chat) ─────────────────────────────────────────
 function closeMobileChat() {
   document.querySelector(".whatsapp-panel")?.classList.remove("mobile-conv-open");
+  // BUG CORRIGIDO (pedido do usuário, 2026-07-22): sem isso, selectedConversationUser
+  // continuava setado depois de "voltar" — na próxima vez que loadConversations()
+  // rodasse (ex: clicar em Pendentes/Ativos/Fechados), o auto-reselect de
+  // _loadConversationsCore (linha ~231, "selectedConversationUser && usersSeen.has(...)")
+  // reabria a MESMA conversa sozinho, como se o botão de voltar não tivesse feito nada.
+  selectedConversationUser = null;
 }
 
 // ─── Devolver atendimento ao bot ─────────────────────────────────────────────

@@ -471,12 +471,17 @@
     flex-direction: column;
   }
 
+  /* Pedido do usuário (2026-07-22): a barra lateral virou uma faixa
+     horizontal no celular, mas os ícones mantinham o tamanho de desktop
+     (40x40 + gap 14px) — ficava grande/desproporcional. Reduzido pra caber
+     mais parecido com a barra fina que aparece no computador. */
   .sidebar {
     width: 100%;
     height: auto;
     flex-direction: row;
     overflow-x: auto;
-    padding: 12px;
+    padding: 8px 10px;
+    gap: 6px;
     position: static;
   }
 
@@ -484,22 +489,39 @@
     width: 100%;
   }
 
+  .sidebar .burger {
+    font-size: 16px;
+    margin-bottom: 0;
+    margin-right: 4px;
+  }
+
+  .sidebar a {
+    width: 32px;
+    height: 32px;
+    font-size: 15px;
+    flex-shrink: 0;
+  }
+
   .sidebar .label,
   .sidebar.open .label {
     display: none;
   }
 
+  /* Pedido do usuário: os ícones do topo (atualizar/tema/sino/perfil/sair)
+     ficaram alinhados à esquerda/centralizados no celular — no computador
+     eles ficam encostados na lateral direita; aqui deve ser igual. */
   .topbar {
     height: auto;
-    align-items: flex-start;
+    align-items: flex-end;
     flex-direction: column;
-    gap: 14px;
-    padding: 16px;
+    gap: 10px;
+    padding: 12px 16px;
   }
 
   .top-actions {
     width: 100%;
     flex-wrap: wrap;
+    justify-content: flex-end;
   }
 
   .avatar-text,

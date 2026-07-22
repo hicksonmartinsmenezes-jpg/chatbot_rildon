@@ -351,4 +351,19 @@
     align-items: flex-start;
     text-align: left;
   }
+
+  /* Pedido do usuário (2026-07-22): "histórico está totalmente
+     descentralizado" no celular — o .hrow (grid de 5 colunas fixas)
+     espremia tudo em ~300px e o cabeçalho (Cliente/Setor/Atend./Última
+     interação/Ações) ficava ilegível/sobreposto. Contatos e Campanhas já
+     resolvem isso com um wrapper com overflow-x:auto; aplicando o mesmo
+     padrão aqui em vez de forçar as colunas a caber na tela. */
+  .history-table {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .hrow {
+    min-width: 560px;
+  }
 }

@@ -769,14 +769,24 @@ body.light-theme .metric-card strong {
     font-size: 12px;
   }
 
+  /* Correção (2026-07-22): "1fr 1fr" sozinho equivale a
+     "minmax(auto, 1fr)" — a coluna não encolhe abaixo do min-content do
+     botão (ex.: "ATENDIMENTOS" sem quebrar linha), então a 2ª coluna
+     estourava a largura da tela em vez de encolher o texto. Com
+     minmax(0, 1fr) + min-width:0 no botão, o grid realmente respeita a
+     largura da tela e o texto quebra/trunca dentro da coluna. */
   .tabs {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 
   .tab {
-    padding: 12px;
-    font-size: 11px;
+    padding: 10px 6px;
+    font-size: 10.5px;
+    min-width: 0;
+    white-space: normal;
+    line-height: 1.25;
+    text-align: center;
   }
 
   .executive-cards,

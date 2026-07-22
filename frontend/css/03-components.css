@@ -343,10 +343,10 @@ button:active,
     grid-template-columns: 1fr;
   }
 
-  .tabs {
-    flex-direction: column;
-  }
-
+  /* Nota (2026-07-22): o .tabs deste breakpoint já é redefinido como grid
+     2 colunas em 12-ux-global.css (que carrega depois e vence a cascata) —
+     o fix de overflow (minmax(0,1fr)) fica lá, junto da definição que
+     realmente vale, pra não duplicar/discordar entre os dois arquivos. */
   .tab {
     justify-content: center;
   }

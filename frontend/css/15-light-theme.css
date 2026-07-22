@@ -42,6 +42,24 @@ body.light-theme .field label,
 body.light-theme .history-date-field label { color: #475569; }
 body.light-theme .panel { box-shadow: 0 12px 35px rgba(0,0,0,.08); }
 
+/* Central de Configurações: título/descrição e cards ficavam brancos sobre
+   fundo branco (herdados de 07-settings.css, pensados pro tema escuro) —
+   texto do título literalmente invisível. Pedido do usuário, 3ª varredura
+   (2026-07-22). */
+body.light-theme .settings-home-header h2 { color: #0f172a; }
+body.light-theme .settings-home-header p { color: #475569; }
+body.light-theme .settings-home-card strong { color: #0f172a; }
+body.light-theme .settings-home-card small { color: #475569; }
+body.light-theme .settings-home-card > .fa-chevron-right { color: #94a3b8; }
+
+/* Configurações → Usuários: nome do atendente na lista era branco fixo. */
+body.light-theme .panel-user-item strong { color: #0f172a; }
+
+/* Contatos: título "Contatos" (do lado do badge "74") era branco fixo —
+   literalmente invisível sobre o fundo branco. */
+body.light-theme .contacts-title h2 { color: #0f172a; }
+body.light-theme .contacts-count-badge { color: #1d4ed8; }
+
 /* ─── Componentes compartilhados ───────────────────────────────────────── */
 body.light-theme .panel,
 body.light-theme .ticket-card,
@@ -274,6 +292,38 @@ body.light-theme .campaign-confirm-info { color: #475569; }
 body.light-theme .campaign-confirm-info strong { color: #0f172a; }
 
 /* ─── Date picker nativo — segue o tema ───────────────────────────────── */
+/* 12-ux-global.css força color-scheme:dark !important + inverte o ícone do
+   calendário pra branco (pensado pro tema escuro). Sem !important aqui essas
+   regras nunca venciam, e o ícone ficava branco sobre fundo branco — dava
+   pra abrir o histórico mas não dava pra enxergar/clicar no calendário.
+   Pedido do usuário, 3ª varredura (2026-07-22). */
 body.light-theme input[type="date"],
 body.light-theme input[type="time"],
-body.light-theme input[type="datetime-local"] { color-scheme: light; }
+body.light-theme input[type="datetime-local"] { color-scheme: light !important; }
+
+body.light-theme input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: none !important;
+  opacity: 0.65;
+}
+
+/* Histórico: barra de busca ficava com fundo escuro fixo (resquício do
+   tema escuro), sem nenhum override — ilha escura numa tela branca. */
+body.light-theme .history-search-field {
+  background: #ffffff;
+  color: #0f172a;
+}
+body.light-theme .history-search-field input { color: #0f172a; }
+body.light-theme .history-search-field i { color: #475569; }
+
+/* Histórico: campos "De"/"Até" (.history-date-field) tinham o mesmo
+   problema — fundo escuro fixo sem override, mesma ilha escura. */
+body.light-theme .history-date-field {
+  background: #ffffff;
+  color: #0f172a;
+}
+body.light-theme .history-date-field input { color: #0f172a; }
+
+/* Chatbot → Editor de Fluxos: título de cada fluxo na lista lateral era
+   branco fixo (herdado de 07-settings.css) — invisível sobre fundo branco,
+   só a legenda cinza embaixo aparecia. */
+body.light-theme .flow-item { color: #0f172a; }

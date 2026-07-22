@@ -28,7 +28,18 @@ body.light-theme .section-title h2,
 body.light-theme .placeholder-panel h2 { color: #0f172a; }
 body.light-theme .placeholder-panel i { color: #cbd5e1; }
 body.light-theme .empty,
-body.light-theme .loading { border-color: rgba(0,0,0,.12); }
+body.light-theme .loading {
+  background: linear-gradient(180deg, rgba(0,0,0,.02), rgba(0,0,0,.01)), #f8fafc;
+  border-color: rgba(0,0,0,.12);
+  color: #475569;
+}
+
+/* Labels de filtro (Dashboard, Histórico) herdavam #aeb9c8 de 12-ux-global.css,
+   pensado pro tema escuro — quase invisível sobre fundo branco (pedido do
+   usuário, 2ª varredura, 2026-07-22). */
+body.light-theme label,
+body.light-theme .field label,
+body.light-theme .history-date-field label { color: #475569; }
 body.light-theme .panel { box-shadow: 0 12px 35px rgba(0,0,0,.08); }
 
 /* ─── Componentes compartilhados ───────────────────────────────────────── */
@@ -215,6 +226,52 @@ body.light-theme .chat-selected-empty i { color: #cbd5e1; }
        mas garantimos texto escuro nos títulos fortes ──────────────────── */
 body.light-theme .ct-nome-cell strong,
 body.light-theme .camp-title-cell strong { color: #0f172a; }
+
+/* ─── Histórico: cards de resumo + linhas da tabela ─────────────────────
+   Bug real achado nesta varredura (2026-07-22): 10-history.css nunca teve
+   NENHUM override de tema claro (arquivo inteiro fora da lista de
+   arquivos com regras body.light-theme). .history-summary-card strong
+   (os números grandes) era branco (#fff) sobre var(--panel-2), que no
+   tema claro é quase branco (#f8fafc) — número praticamente invisível.
+   Mesma coisa com o nome do cliente na tabela (#f1f5f9, quase branco). */
+body.light-theme .history-summary-card strong { color: #0f172a; }
+body.light-theme .history-summary-card span { color: #475569; }
+body.light-theme .history-table { border-color: rgba(15, 23, 42, 0.08); }
+body.light-theme .hrow-info strong { color: #0f172a; }
+body.light-theme .hrow-info small { color: #475569; }
+body.light-theme .history-empty,
+body.light-theme .history-loading { color: #475569; }
+body.light-theme .history-empty i,
+body.light-theme .history-loading i { color: #94a3b8; }
+body.light-theme .history-empty h3 { color: #0f172a; }
+
+/* ─── Campanhas: mesmo problema — 11-campaigns.css também nunca teve
+   override de tema claro. Os botões de público (.campaign-radio, quando
+   não selecionados) e os cards de campanha (.campaign-item) usavam um
+   fundo escuro fixo (rgba(15,23,42,.72), pensado só pro tema escuro) com
+   texto claro por cima — no tema claro isso sobra como uma "ilha" escura
+   destoando do resto do modal/painel, já branco. ─────────────────────── */
+body.light-theme .campaign-radio {
+  background: var(--panel-2);
+  border-color: rgba(15, 23, 42, 0.10);
+}
+body.light-theme .campaign-radio i { color: #475569; }
+body.light-theme .campaign-radio span { color: #1e293b; }
+body.light-theme .campaign-radio:hover,
+body.light-theme .campaign-radio:has(input:checked) {
+  background: rgba(37, 99, 235, 0.08);
+  border-color: rgba(37, 99, 235, 0.30);
+}
+body.light-theme .campaign-item {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.08);
+}
+body.light-theme .campaign-item:hover { background: #f8fafc; }
+body.light-theme .campaign-item-header strong,
+body.light-theme .camp-form-title h3,
+body.light-theme .campaign-list-header h3 { color: #0f172a; }
+body.light-theme .campaign-confirm-info { color: #475569; }
+body.light-theme .campaign-confirm-info strong { color: #0f172a; }
 
 /* ─── Date picker nativo — segue o tema ───────────────────────────────── */
 body.light-theme input[type="date"],

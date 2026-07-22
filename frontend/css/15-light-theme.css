@@ -232,29 +232,26 @@ body.light-theme .conv-btn-aceitar { color: #15803d; }
 body.light-theme .conv-btn-transferir { color: #4338ca; }
 body.light-theme .conv-btn-fechar { color: #b91c1c; }
 
-/* BUG CORRIGIDO: esta regra tinha especificidade maior que ".chat-messages"
-   em 06-conversations.css (2 classes + 1 tag vs. 1 classe), então SEMPRE
-   vencia e escondia a marca d'água quando o tema claro estava ativo —
-   mesmo depois de trocar o fundo/imagem lá, aqui continuava sendo o
-   pontilhado antigo. Removida: agora o tema claro herda a mesma marca
-   d'água do tema escuro (a imagem já é clara o bastante pra funcionar
-   nos dois temas). */
 body.light-theme .day-separator span { background: #ffffff; color: #54656f; }
+
+/* Pedido do usuário (2026-07-22): no tema claro, nada de marca d'água —
+   fundo da conversa em cinza liso, e a barra de digitação em branco liso
+   (sem imagem nenhuma nos dois casos). */
+body.light-theme .chat-messages {
+  background-image: none;
+  background-color: #e9edf2;
+}
 
 body.light-theme .bubble { color: #111b21; }
 body.light-theme .bubble.client { background: #ffffff; border-color: rgba(0,0,0,.06); }
 body.light-theme .bubble.bot    { background: #d9fdd3; border-color: rgba(0,0,0,.05); }
 body.light-theme .bubble small  { color: rgba(0,0,0,.45); }
 
-/* Pedido do usuário (2026-07-22): a barra de digitação não pode ter fundo
-   sólido próprio (nem branco, nem preto) — nada além da caixa de mensagem
-   e do botão de enviar deve aparecer. A solução definitiva foi mover a
-   mesma imagem de fundo (marca d'água) que .chat-messages já usa para
-   .chat-input-area (em 06-conversations.css, base, os dois temas), então
-   a barra de digitação vira uma continuação natural do papel de parede da
-   conversa, sem nenhuma "caixa" própria — só não sobrescrever aqui com
-   uma cor sólida. */
-body.light-theme .chat-input-area { border-top-color: rgba(0,0,0,.06); }
+body.light-theme .chat-input-area {
+  background-image: none;
+  background-color: #ffffff;
+  border-top-color: rgba(0,0,0,.06);
+}
 body.light-theme .chat-input-area textarea {
   background: #ffffff;
   color: #0f172a;

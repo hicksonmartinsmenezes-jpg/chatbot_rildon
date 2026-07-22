@@ -109,9 +109,13 @@
   flex-direction: column !important;
   align-items: flex-start !important;
   overflow: hidden;
+  /* Mesma receita de fundo do .dashboard-executive-hero (topbar) — pedido do
+     usuário (2026-07-22): os cards usavam um preto ligeiramente diferente
+     (mais neutro, sem o glow azulado), o que criava um descompasso visual
+     entre o hero e os 4 cards logo abaixo. Unificado pra ficar a mesma cor. */
   background:
-    radial-gradient(circle at 80% 0%, rgba(255, 255, 255, 0.035), transparent 55%),
-    linear-gradient(160deg, #1e1e1e 0%, #141414 60%, #111111 100%) !important;
+    radial-gradient(circle at 80% 0%, rgba(96, 165, 250, 0.16), transparent 55%),
+    linear-gradient(135deg, #1a1a1a 0%, #111111 50%, #0d0d0d 100%) !important;
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
   border-radius: 18px !important;
   padding: 20px 22px 18px !important;

@@ -1042,4 +1042,43 @@ body.tab-fullscreen #tab-conversations {
   .chat-messages {
     padding: 18px 14px;
   }
+
+  /* Bug encontrado (2026-07-22): .chat-window-header tinha height/min-height
+     fixos em 72px (certo pro desktop, onde perfil + os 4 botões de ação
+     cabem numa linha só). No celular esses 4 botões (Aceitar/Transferir/
+     Fechar/Devolver ao bot) não cabem ao lado do avatar+nome e quebram pra
+     linha(s) de baixo — só que o header não crescia (altura travada em
+     72px, overflow:visible), então os botões ficavam renderizados por
+     baixo de .chat-messages, escondidos/inacessíveis mesmo estando no DOM.
+     Corrigido liberando a altura e organizando os botões numa fileira
+     própria abaixo do perfil, com tamanho reduzido pra caber melhor. */
+  .chat-window-header {
+    height: auto;
+    min-height: 60px;
+    padding: 10px 14px;
+  }
+
+  /* .chat-header-profile tem height:100% (pensado pro header fixo de
+     72px do desktop). Com o header agora em height:auto no celular, o
+     100% vira uma referência circular (altura do pai depende do filho, e
+     vice-versa) e o navegador infla a altura do profile bem além do
+     necessário — empurrando .chat-header-actions pra fora da própria
+     caixa do header (por isso os botões Aceitar/Transferir/Fechar/
+     Devolver ao bot ficavam renderizados por baixo de .chat-messages,
+     "sumidos" mesmo estando no DOM). */
+  .chat-header-profile {
+    height: auto;
+  }
+
+  .chat-header-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .conv-action-btn {
+    padding: 6px 10px;
+    font-size: 11px;
+    gap: 4px;
+  }
 }

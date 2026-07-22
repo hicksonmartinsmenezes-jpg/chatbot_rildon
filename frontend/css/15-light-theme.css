@@ -223,6 +223,13 @@ body.light-theme .chat-ticket-ref { color: #475569; }
 body.light-theme .chat-header-actions button:not(.conv-action-btn) { background: rgba(0,0,0,.05); color: #374151; }
 body.light-theme .chat-header-actions button:hover { background: rgba(29,108,245,.15); color: #0f172a; }
 
+/* Botões Aceitar/Transferir/Fechar do cabeçalho da conversa: texto pastel
+   (#86efac/#c4b5fd/#fca5a5) pensado pro fundo escuro do chat — quase
+   invisível sobre a topbar branca. Pedido do usuário (2026-07-22). */
+body.light-theme .conv-btn-aceitar { color: #15803d; }
+body.light-theme .conv-btn-transferir { color: #4338ca; }
+body.light-theme .conv-btn-fechar { color: #b91c1c; }
+
 /* BUG CORRIGIDO: esta regra tinha especificidade maior que ".chat-messages"
    em 06-conversations.css (2 classes + 1 tag vs. 1 classe), então SEMPRE
    vencia e escondia a marca d'água quando o tema claro estava ativo —

@@ -244,15 +244,21 @@ body.light-theme .bubble.client { background: #ffffff; border-color: rgba(0,0,0,
 body.light-theme .bubble.bot    { background: #d9fdd3; border-color: rgba(0,0,0,.05); }
 body.light-theme .bubble small  { color: rgba(0,0,0,.45); }
 
+/* Pedido do usuário (2026-07-22): caixa de digitação parecida com o
+   WhatsApp Web — pill branco sem borda visível, sombra suave em vez de
+   contorno, e botão de enviar em verde sólido (estilo WhatsApp). */
 body.light-theme .chat-input-area { background: #f0f2f5; border-top-color: rgba(0,0,0,.08); }
 body.light-theme .chat-input-area textarea {
   background: #ffffff;
   color: #0f172a;
-  border-color: rgba(0,0,0,.12);
+  border: none;
+  box-shadow: 0 1px 3px rgba(0,0,0,.12);
 }
 body.light-theme .chat-input-area textarea:focus {
-  border-color: rgba(29,108,245,.35);
-  box-shadow: 0 0 0 3px rgba(29,108,245,.10);
+  box-shadow: 0 1px 5px rgba(0,0,0,.18);
+}
+body.light-theme .chat-input-area button {
+  background: #25d366;
 }
 /* "Nenhuma conversa selecionada": herdava o fundo escuro do watermark do
    chat (.chat-messages) mesmo no tema claro. Pedido do usuário

@@ -475,24 +475,31 @@
 
      Pedido do usuário (2026-07-22, 5ª rodada): "pra ganhar espaço", os
      ícones de navegação (Painel/Atendimentos/Histórico/.../Config) ficam
-     escondidos por padrão no celular — só o botão de menu (☰) aparece,
-     fixo numa faixa fininha na lateral. Ao tocar nele, o próprio JS que já
-     existe (btnMenu → sidebar.classList.toggle("open")) faz a barra virar
-     um "drawer" flutuante por cima do conteúdo, mostrando os ícones —
-     e fecha sozinha ao escolher uma aba (switchTab já remove "open"). */
+     escondidos por padrão no celular — só o botão de menu (☰) aparece.
+     Ao tocar nele, o próprio JS que já existe (btnMenu →
+     sidebar.classList.toggle("open")) faz a barra virar um "drawer"
+     flutuante por cima do conteúdo, mostrando os ícones — e fecha
+     sozinha ao escolher uma aba (switchTab já remove "open").
+
+     Pedido do usuário (2026-07-22, 8ª rodada): "a barra lateral preciso
+     que suma e deixe apenas o botão" — antes ainda sobrava uma faixa
+     fixa de 48px (só pro botão, mas ocupando a altura toda da tela e
+     empurrando o conteúdo). Agora o colapsado é só o botão flutuando
+     (sem faixa, sem fundo, sem sombra, sem reservar largura nenhuma do
+     conteúdo) — o "corpo" da barra (fundo/sombra/largura) só existe
+     quando .open é aplicado. */
   .sidebar {
     position: fixed;
-    top: 0;
-    left: 0;
-    width: 48px;
-    height: 100vh;
-    padding-top: 10px;
+    top: 6px;
+    left: 8px;
+    width: auto;
+    height: auto;
+    padding: 0;
     gap: 0;
+    background: transparent;
+    border: none;
+    box-shadow: none;
     z-index: 500;
-  }
-
-  .main {
-    margin-left: 48px;
   }
 
   .sidebar a {
@@ -500,15 +507,25 @@
   }
 
   .sidebar.open {
+    top: 0;
+    left: 0;
     width: 210px;
     height: 100vh;
     padding: 14px 10px;
     gap: 6px;
+    background: rgba(14, 14, 14, 0.97);
+    border-right: 1px solid var(--border);
     box-shadow: 12px 0 40px rgba(0, 0, 0, 0.55);
   }
 
+  /* !important necessário: 12-ux-global.css redefine .sidebar .burger
+     (42x42) sem media query, e por carregar depois no bundle venceria
+     esta regra mesmo dentro do @media — mesma especificidade, ordem no
+     arquivo decide. */
   .sidebar .burger {
-    font-size: 17px;
+    width: 32px !important;
+    height: 32px !important;
+    font-size: 14px !important;
     margin-bottom: 0;
   }
 

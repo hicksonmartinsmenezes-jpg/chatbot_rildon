@@ -494,9 +494,16 @@
      especificidade, ordem no arquivo decide). Sem o !important, sobrava
      um retângulo escuro colado atrás do botão de menu, "sobressaindo"
      contra o fundo da página (percebido pelo usuário no tema claro). */
+  /* Pedido do usuário (2026-07-22, 10ª rodada): centralizar o botão de
+     menu na vertical do topbar e aumentar um pouco seu tamanho. A causa
+     do desalinhamento anterior era outra regra (@media max-width:560px
+     em 12-ux-global.css, corrigida acima) que mantinha o topbar em 66px
+     de altura real mesmo com o height:46px daqui — o botão, calculado
+     pra centralizar num topbar de 46px, ficava alto demais. Com o topbar
+     realmente em 46px agora, (46 - 34) / 2 = 6px de top centraliza certo. */
   .sidebar {
     position: fixed;
-    top: 9px;
+    top: 6px;
     left: 10px;
     width: auto;
     height: auto;
@@ -537,13 +544,12 @@
   /* !important necessário: 12-ux-global.css redefine .sidebar .burger
      (42x42, cantos quadrados) sem media query, e por carregar depois no
      bundle venceria esta regra mesmo dentro do @media — mesma
-     especificidade, ordem no arquivo decide. Agora redondo e do mesmo
-     tamanho do .icon-btn (28px) do topbar, pra combinar com os outros
-     ícones flutuantes ao lado em vez de parecer um bloco maior. */
+     especificidade, ordem no arquivo decide. Redondo, um pouco maior que
+     os 28px anteriores (pedido do usuário: "aumente um pouco o tamanho"). */
   .sidebar .burger {
-    width: 28px !important;
-    height: 28px !important;
-    font-size: 12px !important;
+    width: 34px !important;
+    height: 34px !important;
+    font-size: 14px !important;
     border-radius: 50% !important;
     margin-bottom: 0;
   }

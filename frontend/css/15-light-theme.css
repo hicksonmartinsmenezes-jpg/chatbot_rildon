@@ -7,6 +7,21 @@
 ========================================== */
 
 /* ─── Layout: sidebar / topbar ─────────────────────────────────────────── */
+/* Corrigido (2026-07-22): as cores de texto do sidebar (logo abaixo)
+   já eram escuras pro tema claro, mas o FUNDO do drawer mobile
+   (.sidebar.open) nunca tinha sido trocado — continuava herdando o
+   rgba(14,14,14,.97) do tema escuro (definido com !important em
+   02-layout.css) e "vazava" um retângulo escuro por cima do resto da
+   tela clara (bug reportado pelo usuário com print do celular). Preciso
+   de !important aqui também pra vencer o !important da regra escura. */
+@media (max-width: 720px) {
+  body.light-theme .sidebar.open {
+    background: #ffffff !important;
+    border-right: 1px solid rgba(0, 0, 0, 0.08) !important;
+    box-shadow: 12px 0 40px rgba(0, 0, 0, 0.18) !important;
+  }
+}
+
 body.light-theme .sidebar .burger { color: #0f172a; }
 /* Ícones da barra lateral (fora de hover/active) herdavam #6b7280 de
    02-layout.css (pensado pro tema escuro) — mal contrastam num sidebar

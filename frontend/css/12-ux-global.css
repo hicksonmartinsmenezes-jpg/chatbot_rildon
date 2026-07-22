@@ -1039,10 +1039,17 @@ button[disabled] {
 }
 
 @media (max-width: 560px) {
+  /* Corrigido (2026-07-22): esse min-height:66px (de uma varredura mobile
+     anterior, "v7") vencia o height:46px mais novo do @media(max-width:720px)
+     em 02-layout.css — min-height sempre prevalece quando maior que height,
+     não é questão de cascata. Resultado: topbar continuava com 66px de
+     altura mesmo depois de eu "encolher" pra 46px, e o botão de menu
+     (posicionado sobre um topbar de 46px) ficava desalinhado verticalmente
+     do centro real (66px) dos ícones do topbar. Alinhado aos 46px. */
   .topbar {
     height: auto;
-    min-height: 66px;
-    padding-block: 10px;
+    min-height: 46px;
+    padding-block: 0;
   }
 
   .ticket-footer,

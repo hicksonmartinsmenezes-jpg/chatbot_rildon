@@ -246,13 +246,15 @@ body.light-theme .bubble.client { background: #ffffff; border-color: rgba(0,0,0,
 body.light-theme .bubble.bot    { background: #d9fdd3; border-color: rgba(0,0,0,.05); }
 body.light-theme .bubble small  { color: rgba(0,0,0,.45); }
 
-/* Pedido do usuário (2026-07-22): a barra de digitação não pode ter um
-   fundo sólido próprio (nem branco, nem preto) — só remover o fundo e
-   deixar aparecer o bege da própria janela de conversa (.chat-window já
-   tem `background: #f5f1eb`, só que ficava sempre escondido atrás do
-   fundo sólido da barra). O pill do textarea continua branco/limpo, sem
-   borda, como no pedido original de "parecido com o WhatsApp". */
-body.light-theme .chat-input-area { background: transparent; border-top-color: rgba(0,0,0,.06); }
+/* Pedido do usuário (2026-07-22): a barra de digitação não pode ter fundo
+   sólido próprio (nem branco, nem preto) — nada além da caixa de mensagem
+   e do botão de enviar deve aparecer. A solução definitiva foi mover a
+   mesma imagem de fundo (marca d'água) que .chat-messages já usa para
+   .chat-input-area (em 06-conversations.css, base, os dois temas), então
+   a barra de digitação vira uma continuação natural do papel de parede da
+   conversa, sem nenhuma "caixa" própria — só não sobrescrever aqui com
+   uma cor sólida. */
+body.light-theme .chat-input-area { border-top-color: rgba(0,0,0,.06); }
 body.light-theme .chat-input-area textarea {
   background: #ffffff;
   color: #0f172a;

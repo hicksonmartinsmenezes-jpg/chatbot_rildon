@@ -1050,35 +1050,76 @@ body.tab-fullscreen #tab-conversations {
      linha(s) de baixo — só que o header não crescia (altura travada em
      72px, overflow:visible), então os botões ficavam renderizados por
      baixo de .chat-messages, escondidos/inacessíveis mesmo estando no DOM.
-     Corrigido liberando a altura e organizando os botões numa fileira
-     própria abaixo do perfil, com tamanho reduzido pra caber melhor. */
+
+     Ajuste seguinte (pedido do usuário, print real do celular): com
+     flexbox + flex-wrap, a seta de voltar ficava sozinha numa linha, o
+     perfil (avatar+nome/ticket/status) sozinho na linha de baixo, cada um
+     "quebrando" isoladamente mesmo cabendo lado a lado (comportamento de
+     flex-wrap difícil de prever com conteúdo variável). Trocado pra CSS
+     Grid, que posiciona de forma determinística: seta + perfil na mesma
+     linha (colunas fixas), ações numa 2ª linha ocupando a largura toda. */
   .chat-window-header {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-template-rows: auto auto;
+    align-items: center;
     height: auto;
     min-height: 60px;
     padding: 10px 14px;
+    column-gap: 10px;
+    row-gap: 10px;
+  }
+
+  .chat-mobile-back {
+    grid-column: 1;
+    grid-row: 1;
   }
 
   /* .chat-header-profile tem height:100% (pensado pro header fixo de
-     72px do desktop). Com o header agora em height:auto no celular, o
-     100% vira uma referência circular (altura do pai depende do filho, e
-     vice-versa) e o navegador infla a altura do profile bem além do
-     necessário — empurrando .chat-header-actions pra fora da própria
-     caixa do header (por isso os botões Aceitar/Transferir/Fechar/
-     Devolver ao bot ficavam renderizados por baixo de .chat-messages,
-     "sumidos" mesmo estando no DOM). */
+     72px do desktop) — com o header agora auto, o 100% virava referência
+     circular e inflava a altura do profile bem além do necessário. */
   .chat-header-profile {
+    grid-column: 2;
+    grid-row: 1;
     height: auto;
+    /* Pedido do usuário: "centralizar" a exibição do contato/ticket/quem
+       está atendendo em vez de ficar espremida logo após a seta — com
+       margin-left:auto ela ocupa só o espaço que precisa e fica
+       encostada no canto direito do header, equilibrando o espaço vazio
+       que sobrava ao lado. */
+    margin-left: auto;
+    text-align: right;
   }
 
+  .chat-header-info {
+    align-items: flex-end;
+  }
+
+  /* Pedido do usuário: "Devolver ao bot" do lado de "Fechar" — grid de 2
+     colunas em vez de deixar o 4º botão sozinho numa linha, reduzindo o
+     tamanho pra caber os rótulos mais longos (Transferir/Devolver ao
+     bot) confortavelmente. */
   .chat-header-actions {
-    width: 100%;
-    flex-wrap: wrap;
-    justify-content: flex-start;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
   }
 
   .conv-action-btn {
-    padding: 6px 10px;
-    font-size: 11px;
+    padding: 6px 4px;
+    font-size: 10px;
     gap: 4px;
+    justify-content: center;
+    width: 100%;
+  }
+
+  /* Bug reportado pelo usuário: iOS dá zoom automático no viewport
+     inteiro ao focar um <input>/<textarea> com font-size < 16px — o
+     campo "Digite uma mensagem" estava em 14px. 16px é o mínimo que
+     evita esse zoom involuntário. */
+  .chat-input-area textarea {
+    font-size: 16px;
   }
 }

@@ -500,9 +500,20 @@
      em 12-ux-global.css, corrigida acima) que mantinha o topbar em 66px
      de altura real mesmo com o height:46px daqui — o botão, calculado
      pra centralizar num topbar de 46px, ficava alto demais. Com o topbar
-     realmente em 46px agora, (46 - 34) / 2 = 6px de top centraliza certo. */
+     realmente em 46px agora, (46 - 34) / 2 = 6px de top centraliza certo.
+
+     Pedido do usuário (2026-07-22, 11ª rodada, print real do celular em
+     Atendimentos): o botão flutuante aparecia GRUDADO/misturado com a
+     seta de voltar do chat, os dois quase um em cima do outro. Causa:
+     position:fixed é sempre relativo à JANELA (viewport) — se a página
+     rola (o que acontece de verdade no celular, mesmo que no meu ambiente
+     de teste a altura bata certinho e não role), o botão fica "grudado"
+     na tela enquanto o conteúdo (incluindo o header do chat) rola por
+     baixo dele, e em algum ponto os dois colidem. Trocado pra
+     position:absolute: agora o botão rola JUNTO com a página (fica
+     sempre alinhado com o topbar, nunca sobrepõe conteúdo que rolou). */
   .sidebar {
-    position: fixed;
+    position: absolute;
     top: 6px;
     left: 10px;
     width: auto;
@@ -527,6 +538,10 @@
      tinha um "cartão" quadrado nitidamente maior que os ícones redondos
      do topbar ao lado. */
   .sidebar.open {
+    /* position:fixed de volta só quando aberto — o drawer precisa cobrir
+       a tela inteira (100vh) relativo à JANELA mesmo que a página esteja
+       rolada, senão abriria "no meio do nada" dependendo do scroll. */
+    position: fixed;
     top: 0;
     left: 0;
     width: 210px;

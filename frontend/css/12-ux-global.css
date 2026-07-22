@@ -832,21 +832,21 @@ body.light-theme .metric-card strong {
     font-size: 11px;
   }
 
-  /* Pedido do usuário (2026-07-22, 6ª rodada): o botão "Atualizar" da
-     barra de filtros continuava com a altura de desktop (56px, padding
+  /* Pedido do usuário (2026-07-22, 6ª e 7ª rodadas): o botão "Atualizar"
+     da barra de filtros continuava com a altura de desktop (56px, padding
      0 20px) mesmo depois dos campos encolherem — destoava, parecia um
-     bloco enorme do lado dos campos pequenos. Alinhado à altura do
-     .field (36px) pra ficar visualmente equilibrado. */
+     bloco enorme do lado dos campos pequenos. Encolhido em duas rodadas,
+     agora abaixo até da altura do .field, bem mais discreto. */
   .filters .btn-refresh {
-    height: 36px;
-    padding: 0 10px;
-    font-size: 10.5px;
-    gap: 5px;
-    border-radius: 10px;
+    height: 30px;
+    padding: 0 8px;
+    font-size: 9.5px;
+    gap: 4px;
+    border-radius: 8px;
   }
 
   .filters .btn-refresh i {
-    font-size: 10px;
+    font-size: 9px;
   }
 
   .content {
@@ -859,7 +859,7 @@ body.light-theme .metric-card strong {
 
   .logout-btn span,
   .logout-btn {
-    font-size: 12px;
+    font-size: 11px;
   }
 
   /* Correção (2026-07-22): "1fr 1fr" sozinho equivale a

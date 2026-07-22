@@ -525,33 +525,46 @@
 
   /* Pedido do usuário: topbar deve continuar em linha (uma faixa fina no
      topo), com os ícones colados na lateral direita, igual ao desktop —
-     só com menos espaçamento/padding pra caber na tela estreita. */
+     só com menos espaçamento/padding pra caber na tela estreita.
+     Encolhida mais um nível (2026-07-22, 7ª rodada: "reduza ainda mais o
+     topbar"). */
   .topbar {
-    height: 58px;
-    padding: 0 12px;
+    height: 46px;
+    padding: 0 10px;
   }
 
   .top-actions {
-    gap: 8px;
+    gap: 6px;
   }
 
   .icon-btn {
-    width: 34px;
-    height: 34px;
+    width: 28px;
+    height: 28px;
+    font-size: 12px;
   }
 
   .avatar {
-    width: 38px;
-    height: 38px;
-    font-size: 15px;
+    width: 30px;
+    height: 30px;
+    font-size: 12px;
   }
 
   .avatar-wrap {
-    padding: 4px 8px 4px 4px;
+    padding: 2px 6px 2px 2px;
+    gap: 6px;
+  }
+
+  .avatar-wrap i {
+    font-size: 10px;
   }
 
   .logout-btn {
-    padding: 8px 12px;
+    padding: 5px 9px;
+    gap: 5px;
+  }
+
+  .logout-btn i {
+    font-size: 11px;
   }
 
   .avatar-text,

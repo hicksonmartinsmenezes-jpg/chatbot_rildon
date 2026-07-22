@@ -244,23 +244,24 @@ body.light-theme .bubble.client { background: #ffffff; border-color: rgba(0,0,0,
 body.light-theme .bubble.bot    { background: #d9fdd3; border-color: rgba(0,0,0,.05); }
 body.light-theme .bubble small  { color: rgba(0,0,0,.45); }
 
-/* Pedido do usuário (2026-07-22): o fundo branco da caixa de digitação
-   destoava da área de mensagens, que continua escura de propósito (efeito
-   "marca d'água" do WhatsApp, decisão já validada antes). Removido o
-   branco — a barra de digitação some dentro do visual escuro da tela de
-   conversas, igual ao tema escuro, só sem borda visível no pill. */
-body.light-theme .chat-input-area { background: #111111; border-top-color: rgba(255,255,255,.06); }
+/* Pedido do usuário (2026-07-22): a barra de digitação não pode ter um
+   fundo sólido próprio (nem branco, nem preto) — só remover o fundo e
+   deixar aparecer o bege da própria janela de conversa (.chat-window já
+   tem `background: #f5f1eb`, só que ficava sempre escondido atrás do
+   fundo sólido da barra). O pill do textarea continua branco/limpo, sem
+   borda, como no pedido original de "parecido com o WhatsApp". */
+body.light-theme .chat-input-area { background: transparent; border-top-color: rgba(0,0,0,.06); }
 body.light-theme .chat-input-area textarea {
-  background: #1a1a1a;
-  color: #ffffff;
+  background: #ffffff;
+  color: #0f172a;
   border: none;
-  box-shadow: none;
+  box-shadow: 0 1px 3px rgba(0,0,0,.10);
 }
 body.light-theme .chat-input-area textarea:focus {
-  box-shadow: 0 0 0 3px rgba(255,255,255,.06);
+  box-shadow: 0 1px 5px rgba(0,0,0,.16);
 }
 body.light-theme .chat-input-area button {
-  background: linear-gradient(135deg, #22c55e, #14b8a6);
+  background: #25d366;
 }
 /* "Nenhuma conversa selecionada": herdava o fundo escuro do watermark do
    chat (.chat-messages) mesmo no tema claro. Pedido do usuário

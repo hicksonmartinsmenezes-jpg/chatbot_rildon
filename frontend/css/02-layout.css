@@ -488,6 +488,12 @@
      (sem faixa, sem fundo, sem sombra, sem reservar largura nenhuma do
      conteúdo) — o "corpo" da barra (fundo/sombra/largura) só existe
      quando .open é aplicado. */
+  /* !important nos 3 abaixo: 12-ux-global.css redefine .sidebar
+     (background/border-right/box-shadow escuros) sem media query e
+     carrega depois no bundle — venceria mesmo dentro do @media (mesma
+     especificidade, ordem no arquivo decide). Sem o !important, sobrava
+     um retângulo escuro colado atrás do botão de menu, "sobressaindo"
+     contra o fundo da página (percebido pelo usuário no tema claro). */
   .sidebar {
     position: fixed;
     top: 9px;
@@ -496,9 +502,9 @@
     height: auto;
     padding: 0;
     gap: 0;
-    background: transparent;
-    border: none;
-    box-shadow: none;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
     z-index: 500;
   }
 
@@ -521,9 +527,11 @@
     padding: 14px 10px;
     gap: 6px;
     align-items: flex-start;
-    background: rgba(14, 14, 14, 0.97);
-    border-right: 1px solid var(--border);
-    box-shadow: 12px 0 40px rgba(0, 0, 0, 0.55);
+    /* !important pra vencer o !important do .sidebar colapsado acima
+       (mesma regra de cascata: !important ignora especificidade). */
+    background: rgba(14, 14, 14, 0.97) !important;
+    border-right: 1px solid var(--border) !important;
+    box-shadow: 12px 0 40px rgba(0, 0, 0, 0.55) !important;
   }
 
   /* !important necessário: 12-ux-global.css redefine .sidebar .burger

@@ -471,33 +471,56 @@
      uma faixa horizontal no topo do celular. O usuário pediu pra voltar a
      ficar na lateral, igual ao computador, deixando o resto da tela o mais
      parecido possível com a versão de PC — então aqui a gente NÃO força
-     body/sidebar pra layout empilhado (coluna); mantém sidebar vertical e só
-     encolhe as dimensões pra sobrar espaço de conteúdo numa tela estreita. */
+     body/sidebar pra layout empilhado (coluna); mantém sidebar vertical.
+
+     Pedido do usuário (2026-07-22, 5ª rodada): "pra ganhar espaço", os
+     ícones de navegação (Painel/Atendimentos/Histórico/.../Config) ficam
+     escondidos por padrão no celular — só o botão de menu (☰) aparece,
+     fixo numa faixa fininha na lateral. Ao tocar nele, o próprio JS que já
+     existe (btnMenu → sidebar.classList.toggle("open")) faz a barra virar
+     um "drawer" flutuante por cima do conteúdo, mostrando os ícones —
+     e fecha sozinha ao escolher uma aba (switchTab já remove "open"). */
   .sidebar {
-    width: 56px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 48px;
+    height: 100vh;
     padding-top: 10px;
-    gap: 8px;
+    gap: 0;
+    z-index: 500;
+  }
+
+  .main {
+    margin-left: 48px;
+  }
+
+  .sidebar a {
+    display: none;
   }
 
   .sidebar.open {
-    width: 190px;
-    padding-left: 8px;
-    padding-right: 8px;
+    width: 210px;
+    height: 100vh;
+    padding: 14px 10px;
+    gap: 6px;
+    box-shadow: 12px 0 40px rgba(0, 0, 0, 0.55);
   }
 
   .sidebar .burger {
     font-size: 17px;
-    margin-bottom: 8px;
-  }
-
-  .sidebar a {
-    width: 34px;
-    height: 34px;
-    font-size: 15px;
+    margin-bottom: 0;
   }
 
   .sidebar.open a {
-    padding: 0 8px;
+    display: flex;
+    width: 100%;
+    justify-content: flex-start;
+    padding: 0 10px;
+  }
+
+  .sidebar.open .label {
+    display: inline;
   }
 
   /* Pedido do usuário: topbar deve continuar em linha (uma faixa fina no

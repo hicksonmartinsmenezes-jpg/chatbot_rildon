@@ -1082,18 +1082,11 @@ body.tab-fullscreen #tab-conversations {
     grid-column: 2;
     grid-row: 1;
     height: auto;
-    /* Pedido do usuário: "centralizar" a exibição do contato/ticket/quem
-       está atendendo em vez de ficar espremida logo após a seta — com
-       margin-left:auto ela ocupa só o espaço que precisa e fica
-       encostada no canto direito do header, equilibrando o espaço vazio
-       que sobrava ao lado. */
-    margin-left: auto;
-    text-align: right;
   }
-
-  .chat-header-info {
-    align-items: flex-end;
-  }
+  /* Pedido do usuário (2026-07-22, 12ª rodada): "arraste a foto, nome do
+     contato e ticket para esquerda" — desfeito o alinhamento à direita
+     da rodada anterior; volta a ficar colado à esquerda, logo após a
+     seta de voltar. */
 
   /* Pedido do usuário: "Devolver ao bot" do lado de "Fechar" — grid de 2
      colunas em vez de deixar o 4º botão sozinho numa linha, reduzindo o

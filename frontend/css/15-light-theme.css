@@ -70,6 +70,41 @@ body.light-theme .settings-card,
 body.light-theme .settings-home-card,
 body.light-theme .profile-box { border-color: rgba(0,0,0,.08); }
 
+/* Cards da Central de Configurações: o :hover herdava fundo escuro sólido
+   de 07-settings.css (pensado pro tema escuro) — virava um "flash" preto.
+   Pedido do usuário (2026-07-22): efeito vidro (glass) em vez de preto. */
+body.light-theme .settings-home-card:hover {
+  background: linear-gradient(180deg, rgba(255,255,255,.65), rgba(239,246,255,.55));
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-color: rgba(37, 99, 235, 0.28);
+  box-shadow: 0 18px 40px rgba(37, 99, 235, 0.12);
+}
+
+/* Configurações: barra "Voltar para configurações" + título da subtela
+   ficavam com fundo escuro sólido fixo (.settings-panel-toolbar,
+   .btn-back-settings de 07-settings.css) — resquício óbvio de tema
+   escuro. Trocado por vidro claro, mesmo pedido acima. */
+body.light-theme .settings-panel-toolbar {
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-color: rgba(15, 23, 42, 0.08);
+}
+body.light-theme .settings-panel-toolbar strong { color: #0f172a; }
+body.light-theme .btn-back-settings {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border-color: rgba(15, 23, 42, 0.12);
+  color: #334155;
+}
+body.light-theme .btn-back-settings:hover {
+  background: rgba(37, 99, 235, 0.08);
+  border-color: rgba(37, 99, 235, 0.3);
+  color: #1d4ed8;
+}
+
 body.light-theme .tab { background: #eef0f3; color: #374151; }
 body.light-theme .field input { color: #0f172a; }
 body.light-theme .field .placeholder { color: #374151; }

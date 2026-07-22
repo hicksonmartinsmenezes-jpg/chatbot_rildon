@@ -7,21 +7,21 @@
 ========================================== */
 
 /* ─── Layout: sidebar / topbar ─────────────────────────────────────────── */
-body.light-theme .sidebar .burger { color: #111827; }
-body.light-theme .sidebar a:hover { color: #111827; background: rgba(0,0,0,.05); }
+body.light-theme .sidebar .burger { color: #0f172a; }
+body.light-theme .sidebar a:hover { color: #0f172a; background: rgba(0,0,0,.05); }
 body.light-theme .sidebar a.active,
 body.light-theme .sidebar a.highlight { color: #1d6cf5; background: #1d6cf514; }
 body.light-theme .sidebar-badge { border-color: #ffffff; }
 
-body.light-theme .brand strong { color: #111827; }
+body.light-theme .brand strong { color: #0f172a; }
 body.light-theme .icon-btn,
 body.light-theme .logout-btn { color: #374151; }
 body.light-theme .icon-btn:hover,
-body.light-theme .logout-btn:hover { background: rgba(0,0,0,.06); color: #111827; }
-body.light-theme .avatar-text strong { color: #111827; }
+body.light-theme .logout-btn:hover { background: rgba(0,0,0,.06); color: #0f172a; }
+body.light-theme .avatar-text strong { color: #0f172a; }
 
 body.light-theme .section-title h2,
-body.light-theme .placeholder-panel h2 { color: #111827; }
+body.light-theme .placeholder-panel h2 { color: #0f172a; }
 body.light-theme .placeholder-panel i { color: #cbd5e1; }
 body.light-theme .empty,
 body.light-theme .loading { border-color: rgba(0,0,0,.12); }
@@ -38,9 +38,9 @@ body.light-theme .settings-home-card,
 body.light-theme .profile-box { border-color: rgba(0,0,0,.08); }
 
 body.light-theme .tab { background: #eef0f3; color: #374151; }
-body.light-theme .field input { color: #111827; }
+body.light-theme .field input { color: #0f172a; }
 body.light-theme .field .placeholder { color: #374151; }
-body.light-theme .btn-refresh { color: #111827; }
+body.light-theme .btn-refresh { color: #0f172a; }
 body.light-theme .btn-refresh:hover { background: #e5e7eb; }
 
 body.light-theme .metric-card {
@@ -49,7 +49,7 @@ body.light-theme .metric-card {
   box-shadow: 0 10px 40px rgba(0,0,0,.08);
 }
 body.light-theme .metric-card::before { background: none; }
-body.light-theme .metric-card .value { color: #111827; }
+body.light-theme .metric-card .value { color: #0f172a; }
 body.light-theme .metric-card .label { color: #374151; }
 
 /* ─── Dashboard: hero "Painel de Atendimento" + os 4 cards de métrica ────
@@ -113,24 +113,24 @@ body.light-theme .chat-sidebar,
 body.light-theme .chat-sidebar-header { background: #ffffff; }
 body.light-theme .chat-sidebar { border-right-color: rgba(0,0,0,.08); }
 body.light-theme .chat-sidebar-header { border-bottom-color: rgba(0,0,0,.08); }
-body.light-theme .chat-sidebar-header strong { color: #111827; }
-body.light-theme .chat-sidebar-header span { color: #6b7280; }
+body.light-theme .chat-sidebar-header strong { color: #0f172a; }
+body.light-theme .chat-sidebar-header span { color: #475569; }
 body.light-theme .chat-sidebar-header button { background: rgba(0,0,0,.04); color: #374151; }
-body.light-theme .chat-sidebar-header button:hover { background: rgba(0,0,0,.08); color: #111827; }
+body.light-theme .chat-sidebar-header button:hover { background: rgba(0,0,0,.08); color: #0f172a; }
 
-body.light-theme .chat-search { background: rgba(0,0,0,.03); border-color: rgba(0,0,0,.08); color: #6b7280; }
-body.light-theme .chat-search input { color: #111827; }
+body.light-theme .chat-search { background: rgba(0,0,0,.03); border-color: rgba(0,0,0,.08); color: #475569; }
+body.light-theme .chat-search input { color: #0f172a; }
 body.light-theme .chat-search input::placeholder { color: #9ca3af; }
 
 body.light-theme .chat-status-tabs { border-bottom-color: rgba(0,0,0,.08); }
 body.light-theme .chat-status-tab { color: rgba(0,0,0,.45); }
 body.light-theme .chat-status-tab:hover { color: rgba(0,0,0,.80); background: rgba(0,0,0,.04); }
-body.light-theme .chat-status-tab.active { color: #111827; border-bottom-color: #111827; }
+body.light-theme .chat-status-tab.active { color: #0f172a; border-bottom-color: #0f172a; }
 
 body.light-theme .chat-list::-webkit-scrollbar-thumb,
 body.light-theme .chat-messages::-webkit-scrollbar-thumb { background: rgba(0,0,0,.18); }
 
-body.light-theme .chat-item { color: #111827; }
+body.light-theme .chat-item { color: #0f172a; }
 body.light-theme .chat-item:hover { background: rgba(0,0,0,.04); }
 body.light-theme .chat-item.active {
   background: rgba(29,108,245,.08);
@@ -138,10 +138,10 @@ body.light-theme .chat-item.active {
   border-left-color: rgba(0,0,0,.25);
 }
 body.light-theme .chat-item-body { border-bottom-color: rgba(0,0,0,.07); }
-body.light-theme .chat-item-top strong { color: #111827; }
-body.light-theme .chat-item-top small { color: #6b7280; background: rgba(0,0,0,.05); }
-body.light-theme .chat-item-bottom span { color: #4b5563; }
-body.light-theme .conv-sector-tag { color: #64748b; background: rgba(0,0,0,.05); }
+body.light-theme .chat-item-top strong { color: #0f172a; }
+body.light-theme .chat-item-top small { color: #475569; background: rgba(0,0,0,.05); }
+body.light-theme .chat-item-bottom span { color: #475569; }
+body.light-theme .conv-sector-tag { color: #475569; background: rgba(0,0,0,.05); }
 
 body.light-theme .chat-avatar { background: #e3e8ef; color: #475569; }
 body.light-theme .avatar-fallback { background: #e3e8ef; color: #475569; }
@@ -149,11 +149,11 @@ body.light-theme .avatar-fallback { background: #e3e8ef; color: #475569; }
 body.light-theme .chat-window { background: #efeae2; }
 body.light-theme .chat-window-header { background: #f0f2f5; border-bottom-color: rgba(0,0,0,.08); }
 body.light-theme .chat-header-profile strong,
-body.light-theme .chat-contact-name { color: #111827; }
-body.light-theme .chat-header-profile span { color: #6b7280; }
-body.light-theme .chat-ticket-ref { color: #64748b; }
+body.light-theme .chat-contact-name { color: #0f172a; }
+body.light-theme .chat-header-profile span { color: #475569; }
+body.light-theme .chat-ticket-ref { color: #475569; }
 body.light-theme .chat-header-actions button:not(.conv-action-btn) { background: rgba(0,0,0,.05); color: #374151; }
-body.light-theme .chat-header-actions button:hover { background: rgba(29,108,245,.15); color: #111827; }
+body.light-theme .chat-header-actions button:hover { background: rgba(29,108,245,.15); color: #0f172a; }
 
 /* BUG CORRIGIDO: esta regra tinha especificidade maior que ".chat-messages"
    em 06-conversations.css (2 classes + 1 tag vs. 1 classe), então SEMPRE
@@ -172,7 +172,7 @@ body.light-theme .bubble small  { color: rgba(0,0,0,.45); }
 body.light-theme .chat-input-area { background: #f0f2f5; border-top-color: rgba(0,0,0,.08); }
 body.light-theme .chat-input-area textarea {
   background: #ffffff;
-  color: #111827;
+  color: #0f172a;
   border-color: rgba(0,0,0,.12);
 }
 body.light-theme .chat-input-area textarea:focus {
@@ -188,14 +188,14 @@ body.light-theme .notif-dropdown {
   box-shadow: 0 20px 60px rgba(0,0,0,.15);
 }
 body.light-theme .notif-dropdown-header { border-bottom-color: rgba(0,0,0,.08); }
-body.light-theme .notif-dropdown-header strong { color: #111827; }
-body.light-theme .notif-dropdown-header button { color: #6b7280; }
-body.light-theme .notif-dropdown-header button:hover { background: rgba(0,0,0,.05); color: #111827; }
+body.light-theme .notif-dropdown-header strong { color: #0f172a; }
+body.light-theme .notif-dropdown-header button { color: #475569; }
+body.light-theme .notif-dropdown-header button:hover { background: rgba(0,0,0,.05); color: #0f172a; }
 body.light-theme .notif-list li { border-bottom-color: rgba(0,0,0,.06); }
 body.light-theme .notif-list li:hover { background: rgba(0,0,0,.03); }
 body.light-theme .notif-list li.notif-empty { color: #9ca3af; }
-body.light-theme .notif-body strong { color: #111827; }
-body.light-theme .notif-body span { color: #6b7280; }
+body.light-theme .notif-body strong { color: #0f172a; }
+body.light-theme .notif-body span { color: #475569; }
 
 /* ─── Textarea desabilitada (sem conversa selecionada) ─────────────────── */
 body.light-theme .chat-input-area textarea:disabled {
@@ -210,7 +210,7 @@ body.light-theme .chat-selected-empty i { color: #cbd5e1; }
 /* ─── Tabelas (contatos) e cards de campanha — herdam de .panel/var(),
        mas garantimos texto escuro nos títulos fortes ──────────────────── */
 body.light-theme .ct-nome-cell strong,
-body.light-theme .camp-title-cell strong { color: #111827; }
+body.light-theme .camp-title-cell strong { color: #0f172a; }
 
 /* ─── Date picker nativo — segue o tema ───────────────────────────────── */
 body.light-theme input[type="date"],

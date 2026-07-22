@@ -83,14 +83,12 @@ textarea::placeholder {
 }
 
 /* ─── Tema Claro ──────────────────────────── */
-body.light-theme {
-  --bg:      #f4f5f7;
-  --panel:   #ffffff;
-  --panel-2: #f9fafb;
-  --border:  #e5e7eb;
-  --text:    #111827;
-  --muted:   #6b7280;
-}
+/* As variáveis --bg/--panel/--panel-2/--border/--text/--muted do tema claro
+   viviam duplicadas aqui E em 12-ux-global.css (com valores ligeiramente
+   diferentes) — como 12-ux-global.css carrega depois no bundle, a cópia
+   daqui nunca tinha efeito (dead code). Removida a duplicata nesta
+   varredura de padronização (2026-07-22); a definição única agora vive só
+   em 12-ux-global.css. */
 
 body.light-theme .sidebar,
 body.light-theme .topbar {
@@ -107,7 +105,7 @@ body.light-theme .settings-form select,
 body.light-theme .settings-form textarea,
 body.light-theme .settings-switch-row {
   background: #ffffff;
-  color: #111827;
+  color: #0f172a;
 }
 
 body.light-theme .settings-card-title h3,
@@ -115,5 +113,5 @@ body.light-theme .section-title h2,
 body.light-theme .placeholder-panel h2,
 body.light-theme .settings-switch-row strong,
 body.light-theme .settings-form label {
-  color: #111827;
+  color: #0f172a;
 }

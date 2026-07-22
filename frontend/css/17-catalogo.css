@@ -712,7 +712,9 @@ body.light-theme #tab-catalogo {
   --cat-bg-2: #ffffff;
   --cat-bg-3: #eef2f8;
   --cat-line: #dbe3ee;
-  --cat-text-dim: #64748b;
+  /* Padronização (2026-07-22): mesmo tom escurecido de --muted usado no
+     resto do app no tema claro (era #64748b). */
+  --cat-text-dim: #475569;
   --cat-text-dimmer: #94a3b8;
 }
 
@@ -726,7 +728,7 @@ body.light-theme .catalogo-erp-panel {
 body.light-theme .catalogo-erp-titlebar::after { display: none; }
 
 body.light-theme .catalogo-erp-tab {
-  color: #64748b;
+  color: #475569;
 }
 
 body.light-theme .catalogo-erp-tab:hover:not(.active) { color: #334155; }
@@ -751,17 +753,17 @@ body.light-theme .catalogo-erp-row select {
 body.light-theme .catalogo-erp-optional { color: #94a3b8; }
 
 body.light-theme .catalogo-erp-clear-btn {
-  color: #64748b;
+  color: #475569;
 }
 
-body.light-theme .catalogo-hint { color: #64748b; }
+body.light-theme .catalogo-hint { color: #475569; }
 
 body.light-theme .catalogo-empty-state {
   border-color: #dbe3ee;
   background: radial-gradient(circle at 50% 0%, rgba(15, 23, 42, 0.02), transparent 60%);
 }
 body.light-theme .catalogo-empty-state i { color: #94a3b8; background: rgba(148, 163, 184, 0.14); }
-body.light-theme .catalogo-empty-state p { color: #64748b; }
+body.light-theme .catalogo-empty-state p { color: #475569; }
 
 body.light-theme .catalogo-chip { color: #1d4ed8; }
 
@@ -785,7 +787,7 @@ body.light-theme .catalogo-card:hover {
    no tema claro o fundo já é branco por padrão, nada a sobrescrever aqui. */
 body.light-theme .catalogo-card-nome { color: #0f172a; }
 body.light-theme .catalogo-card-aplicacao { color: #475569; }
-body.light-theme .catalogo-card-fabricante { background: rgba(15, 23, 42, 0.03); color: #64748b; }
+body.light-theme .catalogo-card-fabricante { background: rgba(15, 23, 42, 0.03); color: #475569; }
 
 body.light-theme .catalogo-copy-btn {
   background: #f8fafc;

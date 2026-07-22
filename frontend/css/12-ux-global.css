@@ -655,7 +655,12 @@ body.light-theme {
   --panel-2: #f8fafc;
   --border: #dbe3ee;
   --text: #0f172a;
-  --muted: #64748b;
+  /* Padronização de cores do tema claro (2026-07-22, pedido do usuário):
+     --muted era #64748b (slate-500), a mesma cor usada de forma inconsistente
+     (às vezes #6b7280, #4b5563) em dezenas de textos secundários pelo app —
+     escurecido pra #475569 (slate-600) e unificado como o único tom de
+     "texto secundário" do tema claro. */
+  --muted: #475569;
 }
 
 body.light-theme {

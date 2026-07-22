@@ -334,7 +334,7 @@ body.light-theme .metric-satisfaction-table td {
   color: #0f172a;
   border-bottom-color: rgba(15, 23, 42, 0.08);
 }
-body.light-theme .metric-satisfaction-table th { color: #64748b; }
+body.light-theme .metric-satisfaction-table th { color: #475569; }
 
 /* ─── Responsivo ───────────────────────────────────────────────── */
 @media (max-width: 1180px) {
@@ -369,7 +369,7 @@ body.light-theme #tab-metrics .metric-card {
 }
 
 body.light-theme #tab-metrics .metric-card strong { color: #0f172a; text-shadow: none; }
-body.light-theme .metric-card-label { color: #64748b; }
+body.light-theme .metric-card-label { color: #475569; }
 
 body.light-theme #tab-metrics .chart-card {
   background: #ffffff;

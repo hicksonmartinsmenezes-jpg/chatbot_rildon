@@ -214,7 +214,9 @@ body.light-theme .conv-sector-tag { color: #475569; background: rgba(0,0,0,.05);
 body.light-theme .chat-avatar { background: #e3e8ef; color: #475569; }
 body.light-theme .avatar-fallback { background: #e3e8ef; color: #475569; }
 
-body.light-theme .chat-window { background: #efeae2; }
+/* Pedido do usuário (2026-07-22): sem cor nenhuma aqui, transparente —
+   mostra o branco do próprio .whatsapp-panel por trás. */
+body.light-theme .chat-window { background: transparent; }
 body.light-theme .chat-window-header { background: #f0f2f5; border-bottom-color: rgba(0,0,0,.08); }
 body.light-theme .chat-header-profile strong,
 body.light-theme .chat-contact-name { color: #0f172a; }

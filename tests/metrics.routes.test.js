@@ -1,5 +1,5 @@
 /**
- * Testes de metrics.routes.js — foco em dois pontos:
+ * Testes de metrics.routes.js — foco em três pontos:
  *
  * 1. BUG CORRIGIDO: a aba "Métricas" no frontend (frontend/index.html) é
  *    marcada como "supervisor-only" (supervisor + admin), mas o backend
@@ -14,6 +14,13 @@
  *    atendente" na aba Métricas — os campos satisfacaoMedia,
  *    satisfacaoTotalRespostas e satisfacaoPorAtendente precisam aparecer na
  *    resposta.
+ *
+ * 3. PEDIDO DO USUÁRIO (2026-07-27): reformulação da aba Métricas pra
+ *    supervisora monitorar "quem está em atendimento/quem não" e "quem
+ *    atendeu mais" — campos "atendentes" (total atendido + em_andamento
+ *    agora) e "horarioPico"/"porHora" (pra decidir escala). Os antigos
+ *    "porStatus"/"porSetor"/"setorMaisMovimentado" foram removidos a pedido
+ *    do usuário (a aba Métricas não mostra mais esses gráficos/card).
  */
 jest.mock("../src/database/postgres", () => ({ query: jest.fn() }));
 jest.mock("../src/services/activityLog.service", () => ({
@@ -55,11 +62,19 @@ function installFakePool() {
         }]
       };
     }
-    if (/COALESCE\(sector, 'geral'\) AS setor/.test(sql)) {
-      return { rows: [{ setor: "vendas", total: 6 }, { setor: "financeiro", total: 4 }] };
-    }
     if (/TO_CHAR\(created_at/.test(sql)) {
       return { rows: [{ dia: "15/07/2026", total: 3 }] };
+    }
+    if (/EXTRACT\(HOUR FROM created_at/.test(sql)) {
+      return { rows: [{ hora: 9, total: 2 }, { hora: 14, total: 7 }] };
+    }
+    if (/FROM users u/.test(sql) && /LEFT JOIN tickets t/.test(sql)) {
+      return {
+        rows: [
+          { id: "u-1", nome: "Bruno", total_atendidos: 12, em_atendimento: 1 },
+          { id: "u-2", nome: "Ana",   total_atendidos: 3,  em_atendimento: 0 },
+        ]
+      };
     }
     if (/AVG\(satisfaction_rating\)/.test(sql) && /GROUP BY assigned_to_name/.test(sql)) {
       return { rows: [{ nome: "Bruno", media: "4.50", total: 2 }] };
@@ -133,5 +148,45 @@ describe("GET /api/metrics", () => {
       feedback: "Demorou muito pra responder",
       feedbackAt: "2026-07-21T12:00:00.000Z"
     }]);
+  });
+
+  // PEDIDO DO USUÁRIO (2026-07-27): "quem está em atendimento/quem não" e
+  // "quem atendeu mais" — a supervisora precisa ver, por atendente, o total
+  // já atendido (histórico) e se tem ticket em_andamento agora. Status
+  // online/offline em si é resolvido no frontend (window.onlineUsers via
+  // socket), não faz parte desta resposta.
+  test("resposta inclui atendentes (total atendido + em atendimento agora), ordenado por total_atendidos", async () => {
+    const res = await request(buildApp(SUPERVISOR)).get("/api/metrics");
+
+    expect(res.status).toBe(200);
+    expect(res.body.atendentes).toEqual([
+      { id: "u-1", nome: "Bruno", totalAtendidos: 12, emAtendimento: true },
+      { id: "u-2", nome: "Ana",   totalAtendidos: 3,  emAtendimento: false },
+    ]);
+  });
+
+  // PEDIDO DO USUÁRIO (2026-07-27): "horário de pico" pra decidir escala —
+  // porHora sempre com as 24 horas (mesmo as sem nenhum atendimento, pra não
+  // furar o eixo do gráfico) e horarioPico apontando a hora de maior volume.
+  test("resposta inclui porHora (24h completas) e horarioPico", async () => {
+    const res = await request(buildApp(SUPERVISOR)).get("/api/metrics");
+
+    expect(res.status).toBe(200);
+    expect(Object.keys(res.body.porHora)).toHaveLength(24);
+    expect(res.body.porHora[9]).toBe(2);
+    expect(res.body.porHora[14]).toBe(7);
+    expect(res.body.porHora[0]).toBe(0); // hora sem nenhum atendimento no mock
+    expect(res.body.horarioPico).toEqual({ hora: 14, total: 7 });
+  });
+
+  // PEDIDO DO USUÁRIO (2026-07-27): remover "setor destaque"/"por status"/
+  // "por setor" da aba Métricas — não fazem mais parte da resposta.
+  test("resposta NÃO inclui mais setorMaisMovimentado/porStatus/porSetor (removidos a pedido do usuário)", async () => {
+    const res = await request(buildApp(SUPERVISOR)).get("/api/metrics");
+
+    expect(res.status).toBe(200);
+    expect(res.body.setorMaisMovimentado).toBeUndefined();
+    expect(res.body.porStatus).toBeUndefined();
+    expect(res.body.porSetor).toBeUndefined();
   });
 });

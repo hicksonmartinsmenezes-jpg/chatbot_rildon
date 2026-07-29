@@ -1,11 +1,5 @@
 // 05-metrics.js
 
-// Paleta coordenada com os accents dos cards (16-metrics.css)
-const METRICS_PALETTE = [
-  "#3b82f6", "#22c55e", "#ef4444", "#f59e0b",
-  "#06b6d4", "#8b5cf6", "#14b8a6", "#fb923c"
-];
-
 function metricsReducedMotion() {
   return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
@@ -75,10 +69,12 @@ async function loadMetricsCharts() {
     animateMetric(document.getElementById("metric-pendentes"),  data.pendentes);
     animateMetric(document.getElementById("metric-taxa-resolucao"), data.taxaResolucao, "%");
 
-    const setorTop = document.getElementById("metric-setor-top");
-    if (setorTop) {
-      setorTop.textContent = data.setorMaisMovimentado
-        ? `${data.setorMaisMovimentado.nome} (${data.setorMaisMovimentado.total})`
+    // PEDIDO DO USUÁRIO (2026-07-27): "horário de pico" no lugar do antigo
+    // "setor destaque" (removido) — ajuda a decidir reforço de escala.
+    const horarioPicoEl = document.getElementById("metric-horario-pico");
+    if (horarioPicoEl) {
+      horarioPicoEl.textContent = data.horarioPico
+        ? `${String(data.horarioPico.hora).padStart(2, "0")}h (${data.horarioPico.total})`
         : "—";
     }
 
@@ -128,32 +124,42 @@ async function loadMetricsCharts() {
         : `<tr><td colspan="5" class="metric-satisfaction-empty">Nenhum comentário registrado ainda.</td></tr>`;
     }
 
-    // ── Gráfico de status (doughnut) ──────────────────────────────────────────
-    upsertChart("metric-chart-status", "doughnut", {
-      labels:   Object.keys(data.porStatus || {}),
-      datasets: [{
-        data:            Object.values(data.porStatus || {}),
-        backgroundColor: METRICS_PALETTE,
-        borderColor:     "rgba(0,0,0,0.25)",
-        borderWidth:     2,
-        hoverOffset:     8
-      }]
-    }, {
-      cutout: "66%",
-      plugins: { legend: { position: "bottom" } }
-    });
+    // PEDIDO DO USUÁRIO (2026-07-27): supervisora monitorando "quem está em
+    // atendimento/quem não" e "quem atendeu mais" — uma única tabela, já
+    // ordenada pelo backend por total_atendidos DESC, cobre as duas
+    // perguntas ao mesmo tempo (topo da lista = quem mais atendeu). Status
+    // online/offline vem de window.onlineUsers (12-socket.js), populado via
+    // socket "online_users" — mesmo dado já usado na aba Usuários.
+    const atendentesBody = document.getElementById("metric-atendentes-body");
+    if (atendentesBody) {
+      const atendentes = data.atendentes || [];
+      atendentesBody.innerHTML = atendentes.length
+        ? atendentes.map((a) => {
+            const online = window.onlineUsers?.some(u => u.id === a.id && u.online);
+            return `
+              <tr>
+                <td>${safe(a.nome)}</td>
+                <td>${online ? "🟢 Online" : "⚫ Offline"}</td>
+                <td>${a.emAtendimento ? "🟠 Sim" : "—"}</td>
+                <td>${a.totalAtendidos}</td>
+              </tr>
+            `;
+          }).join("")
+        : `<tr><td colspan="4" class="metric-satisfaction-empty">Nenhum atendente cadastrado.</td></tr>`;
+    }
 
-    // ── Gráfico por setor (bar) ───────────────────────────────────────────────
-    upsertChart("metric-chart-sector", "bar", {
-      labels:   Object.keys(data.porSetor || {}),
+    // ── Gráfico por horário (bar) — pedido do usuário, no lugar do antigo
+    // gráfico "por setor" (removido) ──────────────────────────────────────────
+    upsertChart("metric-chart-hora", "bar", {
+      labels:   Object.keys(data.porHora || {}).map(h => `${String(h).padStart(2, "0")}h`),
       datasets: [{
         label:           "Atendimentos",
-        data:            Object.values(data.porSetor || {}),
+        data:            Object.values(data.porHora || {}),
         backgroundColor: (c) => metricsAreaGradient(c.chart.ctx, c.chart.chartArea, "#3b82f6"),
         borderColor:     "#3b82f6",
         borderWidth:     1.5,
         borderRadius:    10,
-        maxBarThickness: 56
+        maxBarThickness: 32
       }]
     }, {
       plugins: { legend: { display: false } }

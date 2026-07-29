@@ -24,16 +24,6 @@ router.get("/metrics", asyncHandler(async (req, res) => {
     FROM tickets
   `, [TZ]);
 
-  // Totais por setor
-  const setorRes = await pool.query(`
-    SELECT
-      COALESCE(sector, 'geral') AS setor,
-      COUNT(*)::int             AS total
-    FROM tickets
-    GROUP BY setor
-    ORDER BY total DESC
-  `);
-
   // Totais por dia (últimos 30 dias) — timezone via parâmetro para evitar SQL injection
   const diaRes = await pool.query(`
     SELECT
@@ -44,6 +34,40 @@ router.get("/metrics", asyncHandler(async (req, res) => {
     GROUP BY dia
     ORDER BY MIN(created_at) ASC
   `, [TZ]);
+
+  // PEDIDO DO USUÁRIO (2026-07-27): "horário de pico" — em que hora do dia
+  // chegam mais atendimentos, pra decidir escala/reforço de atendente. Mesma
+  // janela de 30 dias do gráfico "por dia" acima, pra ficar consistente e
+  // refletir o volume recente (não o histórico todo, que dilui picos atuais).
+  const horaRes = await pool.query(`
+    SELECT
+      EXTRACT(HOUR FROM created_at AT TIME ZONE $1)::int AS hora,
+      COUNT(*)::int AS total
+    FROM tickets
+    WHERE created_at >= NOW() - INTERVAL '30 days'
+    GROUP BY hora
+    ORDER BY hora ASC
+  `, [TZ]);
+
+  // PEDIDO DO USUÁRIO (2026-07-27): supervisora monitorando "quem está em
+  // atendimento / quem não" e "quem atendeu mais" — uma única query agregada
+  // (evita 1 consulta por atendente) juntando o cadastro de usuários ativos
+  // com a contagem de tickets já assumidos por cada um (total histórico) e
+  // quantos estão em_andamento AGORA. Status online/offline é resolvido no
+  // frontend (window.onlineUsers, via socket.service.js) — não depende do
+  // banco, é presença em tempo real da conexão com o painel.
+  const atendentesRes = await pool.query(`
+    SELECT
+      u.id,
+      u.nome,
+      COUNT(t.id)::int AS total_atendidos,
+      COUNT(t.id) FILTER (WHERE t.status = 'em_andamento')::int AS em_atendimento
+    FROM users u
+    LEFT JOIN tickets t ON t.assigned_to = u.id
+    WHERE u.ativo = true
+    GROUP BY u.id, u.nome
+    ORDER BY total_atendidos DESC, u.nome ASC
+  `);
 
   // Pesquisa de satisfação: média geral + por atendente (só tickets
   // avaliados — satisfaction_rating IS NOT NULL).
@@ -91,22 +115,18 @@ router.get("/metrics", asyncHandler(async (req, res) => {
   const s     = summaryRes.rows[0];
   const total = s.total;
 
-  const porStatus = {
-    aberto:       s.abertos,
-    em_andamento: s.andamento,
-    resolvido:    s.resolvidos,
-    cancelado:    s.cancelados
-  };
-
-  const porSetor = {};
-  for (const row of setorRes.rows) porSetor[row.setor] = row.total;
-
   const porDia = {};
   for (const row of diaRes.rows) porDia[row.dia] = row.total;
 
-  const setorMaisMovimentado = setorRes.rows[0]
-    ? { nome: setorRes.rows[0].setor, total: setorRes.rows[0].total }
-    : { nome: "—", total: 0 };
+  // Todas as 24 horas aparecem no gráfico (mesmo com 0 atendimentos) — evita
+  // eixo "furado" pulando direto de "9h" pra "14h" sem mostrar as vazias.
+  const porHora = {};
+  for (let h = 0; h < 24; h++) porHora[h] = 0;
+  for (const row of horaRes.rows) porHora[row.hora] = row.total;
+
+  const horarioPico = horaRes.rows.length
+    ? horaRes.rows.reduce((max, row) => (row.total > max.total ? row : max))
+    : null;
 
   const taxaResolucao = total > 0
     ? Math.round((s.resolvidos / total) * 100)
@@ -116,6 +136,17 @@ router.get("/metrics", asyncHandler(async (req, res) => {
   for (const row of satisfacaoAtendenteRes.rows) {
     satisfacaoPorAtendente[row.nome] = { media: Number(row.media), total: row.total };
   }
+
+  // PEDIDO DO USUÁRIO: monitoramento de atendentes — status online/offline é
+  // resolvido no frontend (window.onlineUsers), aqui só entram os dados que
+  // dependem do banco (quem atendeu quanto, quem tem ticket em_andamento
+  // agora).
+  const atendentes = atendentesRes.rows.map(row => ({
+    id:             row.id,
+    nome:           row.nome,
+    totalAtendidos: row.total_atendidos,
+    emAtendimento:  row.em_atendimento > 0
+  }));
 
   res.json({
     total,
@@ -127,10 +158,10 @@ router.get("/metrics", asyncHandler(async (req, res) => {
     cancelados: s.cancelados,
     pendentes:  s.abertos + s.andamento,
     taxaResolucao,
-    setorMaisMovimentado,
-    porStatus,
-    porSetor,
     porDia,
+    porHora,
+    horarioPico: horarioPico ? { hora: horarioPico.hora, total: horarioPico.total } : null,
+    atendentes,
     satisfacaoMedia:         satisfacaoRes.rows[0]?.media ? Number(satisfacaoRes.rows[0].media) : null,
     satisfacaoTotalRespostas: satisfacaoRes.rows[0]?.total || 0,
     satisfacaoPorAtendente,

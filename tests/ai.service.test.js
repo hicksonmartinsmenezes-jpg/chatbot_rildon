@@ -372,9 +372,166 @@ describe("ai.service — provedor anthropic (Claude)", () => {
 
     const res = await perguntarIA("teste", {});
     expect(res).toBeNull();
-    // MAX_TENTATIVAS = 2
-    expect(global.fetch).toHaveBeenCalledTimes(2);
-  }, 10000); // retry real (3s) entre tentativas — timeout maior evita flakiness
+    // MAX_TENTATIVAS = 3 (aumentado de 2 — ver comentário em ai.service.js, item #7)
+    expect(global.fetch).toHaveBeenCalledTimes(3);
+  }, 15000); // retry real (3s) entre tentativas, agora 2 esperas — timeout maior evita flakiness
+});
+
+// PEDIDO DO USUÁRIO (2026-07-27): achado ao vivo em produção — "Your credit
+// balance is too low to access the Anthropic API" (HTTP 400) é uma falha
+// PERMANENTE até o usuário recarregar o console, bem diferente de um 429/500
+// transitório. Sem tratamento especial, cada mensagem de cliente durante a
+// falta de crédito gastava uma chamada HTTP fadada a falhar, e main.flow.js
+// só escalava pro atendente na 2ª mensagem consecutiva. Circuito: detecta
+// esse erro específico, pula a chamada de rede por alguns minutos, e expõe
+// iaEmFalhaCritica() pra main.flow.js escalar já na 1ª mensagem.
+describe("ai.service — circuit breaker de falta de crédito na API", () => {
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    global.fetch = jest.fn();
+  });
+
+  afterEach(() => {
+    process.env = { ...ORIGINAL_ENV };
+    global.fetch = originalFetch;
+  });
+
+  test("HTTP 400 'credit balance is too low' → retorna null numa ÚNICA tentativa (não é erro transitório, não vale a pena repetir)", async () => {
+    const { perguntarIA } = loadAiService({ provider: "anthropic", apiKey: "sk-ant-teste-123" });
+
+    global.fetch.mockResolvedValue({
+      ok: false,
+      status: 400,
+      headers: { get: () => null },
+      text: async () => '{"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits."}}',
+    });
+
+    const res = await perguntarIA("teste", {});
+    expect(res).toBeNull();
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  test("depois de detectar o erro de crédito, iaEmFalhaCritica() vira true e a PRÓXIMA chamada nem tenta a rede", async () => {
+    const { perguntarIA, iaEmFalhaCritica } = loadAiService({ provider: "anthropic", apiKey: "sk-ant-teste-123" });
+
+    global.fetch.mockResolvedValue({
+      ok: false,
+      status: 400,
+      headers: { get: () => null },
+      text: async () => '{"error":{"message":"Your credit balance is too low to access the Anthropic API."}}',
+    });
+
+    expect(iaEmFalhaCritica()).toBe(false);
+    await perguntarIA("primeira mensagem", {});
+    expect(iaEmFalhaCritica()).toBe(true);
+
+    global.fetch.mockClear();
+    const res2 = await perguntarIA("segunda mensagem, cliente diferente", {});
+    expect(res2).toBeNull();
+    expect(global.fetch).not.toHaveBeenCalled(); // circuito aberto — nem tenta a rede
+  });
+
+  test("HTTP 400 por outro motivo (não é falta de crédito) NÃO ativa o circuito", async () => {
+    const { perguntarIA, iaEmFalhaCritica } = loadAiService({ provider: "anthropic", apiKey: "sk-ant-teste-123" });
+
+    global.fetch.mockResolvedValue({
+      ok: false,
+      status: 400,
+      headers: { get: () => null },
+      text: async () => '{"error":{"message":"prompt is too long"}}',
+    });
+
+    await perguntarIA("mensagem enorme", {});
+    expect(iaEmFalhaCritica()).toBe(false);
+
+    global.fetch.mockClear();
+    await perguntarIA("outra mensagem", {});
+    expect(global.fetch).toHaveBeenCalledTimes(1); // circuito NÃO ativado — tenta a rede normalmente
+  });
+});
+
+// BUG CORRIGIDO (relatado pelo usuário, 2026-07-23 — clientes reais em
+// produção): o override determinístico "Sim, temos! <produto real>"
+// disparava mesmo sem o cliente ter mencionado nenhum veículo, porque
+// buscarPorVeiculo() caía num fallback por SEÇÃO que aceitava 1 palavra
+// residual qualquer como "sinal de veículo" (ex: "polia" em "Alternador com
+// polia"). Reproduzido em produção: pergunta genérica sem veículo devolveu
+// "POLIA CITROEN XSARA" (o carro real do cliente era Nissan Frontier);
+// fragmento incompleto devolveu "INDUZIDO... TOYOTA MARILIA". Corrigido:
+// buscarPorVeiculo só é chamado quando a IA já extraiu um veículo real da
+// mensagem (campo "veiculo"). Esses testes mockam catalogo-x2.service
+// diretamente (em vez de depender de uma coincidência real nos dados do
+// catálogo) pra isolar e travar essa regra especificamente.
+describe("ai.service — override de catálogo só dispara com veículo confirmado", () => {
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    global.fetch = jest.fn();
+  });
+
+  afterEach(() => {
+    process.env = { ...ORIGINAL_ENV };
+    global.fetch = originalFetch;
+    jest.dontMock("../src/services/catalogo-x2.service");
+  });
+
+  test("sem veículo na mensagem → mesmo que buscarPorVeiculo ache algo (falso positivo de categoria), NÃO sobrescreve a resposta da IA", async () => {
+    jest.resetModules();
+    jest.doMock("../src/services/catalogo-x2.service", () => ({
+      buscarPorCodigoOriginal: jest.fn().mockReturnValue([]),
+      // Simula o fallback-por-seção batendo num produto qualquer só por
+      // causa de uma palavra residual ("polia") — exatamente o bug real.
+      buscarPorVeiculo: jest.fn().mockReturnValue([
+        { nome: "POLIA CITROEN XSARA 1.6 16V 2001> - VETOR", referencia: "VT7041", codigo: "999" }
+      ]),
+    }));
+    process.env.AI_PROVIDER = "anthropic";
+    process.env.ANTHROPIC_API_KEY = "sk-ant-teste-123";
+    const { perguntarIA } = require("../src/services/ai.service");
+
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        content: [{ text: '"resposta":"Trabalhamos com alternador de várias marcas! Qual o veículo?","intencao":"vendas","veiculo":null}' }],
+      }),
+    });
+
+    const res = await perguntarIA("Alternador com polia", {});
+
+    expect(res.veiculo).toBeNull();
+    expect(res.resposta).toBe("Trabalhamos com alternador de várias marcas! Qual o veículo?");
+    expect(res.resposta).not.toContain("POLIA CITROEN XSARA");
+  });
+
+  test("com veículo confirmado pela IA + buscarPorVeiculo acha o produto → sobrescreve com 'Sim, temos!' (comportamento original preservado)", async () => {
+    jest.resetModules();
+    const buscarPorVeiculoMock = jest.fn().mockReturnValue([
+      { nome: "ALTERNADOR NISSAN FRONTIER 2012 - BOSCH", referencia: "AL123", codigo: "888" }
+    ]);
+    jest.doMock("../src/services/catalogo-x2.service", () => ({
+      buscarPorCodigoOriginal: jest.fn().mockReturnValue([]),
+      buscarPorVeiculo: buscarPorVeiculoMock,
+    }));
+    process.env.AI_PROVIDER = "anthropic";
+    process.env.ANTHROPIC_API_KEY = "sk-ant-teste-123";
+    const { perguntarIA } = require("../src/services/ai.service");
+
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        content: [{ text: '"resposta":"Vou verificar pra você.","intencao":"vendas","veiculo":"Nissan Frontier 2012"}' }],
+      }),
+    });
+
+    const res = await perguntarIA("Alternador do meu Nissan Frontier 2012", {});
+
+    expect(buscarPorVeiculoMock).toHaveBeenCalled();
+    expect(res.veiculo).toBe("Nissan Frontier 2012");
+    expect(res.resposta).toBe("Sim, temos! 😊 ALTERNADOR NISSAN FRONTIER 2012 - BOSCH (ref. AL123).");
+  });
 });
 
 describe("ai.service — seleção de provedor via AI_PROVIDER", () => {

@@ -15,14 +15,18 @@ const {
   listTickets,
   updateTicketStatus,
   clearReopenCooldown,
+  foiReabertoManualmenteRecente,
   getTicketStats,
   assignTicket,
   transferTicket
 } = require("../services/ticket.service");
 
 // CORRIGIDO: "atendimento" adicionado — mainFlow cria tickets com esse setor
+// "crediario" removido (2026-07-24) — feature descontinuada, sem tickets
+// existentes nesse setor (confirmado antes da remoção). Ver chk_ticket_sector
+// (schema.sql + migration 020_remove_crediario_sector.sql).
 const SETORES_VALIDOS = [
-  "suporte", "vendas", "financeiro", "garantia", "geral", "atendimento", "gestao", "crediario"
+  "suporte", "vendas", "financeiro", "garantia", "geral", "atendimento", "gestao"
 ];
 
 const STATUS_VALIDOS = ["aberto", "em_andamento", "resolvido", "cancelado"];
@@ -153,6 +157,14 @@ async function patchTicket(req, res) {
     // CORRIGIDO: garante que status é string antes de incluir
     const status = typeof req.body?.status === "string" ? req.body.status : "";
 
+    // PEDIDO DO USUÁRIO (2026-07-27): varredura de tickets já concluídos mas
+    // esquecidos em Pendentes — fechar em massa SEM disparar pesquisa de
+    // satisfação (fazer isso pra um monte de tickets antigos de uma vez
+    // mandaria a pesquisa fora de contexto pro cliente, dias depois do
+    // atendimento real ter acabado). Opt-in explícito via body — comportamento
+    // padrão (sem o campo) continua enviando a pesquisa normalmente.
+    const skipSurvey = req.body?.skipSurvey === true;
+
     if (!STATUS_VALIDOS.includes(status)) {
       return res.status(400).json({
         error: `Status inválido. Use: ${STATUS_VALIDOS.join(", ")}`
@@ -220,7 +232,27 @@ async function patchTicket(req, res) {
     // fechado não deve gerar esse efeito colateral de novo.
     const jaEstavaResolvido = atual.status === "resolvido";
 
-    const ticket = await updateTicketStatus(id, status);
+    // Ver comentário em updateTicketStatus (ticket.service.js): reabertura
+    // MANUAL (status "aberto") de um ticket avaliado há pouco tempo preserva
+    // a nota de satisfação, evitando que a pesquisa dispare de novo ao
+    // fechar em seguida — passa "atual" (já buscado acima) pra decisão.
+    const ticket = await updateTicketStatus(id, status, { ticketAtual: atual });
+
+    // PEDIDO DO USUÁRIO (2026-07-27): "quando clicar em reabrir... não mande
+    // a saudação com o nome do funcionário e também não mande a pesquisa de
+    // satisfação por determinado tempo". Reabrir um ticket fechado (mesmo
+    // dias depois, ex: cliente manda mensagem sobre outro assunto) pausa o
+    // bot IMEDIATAMENTE pro cliente — igual assumirTicket já faz, só que sem
+    // esperar um "Assumir" separado. Fica em silêncio até o atendente
+    // devolver ao bot, fechar de novo (humanMode.desativar abaixo), ou pela
+    // própria inatividade do humanMode (HUMAN_MODE_TTL_MIN).
+    const eraReaberturaManual =
+      status === "aberto" && (atual.status === "resolvido" || atual.status === "cancelado");
+    if (eraReaberturaManual) {
+      humanMode.ativar(atual.userId, {
+        agentName: req.user?.nome || req.user?.usuario || "",
+      });
+    }
 
     // Ticket fechado → bot volta a responder este cliente
     if (status === "resolvido" || status === "cancelado") {
@@ -238,8 +270,19 @@ async function patchTicket(req, res) {
     }
 
     // Só pra "resolvido", e só na transição real (ver nota acima) — evita
-    // reenviar a pesquisa quando o ticket já estava resolvido.
-    if (status === "resolvido" && !jaEstavaResolvido) {
+    // reenviar a pesquisa quando o ticket já estava resolvido. skipSurvey
+    // (ver acima) permite fechar sem disparar a pesquisa, quando pedido
+    // explicitamente. foiReabertoManualmenteRecente() cobre o pedido do
+    // usuário acima: fechar de novo pouco tempo depois de um "Reabrir"
+    // manual (mesmo se a nota antiga foi dada dias atrás — diferente do
+    // reset em updateTicketStatus, que só preserva a nota quando a AVALIAÇÃO
+    // em si foi recente) também não deve disparar a pesquisa de novo.
+    if (
+      status === "resolvido" &&
+      !jaEstavaResolvido &&
+      !skipSurvey &&
+      !foiReabertoManualmenteRecente(atual.id)
+    ) {
       await enviarPesquisaSatisfacao(ticket);
     }
 
@@ -419,10 +462,34 @@ async function assumirTicket(req, res) {
     // Ver nota em patchTicket — mantém outras sessões do painel em sincronia.
     emitEvent("ticket_atualizado", { ticket });
 
-    // Best-effort (ver função acima, nunca lança) — aguardamos pra garantir
-    // que a saudação foi de fato tentada antes de responder, evitando uma
-    // promise solta que poderia terminar depois do processo encerrar.
-    await enviarSaudacaoAtendente(ticket, req.user);
+    // BUG CORRIGIDO (relatado pelo usuário, 2026-07-24): quando o ticket foi
+    // reaberto AUTOMATICAMENTE (cliente mandou mensagem de novo pouco tempo
+    // depois de fechado — reopenTicketIfClosed em ticket.service.js), essa
+    // reabertura agora preserva satisfaction_asked_at de propósito (ver
+    // updateStatus, ticket.repository.js) — é a mesma conversa continuando,
+    // não um atendimento novo, então não faz sentido mandar a saudação "Olá,
+    // me chamo Fulano..." de novo, como se o atendente estivesse assumindo
+    // pela primeira vez. satisfactionAskedAt ainda preenchido aqui é
+    // justamente esse sinal: "este ticket já teve um ciclo completo
+    // (fechou + pesquisa) muito recente".
+    //
+    // PEDIDO DO USUÁRIO (2026-07-27): a reabertura MANUAL (clique em
+    // "Reabrir" em Fechados) também deve pular essa saudação, por um tempo
+    // (mesma janela de TICKET_REOPEN_WINDOW_MINUTOS) — mesmo que o ticket
+    // tenha sido avaliado há DIAS (satisfactionAskedAt já foi resetado nesse
+    // caso, ver _deveManterSatisfacaoAoReabrir em ticket.service.js, que só
+    // preserva quando a AVALIAÇÃO em si foi recente). foiReabertoManualmenteRecente()
+    // rastreia isso à parte, com o relógio começando no clique em Reabrir,
+    // não em quando foi avaliado antes.
+    if (!ticket.satisfactionAskedAt && !foiReabertoManualmenteRecente(ticket.id)) {
+      // Best-effort (ver função acima, nunca lança) — aguardamos pra
+      // garantir que a saudação foi de fato tentada antes de responder,
+      // evitando uma promise solta que poderia terminar depois do processo
+      // encerrar.
+      await enviarSaudacaoAtendente(ticket, req.user);
+    } else {
+      logger.info(`[assumirTicket] Ticket #${ticket.protocolo} reaberto recentemente — saudação pulada`);
+    }
 
     res.json({ ok: true, ticket });
   } catch (err) {

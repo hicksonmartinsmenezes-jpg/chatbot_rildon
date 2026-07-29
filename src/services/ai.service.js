@@ -43,7 +43,16 @@ const PROVIDER      = PROVIDERS[PROVIDER_NAME] || PROVIDERS.groq;
 
 const MAX_HISTORICO   = 6;   // pares de mensagens mantidos no histórico
 const REQUEST_TIMEOUT = 25000;
-const MAX_TENTATIVAS  = 2;
+// Aumentado de 2 para 3 (2026-07-23, item #7 da análise de conversas —
+// falha técnica ocasional): investigado com dados reais de produção — só 2
+// ocorrências da mensagem "dificuldades técnicas" em todo o histórico, e
+// ZERO ocorrências do timeout de 45s (BOT_MESSAGE_TIMEOUT_MS, ver
+// config/whatsapp.js), o que mostra que sobra margem de tempo pra mais uma
+// tentativa antes de desistir. Rodando com AI_PROVIDER=groq (free tier),
+// onde 429 (rate limit) é o erro transiente mais comum — uma tentativa a
+// mais reduz ainda mais essa taxa já baixa, sem risco real de estourar o
+// timeout geral.
+const MAX_TENTATIVAS  = 3;
 
 // 0.5 = ainda natural no texto, mas mais consistente na parte ESTRUTURADA da
 // resposta (intencao/veiculo/peca/pedidoExplicito) — os erros recorrentes de
@@ -52,6 +61,24 @@ const MAX_TENTATIVAS  = 2;
 const TEMPERATURE = 0.5;
 // Máximo de tokens por resposta — 512 permite respostas completas sem truncar
 const MAX_TOKENS  = 512;
+
+// ─── Circuit breaker: falta de crédito na API ──────────────────────────────────
+// PEDIDO DO USUÁRIO (2026-07-27): achado ao vivo — "Your credit balance is too
+// low to access the Anthropic API" (HTTP 400) é um erro PERMANENTE até o
+// usuário recarregar o console, não transitório como um 429/timeout. Sem
+// isso, cada mensagem de cliente durante a falta de crédito gasta uma
+// chamada HTTP que já sabemos de antemão que vai falhar, e main.flow.js só
+// escala pro atendente na 2ª mensagem consecutiva (a 1ª mostra um "tente
+// novamente" que nunca vai funcionar sozinho). Circuito: ao detectar esse
+// erro específico, pula a chamada de rede por alguns minutos (evita
+// round-trip inútil) E expõe iaEmFalhaCritica() pra main.flow.js escalar
+// direto pro atendente já na 1ª mensagem, em vez de esperar a 2ª.
+const CIRCUIT_BREAKER_MS = 3 * 60 * 1000; // 3 min — reavalia sozinho depois de recarregar
+let _semCreditoAte = 0;
+
+function iaEmFalhaCritica() {
+  return _semCreditoAte > Date.now();
+}
 
 // ─── Rate limiter por provedor ─────────────────────────────────────────────────
 let _ultimaRequisicao = 0;
@@ -214,10 +241,9 @@ RETORNE SEMPRE JSON EXATO:
 
 intencao DEVE SER:
 • "vendas"    → cliente quer comprar, verificar preço ou disponibilidade de peça: "preciso de X", "tem X para Y?", "quanto custa", "vocês trabalham com X?"
-• "crediario" → menciona crediário, financiamento ou parcelamento explicitamente
 • "atendente" → pede para falar com atendente, vendedor ou funcionário para tirar dúvida ou fazer compra: "falar com atendente", "quero falar com alguém", "tem vendedor?"
 • "suporte"   → relata problema técnico com produto adquirido, defeito em peça comprada, dúvida de funcionamento de produto já instalado
-• "gestao"    → quer falar com a equipe, time ou responsável de forma geral; reclamação sobre atendimento, insatisfação grave, pede falar com gerente: "falar com a equipe", "quero falar com a equipe", "fale com equipe", "falar com o responsável"
+• "gestao"    → quer falar com a equipe, time ou responsável de forma geral; reclamação sobre atendimento, insatisfação grave, pede falar com gerente; menciona crediário, financiamento ou parcelamento explicitamente (não é mais um fluxo do bot — o sistema direciona pro telefone direto do setor): "falar com a equipe", "quero falar com a equipe", "fale com equipe", "falar com o responsável", "vocês tem crediário?", "financiam?"
 • "chat"      → PADRÃO: saudações, bate-papo, dúvidas técnicas sem intenção de compra imediata, informações gerais
 
 IMPORTANTE sobre intenção "vendas": só quando "pedidoExplicito" for true o SISTEMA vai perguntar automaticamente (nesta ordem), logo depois da sua resposta, o nome do cliente, depois o veículo (pulado automaticamente se você já preencheu "veiculo" acima), depois a peça — nesse caso, sua "resposta" deve APENAS confirmar breve e calorosamente que vai ajudar com o orçamento, SEM perguntar modelo de veículo, chassi, ano ou qual peça precisa (perguntar isso faz o cliente responder a pergunta errada, pois a próxima pergunta do sistema pode ser sobre o nome dele, e os dados do orçamento saem trocados). Quando "pedidoExplicito" for false (o cliente só perguntou/consultou, sem pedir ação), responda apenas a pergunta em si — o SISTEMA mesmo vai perguntar automaticamente, logo em seguida, se o cliente quer registrar o orçamento, então não repita essa pergunta na sua "resposta".`,
@@ -646,13 +672,24 @@ async function transcreverAudio(buffer, mimeType = "audio/ogg") {
 }
 
 // ─── Intenções válidas ─────────────────────────────────────────────────────────
-const INTENCOES_VALIDAS = new Set(["vendas", "crediario", "atendente", "gestao", "suporte", "chat"]);
+// "crediario" removido (2026-07-24) — dobrado dentro de "gestao" (ver prompt
+// acima): menções a crediário/financiamento agora são direcionadas pro
+// telefone direto do setor via MSG.outrosContatos.LISTA, igual reclamação/
+// falar com a equipe.
+const INTENCOES_VALIDAS = new Set(["vendas", "atendente", "gestao", "suporte", "chat"]);
 
 // ─── Função principal ──────────────────────────────────────────────────────────
 async function perguntarIA(mensagem, { nomeCliente, historico = [], contexto = {} } = {}) {
   const apiKey = PROVIDER.getKey();
   if (!apiKey || apiKey === "cole_sua_chave_aqui") {
     logger.warn(`[IA] Chave do provedor "${PROVIDER_NAME}" não configurada no .env`);
+    return null;
+  }
+
+  if (iaEmFalhaCritica()) {
+    // Já sabemos que vai falhar (crédito insuficiente) — evita gastar uma
+    // chamada HTTP à toa. main.flow.js já escala pro atendente direto nesse
+    // estado (ver iaEmFalhaCritica importado lá).
     return null;
   }
 
@@ -699,7 +736,14 @@ async function perguntarIA(mensagem, { nomeCliente, historico = [], contexto = {
       }
 
       if (!res.ok) {
-        logger.warn(`[IA] Erro ${res.status}: ${(await res.text().catch(() => "")).slice(0, 200)}`);
+        const corpoErro = await res.text().catch(() => "");
+        const semCredito = res.status === 400 && /credit balance is too low/i.test(corpoErro);
+        if (semCredito) {
+          _semCreditoAte = Date.now() + CIRCUIT_BREAKER_MS;
+          logger.error(`[IA] Sem crédito na API (provedor: ${PROVIDER_NAME}) — pausando chamadas por ${CIRCUIT_BREAKER_MS / 1000}s e escalando direto pro atendente.`);
+        } else {
+          logger.warn(`[IA] Erro ${res.status}: ${corpoErro.slice(0, 200)}`);
+        }
         return null;
       }
 
@@ -751,12 +795,25 @@ async function perguntarIA(mensagem, { nomeCliente, historico = [], contexto = {
       // garante a resposta certa independente do comportamento do modelo.
       const matchCodigo   = buscarPorCodigoOriginal(mensagem, { limite: 1 })[0];
       const matchesLinha  = buscarNoCatalogo(mensagem);
-      // Sempre chama, mesmo com matchesLinha vazio — buscarPorVeiculo já
-      // trata esse caso internamente (cai pra restringir por SEÇÃO, que é
-      // o caminho mais comum já que o cliente quase sempre cita só a
-      // categoria geral, ex: "alternador", não uma linha específica como
-      // "alternador completo"). Ver comentário na função.
-      const matchVeiculo = buscarPorVeiculo(mensagem, matchesLinha, { limite: 1 })[0] || null;
+      // BUG CORRIGIDO (relatado pelo usuário, 2026-07-23 — clientes reais em
+      // produção): buscarPorVeiculo() era chamado incondicionalmente, mesmo
+      // quando o cliente ainda não tinha mencionado NENHUM veículo. Quando
+      // não há linha específica citada, a função cai pra restringir só por
+      // SEÇÃO (ex: "ALTERNADOR") e aceita 1 único token residual da
+      // mensagem batendo em qualquer produto daquela seção — um token
+      // residual quase nunca é o nome de um veículo, é sobra de palavra
+      // comum (ex: "polia" em "Alternador com polia"). Isso gerava respostas
+      // "Sim, temos!" confiantes e ERRADAS: "Alternador com polia" (cliente
+      // ainda nem tinha dito o carro — era Nissan Frontier) devolveu "POLIA
+      // CITROEN XSARA"; o fragmento "Induzido de motor de" devolveu
+      // "INDUZIDO... TOYOTA MARILIA", sem relação nenhuma com o que foi
+      // perguntado. Corrigido: só chama buscarPorVeiculo quando a própria IA
+      // já identificou um veículo real na mensagem (campo "veiculo" acima,
+      // extraído pelo modelo) — sem veículo confirmado, não há base
+      // confiável pra sobrescrever a resposta da IA com um produto real.
+      const matchVeiculo = veiculo
+        ? (buscarPorVeiculo(mensagem, matchesLinha, { limite: 1 })[0] || null)
+        : null;
       const matchConfirmado = matchCodigo || matchVeiculo;
       const respostaFinal = matchConfirmado
         ? `Sim, temos! 😊 ${matchConfirmado.nome} (ref. ${matchConfirmado.referencia || matchConfirmado.codigo}).`
@@ -778,4 +835,4 @@ async function perguntarIA(mensagem, { nomeCliente, historico = [], contexto = {
   return null;
 }
 
-module.exports = { perguntarIA, analisarImagemPeca, suportaVisao, transcreverAudio, suportaAudio };
+module.exports = { perguntarIA, analisarImagemPeca, suportaVisao, transcreverAudio, suportaAudio, iaEmFalhaCritica };

@@ -155,7 +155,7 @@ async function findByIdOrProtocol(id) {
   return result.rows[0] ? mapTicket(result.rows[0]) : null;
 }
 
-async function updateStatus(id, status) {
+async function updateStatus(id, status, { resetSatisfaction = true } = {}) {
   const idStr = String(id);
 
   // BUG CORRIGIDO: reabrir um ticket (status → "aberto") — seja pelo cliente
@@ -179,14 +179,32 @@ async function updateStatus(id, status) {
   // satisfaction_asked_at já preenchido pra sempre. Reabrir também zera os
   // campos de satisfação — é um atendimento novo, deve poder gerar uma
   // pesquisa nova quando fechar de novo.
+  //
+  // BUG CORRIGIDO (relatado pelo usuário, 2026-07-24): o fix acima resolvia
+  // o caso de reabertura MANUAL (atendente clica "Reabrir" em Fechados,
+  // possivelmente dias depois — aí sim é um atendimento novo de verdade),
+  // mas a reabertura AUTOMÁTICA (reopenTicketIfClosed, cliente manda
+  // mensagem de novo dentro da janela de poucos minutos/hora —
+  // TICKET_REOPEN_WINDOW_MINUTOS) usa o MESMO updateStatus e sempre zerava
+  // satisfaction_asked_at também — fazendo a saudação do atendente
+  // (enviarSaudacaoAtendente, que usa satisfactionAskedAt como sinal de "já
+  // teve um ciclo completo recente" — ver assumirTicket) e a pesquisa de
+  // satisfação dispararem de novo pra uma reabertura de segundos/minutos
+  // depois, que é a MESMA conversa continuando, não um atendimento novo.
+  // O parâmetro resetSatisfaction permite ao chamador (ticket.service.js/
+  // reopenTicketIfClosed) preservar os campos de satisfação nesse caso
+  // específico, mantendo o reset completo só na reabertura manual (chamada
+  // sem esse parâmetro, default true — comportamento de sempre).
   const reabrindo = status === "aberto";
+  const zerarSatisfacao = reabrindo && resetSatisfaction;
 
   const result = await pool.query(
     `
     UPDATE tickets
     SET status = $1,
         updated_at = NOW()
-        ${reabrindo ? ", assigned_to = NULL, assigned_to_name = NULL, satisfaction_rating = NULL, satisfaction_asked_at = NULL, satisfaction_rated_at = NULL" : ""}
+        ${reabrindo ? ", assigned_to = NULL, assigned_to_name = NULL" : ""}
+        ${zerarSatisfacao ? ", satisfaction_rating = NULL, satisfaction_asked_at = NULL, satisfaction_rated_at = NULL" : ""}
     WHERE ${idOrProtocolWhere(idStr, 2)}
     RETURNING *
     `,

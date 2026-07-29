@@ -27,6 +27,12 @@ jest.mock("../src/config/whatsapp", () => ({
 jest.mock("../src/services/history.service", () => ({
   saveHistory: jest.fn().mockResolvedValue({ id: "hist-saudacao", createdAt: new Date() })
 }));
+// Pedido do usuário (2026-07-24): createTicket agora chama marcarComoCliente
+// (contacts.service.js). Mockado pra não depender de banco real e não
+// poluir os logs com o warning de erro que apareceria sem esse mock.
+jest.mock("../src/services/contacts.service", () => ({
+  marcarComoCliente: jest.fn().mockResolvedValue(undefined),
+}));
 jest.mock("../src/services/settings.service", () => ({
   getSettings: jest.fn().mockResolvedValue({
     atendimento: {
@@ -129,13 +135,26 @@ function installFakePool(state) {
         t.assigned_to = null;
         t.assigned_to_name = null;
       }
+      // Pedido do usuário (2026-07-24): reabertura manual (default,
+      // resetSatisfaction:true) zera os campos de satisfação; reabertura
+      // AUTOMÁTICA (reopenTicketIfClosed, resetSatisfaction:false) não
+      // inclui essa cláusula no SQL — espelha isso aqui pra poder testar
+      // a diferença de verdade (ver "reabertura automática... pula
+      // saudação" abaixo).
+      if (/satisfaction_asked_at = NULL/.test(sql)) {
+        t.satisfaction_asked_at = null;
+        t.satisfaction_rating = null;
+        t.satisfaction_rated_at = null;
+      }
       return { rows: [t] };
     }
 
-    // Pesquisa de satisfação: askSatisfaction() marca satisfaction_asked_at.
+    // Pesquisa de satisfação: askSatisfaction() marca satisfaction_asked_at
+    // — espelha a reivindicação atômica real ("AND satisfaction_asked_at IS
+    // NULL"): só "clama" (afeta linha) se ainda não tiver sido pedida.
     if (/^UPDATE tickets\s+SET satisfaction_asked_at = NOW\(\)/.test(sql)) {
       const t = findTicket(state, params[0]);
-      if (!t) return { rows: [] };
+      if (!t || t.satisfaction_asked_at) return { rows: [] };
       t.satisfaction_asked_at = new Date().toISOString();
       return { rows: [t] };
     }
@@ -704,6 +723,146 @@ describe("ticket.routes", () => {
 
       expect(res.status).toBe(200);
       expect(res.body.ticket.status).toBe("resolvido");
+    });
+
+    // PEDIDO DO USUÁRIO (2026-07-27): varredura de tickets já concluídos mas
+    // esquecidos em Pendentes — fechar em massa sem incomodar o cliente com
+    // uma pesquisa fora de contexto, dias depois do atendimento real.
+    test("fechar com skipSurvey:true → fecha normalmente mas NÃO envia a pesquisa", async () => {
+      const ticket = await criarTicket(ADMIN);
+      const res = await request(buildApp(ADMIN))
+        .patch(`/api/tickets/${ticket.id}`)
+        .send({ status: "resolvido", skipSurvey: true });
+
+      expect(res.status).toBe(200);
+      expect(res.body.ticket.status).toBe("resolvido");
+      expect(whatsapp.sendMessage).not.toHaveBeenCalled();
+    });
+
+    test("skipSurvey ausente (comportamento padrão) → continua enviando a pesquisa normalmente", async () => {
+      const ticket = await criarTicket(ADMIN);
+      await request(buildApp(ADMIN))
+        .patch(`/api/tickets/${ticket.id}`)
+        .send({ status: "resolvido" });
+
+      expect(whatsapp.sendMessage).toHaveBeenCalledWith("u1", expect.stringContaining("De 1 a 5"));
+    });
+  });
+
+  // BUG CORRIGIDO (relatado pelo usuário, 2026-07-24): "cliente fecha,
+  // recebe pesquisa, manda mensagem de novo (reabre — vira Pendente),
+  // atendente assume (saudação repete), fecha de novo (pesquisa repete)".
+  // Reproduz o ciclo completo: assume → fecha (pesquisa 1x) → reabertura
+  // AUTOMÁTICA (reopenTicketIfClosed, mesmo caminho usado quando o cliente
+  // manda mensagem depois do fechamento) → assume de novo (saudação NÃO
+  // deve repetir) → fecha de novo (pesquisa NÃO deve repetir).
+  describe("Reabertura automática (mesma conversa) não repete saudação nem pesquisa", () => {
+    async function criarTicket(user, userId = "u1") {
+      const res = await request(buildApp(user)).post("/api/tickets").send({ userId, type: "orcamento" });
+      return res.body.ticket;
+    }
+
+    test("ciclo completo: assume → fecha (pesquisa) → reabre automático → assume de novo (sem saudação) → fecha de novo (sem pesquisa nova)", async () => {
+      const userId = "u-ciclo-1";
+      ticketService.clearReopenCooldown(userId);
+
+      const ticket = await criarTicket(ADMIN, userId);
+
+      // 1ª vez: assume → saudação enviada.
+      await request(buildApp(ATENDENTE_VENDAS)).patch(`/api/tickets/${ticket.id}/assign`).send({});
+      expect(whatsapp.sendMessage).toHaveBeenCalledWith(
+        userId,
+        expect.stringContaining("Me chamo")
+      );
+
+      // Fecha → pesquisa enviada (1x).
+      await request(buildApp(ADMIN)).patch(`/api/tickets/${ticket.id}`).send({ status: "resolvido" });
+      expect(whatsapp.sendMessage).toHaveBeenCalledWith(
+        userId,
+        expect.stringContaining("De 1 a 5")
+      );
+      whatsapp.sendMessage.mockClear();
+
+      // Cliente manda mensagem de novo, pouco depois — reabertura
+      // AUTOMÁTICA (mesmo caminho usado em produção via message.service.js).
+      const reaberto = await ticketService.reopenTicketIfClosed(userId);
+      expect(reaberto).toBe(true);
+
+      // Assume de novo — NÃO deve reenviar a saudação (mesma conversa
+      // continuando, não um atendimento novo).
+      const outroAtendente = { id: "at-2", nome: "Carla", perfil: "atendente", sector: "vendas" };
+      const assumirDeNovo = await request(buildApp(outroAtendente))
+        .patch(`/api/tickets/${ticket.id}/assign`)
+        .send({});
+      expect(assumirDeNovo.status).toBe(200);
+      expect(whatsapp.sendMessage).not.toHaveBeenCalledWith(
+        userId,
+        expect.stringContaining("Me chamo")
+      );
+
+      // Fecha de novo — NÃO deve reenviar a pesquisa (já foi enviada e
+      // ainda não foi limpa, já que a reabertura foi automática).
+      await request(buildApp(ADMIN)).patch(`/api/tickets/${ticket.id}`).send({ status: "resolvido" });
+      expect(whatsapp.sendMessage).not.toHaveBeenCalledWith(
+        userId,
+        expect.stringContaining("De 1 a 5")
+      );
+    });
+
+    // PEDIDO DO USUÁRIO (2026-07-27): "quando clicar em reabrir não mande a
+    // saudação com o nome do funcionário... por determinado tempo" — mesmo
+    // pra tickets fechados/avaliados há DIAS (o caso que motivou o pedido:
+    // cliente reengaja bem depois, atendente clica "Reabrir" na aba
+    // Fechados). Substitui o teste antigo, que travava o comportamento
+    // OPOSTO (reabertura manual sempre reenviava a saudação) — ver
+    // foiReabertoManualmenteRecente() em ticket.service.js.
+    test("reabertura MANUAL (botão 'Reabrir' em Fechados) DENTRO da janela (60min) também pula a saudação", async () => {
+      const userId = "u-ciclo-2";
+      const ticket = await criarTicket(ADMIN, userId);
+
+      await request(buildApp(ATENDENTE_VENDAS)).patch(`/api/tickets/${ticket.id}/assign`).send({});
+      await request(buildApp(ADMIN)).patch(`/api/tickets/${ticket.id}`).send({ status: "resolvido" });
+      whatsapp.sendMessage.mockClear();
+
+      // Reabertura MANUAL via PATCH (não via reopenTicketIfClosed) — o
+      // atendente decidiu reabrir, ex. da aba Fechados, pouco tempo depois.
+      await request(buildApp(ADMIN)).patch(`/api/tickets/${ticket.id}`).send({ status: "aberto" });
+
+      const outroAtendente = { id: "at-3", nome: "Bruno", perfil: "atendente", sector: "vendas" };
+      await request(buildApp(outroAtendente)).patch(`/api/tickets/${ticket.id}/assign`).send({});
+
+      expect(whatsapp.sendMessage).not.toHaveBeenCalledWith(
+        userId,
+        expect.stringContaining("Me chamo")
+      );
+    });
+
+    test("reabertura MANUAL bem depois da janela (60min+) volta a mandar a saudação normalmente — atendimento genuinamente novo", async () => {
+      const userId = "u-ciclo-3";
+      const ticket = await criarTicket(ADMIN, userId);
+
+      await request(buildApp(ATENDENTE_VENDAS)).patch(`/api/tickets/${ticket.id}/assign`).send({});
+      await request(buildApp(ADMIN)).patch(`/api/tickets/${ticket.id}`).send({ status: "resolvido" });
+      whatsapp.sendMessage.mockClear();
+
+      await request(buildApp(ADMIN)).patch(`/api/tickets/${ticket.id}`).send({ status: "aberto" });
+
+      // Avança o relógio além da janela de reabertura ANTES de assumir —
+      // simula o atendente reabrindo agora, mas só assumindo de fato bem
+      // mais tarde (ou o relógio real passando dessa janela).
+      const realNow = Date.now();
+      const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => realNow + 61 * 60 * 1000);
+      try {
+        const outroAtendente = { id: "at-4", nome: "Diego", perfil: "atendente", sector: "vendas" };
+        await request(buildApp(outroAtendente)).patch(`/api/tickets/${ticket.id}/assign`).send({});
+
+        expect(whatsapp.sendMessage).toHaveBeenCalledWith(
+          userId,
+          expect.stringContaining("Me chamo")
+        );
+      } finally {
+        nowSpy.mockRestore();
+      }
     });
   });
 

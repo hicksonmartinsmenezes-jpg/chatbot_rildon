@@ -46,7 +46,7 @@ jest.mock("../src/services/session.service", () => ({
 const ticketRepository = require("../src/repositories/ticket.repository");
 const settingsService = require("../src/services/settings.service");
 const sessionService = require("../src/services/session.service");
-const { parseSatisfactionRating, handleSatisfactionReply } = require("../src/services/ticket.service");
+const { parseSatisfactionRating, handleSatisfactionReply, pareceEncerramentoPosAvaliacao } = require("../src/services/ticket.service");
 
 function ticketPendente(overrides = {}) {
   return {
@@ -72,10 +72,25 @@ describe("parseSatisfactionRating", () => {
     expect(parseSatisfactionRating(texto)).toBe(esperado);
   });
 
+  // BUG CORRIGIDO (relatado pelo usuário, 2026-07-24): cliente respondeu
+  // "10" à pesquisa (escala pedida é 1-5) e a nota foi descartada em vez de
+  // contar como nota máxima — "nota 10" é a forma padrão brasileira de dizer
+  // "excelente", então 6-10 agora equivalem a 5.
   test.each([
-    ["0"],       // fora do range 1-5
-    ["6"],       // fora do range 1-5
+    ["10", 5],
+    ["nota 10", 5],
+    ["10/10", 5],
+    ["6", 5],
+    ["8", 5],
+    ["9 estrelas", 5]
+  ])("trata nota alta (6-10) como equivalente à nota máxima em %j", (texto, esperado) => {
+    expect(parseSatisfactionRating(texto)).toBe(esperado);
+  });
+
+  test.each([
+    ["0"],       // fora do range 1-10
     ["55"],      // dois dígitos adjacentes — não é uma nota isolada
+    ["100"],     // três dígitos — não é uma nota isolada
     [""],
     [null],
     [undefined],
@@ -336,5 +351,98 @@ describe("handleSatisfactionReply", () => {
         expect(res).not.toBeNull();
       });
     });
+  });
+});
+
+// BUG CORRIGIDO (relatado pelo usuário, teste ao vivo 2026-07-27): cliente
+// avaliou o atendimento ("Hoje foi 5"), foi agradecido, e minutos depois
+// mandou só "👍" — o bot tratou como pergunta nova, a IA falhou (fallback
+// técnico) e devolveu o menu inteiro pro cliente, uma resposta estranha pra
+// uma reação de despedida. pareceEncerramentoPosAvaliacao() detecta
+// especificamente esse padrão (agradecimento/reação curta, pouco depois de
+// uma avaliação real) pra message.service.js poder pular reopen + bot pra
+// essa mensagem — ver teste de integração em tests/message.service.test.js.
+describe("pareceEncerramentoPosAvaliacao", () => {
+  function ticketAvaliado(overrides = {}) {
+    return {
+      id: 42,
+      protocolo: "2026-0042",
+      userId: "cliente-1",
+      status: "resolvido",
+      satisfactionRating: 5,
+      satisfactionRatedAt: new Date().toISOString(),
+      ...overrides,
+    };
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  test.each([
+    ["👍"],
+    ["🙏"],
+    ["❤️"],
+    ["😊👍"],
+    ["obrigado"],
+    ["Obrigada"],
+    ["obg"],
+    ["valeu"],
+    ["vlw"],
+    ["brigado"],
+    ["de nada"],
+    ["blz"],
+    ["ok"],
+    ["Show!"],
+    ["Perfeito."],
+  ])("reconhece '%s' como encerramento quando há avaliação recente", async (mensagem) => {
+    ticketRepository.findByUserIds.mockResolvedValueOnce([ticketAvaliado()]);
+
+    const res = await pareceEncerramentoPosAvaliacao("cliente-1", mensagem);
+
+    expect(res).toBe(true);
+  });
+
+  test.each([
+    ["Preciso de outro orçamento"],
+    ["oi"],
+    ["obrigado, mas ainda tenho uma dúvida"],
+    ["5"],
+    ["tem pastilha de freio pro gol 2018?"],
+  ])("NÃO reconhece '%s' como encerramento (mensagem de verdade, nem consulta o banco)", async (mensagem) => {
+    const res = await pareceEncerramentoPosAvaliacao("cliente-1", mensagem);
+
+    expect(res).toBe(false);
+    // Heurística de texto já descarta essas mensagens sem precisar checar
+    // ticket/avaliação — nem chega a consultar o banco.
+    expect(ticketRepository.findByUserIds).not.toHaveBeenCalled();
+  });
+
+  test("mensagem de despedida SEM avaliação recente (ticket ainda aberto) → não reconhece, segue o fluxo normal", async () => {
+    ticketRepository.findByUserIds.mockResolvedValueOnce([
+      ticketAvaliado({ status: "em_andamento", satisfactionRatedAt: null }),
+    ]);
+
+    const res = await pareceEncerramentoPosAvaliacao("cliente-1", "👍");
+
+    expect(res).toBe(false);
+  });
+
+  test("mensagem de despedida com avaliação MUITO antiga (fora da janela) → não reconhece", async () => {
+    ticketRepository.findByUserIds.mockResolvedValueOnce([
+      ticketAvaliado({ satisfactionRatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() }),
+    ]);
+
+    const res = await pareceEncerramentoPosAvaliacao("cliente-1", "👍");
+
+    expect(res).toBe(false);
+  });
+
+  test("nenhum ticket encontrado → não reconhece (fail-safe, segue o fluxo normal)", async () => {
+    ticketRepository.findByUserIds.mockResolvedValueOnce([]);
+
+    const res = await pareceEncerramentoPosAvaliacao("cliente-1", "👍");
+
+    expect(res).toBe(false);
   });
 });

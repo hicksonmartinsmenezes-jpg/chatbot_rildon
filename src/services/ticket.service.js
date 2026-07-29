@@ -5,6 +5,7 @@ const { emitEvent } = require("./socket.service");
 const { getProfilePhotoCandidates } = require("../whatsapp/lid-map");
 const { getSettings } = require("./settings.service");
 const { sanitizarTexto, normalizar } = require("../utils/validators");
+const { marcarComoCliente } = require("./contacts.service");
 
 // Janela em que uma pesquisa de satisfação enviada continua "pendente"
 // (aceitando a nota do cliente) antes de ser considerada expirada.
@@ -17,6 +18,60 @@ const SATISFACTION_WINDOW_MS =
 // deliberadamente (neutra, não necessariamente uma reclamação) — ajustável
 // aqui se a loja quiser cobrir nota 3 também.
 const SATISFACTION_LOW_THRESHOLD = 2;
+
+// BUG REAL (relatado pelo usuário, teste ao vivo 2026-07-27): cliente avaliou
+// o atendimento ("Hoje foi 5"), foi agradecido, e minutos depois mandou só
+// "👍" — o bot tratou como pergunta nova, a IA falhou (fallback técnico) e
+// devolveu o menu inteiro. Uma resposta estranha pra uma reação de
+// despedida. Em vez de um "tempo de espera" genérico antes do bot voltar a
+// responder pro cliente (o que arriscaria IGNORAR uma dúvida nova de
+// verdade logo em seguida), a janela abaixo só vale combinada com
+// _pareceApenasAgradecimentoFinal — ou seja, só mensagens que são
+// inequivocamente um agradecimento/reação de despedida, chegando pouco
+// depois da nota, são silenciadas. Qualquer outra coisa (pergunta, palavra
+// fora da lista, mensagem longa) segue o fluxo normal do bot.
+const POS_AVALIACAO_ACK_WINDOW_MS =
+  Number(process.env.POS_AVALIACAO_ACK_WINDOW_MIN || 30) * 60 * 1000;
+
+// Lista deliberadamente curta de despedidas/agradecimentos — mesmo espírito
+// de _pareceCorrecaoDePeca em vendas.flow.js (restrito o bastante pra não
+// engolir uma mensagem legítima por engano).
+const AGRADECIMENTO_FINAL_RE =
+  /^(obrigad[oa]o?s?|obg|valeu|vlw|brigad[oa]o?|de nada|show|top|blz|ok|okay|beleza|otimo|excelente|perfeito|isso ai|isso mesmo|gratid(a|ã)o)$/;
+
+function _pareceApenasAgradecimentoFinal(message) {
+  const texto = String(message || "").trim();
+  if (!texto || texto.length > 40) return false;
+
+  // Mensagem só de emoji/reação (👍, 🙏, ❤️, 😊 etc.), sem nenhuma letra/número.
+  const temEmoji = /\p{Extended_Pictographic}/u.test(texto);
+  const soEmoji  = temEmoji && !/[\p{L}\p{N}]/u.test(texto);
+  if (soEmoji) return true;
+
+  // Texto curto de agradecimento/despedida (normalizado, sem pontuação/emoji).
+  const normalizado = normalizar(texto).replace(/[^\p{L}\s]/gu, "").trim();
+  return AGRADECIMENTO_FINAL_RE.test(normalizado);
+}
+
+// Chamado em message.service.js logo depois de handleSatisfactionReply (e
+// ANTES de reopenTicketIfClosed) — se o cliente já avaliou um atendimento
+// recentemente e manda só um agradecimento/reação de despedida, não reabre o
+// ticket nem aciona o fluxo do bot pra essa mensagem específica (ela é só
+// salva no histórico, sem resposta). Retorna false pra qualquer outra coisa,
+// inclusive se não houver avaliação recente — nesse caso o fluxo normal
+// segue (main.flow.js decide o que responder).
+async function pareceEncerramentoPosAvaliacao(userId, message) {
+  if (!_pareceApenasAgradecimentoFinal(message)) return false;
+
+  const candidatos = getProfilePhotoCandidates(userId);
+  const tickets = await ticketRepository.findByUserIds(candidatos.length ? candidatos : [userId]);
+
+  return tickets.some(t =>
+    t.status === "resolvido" &&
+    t.satisfactionRatedAt &&
+    (Date.now() - new Date(t.satisfactionRatedAt).getTime()) < POS_AVALIACAO_ACK_WINDOW_MS
+  );
+}
 
 // BUG DA MESMA CLASSE JÁ CORRIGIDO ANTES NESTE PROJETO (ver comentários em
 // vendas.flow.js: pergunta de crediário engolida como nome; correção de
@@ -94,6 +149,15 @@ async function createTicket({
   // acabavam agindo no ticket que NÃO estava na tela. Agora, se já existe
   // um ticket ativo (aberto ou em_andamento) pro mesmo cliente, reaproveita
   // ele — anexando a nova descrição — em vez de criar um segundo.
+  // Pedido do usuário (2026-07-24): todo cliente que gera um ticket (novo
+  // ou reaproveitado, ver bloco "ativo" logo abaixo — as duas situações
+  // significam "esse cliente gerou um atendimento de verdade") deixa de ser
+  // "Clientes Novos" e passa a ser "Clientes" no cadastro de contatos.
+  // Roda de forma best-effort — nunca deve impedir a criação/reaproveitamento
+  // do ticket em si (marcarComoCliente já trata os próprios erros por dentro,
+  // nunca rejeita).
+  await marcarComoCliente(userId);
+
   const candidatos = getProfilePhotoCandidates(userId);
   const existentes = await ticketRepository.findByUserIds(candidatos.length ? candidatos : [userId]);
   const ativo = existentes.find(t => t.status === "aberto" || t.status === "em_andamento");
@@ -135,8 +199,78 @@ async function listTickets({ status, search, dateStart, dateEnd } = {}) {
   return ticketRepository.findAll({ status, search, dateStart, dateEnd });
 }
 
-async function updateTicketStatus(id, status) {
-  return ticketRepository.updateStatus(id, status);
+// PEDIDO DO USUÁRIO (2026-07-27): "existem conversas que reabrem onde já
+// deram nota de atendimento. Quando fecharem, a pesquisa disparará de
+// novo — o cliente responde duas vezes". Isso já era resolvido pro
+// reabertura AUTOMÁTICA (reopenTicketIfClosed acima, resetSatisfaction:
+// false) mas não pra reabertura MANUAL (botão "Reabrir" no painel, via
+// patchTicket → updateTicketStatus) — essa sempre zerava os campos de
+// satisfação (resetSatisfaction:true, o padrão), então fechar de novo
+// sempre disparava a pesquisa outra vez.
+//
+// DECISÃO (discutida com o usuário — considerei um botão manual "Fechar
+// sem pesquisa" mas descartei: depende do atendente lembrar de usar o
+// certo toda vez, o mesmo tipo de esquecimento que já causou outros
+// problemas em produção — ver [[project-bot-rildon-bot-desligado-esquecido]]).
+// Em vez disso, aplica a MESMA janela de tempo já usada pra reabertura
+// automática (REOPEN_WINDOW_MS/TICKET_REOPEN_WINDOW_MINUTOS, padrão
+// 60min): reabertura MANUAL de um ticket avaliado HÁ POUCO TEMPO preserva
+// a nota (mesma conversa continuando); reabertura de um ticket avaliado
+// há muito tempo (ou nunca avaliado) reseta normalmente — é
+// provavelmente um atendimento novo e não relacionado, então merece
+// pesquisa própria quando fechar de novo.
+function _deveManterSatisfacaoAoReabrir(ticketAtual) {
+  if (!ticketAtual) return false;
+  if (ticketAtual.status !== "resolvido") return false;
+  if (!ticketAtual.satisfactionRatedAt) return false;
+  const avaliadoRecentemente =
+    (Date.now() - new Date(ticketAtual.satisfactionRatedAt).getTime()) <= REOPEN_WINDOW_MS;
+  return avaliadoRecentemente;
+}
+
+// PEDIDO DO USUÁRIO (2026-07-27): "quando clicar em reabrir não mande a
+// saudação com o nome do funcionário nem a pesquisa de satisfação por
+// determinado tempo". Cobre o caso GERAL de reabertura manual (botão
+// "Reabrir" em Fechados), inclusive tickets fechados/avaliados HÁ DIAS —
+// diferente de _deveManterSatisfacaoAoReabrir acima, que só evita reset
+// quando a nota antiga foi dada há pouco tempo (não ajuda o caso de um
+// ticket avaliado há 3 dias, por exemplo). Aqui o relógio começa NO
+// MOMENTO DO CLIQUE em Reabrir, não em quando foi avaliado antes — por
+// isso não dá pra decidir isso só com resetSatisfaction (que só atua na
+// hora de reabrir): rastreado à parte, por ticket id, com a MESMA janela
+// (REOPEN_WINDOW_MS/TICKET_REOPEN_WINDOW_MINUTOS) e consultado depois, na
+// hora de mandar a saudação do atendente (assumirTicket) e na hora de
+// fechar de novo (patchTicket) — ver foiReabertoManualmenteRecente().
+// Em memória (mesmo padrão de humanMode.service.js/dedup.js): se o
+// processo reiniciar dentro da janela, pior caso é a saudação/pesquisa
+// disparar de novo uma vez — não é um problema de integridade de dados.
+const _reaberturaManualEm = new Map(); // ticketId (string) → timestamp (ms)
+
+function marcarReaberturaManual(ticketId) {
+  if (ticketId == null) return;
+  _reaberturaManualEm.set(String(ticketId), Date.now());
+}
+
+function foiReabertoManualmenteRecente(ticketId) {
+  if (ticketId == null) return false;
+  const t = _reaberturaManualEm.get(String(ticketId));
+  if (!t) return false;
+  if (Date.now() - t > REOPEN_WINDOW_MS) {
+    _reaberturaManualEm.delete(String(ticketId));
+    return false;
+  }
+  return true;
+}
+
+async function updateTicketStatus(id, status, { ticketAtual } = {}) {
+  const foiReaberturaManual =
+    status === "aberto" &&
+    ticketAtual &&
+    (ticketAtual.status === "resolvido" || ticketAtual.status === "cancelado");
+  if (foiReaberturaManual) marcarReaberturaManual(ticketAtual.id);
+
+  const manterSatisfacao = status === "aberto" && _deveManterSatisfacaoAoReabrir(ticketAtual);
+  return ticketRepository.updateStatus(id, status, { resetSatisfaction: !manterSatisfacao });
 }
 
 async function getTicketStats({ dateStart, dateEnd } = {}) {
@@ -200,7 +334,19 @@ async function reopenTicketIfClosed(userId) {
     }
 
     if (latest.status === "resolvido" || latest.status === "cancelado") {
-      const reaberto = await ticketRepository.updateStatus(latest.id, "aberto");
+      // BUG CORRIGIDO (relatado pelo usuário, 2026-07-24): "cliente fecha,
+      // recebe pesquisa, manda mensagem de novo (reabre), atendente assume
+      // (saudação repete), fecha de novo (pesquisa repete)". Essa reabertura
+      // automática só acontece DENTRO da janela de reopen (poucos minutos/
+      // hora — fechadoRecentemente acima) — é a MESMA conversa continuando,
+      // não um atendimento novo. resetSatisfaction:false preserva
+      // satisfaction_asked_at, que enviarSaudacaoAtendente/assumirTicket usa
+      // como sinal de "ciclo recente já completo" pra pular a saudação, e
+      // que o guard atômico de askSatisfaction (ticket.controller.js) já
+      // usa pra não reenviar a pesquisa. Reabertura MANUAL (atendente clica
+      // "Reabrir" em Fechados, ver patchTicket) continua resetando tudo
+      // normalmente — ali sim pode ser um atendimento genuinamente novo.
+      const reaberto = await ticketRepository.updateStatus(latest.id, "aberto", { resetSatisfaction: false });
       logger.info(`Ticket #${latest.protocolo} reaberto para ${userId}`);
 
       // BUG CORRIGIDO (relatado pelo usuário): esta reabertura automática
@@ -248,6 +394,18 @@ async function transferTicket(id, sector, targetUser = null) {
 function parseSatisfactionRating(message) {
   const texto = String(message || "").trim();
   if (!texto || texto.length > 30) return null;
+
+  // BUG CORRIGIDO (relatado pelo usuário, 2026-07-24): cliente respondeu
+  // "10" à pergunta "de 1 a 5..." e a nota foi simplesmente descartada (não
+  // "virou" 5 — a regex de 1-5 rejeita "10" porque o "1" é seguido de outro
+  // dígito). No Brasil "nota 10" é a forma padrão de dizer "excelente"
+  // mesmo quando a escala pedida é 1-5, então tratamos 6-10 como equivalente
+  // à nota máxima (5) em vez de ignorar — isso também evita reabrir o
+  // ticket à toa (handleSatisfactionReply retornaria null) e disparar a
+  // pesquisa de novo pro cliente ter que responder uma segunda vez.
+  const notaAlta = texto.match(/(?<!\d)(?:10|[6-9])(?:\s*\/\s*10)?(?!\d)/);
+  if (notaAlta) return 5;
+
   const match = texto.match(/(?<!\d)([1-5])(?:\s*\/\s*5)?(?!\d)/);
   return match ? Number(match[1]) : null;
 }
@@ -381,10 +539,12 @@ module.exports = {
   updateTicketStatus,
   reopenTicketIfClosed,
   clearReopenCooldown,
+  foiReabertoManualmenteRecente,
   assignTicket,
   transferTicket,
   getTicketStats,
   getTicketsByCPF,
   parseSatisfactionRating,
-  handleSatisfactionReply
+  handleSatisfactionReply,
+  pareceEncerramentoPosAvaliacao
 };

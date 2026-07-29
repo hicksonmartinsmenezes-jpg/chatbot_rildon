@@ -246,10 +246,17 @@ function _scheduleConvReload(userId) {
     loadConversations(true).then(() => {
       if (!userId) return;
       const ticket = ticketsByUser[userId];
-      const isClosed = ticket?.status === "resolvido" || ticket?.status === "cancelado";
-      const correctFilter = (!ticket || ticket.status === "aberto" || isClosed)
+      // BUG CORRIGIDO: aqui assumíamos "fechado = pendentes" sem checar se o
+      // ticket fechado de fato voltou a ter atividade (ver estaPendente() em
+      // 07-conversations.js, window.estaPendente, definida por
+      // loadConversations logo acima) — agora usa a mesma regra da lista,
+      // pra trocar de aba só quando o cliente realmente vai aparecer lá.
+      const pendente = typeof window.estaPendente === "function"
+        ? window.estaPendente(userId)
+        : (!ticket || ticket.status === "aberto");
+      const correctFilter = pendente
         ? "pendentes"
-        : ticket.status === "em_andamento" ? "em_andamento" : null;
+        : ticket?.status === "em_andamento" ? "em_andamento" : null;
       if (correctFilter && activeTicketFilter !== correctFilter) {
         const btn = document.querySelector(`.chat-status-tab[data-filter="${correctFilter}"]`);
         if (btn) setTicketFilter(correctFilter, btn);
@@ -445,5 +452,24 @@ socket.on("typing", data => {
   socket.on("whatsapp_status", ({ status }) => {
     if (status === "connected") setOnline(); else setOffline();
     updateWaStatusPanel(status);
+  });
+
+  // Alguém ligou/desligou o bot (qualquer atendente, ver botStatus.routes.js)
+  // — atualiza o toggle da topbar em TODOS os painéis conectados na hora,
+  // não só em quem clicou.
+  socket.on("bot_status_atualizado", ({ ativo, por } = {}) => {
+    if (typeof renderBotToggleStatus === "function") renderBotToggleStatus(ativo !== false);
+    if (typeof getCurrentUser === "function") {
+      const eu = getCurrentUser();
+      if (por && eu?.nome !== por) {
+        showToast(ativo ? `🤖 ${por} ativou o bot.` : `🤖 ${por} desativou o bot.`);
+      }
+    }
+    // Se a Central de Configurações (admin) estiver aberta com o form
+    // carregado, mantém o select "Bot ativo" sincronizado também.
+    if (typeof currentSettings === "object" && currentSettings?.bot) {
+      currentSettings.bot.ativo = ativo !== false;
+      if (typeof setValue === "function") setValue("bot-active", String(ativo !== false));
+    }
   });
 }

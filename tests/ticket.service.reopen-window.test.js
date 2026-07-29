@@ -51,7 +51,11 @@ describe("reopenTicketIfClosed — janela de tempo (TICKET_REOPEN_WINDOW_MINUTOS
     const resultado = await reopenTicketIfClosed("cliente-1");
 
     expect(resultado).toBe(true);
-    expect(ticketRepository.updateStatus).toHaveBeenCalledWith(42, "aberto");
+    // Pedido do usuário (2026-07-24): reabertura AUTOMÁTICA preserva os
+    // campos de satisfação (resetSatisfaction:false) — é a mesma conversa
+    // continuando, não um atendimento novo. Ver ticket.repository.test.js
+    // e assumirTicket (ticket.controller.js) pro resto do fix.
+    expect(ticketRepository.updateStatus).toHaveBeenCalledWith(42, "aberto", { resetSatisfaction: false });
     expect(emitEvent).toHaveBeenCalledWith("ticket_atualizado", expect.anything());
   });
 

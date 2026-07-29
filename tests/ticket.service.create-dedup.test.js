@@ -35,8 +35,16 @@ jest.mock("../src/services/socket.service", () => ({ emitEvent: jest.fn() }));
 jest.mock("../src/services/settings.service", () => ({
   getSettings: jest.fn().mockResolvedValue({}),
 }));
+// Pedido do usuário (2026-07-24): createTicket agora chama marcarComoCliente
+// (contacts.service.js) pra promover "Clientes Novos" → "Clientes". Sem
+// mock, esse dependeria de um banco real (contacts.service usa pool.query
+// direto) — mockado aqui pra manter o teste isolado/rápido.
+jest.mock("../src/services/contacts.service", () => ({
+  marcarComoCliente: jest.fn().mockResolvedValue(undefined),
+}));
 
 const ticketRepository = require("../src/repositories/ticket.repository");
+const { marcarComoCliente } = require("../src/services/contacts.service");
 const { createTicket } = require("../src/services/ticket.service");
 
 const USER_ID = "5511999999999@s.whatsapp.net";
@@ -118,5 +126,29 @@ describe("createTicket — evita ticket duplicado pro mesmo cliente", () => {
     expect(ticketRepository.prependDescription).not.toHaveBeenCalled();
     expect(ticketRepository.create).not.toHaveBeenCalled();
     expect(ticket).toBe(ativo);
+  });
+
+  // Pedido do usuário (2026-07-24): "só cadastre Clientes quando gerarem
+  // tickets" — createTicket sempre promove o contato, tanto criando um
+  // ticket novo quanto reaproveitando um já ativo (as duas situações
+  // significam "esse cliente gerou um atendimento").
+  test("gerar ticket novo chama marcarComoCliente com o userId", async () => {
+    ticketRepository.findByUserIds.mockResolvedValue([]);
+    ticketRepository.gerarProtocolo.mockResolvedValue("2026-0101");
+    ticketRepository.create.mockResolvedValue({ id: 101, protocolo: "2026-0101", status: "aberto" });
+
+    await createTicket({ userId: USER_ID, type: "orcamento", description: "Vela de ignição" });
+
+    expect(marcarComoCliente).toHaveBeenCalledWith(USER_ID);
+  });
+
+  test("reaproveitar ticket ativo também chama marcarComoCliente com o userId", async () => {
+    const ativo = ticketAtivo({ status: "em_andamento" });
+    ticketRepository.findByUserIds.mockResolvedValue([ativo]);
+    ticketRepository.prependDescription.mockResolvedValue(ativo);
+
+    await createTicket({ userId: USER_ID, type: "orcamento", description: "Correia" });
+
+    expect(marcarComoCliente).toHaveBeenCalledWith(USER_ID);
   });
 });

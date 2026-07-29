@@ -134,6 +134,61 @@ describe("updateStatus", () => {
     const result = await repo.updateStatus(PROTOCOLO, "cancelado");
     expect(result).toBeNull();
   });
+
+  // BUG CORRIGIDO (relatado pelo usuário, 2026-07-24): "cliente fecha,
+  // recebe pesquisa, manda mensagem de novo (reabre), atendente assume
+  // (saudação repete), fecha de novo (pesquisa repete)". A reabertura
+  // AUTOMÁTICA (reopenTicketIfClosed) agora passa resetSatisfaction:false
+  // pra preservar satisfaction_asked_at — sinal usado por assumirTicket
+  // pra pular a saudação numa reabertura recente que é a mesma conversa
+  // continuando, não um atendimento novo.
+  test("reabrir com resetSatisfaction:false LIMPA assigned_to mas PRESERVA campos de satisfação", async () => {
+    pool.query.mockResolvedValueOnce({
+      rows: [{ id: 42, status: "aberto", assigned_to: null, assigned_to_name: null }]
+    });
+
+    await repo.updateStatus(ID, "aberto", { resetSatisfaction: false });
+
+    const [sql, params] = pool.query.mock.calls[0];
+    expect(sql).toMatch(/assigned_to = NULL/);
+    expect(sql).toMatch(/assigned_to_name = NULL/);
+    expect(sql).not.toMatch(/satisfaction_asked_at/);
+    expect(sql).not.toMatch(/satisfaction_rating/);
+    expect(sql).not.toMatch(/satisfaction_rated_at/);
+    expect(params).toEqual(["aberto", ID]);
+  });
+
+  test("reabrir SEM o parâmetro (default) continua zerando satisfação — comportamento de sempre preservado (reabertura manual)", async () => {
+    pool.query.mockResolvedValueOnce({
+      rows: [{ id: 42, status: "aberto" }]
+    });
+
+    await repo.updateStatus(ID, "aberto");
+
+    const [sql] = pool.query.mock.calls[0];
+    expect(sql).toMatch(/satisfaction_asked_at = NULL/);
+    expect(sql).toMatch(/satisfaction_rating = NULL/);
+    expect(sql).toMatch(/satisfaction_rated_at = NULL/);
+  });
+
+  test("reabrir com resetSatisfaction:true explícito também zera (mesmo caminho do default)", async () => {
+    pool.query.mockResolvedValueOnce({ rows: [{ id: 42, status: "aberto" }] });
+
+    await repo.updateStatus(ID, "aberto", { resetSatisfaction: true });
+
+    const [sql] = pool.query.mock.calls[0];
+    expect(sql).toMatch(/satisfaction_asked_at = NULL/);
+  });
+
+  test("fechar (resolvido) ignora resetSatisfaction — só se aplica a reabertura", async () => {
+    pool.query.mockResolvedValueOnce({ rows: [{ id: 42, status: "resolvido" }] });
+
+    await repo.updateStatus(ID, "resolvido", { resetSatisfaction: false });
+
+    const [sql] = pool.query.mock.calls[0];
+    expect(sql).not.toMatch(/satisfaction_asked_at/);
+    expect(sql).not.toMatch(/assigned_to/);
+  });
 });
 
 describe("assign", () => {

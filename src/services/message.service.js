@@ -2,9 +2,9 @@ const mainFlow        = require("../flows/main.flow");
 const { saveHistory } = require("./history.service");
 const { enqueue }     = require("./queue.service");
 const { getSession }  = require("./session.service");
-const { getBotConfig } = require("./botConfig.service");
+const { getBotConfig, resolverBotOffEfetivo } = require("./botConfig.service");
 const { emitEvent }   = require("./socket.service");
-const { reopenTicketIfClosed, handleSatisfactionReply } = require("./ticket.service");
+const { reopenTicketIfClosed, handleSatisfactionReply, pareceEncerramentoPosAvaliacao } = require("./ticket.service");
 const humanMode       = require("./humanMode.service");
 const logger          = require("../utils/logger");
 
@@ -76,15 +76,38 @@ const rateLimiter = new MemoryRateLimiter();
 // config/whatsapp.js quando a mensagem recebida tinha foto/áudio/vídeo/
 // sticker/documento — já baixados e salvos em disco lá, aqui só precisam
 // ser gravados junto com a linha de histórico correspondente.
-async function processMessage({ userId, contactName, message, messageId, mediaPath, mediaMimetype, mediaFilename }) {
+async function processMessage({ userId, contactName, message, messageId, mediaPath, mediaMimetype, mediaFilename, isNumeroTeste = false, isFuncionario = false }) {
   const botConfig = await getBotConfig();
 
-  if (botConfig.ativo === false || botConfig.ativo === "false") {
-    logger.warn("Bot bloqueado dentro do processMessage.");
-    return "";
-  }
+  // BUG CORRIGIDO: esse "bot desligado" curto-circuitava a função inteira
+  // logo aqui no topo — ANTES até do reopenTicketIfClosed e do emit de
+  // "nova_mensagem" mais abaixo. Ou seja, com o bot desligado no painel
+  // (Configurações > Funcionamento > Bot ativo = Desativado), a mensagem do
+  // cliente nunca era salva no histórico nem emitida pro painel: sumia por
+  // completo, sem notificação nem card na conversa. Reportado pelo usuário:
+  // "quando desligado, as mensagens e notificações novas simplesmente não
+  // aparecem". Agora `botOff` só impede RESPOSTA automática (rate limiter,
+  // fluxo do bot) — a mensagem em si sempre é registrada e aparece no
+  // painel normalmente, igual ao modo humano (ver gate combinado com
+  // humanMode.estaAtivo() logo abaixo). A pesquisa de satisfação é uma
+  // exceção deliberada — ver comentário abaixo.
+  //
+  // MODO DE TESTE + BLOQUEIO "FUNCIONÁRIO" (pedido do usuário, 2026-07-24):
+  // `isNumeroTeste`/`isFuncionario` chegam já resolvidos por config/whatsapp.js
+  // (onMessagesUpsert) — re-aplicamos a MESMA regra de prioridade aqui via
+  // resolverBotOffEfetivo() (fonte única em botConfig.service.js) porque é
+  // só AQUI, dentro do enqueue mais abaixo, que mainFlow (IA/ERP) de fato
+  // roda. O botConfig é buscado de novo (linha acima) em vez de reaproveitar
+  // o de config/whatsapp.js de propósito — mensagens fragmentadas podem
+  // demorar alguns segundos até chegar aqui, e o ativo/desativado do painel
+  // pode ter mudado nesse meio-tempo.
+  const botOff = resolverBotOffEfetivo({
+    ativoFalse: botConfig.ativo === false || botConfig.ativo === "false",
+    isNumeroTeste,
+    isFuncionario,
+  });
 
-  if (!rateLimiter.hit(userId)) {
+  if (!botOff && !rateLimiter.hit(userId)) {
     logger.warn(`Rate limit atingido para ${userId}`);
     return "⚠️ Muitas mensagens em pouco tempo. Aguarde alguns segundos e tente novamente.";
   }
@@ -93,6 +116,19 @@ async function processMessage({ userId, contactName, message, messageId, mediaPa
   // ANTES de reopenTicketIfClosed — senão a própria resposta da pesquisa
   // (ex: cliente manda "5") reabriria o ticket fechado como se fosse um
   // pedido novo, em vez de só registrar a nota.
+  //
+  // PEDIDO DO USUÁRIO (2026-07-23): roda mesmo com o bot desligado
+  // (`botOff`) — antes disso, um ticket fechado que já tinha disparado a
+  // pesquisa ficava "mudo" quando o bot era desligado logo depois: o
+  // cliente respondia a nota (ex: "5") e nada acontecia, sem agradecimento
+  // nem registro da avaliação. Isso é seguro porque handleSatisfactionReply
+  // não é "o bot iniciando atendimento novo" — só fecha o laço de uma
+  // pesquisa que o próprio bot já tinha enviado ANTES de ser desligado, e só
+  // dispara dentro de uma janela curta (SATISFACTION_WINDOW_MS) com uma flag
+  // de sessão (aguardandoNotaSatisfacao/aguardandoFeedbackSatisfacao) setada
+  // no instante exato do envio da pesquisa — não tem como "vazar" e virar
+  // resposta automática de um assunto novo. Mesmo comportamento já valia
+  // pra humanMode ativo (nunca teve gate aqui pra isso, só o de botOff).
   let pesquisa = null;
   try {
     pesquisa = await handleSatisfactionReply({ userId, message });
@@ -131,6 +167,42 @@ async function processMessage({ userId, contactName, message, messageId, mediaPa
     return pesquisa.response;
   }
 
+  // BUG REAL (relatado pelo usuário, teste ao vivo 2026-07-27): cliente
+  // avaliou o atendimento, foi agradecido, e minutos depois mandou só "👍" —
+  // o bot reabria o ticket e tentava responder como pergunta nova (nesse
+  // caso a IA falhou e devolveu o menu inteiro, uma resposta estranha pra
+  // uma reação de despedida). Em vez de atrasar o bot genericamente pra
+  // TODO mundo depois de fechar (arriscando ignorar quem manda uma dúvida
+  // nova de verdade logo em seguida), verifica especificamente se ESTA
+  // mensagem é só um agradecimento/reação — ver pareceEncerramentoPosAvaliacao
+  // em ticket.service.js. Se for, não reabre o ticket nem aciona o bot,
+  // só registra no histórico.
+  let encerramento = false;
+  try {
+    encerramento = await pareceEncerramentoPosAvaliacao(userId, message);
+  } catch (e) {
+    logger.warn(`Erro ao checar encerramento pós-avaliação: ${e.message}`);
+  }
+  if (encerramento) {
+    try {
+      await saveHistory({
+        userId, contactName, message, messageId, response: null,
+        sector: "encerramento_pos_avaliacao",
+        mediaPath, mediaMimetype, mediaFilename
+      });
+    } catch (err) {
+      logger.warn(`Erro ao salvar histórico (encerramento pós-avaliação): ${err.message}`);
+    }
+    try {
+      emitEvent("nova_mensagem", {
+        userId, contactName, message, messageId, response: null,
+        sector: "encerramento_pos_avaliacao", createdAt: new Date(),
+        mediaPath, mediaMimetype, mediaFilename
+      });
+    } catch (e) { logger.warn(`Erro ao emitir nova_mensagem (encerramento pós-avaliação): ${e.message}`); }
+    return "";
+  }
+
   // Reabre ticket fechado para que o cliente apareça em Pendentes novamente
   try { await reopenTicketIfClosed(userId); } catch (e) { logger.warn(`Erro ao reabrir ticket: ${e.message}`); }
 
@@ -151,17 +223,23 @@ async function processMessage({ userId, contactName, message, messageId, mediaPa
     });
   } catch (e) { logger.warn(`Erro ao emitir nova_mensagem: ${e.message}`); }
 
-  // ── Takeover humano: atendente assumiu → bot fica em silêncio ──────────────
-  // A mensagem do cliente já foi emitida ao painel acima; aqui só persistimos
-  // o histórico e NÃO acionamos o fluxo do bot.
-  if (humanMode.estaAtivo(userId)) {
+  // ── Bot desligado no painel OU atendente assumiu → sem resposta automática ──
+  // A mensagem do cliente já foi emitida ao painel acima (reopen + emit
+  // sempre rodam, bot ligado ou não — ver nota no início da função); aqui só
+  // persistimos o histórico e NÃO acionamos o fluxo do bot.
+  if (botOff || humanMode.estaAtivo(userId)) {
+    // Sector distinto para contato bloqueado por tag "Funcionário" — ajuda a
+    // diferenciar no painel/histórico de um "bot desligado" normal ou de um
+    // atendimento humano de verdade (ver resolverBotOffEfetivo acima).
+    const sector = isFuncionario ? "funcionario_bloqueado" : (botOff ? "bot_desligado" : "humano");
     try {
       await saveHistory({
-        userId, contactName, message, messageId, response: null, sector: "humano",
+        userId, contactName, message, messageId, response: null,
+        sector,
         mediaPath, mediaMimetype, mediaFilename
       });
     } catch (err) {
-      logger.warn(`Erro ao salvar histórico (modo humano): ${err.message}`);
+      logger.warn(`Erro ao salvar histórico (${sector}): ${err.message}`);
     }
     return "";
   }
@@ -183,6 +261,31 @@ async function processMessage({ userId, contactName, message, messageId, mediaPa
 
     if (!response) {
       logger.warn(`Fluxo sem resposta para ${userId}`);
+      return "";
+    }
+
+    // BUG CORRIGIDO: o check de humanMode.estaAtivo() lá no topo desta função
+    // (antes do enqueue) só protege contra mensagens que chegam DEPOIS do
+    // atendente assumir. Mas mainFlow() acima pode levar vários segundos
+    // (chamadas de IA), e se o atendente assumir o ticket ENQUANTO essa
+    // mensagem específica já estava em processamento, o check antigo já tinha
+    // passado — o bot respondia por cima do atendente segundos depois dele já
+    // ter assumido. Reproduzido em produção (ticket #2026-0090, 2026-07-23):
+    // atendente assumiu e mandou saudação às 14:08:10.667, e a resposta do bot
+    // pra uma mensagem que já estava em processamento saiu às 14:08:12.941 —
+    // ~2.3s depois, ignorando completamente o atendente. Re-checar aqui, logo
+    // que a resposta do fluxo já está pronta (mas antes de salvar/emitir/
+    // enviar), fecha essa janela de corrida.
+    if (humanMode.estaAtivo(userId)) {
+      logger.info(`[humanMode] Resposta do bot descartada para ${userId} — atendente assumiu durante o processamento da mensagem.`);
+      try {
+        await saveHistory({
+          userId, contactName, message, messageId, response: null, sector: "humano",
+          mediaPath, mediaMimetype, mediaFilename
+        });
+      } catch (err) {
+        logger.warn(`Erro ao salvar histórico (modo humano, pós-processamento): ${err.message}`);
+      }
       return "";
     }
 

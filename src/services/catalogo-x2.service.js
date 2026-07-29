@@ -166,12 +166,27 @@ function _indexarProduto(p) {
   let item;
   if (ficha.aplicacao) {
     const aplicacaoNormalizada = _normalizar(ficha.aplicacao);
+    const aplicacaoPalavras = new Set(aplicacaoNormalizada.split(" "));
+    // PEDIDO DO USUÁRIO (2026-07-27): "não está captando todas as peças...
+    // Universal, Diversos". ~1000 produtos (742 "UNIVERSAL" + 261
+    // "DIVERSOS") têm aplicação genérica, sem citar nenhum modelo específico
+    // ("UNIVERSAL - Veículo Todos os modelos", "Diversos tipos de
+    // caminhões...") — servem pra qualquer veículo daquela categoria, mas a
+    // busca por veículo (buscarPorVeiculo/buscarProdutosPainel abaixo) exige
+    // bater token do modelo pesquisado com o texto de aplicação, então
+    // NUNCA apareciam numa busca por veículo específico. Marcado aqui pra
+    // essas duas funções poderem incluir o produto mesmo sem bater nenhum
+    // token de modelo — só quando a categoria/seção pesquisada bater (ver
+    // uso abaixo), pra não poluir toda busca de veículo com peça genérica
+    // sem categoria nenhuma informada.
+    const universal = aplicacaoPalavras.has("UNIVERSAL") || aplicacaoPalavras.has("DIVERSOS");
     item = {
       ...base,
       aplicacao: ficha.aplicacao,
       aplicacaoNormalizada,
-      aplicacaoPalavras: new Set(aplicacaoNormalizada.split(" ")),
+      aplicacaoPalavras,
       faixasAno: _extrairFaixasDeAno(ficha.aplicacao),
+      universal,
     };
     produtosComAplicacao.push(item);
     todosProdutos.push(item);
@@ -215,6 +230,38 @@ function _anoCompativel(faixas, anoBuscado) {
 
 function _tokens(texto) {
   return _normalizar(texto).split(" ").filter(t => t.length >= 2);
+}
+
+// ─── Sinônimos de MARCA de veículo (pedido do usuário, 2026-07-27) ─────────
+// "meu catálogo de consultas não está captando todas as peças... GM -
+// General Motors". Achado escaneando o catálogo real: a MESMA marca aparece
+// grafada de 3 formas diferentes no texto de aplicação — "GM" (1504
+// produtos), "GENERAL MOTORS" (384) e "CHEVROLET" (1110) — tratadas hoje
+// como marcas DISTINTAS na busca (aplicacaoPalavras guarda palavra por
+// palavra, então "GENERAL MOTORS" vira dois tokens "GENERAL"/"MOTORS",
+// nenhum dos dois batendo com uma busca por "GM" ou "Chevrolet"). Resultado:
+// ~3000 produtos ficavam invisíveis entre si dependendo de qual grafia o
+// atendente/cliente usasse. Diferente de FABRICANTE_ALIASES acima (que é
+// sobre o FABRICANTE da peça, não a marca do veículo) — mesma ideia, escopo
+// diferente. Só GM tinha esse problema real no scan; a estrutura permite
+// adicionar outros grupos se aparecerem casos parecidos no futuro.
+const GRUPOS_ALIAS_MARCA = [
+  ["GM", "GENERAL", "MOTORS", "CHEVROLET"],
+];
+const _aliasMarcaIndex = new Map(); // token -> array com o grupo inteiro (incluindo ele mesmo)
+for (const grupo of GRUPOS_ALIAS_MARCA) {
+  for (const token of grupo) _aliasMarcaIndex.set(token, grupo);
+}
+
+// Substitui toda comparação direta `aplicacaoPalavras.has(token)` — também
+// aceita bater em qualquer sinônimo conhecido do token buscado (ver
+// GRUPOS_ALIAS_MARCA acima). Token sem grupo de alias comporta-se
+// exatamente como antes (comparação direta).
+function _tokenBateAplicacao(token, aplicacaoPalavras) {
+  if (aplicacaoPalavras.has(token)) return true;
+  const grupo = _aliasMarcaIndex.get(token);
+  if (!grupo) return false;
+  return grupo.some(alias => aplicacaoPalavras.has(alias));
 }
 
 function _carregarIndices() {
@@ -396,9 +443,15 @@ function buscarPorVeiculo(mensagem, linhasCandidatas = [], { limite = 3 } = {}) 
     if (!bateLinha && !bateSecao) continue;
 
     // Palavra inteira, não substring — "GOL" não deve bater dentro de
-    // "GOLF" (achado ao vivo em 2026-07-21).
-    const matches = tokens.filter(t => p.aplicacaoPalavras.has(t)).length;
-    if (matches >= minMatches) {
+    // "GOLF" (achado ao vivo em 2026-07-21). _tokenBateAplicacao também
+    // aceita sinônimos de marca conhecidos (GM/General Motors/Chevrolet —
+    // ver GRUPOS_ALIAS_MARCA acima).
+    const matches = tokens.filter(t => _tokenBateAplicacao(t, p.aplicacaoPalavras)).length;
+    // PEDIDO DO USUÁRIO (2026-07-27): peça Universal/Diversos (ver flag
+    // `universal` em _indexarProduto) serve pra qualquer veículo da mesma
+    // categoria/linha já confirmada (bateLinha/bateSecao acima) — entra
+    // mesmo sem bater nenhum token do veículo pesquisado.
+    if (matches >= minMatches || p.universal) {
       encontrados.push(p);
       if (encontrados.length >= limite) break;
     }
@@ -484,10 +537,18 @@ function buscarProdutosPainel({ marca = "", modelo = "", ano = null, categoria =
     }
     if (fabricanteNorm && (!p.fabricante || p.fabricante.toUpperCase() !== fabricanteNorm)) continue;
 
-    const matchesObrigatorios = tokensObrigatorios.filter(t => p.aplicacaoPalavras.has(t)).length;
-    if (matchesObrigatorios < minMatches) continue;
+    // _tokenBateAplicacao aceita sinônimos de marca conhecidos (GM/General
+    // Motors/Chevrolet — ver GRUPOS_ALIAS_MARCA acima).
+    const matchesObrigatorios = tokensObrigatorios.filter(t => _tokenBateAplicacao(t, p.aplicacaoPalavras)).length;
+    // PEDIDO DO USUÁRIO (2026-07-27): peça Universal/Diversos entra mesmo
+    // sem bater nenhum token de marca/modelo, DESDE QUE uma categoria tenha
+    // sido informada (já filtrada acima) — sem categoria, ficaria de fora
+    // pra não poluir a busca com peça genérica demais (ver comentário na
+    // flag `universal`, _indexarProduto).
+    const universalRelevante = p.universal && !!categoriaNorm;
+    if (!universalRelevante && matchesObrigatorios < minMatches) continue;
 
-    const marcaCompativel = marcaTokens.length ? marcaTokens.some(t => p.aplicacaoPalavras.has(t)) : false;
+    const marcaCompativel = marcaTokens.length ? marcaTokens.some(t => _tokenBateAplicacao(t, p.aplicacaoPalavras)) : false;
     const anoCompativel = _anoCompativel(p.faixasAno, anoNum);
 
     encontrados.push({ p, matchesObrigatorios, marcaCompativel, anoCompativel });

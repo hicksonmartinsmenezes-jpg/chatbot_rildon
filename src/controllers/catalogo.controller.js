@@ -2,6 +2,7 @@ const logger = require("../utils/logger");
 const { listarFotos, obterFoto } = require("../services/catalogo-fotos.service");
 const { buscarProdutosPainel, buscarPorCodigo, listarFabricantes } = require("../services/catalogo-x2.service");
 const { listarSecoes, listarLinhasPorSecao } = require("../services/catalogo.service");
+const { gerarPdfCatalogo } = require("../services/catalogo-pdf.service");
 
 // Código de produto do X2 é sempre numérico (ex: "111430") — validação
 // simples evita processar entrada absurda antes de tocar no índice em memória.
@@ -10,6 +11,14 @@ function _codigoValido(codigo) {
 }
 
 const ANO_MINIMO = 1950;
+
+// Pedido do usuário (2026-07-28): o export em PDF traz TODOS os resultados
+// do filtro (não só os até 200 exibidos na tela) — mas como o PDF embute
+// foto de cada peça, um filtro genérico demais (ex: seção inteira com
+// milhares de produtos) geraria um arquivo gigante e lento de montar. Esse
+// teto é só uma trava técnica de segurança; se bater nele, a resposta pede
+// pra refinar a busca (marca/modelo/seção mais específica).
+const MAX_EXPORT_PDF = 500;
 
 // GET /api/catalogo/buscar — painel "Catálogo de Produtos" (Task #240-243,
 // pedido do usuário em 2026-07-21): atendente digita marca/modelo/ano (e
@@ -47,6 +56,67 @@ async function buscarProdutosHandler(req, res) {
   } catch (err) {
     logger.error("❌ Erro ao buscar produtos do catálogo:", err.message);
     res.status(500).json({ error: "Erro ao buscar produtos." });
+  }
+}
+
+// GET /api/catalogo/exportar-pdf — "catálogo expresso" (pedido do usuário,
+// 2026-07-28): exporta em PDF, com foto, o resultado de uma busca do painel.
+// Aceita os mesmos critérios de /catalogo/buscar (marca/modelo/ano/categoria/
+// fabricante) OU um `codigo` isolado (mesmo modo de /catalogo/buscar-codigo).
+// Diferente da tela, aqui NÃO aplica o teto de exibição de 200 — traz tudo
+// que bateu no filtro, até o teto de segurança MAX_EXPORT_PDF.
+async function exportarPdfHandler(req, res) {
+  try {
+    const codigo = String(req.query.codigo || "").trim();
+    let produtos;
+    let tituloBusca;
+
+    if (codigo) {
+      produtos = buscarPorCodigo(codigo, { limite: Infinity });
+      tituloBusca = `Busca por código: ${codigo}`;
+    } else {
+      const marca      = String(req.query.marca || "").trim();
+      const modelo     = String(req.query.modelo || "").trim();
+      const categoria  = String(req.query.categoria || "").trim();
+      const fabricante = String(req.query.fabricante || "").trim();
+      const anoStr     = String(req.query.ano || "").trim();
+
+      if (!marca && !modelo && !categoria && !fabricante) {
+        return res.status(400).json({ error: "Informe marca/modelo do veículo, ou selecione uma Seção/Fabricante pra exportar." });
+      }
+
+      let ano = null;
+      if (anoStr) {
+        const anoNum = parseInt(anoStr, 10);
+        const anoMaximo = new Date().getFullYear() + 1;
+        if (!Number.isInteger(anoNum) || anoNum < ANO_MINIMO || anoNum > anoMaximo) {
+          return res.status(400).json({ error: `Ano inválido (use um valor entre ${ANO_MINIMO} e ${anoMaximo}).` });
+        }
+        ano = anoNum;
+      }
+
+      const resultado = buscarProdutosPainel({ marca, modelo, ano, categoria, fabricante, limite: Infinity });
+      produtos = resultado.produtos;
+
+      const partes = [marca, modelo, anoStr, categoria, fabricante].filter(Boolean);
+      tituloBusca = partes.length ? partes.join(" · ") : "Catálogo completo";
+    }
+
+    if (!produtos.length) {
+      return res.status(404).json({ error: "Nenhuma peça encontrada pra exportar com esses critérios." });
+    }
+    if (produtos.length > MAX_EXPORT_PDF) {
+      return res.status(400).json({
+        error: `A busca encontrou ${produtos.length} peças — refine os filtros (máx. ${MAX_EXPORT_PDF} peças por exportação em PDF).`,
+      });
+    }
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="catalogo-expresso-${Date.now()}.pdf"`);
+    gerarPdfCatalogo(produtos, tituloBusca, res);
+  } catch (err) {
+    logger.error("❌ Erro ao exportar catálogo em PDF:", err.message);
+    if (!res.headersSent) res.status(500).json({ error: "Erro ao gerar PDF do catálogo." });
   }
 }
 
@@ -151,4 +221,5 @@ module.exports = {
   listarLinhasHandler,
   listarFabricantesHandler,
   buscarPorCodigoHandler,
+  exportarPdfHandler,
 };

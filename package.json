@@ -20,6 +20,9 @@
     "test:watch": "jest --watch",
     "test:flow": "node test-flow.js",
     "build:frontend": "node scripts/build-frontend.js",
+    "x2-fotos": "node scripts/x2-fotos-scraper.js",
+    "x2-fotos-menu": "node scripts/x2-fotos-menu.js",
+    "x2-catalogo-sync": "node scripts/x2-catalogo-sync.js",
     "lint": "eslint src tests",
     "lint:fix": "eslint src tests --fix",
     "format": "prettier --write \"src/**/*.js\" \"tests/**/*.js\"",
@@ -40,6 +43,7 @@
     "multer": "^2.1.1",
     "otplib": "^12.0.1",
     "pdf-parse": "^1.1.1",
+    "pdfkit": "^0.15.2",
     "pg": "^8.21.0",
     "pino": "^8.21.0",
     "qrcode": "^1.5.4",
@@ -55,7 +59,9 @@
     "globals": "^17.7.0",
     "jest": "^30.4.2",
     "nodemon": "^3.1.14",
+    "playwright": "^1.48.0",
     "prettier": "^3.9.4",
+    "prompts": "^2.4.2",
     "supertest": "^7.2.2"
   }
 }

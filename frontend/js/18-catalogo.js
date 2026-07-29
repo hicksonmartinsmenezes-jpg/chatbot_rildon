@@ -95,6 +95,53 @@ function _catalogoEmptyState(icon, mensagem, extraClass = "") {
   `;
 }
 
+// Botão "Exportar catálogo expresso" (pedido do usuário, 2026-07-28): sai em
+// PDF com foto, trazendo TODOS os resultados do filtro atual — não só os que
+// estão na tela. Os critérios da busca ficam em wrap.dataset.exportQuery
+// (setado logo depois de renderizar o resultado, em buscarCatalogo/
+// buscarCatalogoPorCodigo), então o botão não precisa saber a origem.
+function _catalogoExportBtnHTML() {
+  return `
+    <button type="button" class="catalogo-export-btn" onclick="exportarCatalogoPDF(this)">
+      <i class="fa-solid fa-file-pdf"></i> Exportar catálogo (PDF)
+    </button>
+  `;
+}
+
+async function exportarCatalogoPDF(btnEl) {
+  const wrap = document.getElementById("catalogo-resultados");
+  const query = wrap?.dataset.exportQuery || "";
+  if (!query) return;
+
+  const original = btnEl?.innerHTML;
+  if (btnEl) {
+    btnEl.disabled = true;
+    btnEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Gerando PDF...';
+  }
+
+  try {
+    const res = await fetch(`/api/catalogo/exportar-pdf?${query}`, { credentials: "include" });
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      throw new Error(errBody.error || "Erro ao gerar PDF do catálogo.");
+    }
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = `catalogo-expresso-${Date.now()}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    showToast?.(err.message || "Erro ao exportar catálogo em PDF.", "error");
+  } finally {
+    if (btnEl) {
+      btnEl.disabled = false;
+      btnEl.innerHTML = original;
+    }
+  }
+}
+
 // Duas sub-abas dentro do painel (Task #250-253): "Critérios de Pesquisa"
 // (marca/modelo/ano/seção/linha/fabricante) e "Busca por Código" (código
 // isolado, sem depender de veículo nenhum — cliente às vezes só tem o número
@@ -373,10 +420,15 @@ async function buscarCatalogo(event) {
       <div class="catalogo-resumo-bar">
         ${chipsHTML}
         <p class="catalogo-resumo">${totalTexto}${recorte}.</p>
+        ${_catalogoExportBtnHTML()}
       </div>
     `;
     const grid = `<div class="catalogo-grid">${produtos.map(p => _catalogoCardHTML(p, !modoNavegacao)).join("")}</div>`;
     wrap.innerHTML = resumoBar + grid;
+    // Guarda os critérios desta busca pro botão de exportar (pedido do
+    // usuário, 2026-07-28) — exporta TODOS os resultados do filtro, não só
+    // os "produtos.length" mostrados na tela (ver MAX_EXPORT_PDF no backend).
+    wrap.dataset.exportQuery = params.toString();
   } catch (err) {
     wrap.innerHTML = _catalogoEmptyState("fa-circle-exclamation", "Erro ao buscar peças. Tente novamente.", "catalogo-error-state");
   }
@@ -423,12 +475,14 @@ async function buscarCatalogoPorCodigo(event) {
       <div class="catalogo-resumo-bar">
         ${chipsHTML}
         <p class="catalogo-resumo">${totalTexto}.</p>
+        ${_catalogoExportBtnHTML()}
       </div>
     `;
     // mostrarBadgeNeutro=false: busca por código é exata, não tem
     // marca/ano pra comparar — o aviso "confirme com o cliente" não se aplica.
     const grid = `<div class="catalogo-grid">${produtos.map(p => _catalogoCardHTML(p, false)).join("")}</div>`;
     wrap.innerHTML = resumoBar + grid;
+    wrap.dataset.exportQuery = `codigo=${encodeURIComponent(codigo)}`;
   } catch (err) {
     wrap.innerHTML = _catalogoEmptyState("fa-circle-exclamation", "Erro ao buscar peça. Tente novamente.", "catalogo-error-state");
   }

@@ -8,6 +8,7 @@ const {
   listarLinhasHandler,
   listarFabricantesHandler,
   buscarPorCodigoHandler,
+  exportarPdfHandler,
 } = require("../controllers/catalogo.controller");
 
 // Painel "Catálogo de Produtos" (pedido do usuário, 2026-07-21): busca por
@@ -23,6 +24,10 @@ router.get("/catalogo/linhas", listarLinhasHandler);
 // 2026-07-23).
 router.get("/catalogo/fabricantes", listarFabricantesHandler);
 router.get("/catalogo/buscar-codigo", buscarPorCodigoHandler);
+// "Catálogo expresso" em PDF com foto (pedido do usuário, 2026-07-28): mesmos
+// critérios de /catalogo/buscar (ou um `codigo` isolado), mas sem o teto de
+// 200 da tela — traz tudo que bateu no filtro, até MAX_EXPORT_PDF.
+router.get("/catalogo/exportar-pdf", exportarPdfHandler);
 
 // Lista as fotos disponíveis de um produto do catálogo X2 (só metadados —
 // nome de arquivo e índice, sem os bytes).

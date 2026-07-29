@@ -206,14 +206,23 @@ describe("catalogo-x2.service.buscarProdutosPainel", () => {
   });
 
   test("marca ausente no texto de aplicação não exclui o produto (achado ao vivo: marca às vezes é omitida)", () => {
-    // P3 (Corolla) não menciona "Toyota" explicitamente em minúsculas/maiúsculas? Na
-    // verdade menciona — usamos P1 (Astra) que não cita "Chevrolet" pra provar o ponto:
-    // buscando marca=Chevrolet + modelo=Astra, o produto ainda aparece (modelo já é
-    // suficiente), só não ganha o badge de marca.
-    const r = buscarProdutosPainel({ marca: "Chevrolet", modelo: "Astra" });
+    // P1 (Astra) cita só "GM" na aplicação, nunca "Fiat" — busca por marca
+    // não-relacionada não exclui o produto (modelo já é suficiente), só não
+    // ganha o badge de marca.
+    const r = buscarProdutosPainel({ marca: "Fiat", modelo: "Astra" });
     const p1 = r.produtos.find(p => p.codigo === "P1");
     expect(p1).toBeDefined();
     expect(p1.marcaCompativel).toBe(false);
+  });
+
+  // PEDIDO DO USUÁRIO (2026-07-27): "GM - General Motors" tratadas como a
+  // mesma marca — ver GRUPOS_ALIAS_MARCA em catalogo-x2.service.js. P1 cita
+  // só "GM" na aplicação; buscar por "Chevrolet" (sinônimo) AGORA bate.
+  test("marca sinônima de GM (Chevrolet/General Motors) bate mesmo quando a aplicação só cita 'GM'", () => {
+    const r = buscarProdutosPainel({ marca: "Chevrolet", modelo: "Astra" });
+    const p1 = r.produtos.find(p => p.codigo === "P1");
+    expect(p1).toBeDefined();
+    expect(p1.marcaCompativel).toBe(true);
   });
 
   test("categoria inexistente devolve lista vazia (não quebra)", () => {

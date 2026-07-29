@@ -13,8 +13,10 @@ Bot de atendimento WhatsApp para a **Rildon Eletropeças** (Aracaju/SE) — loja
 
 **Finalidade do bot:**
 - Receber solicitações de orçamento e criar tickets para os atendentes humanos
-- Encaminhar pedidos de crediário ao setor financeiro
 - Encaminhar reclamações / solicitações à gestão
+- Pedidos de crediário/financiamento são direcionados pro telefone direto do
+  setor via "Outros Contatos" (o bot tinha um fluxo próprio de crediário —
+  descontinuado em 2026-07-24, decisão do usuário)
 - Responder dúvidas simples via IA (Groq/Gemini) quando a pergunta não se encaixa no menu
 - Cliente típico: mecânico, eletricista automotivo ou motorista. **Prefere clicar em números**, não digita texto livre.
 
@@ -60,7 +62,6 @@ bot/
 │   ├── flows/
 │   │   ├── main.flow.js          ← roteamento central, menu, IA fallback
 │   │   ├── vendas.flow.js        ← fluxo de orçamento (nome→veículo→produto)
-│   │   ├── crediario.flow.js     ← fluxo de crediário (nome→CPF→motivo)
 │   │   ├── financeiro.flow.js    ← NÃO importado pelo main — arquivo legado
 │   │   ├── suporte.flow.js       ← NÃO importado pelo main — arquivo legado
 │   │   └── messages.js           ← TODAS as mensagens do bot (fonte única da verdade)
@@ -92,9 +93,8 @@ bot/
 Olá! Seja bem-vindo à Rildon Eletropeças.
 
 1 - Orçamento / Falar com atendente
-2 - Crediário
-3 - Falar com a Equipe
-4 - Horário e Localização
+2 - Outros Contatos
+3 - Horário e Localização
 ```
 
 ### Comportamento de cada opção
@@ -102,10 +102,9 @@ Olá! Seja bem-vindo à Rildon Eletropeças.
 | Opção | O que faz |
 |---|---|
 | **1** | Entra direto no formulário de orçamento. Se o cliente já tem nome salvo (tickets anteriores), pula para "qual veículo?". Caso contrário pede nome. |
-| **2** | Abre sub-menu do crediário (solicitar / consultar situação / falar com financeiro / voltar). |
-| **3** | "Falar com a Equipe" — registra solicitação para a gestão. Coleta nome → motivo. |
-| **4** | Mostra horário de atendimento + endereço (resposta estática). |
-| **IA** | Qualquer texto que não seja número 1–4 ou palavra-chave vai para a IA. A IA responde e pode rotear para um setor via `intencao`. |
+| **2** | "Outros Contatos" — mensagem estática com telefones diretos (RH, Crediário, Garantia, Ouvidoria). Sem sector/sessão. |
+| **3** | Mostra horário de atendimento + endereço (resposta estática). |
+| **IA** | Qualquer texto que não seja número 1–3 ou palavra-chave vai para a IA. A IA responde e pode rotear para um setor via `intencao`. |
 
 **Atendente humano direto** (sem opção de menu): só acessível via IA com `intencao: "atendente"`.
 
@@ -123,10 +122,8 @@ Ordem de processamento (importante — não reordenar):
 4. Verifica `PALAVRAS_MENU` → limpa sessão e mostra menu
 5. Sanitiza sector/step inválido (ver armadilhas abaixo)
 6. Roteia para `vendasFlow` se `session.sector === "vendas"`
-7. Roteia para `crediarioFlow` se `session.sector === "crediario"`
-8. Trata fluxo de gestão inline (sector `"gestao"`)
-9. Trata fluxo de atendente inline (sector `"atendente"`)
-10. Switch 1–4 do menu principal
+7. Trata fluxo de atendente inline (sector `"atendente"`)
+8. Switch 1–3 do menu principal
 11. **Default → IA** (perguntarIA → roteia por `intencao`)
 
 ```
@@ -136,7 +133,7 @@ PALAVRAS_MENU    = { "0", "menu", "inicio", "voltar", "home", "cancelar",
 PALAVRAS_ENCERRAR = { "encerrar", "encerramento", "fechar", "finalizar",
                       "sair", "tchau", "bye" }
 
-SECTORS_VALIDOS  = { "vendas", "crediario", "gestao", "atendente" }
+SECTORS_VALIDOS  = { "vendas", "atendente" }
 ```
 
 ### `vendas.flow.js` — Orçamento
@@ -150,18 +147,11 @@ aguardando_nome  →  aguardando_veiculo  →  aguardando_orcamento  →  [cria 
 - ESCAPE em qualquer etapa: `{ "0", "menu", "voltar", "cancelar", "inicio" }` → retorna `null` (main exibe menu)
 - Ticket gerado com `type: "orcamento"`, sector sem setor explícito
 
-### `crediario.flow.js` — Crediário
-
-Sub-menu: 1=Solicitar | 2=Consultar situação | 3=Falar com financeiro | 0=Voltar
-
-```
-Opção 1: aguardando_nome_cred → aguardando_cpf → aguardando_motivo_cred → [cria ticket]
-Opção 2: aguardando_nome_consulta_cred → aguardando_cpf_consulta → [cria ticket]
-Opção 3: cria ticket direto (type: "atendente_financeiro")
-```
-
-- Valida CPF com `validarCPF()` (dígito verificador)
-- Tickets vão para `sector: "financeiro"`
+> **Crediário descontinuado (2026-07-24)**: existia um `crediario.flow.js`
+> com sub-menu próprio (solicitar/consultar/falar com financeiro), removido
+> por decisão do usuário. Pedidos de crediário agora só recebem o telefone
+> direto do setor via `MSG.outrosContatos.LISTA()` — não criam mais ticket
+> nem sessão.
 
 ### Fluxo de Gestão (inline em `main.flow.js`)
 
@@ -204,11 +194,10 @@ if (session.sector) {
 
 | Campo | Tipo | Uso |
 |---|---|---|
-| `sector` | string | Setor atual: `"vendas"`, `"crediario"`, `"gestao"`, `"atendente"` (ou `"main"` = nenhum) |
+| `sector` | string | Setor atual: `"vendas"`, `"atendente"` (ou `"main"` = nenhum) |
 | `step` | string | Etapa atual dentro do setor |
 | `customerName` | string | Nome do cliente (persistido entre tickets) |
 | `veiculo` | string | Veículo informado no fluxo de orçamento |
-| `cpf` | string | CPF informado no fluxo de crediário |
 | `aiHistorico` | array | Histórico de mensagens para contexto da IA (máx 20 entradas = 10 pares) |
 | `_iaFalhas` | number | Contador de falhas consecutivas da IA (reset em sucesso) |
 
@@ -237,9 +226,8 @@ Trocar provedor: `AI_PROVIDER=gemini` no `.env`.
 |---|---|---|
 | `"chat"` | **Padrão** — saudações, dúvidas técnicas, fora do escopo | Retorna só a resposta da IA |
 | `"vendas"` | Intenção CLARA de comprar ou pedir orçamento ("preciso de X", "tem X?", "quanto custa") | Exibe resposta + `MSG.vendas.MENU()` |
-| `"crediario"` | Menciona crediário, parcelamento ou financiamento explicitamente | Exibe resposta + `MSG.crediario.MENU()` |
 | `"atendente"` | Pede EXPLICITAMENTE falar com humano/atendente/vendedor | Seta sector atendente, pede motivo |
-| `"gestao"` | Reclamação grave, insatisfação forte, pede gerente/gestor | Seta sector gestao, pede nome |
+| `"gestao"` | Reclamação grave, insatisfação forte, pede gerente/gestor; ou menciona crediário, parcelamento, financiamento (2026-07-24) | Exibe resposta + `MSG.outrosContatos.LISTA()` (telefones diretos, sem sector/sessão) |
 
 ⚠️ **IMPORTANTE**: `"vendas"` exige intenção CLARA de compra. Dúvidas técnicas gerais → `"chat"`.
 Evite sobrecarregar com `"vendas"` — o cliente fica preso num formulário quando só queria tirar dúvida.
@@ -319,9 +307,7 @@ MSG.vendas.PEDIR_NOME    // "Para solicitar orçamento, informe seu nome complet
 MSG.vendas.PEDIR_VEICULO // "Informe o veículo (marca, modelo e ano):"
 MSG.vendas.PEDIR_ORCAMENTO // "Descreva o produto ou peça que precisa:"
 MSG.vendas.ORCAMENTO_SOLICITADO(ticket) // Confirmação com protocolo
-MSG.crediario.MENU()     // Sub-menu crediário (opções 1,2,3,0)
-MSG.crediario.PEDIR_NOME // "Para continuar, informe seu nome completo:"
-MSG.crediario.PEDIR_CPF  // "Informe seu CPF (somente números):"
+MSG.outrosContatos.LISTA() // Telefones diretos (RH, Crediário, Garantia, Ouvidoria) — sem sector/sessão
 MSG.gestao.PEDIR_NOME    // "Para registrar sua solicitação, informe seu nome completo:"
 MSG.gestao.PEDIR_MOTIVO  // "Descreva o motivo pelo qual deseja falar com a gestão:"
 MSG.gestao.REGISTRADO(ticket) // Confirmação com protocolo

@@ -16,7 +16,17 @@ const MSG = {
       "0 - Voltar ao menu principal",
 
     PEDIR_NOME:     "📝 Para solicitar orçamento, informe seu *nome completo*:",
-    PEDIR_VEICULO:  "🚗 Qual o *veículo*? _(marca, modelo e ano)_\n_Digite *pular* se não se aplicar._",
+    // Pedido do usuário (2026-07-28): reduzir o "ping-pong" de perguntas —
+    // antes pedia só o veículo aqui e a peça na etapa seguinte, sempre em
+    // 2 mensagens. Agora já convida a responder os dois juntos numa
+    // mensagem só (ex: "Uno 2015, alternador"). A lógica de separar
+    // veículo/peça de uma resposta combinada já existia (vendas.flow.js,
+    // split por ano ou por quebra de linha) — só era usada como atalho
+    // ocasional; virou o caminho principal. Ela já tem fallback seguro:
+    // se não conseguir separar com confiança, pergunta a peça de novo
+    // separadamente na próxima etapa, sem perder nem confundir o que o
+    // cliente já disse.
+    PEDIR_VEICULO:  "🚗 Me diga o *veículo* _(marca, modelo e ano)_ e a *peça ou serviço* que você precisa — pode mandar tudo numa mensagem só!\n_Digite *pular* se não quiser informar o veículo._",
     PEDIR_ORCAMENTO: "🔧 Qual *peça* você precisa?",
 
     // Pedido do usuário: quando o cliente só faz uma pergunta de
@@ -28,7 +38,16 @@ const MSG = {
 
     ORCAMENTO_SOLICITADO: (ticket) => {
       const veiculoMatch = ticket.description?.match(/Veículo:\s*([^|]+)/);
-      const pecaMatch    = ticket.description?.match(/Produto:\s*(.+)/);
+      // BUG CORRIGIDO (relatado pelo usuário — caso V. Hugo, orçamento com
+      // vários itens em linhas separadas: "8 Corujinhas...;\n8 conectores...;
+      // \n1 multímetro;\n10m de conduíte..."): "." não casa quebra de linha
+      // por padrão, então /Produto:\s*(.+)/ só capturava até o primeiro \n —
+      // o ticket.description gravado no banco SEMPRE teve o texto completo
+      // (vendas.flow.js._finalizarOrcamento salva produtoTexto inteiro,
+      // sem truncar), só a MENSAGEM DE CONFIRMAÇÃO exibida ao cliente/painel
+      // cortava os itens depois do primeiro. [\s\S]+ casa qualquer caractere
+      // (inclusive quebra de linha), preservando a lista inteira.
+      const pecaMatch    = ticket.description?.match(/Produto:\s*([\s\S]+)/);
       const veiculo      = veiculoMatch ? veiculoMatch[1].trim() : null;
       const peca         = pecaMatch    ? pecaMatch[1].trim()    : ticket.description;
 
@@ -47,31 +66,10 @@ const MSG = {
       `_Digite *0* para o menu._`,
   },
 
-  crediario: {
-    MENU: () =>
-      "💳 *Crediário*\n\n" +
-      "Oferecemos crediário próprio para nossos clientes!\n\n" +
-      "1 - Solicitar crediário\n" +
-      "2 - Consultar situação do meu crediário\n" +
-      "0 - Voltar ao menu principal",
-
-    PEDIR_NOME:  "📝 Para continuar, informe seu *nome completo*:",
-    PEDIR_CPF:   "🪪 Informe seu *CPF* (somente números):",
-    PEDIR_MOTIVO: "💬 Descreva o que deseja comprar ou contratar pelo crediário:",
-
-    SOLICITACAO_REGISTRADA: (ticket) =>
-      `✅ *Solicitação de crediário registrada!*\n\n` +
-      `👤 Nome: ${ticket.customerName}\n` +
-      `🎫 Protocolo: *#${ticket.protocolo}*\n\n` +
-      `Nossa equipe entrará em contato para dar continuidade.\n` +
-      `Horário: Seg–Sex 07:50–17:50 | Sáb 08:00–12:00\n\n` +
-      `Posso ajudar com mais alguma coisa? Digite *0* para o menu ou continue conversando.`,
-
-    ATENDENTE: (ticket) =>
-      `👤 Um atendente entrará em contato em breve!\n\n` +
-      `🎫 Protocolo: *#${ticket.protocolo}*\n\n` +
-      `Posso ajudar com mais alguma coisa? Digite *0* para o menu.`,
-  },
+  // "crediario" removido (2026-07-24, decisão do usuário): tinha um fluxo
+  // próprio (solicitar/consultar, coletando nome+CPF+motivo). Descontinuado
+  // — quem pede crediário agora é direcionado pro telefone direto do setor
+  // (ver outrosContatos.LISTA logo abaixo), igual Garantia/RH/Ouvidoria.
 
   // Pedido do usuário (2026-07-21): o antigo fluxo "gestao" (opção 3 do menu,
   // "Falar com a Equipe") pedia nome + motivo e criava um ticket pra alguém
@@ -93,7 +91,7 @@ const MSG = {
   main: {
     PEDIR_MOTIVO_ATENDENTE:
       "💬 Certo! Para agilizar seu atendimento, descreva brevemente o que precisa:\n" +
-      "_Ex: Quero orçamento de alternador, Dúvida sobre crediário..._\n\n" +
+      "_Ex: Quero orçamento de alternador, Dúvida sobre um pedido..._\n\n" +
       "_Digite *0* para voltar ao menu._",
 
     ATENDENTE_HUMANO: (ticket) =>

@@ -129,7 +129,7 @@ async function vendasFlow(message, userId, session) {
       await clearSession(userId);
       return (
         "Percebi que sua pergunta é sobre outro assunto! 😊\n\n" +
-        "Digite *0* para ver o menu principal e escolher a opção certa (crediário, outros contatos, horário, etc.)."
+        "Digite *0* para ver o menu principal e escolher a opção certa (outros contatos, horário, etc.)."
       );
     }
 
@@ -177,7 +177,50 @@ async function vendasFlow(message, userId, session) {
         return "Entendido, ajustei aqui! 😊 " + MSG.vendas.PEDIR_VEICULO + MSG.ESCAPE_DICA;
       }
 
-      const veiculo = msg === "pular" ? null : sanitizarTexto(message);
+      // BUG CORRIGIDO (relatado pelo usuário, teste ao vivo 2026-07-24): cliente
+      // respondeu a pergunta de veículo já emendando a peça na mesma mensagem.
+      // Duas variações reproduzidas ao vivo:
+      //   (a) linhas separadas — "Celta 2001\nSensor de velocidade de 3 fios"
+      //   (b) tudo na mesma linha — "fiat uno 2010 alternador"
+      // Sem isso, a mensagem INTEIRA virava o campo veículo (poluindo o
+      // orçamento final com o nome da peça duas vezes — uma dentro de
+      // "veículo", outra no campo peça) e o cliente ainda era obrigado a
+      // repetir a peça que já tinha dito.
+      //
+      // Estratégia (2 tentativas, mais restrita pra menos restrita, cada uma só
+      // aplica o split se o resto do texto tiver tamanho válido pra ser peça —
+      // mesma regra de validarTamanho da etapa 3 — senão mantém o texto
+      // inteiro como veículo, igual antes):
+      //   1) ano do veículo (4 dígitos, ex: 2010) como delimitador natural —
+      //      cobre o caso (b) e também frases numa linha só sem quebra;
+      //   2) se não achou ano, tenta quebra de linha (caso a) — cobre quando
+      //      o cliente manda em 2 mensagens/linhas sem mencionar o ano ainda.
+      const textoUnificado = String(message || "").replace(/\r?\n/g, " ").trim();
+      let veiculoBruto = message;
+      let pecaDaMesmaMensagem = null;
+
+      const anoMatch = textoUnificado.match(/\b(19|20)\d{2}\b/);
+      if (anoMatch) {
+        const fimAno = anoMatch.index + anoMatch[0].length;
+        const candidataPeca = sanitizarTexto(textoUnificado.slice(fimAno));
+        if (validarTamanho(normalizar(candidataPeca), 5).ok) {
+          veiculoBruto = textoUnificado.slice(0, fimAno);
+          pecaDaMesmaMensagem = candidataPeca;
+        }
+      }
+
+      if (!pecaDaMesmaMensagem) {
+        const linhasMsg = String(message || "").split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+        if (linhasMsg.length > 1) {
+          const candidataPeca = sanitizarTexto(linhasMsg.slice(1).join(" "));
+          if (validarTamanho(normalizar(candidataPeca), 5).ok) {
+            veiculoBruto = linhasMsg[0];
+            pecaDaMesmaMensagem = candidataPeca;
+          }
+        }
+      }
+
+      const veiculo = msg === "pular" ? null : sanitizarTexto(veiculoBruto);
       const veiculoFinal = veiculo || "Não informado";
 
       // BUG CORRIGIDO: o cliente já tinha dito o que precisava na 1ª
@@ -196,7 +239,7 @@ async function vendasFlow(message, userId, session) {
       // você precisa?" de novo — a peça que ele JÁ tinha dito era ignorada.
       // Agora prefere pecaInicial (nome limpo da peça) e só cai pra
       // produtoInicial (frase crua) se pecaInicial não existir.
-      const produtoOuPecaInicial = session.pecaInicial || session.produtoInicial || "";
+      const produtoOuPecaInicial = session.pecaInicial || session.produtoInicial || pecaDaMesmaMensagem || "";
       const produtoInicial = produtoOuPecaInicial ? sanitizarTexto(produtoOuPecaInicial) : "";
       const produtoValido  = validarTamanho(normalizar(produtoInicial), 5).ok;
 

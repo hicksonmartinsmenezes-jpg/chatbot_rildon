@@ -4,14 +4,13 @@ const { buscarNomeContatoReal }                              = require("../whats
 const { estaEmHorarioDeAtendimento, mensagemForaDeHorario, saudacaoPorHorario } = require("../utils/horario");
 const { notificarAtendente, notificarSeDisponivel }         = require("../services/notificacao.service");
 const { sanitizarTexto, normalizar, validarTamanho } = require("../utils/validators");
-const { perguntarIA }                                       = require("../services/ai.service");
+const { perguntarIA, iaEmFalhaCritica }                      = require("../services/ai.service");
 const { getBotConfig }                                      = require("../services/botConfig.service");
 const logger                                                = require("../utils/logger");
 const MSG                                                   = require("./messages");
 const pool                                                  = require("../database/postgres");
 
 const vendasFlow      = require("./vendas.flow");
-const crediarioFlow   = require("./crediario.flow");
 
 // ── Palavras-chave de navegação ────────────────────────────────────────────────
 // PALAVRAS_MENU: usado dentro dos fluxos de sector (ex: atendente) para sair do fluxo
@@ -52,7 +51,13 @@ const PALAVRAS_ENCERRAR = new Set([
 // Sectors gerenciados — qualquer outro é inválido e deve ser resetado
 // "gestao" removido (2026-07-21): virou mensagem estática (MSG.outrosContatos),
 // não é mais um fluxo com etapas/sessão.
-const SECTORS_VALIDOS = new Set(["vendas", "crediario", "atendente"]);
+// "crediario" removido (2026-07-24, decisão do usuário): a opção saiu do
+// menu principal e o recurso foi descontinuado — quem pede crediário agora
+// é direcionado pro telefone direto do setor (MSG.outrosContatos.LISTA).
+// Qualquer sessão antiga que ainda esteja com sector="crediario" (de antes
+// desta mudança) cai automaticamente no reset abaixo (sectorInvalido) e
+// volta pro menu, sem quebrar.
+const SECTORS_VALIDOS = new Set(["vendas", "atendente"]);
 
 // ── Fallback determinístico de extração de veículo ─────────────────────────────
 // BUG RECORRENTE (testes reais com "Audi A4 2025"): a IA às vezes NÃO preenche
@@ -95,7 +100,6 @@ function extrairVeiculoFallback(message) {
 // ── Steps válidos por sector ───────────────────────────────────────────────────
 const STEPS_POR_SECTOR = {
   atendente:  ["aguardando_motivo_atendente"],
-  crediario:  ["aguardando_nome_cred", "aguardando_cpf", "aguardando_motivo_cred", "aguardando_nome_consulta_cred", "aguardando_cpf_consulta"],
   vendas:     ["aguardando_nome", "aguardando_veiculo", "aguardando_orcamento"],
 };
 
@@ -114,9 +118,8 @@ function menuPrincipal(nome) {
     `${status}\n\n${saudacao}\n\n` +
     "Como posso ajudar você hoje?\n\n" +
     "1 - Orçamento / Falar com atendente\n" +
-    "2 - Crediário\n" +
-    "3 - Outros Contatos\n" +
-    "4 - Horário e Localização\n\n" +
+    "2 - Outros Contatos\n" +
+    "3 - Horário e Localização\n\n" +
     "_Digite o número da opção desejada._"
   );
 }
@@ -128,9 +131,8 @@ function menuCompacto() {
   return (
     `${status}\n\n` +
     "1 - Orçamento / Falar com atendente\n" +
-    "2 - Crediário\n" +
-    "3 - Outros Contatos\n" +
-    "4 - Horário e Localização\n\n" +
+    "2 - Outros Contatos\n" +
+    "3 - Horário e Localização\n\n" +
     "_Digite o número da opção desejada._"
   );
 }
@@ -350,11 +352,6 @@ async function _mainFlowInterno({ userId, message }) {
     // Free-form sem step → cai no switch abaixo (default → IA)
   }
 
-  if (session.sector === "crediario") {
-    const resp = await crediarioFlow(message, userId, session);
-    return resp ?? menuPrincipal(nomeSalvo);
-  }
-
   // ── Coleta de motivo para atendente humano ───────────────────────────────────
   if (session.sector === "atendente") {
     if (PALAVRAS_MENU.has(msgNorm)) {
@@ -467,7 +464,7 @@ async function _mainFlowInterno({ userId, message }) {
   // no intercept de confirmação de orçamento acima: só troca pra
   // msgSemPontuacao quando ela isolada é um dos dígitos válidos do menu —
   // não afeta texto livre (ex: "sensor de 12v" não vira "12").
-  const msgMenu = ["1", "2", "3", "4"].includes(msgSemPontuacao) ? msgSemPontuacao : msgNorm;
+  const msgMenu = ["1", "2", "3"].includes(msgSemPontuacao) ? msgSemPontuacao : msgNorm;
 
   switch (msgMenu) {
 
@@ -483,17 +480,15 @@ async function _mainFlowInterno({ userId, message }) {
       return MSG.vendas.PEDIR_NOME + MSG.ESCAPE_DICA;
     }
 
-    case "2": {
-      const r2 = await crediarioFlow(message, userId, session);
-      return r2 ?? menuPrincipal(nomeSalvo);
-    }
-
-    case "3":
-      // Sem fluxo/sessão — só uma mensagem informativa com telefones diretos
-      // (ver MSG.outrosContatos, decisão do usuário de 2026-07-21).
+    // Opção 2 (renumerada de 3 após remoção do Crediário, 2026-07-24) — sem
+    // fluxo/sessão, só uma mensagem informativa com telefones diretos (ver
+    // MSG.outrosContatos, mesmo padrão já usado desde 2026-07-21 pra
+    // "gestao"; agora também inclui o telefone direto do crediário).
+    case "2":
       return MSG.outrosContatos.LISTA();
 
-    case "4":
+    // Opção 3 (renumerada de 4)
+    case "3":
       return (
         "🕐 *Horário de Atendimento*\n\n" +
         "🗓️ Segunda a sexta: *07:50h* às *17:50h*\n" +
@@ -531,13 +526,18 @@ async function _mainFlowInterno({ userId, message }) {
         const falhasIA = (session._iaFalhas || 0) + 1;
         await updateSession(userId, { _iaFalhas: falhasIA });
 
-        if (falhasIA >= 2) {
+        // PEDIDO DO USUÁRIO (2026-07-27): achado ao vivo — "credit balance is
+        // too low" na API é falha PERMANENTE até recarregar o console, não
+        // transitória. Nesse estado (ver iaEmFalhaCritica em ai.service.js),
+        // escala pro atendente já na 1ª mensagem — o "tente novamente" abaixo
+        // nunca vai funcionar sozinho enquanto o crédito não voltar.
+        if (falhasIA >= 2 || iaEmFalhaCritica()) {
           await clearSession(userId);
           return (
             "Estou com dificuldades técnicas no momento. 🙏\n\n" +
             "Para garantir seu atendimento, escolha uma opção:\n\n" +
             "1 - Orçamento / Falar com atendente\n" +
-            "2 - Crediário\n\n" +
+            "2 - Outros Contatos\n\n" +
             "_Ou ligue: *(79) 99135-3569*_"
           );
         }
@@ -728,12 +728,6 @@ async function _mainFlowInterno({ userId, message }) {
           _iaFalhas: 0
         });
         return resposta + "\n\n" + MSG.vendas.PEDIR_NOME + MSG.ESCAPE_DICA;
-      }
-
-      // Crediário: mostra o submenu (tem 2 opções: solicitar ou consultar)
-      if (intencao === "crediario") {
-        await updateSession(userId, { sector: "crediario", aiHistorico: novoHistorico, _iaFalhas: 0 });
-        return resposta + "\n\n" + MSG.crediario.MENU();
       }
 
       if (intencao === "atendente") {

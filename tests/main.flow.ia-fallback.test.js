@@ -21,7 +21,10 @@ jest.mock("../src/services/notificacao.service", () => ({
   notificarAtendente: jest.fn(),
   notificarSeDisponivel: jest.fn(),
 }));
-jest.mock("../src/services/ai.service", () => ({ perguntarIA: jest.fn() }));
+jest.mock("../src/services/ai.service", () => ({
+  perguntarIA: jest.fn(),
+  iaEmFalhaCritica: jest.fn().mockReturnValue(false),
+}));
 jest.mock("../src/services/botConfig.service", () => ({
   getBotConfig: jest.fn().mockResolvedValue({ iaAtiva: true }),
 }));
@@ -30,10 +33,8 @@ jest.mock("../src/flows/vendas.flow", () => {
   fn.finalizarOrcamento = jest.fn().mockResolvedValue("ok");
   return fn;
 });
-jest.mock("../src/flows/crediario.flow", () => jest.fn().mockResolvedValue(null));
-
 const sessionService = require("../src/services/session.service");
-const { perguntarIA } = require("../src/services/ai.service");
+const { perguntarIA, iaEmFalhaCritica } = require("../src/services/ai.service");
 const mainFlow = require("../src/flows/main.flow");
 
 const USER_ID = "5511999999999@s.whatsapp.net";
@@ -55,12 +56,29 @@ describe("mainFlow — fallback quando perguntarIA falha", () => {
     expect(resposta).not.toContain("Hickson");
     // Mas ainda mostra as opções do menu
     expect(resposta).toContain("1 - Orçamento");
-    expect(resposta).toContain("2 - Crediário");
+    expect(resposta).toContain("2 - Outros Contatos");
   });
 
   test("2ª falha seguida: mensagem de dificuldades técnicas, sessão limpa", async () => {
     sessionService.getSession.mockReturnValue({ sector: "main", customerName: "Hickson Martins", _iaFalhas: 1 });
     perguntarIA.mockRejectedValue(new Error("timeout"));
+
+    const resposta = await mainFlow({ userId: USER_ID, message: "e motor de partida?" });
+
+    expect(resposta).toContain("dificuldades técnicas");
+    expect(sessionService.clearSession).toHaveBeenCalledWith(USER_ID);
+  });
+
+  // PEDIDO DO USUÁRIO (2026-07-27): achado ao vivo — API sem crédito
+  // ("credit balance is too low") falha de forma PERMANENTE, não
+  // transitória. iaEmFalhaCritica() (ai.service.js) sinaliza esse estado —
+  // nesse caso não faz sentido esperar a 2ª falha consecutiva pra escalar
+  // pro atendente, já que a 1ª mensagem de "tente novamente" nunca vai
+  // resolver sozinha enquanto o crédito não for recarregado.
+  test("IA em falha crítica (sem crédito): escala pro atendente JÁ NA 1ª falha, não espera a 2ª", async () => {
+    sessionService.getSession.mockReturnValue({ sector: "main", customerName: "Hickson Martins", _iaFalhas: 0 });
+    perguntarIA.mockResolvedValue(null);
+    iaEmFalhaCritica.mockReturnValue(true);
 
     const resposta = await mainFlow({ userId: USER_ID, message: "e motor de partida?" });
 

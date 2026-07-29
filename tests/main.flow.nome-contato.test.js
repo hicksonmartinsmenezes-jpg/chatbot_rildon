@@ -28,7 +28,7 @@ jest.mock("../src/services/notificacao.service", () => ({
   notificarAtendente: jest.fn(),
   notificarSeDisponivel: jest.fn(),
 }));
-jest.mock("../src/services/ai.service", () => ({ perguntarIA: jest.fn() }));
+jest.mock("../src/services/ai.service", () => ({ perguntarIA: jest.fn(), iaEmFalhaCritica: jest.fn().mockReturnValue(false) }));
 jest.mock("../src/services/botConfig.service", () => ({
   getBotConfig: jest.fn().mockResolvedValue({ iaAtiva: true }),
 }));
@@ -37,7 +37,6 @@ jest.mock("../src/flows/vendas.flow", () => {
   fn.finalizarOrcamento = jest.fn().mockResolvedValue("ok");
   return fn;
 });
-jest.mock("../src/flows/crediario.flow", () => jest.fn().mockResolvedValue(null));
 jest.mock("../src/database/postgres", () => ({ query: jest.fn() }));
 jest.mock("../src/whatsapp/lid-map", () => ({
   getProfilePhotoCandidates: jest.fn(userId => [userId]),

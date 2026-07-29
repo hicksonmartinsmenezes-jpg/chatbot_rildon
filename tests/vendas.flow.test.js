@@ -135,6 +135,110 @@ describe("vendasFlow", () => {
     expect(createTicket).not.toHaveBeenCalled();
   });
 
+  // BUG CORRIGIDO (relatado pelo usuário, teste ao vivo 2026-07-24): cliente
+  // respondeu a pergunta de veículo com "Celta 2001\nSensor de velocidade de
+  // 3 fios" (2 linhas na mesma mensagem) — sem o fix, a mensagem INTEIRA
+  // virava o veículo e o cliente ainda era obrigado a repetir a peça.
+  describe("aguardando_veiculo: mensagem com veículo + peça em linhas separadas", () => {
+    test("2ª linha descritiva o bastante → usa só a 1ª linha como veículo e finaliza direto, sem pedir peça de novo", async () => {
+      createTicket.mockResolvedValue(fakeTicket({
+        description: "Veículo: Celta 2001 | Produto: Sensor de velocidade de 3 fios",
+      }));
+
+      const resposta = await vendasFlow(
+        "Celta 2001\nSensor de velocidade de 3 fios",
+        USER_ID,
+        { sector: "vendas", step: "aguardando_veiculo", produtoInicial: "" }
+      );
+
+      expect(createTicket).toHaveBeenCalledWith(
+        expect.objectContaining({
+          description: "Veículo: Celta 2001 | Produto: Sensor de velocidade de 3 fios",
+        })
+      );
+      expect(resposta).toContain("Orçamento registrado");
+    });
+
+    test("2ª linha curta demais pra ser peça (ex: ano solto) → mantém comportamento antigo (texto inteiro vira veículo)", async () => {
+      const resposta = await vendasFlow(
+        "Fiat Uno\n2015",
+        USER_ID,
+        { sector: "vendas", step: "aguardando_veiculo", produtoInicial: "" }
+      );
+
+      expect(resposta).toContain(MSG.vendas.PEDIR_ORCAMENTO);
+      expect(createTicket).not.toHaveBeenCalled();
+    });
+
+    test("pecaInicial já existente tem prioridade sobre a 2ª linha da mensagem", async () => {
+      createTicket.mockResolvedValue(fakeTicket());
+
+      await vendasFlow(
+        "Celta 2001\nSensor de velocidade de 3 fios",
+        USER_ID,
+        {
+          sector: "vendas",
+          step: "aguardando_veiculo",
+          produtoInicial: "Bom dia, preciso de um alternador",
+          pecaInicial: "Alternador",
+        }
+      );
+
+      expect(createTicket).toHaveBeenCalledWith(
+        expect.objectContaining({
+          description: "Veículo: Celta 2001 | Produto: Alternador",
+        })
+      );
+    });
+  });
+
+  // BUG CORRIGIDO (relatado pelo usuário, 2ª rodada de teste ao vivo
+  // 2026-07-24): variação do bug acima, mas TUDO na mesma linha, sem quebra —
+  // "fiat uno 2010 alternador". O fix de linha separada não cobria esse caso;
+  // agora usa o ANO do veículo (4 dígitos) como delimitador natural.
+  describe("aguardando_veiculo: mensagem com veículo + peça na MESMA linha (delimitado pelo ano)", () => {
+    test("'fiat uno 2010 alternador' → separa pelo ano e finaliza direto, sem pedir peça de novo", async () => {
+      createTicket.mockResolvedValue(fakeTicket({
+        description: "Veículo: fiat uno 2010 | Produto: alternador",
+      }));
+
+      const resposta = await vendasFlow(
+        "fiat uno 2010 alternador",
+        USER_ID,
+        { sector: "vendas", step: "aguardando_veiculo", produtoInicial: "" }
+      );
+
+      expect(createTicket).toHaveBeenCalledWith(
+        expect.objectContaining({
+          description: "Veículo: fiat uno 2010 | Produto: alternador",
+        })
+      );
+      expect(resposta).toContain("Orçamento registrado");
+    });
+
+    test("veículo com ano mas SEM nada depois → mantém comportamento antigo (pergunta a peça)", async () => {
+      const resposta = await vendasFlow(
+        "Gol 2018",
+        USER_ID,
+        { sector: "vendas", step: "aguardando_veiculo", produtoInicial: "" }
+      );
+
+      expect(resposta).toContain(MSG.vendas.PEDIR_ORCAMENTO);
+      expect(createTicket).not.toHaveBeenCalled();
+    });
+
+    test("veículo sem ano nenhum (só marca/modelo) → mantém comportamento antigo", async () => {
+      const resposta = await vendasFlow(
+        "Fiat Uno",
+        USER_ID,
+        { sector: "vendas", step: "aguardando_veiculo", produtoInicial: "" }
+      );
+
+      expect(resposta).toContain(MSG.vendas.PEDIR_ORCAMENTO);
+      expect(createTicket).not.toHaveBeenCalled();
+    });
+  });
+
   test("aguardando_orcamento: finaliza com o veículo já coletado antes", async () => {
     createTicket.mockResolvedValue(fakeTicket({ description: "Veículo: Uno 2010 | Produto: farol completo" }));
 

@@ -6,7 +6,6 @@
  *
  * Uso:  node test-flow.js
  *       node test-flow.js --suite vendas
- *       node test-flow.js --suite crediario
  *       node test-flow.js --suite ia
  *       node test-flow.js --suite edge
  */
@@ -109,8 +108,11 @@ const aiMock = {
       // são REBAIXADAS pra false por segurança, mesmo com pedidoExplicito
       // aqui true — isso é intencional, ver ticket #2026-0056/#2026-0068).
       return { resposta: "Sim, trabalhamos com esse item! Posso te ajudar a solicitar um orçamento. 😊", intencao: "vendas", pedidoExplicito: true };
+    // "crediario" removido como intenção própria (2026-07-24) — dobrado
+    // dentro de "gestao" (ver ai.service.js): menção a crediário/parcelamento
+    // agora direciona pro telefone direto do setor (MSG.outrosContatos).
     if (/crediário|parcelar|prazo|parcela/.test(m))
-      return { resposta: "Temos crediário próprio para nossos clientes!", intencao: "crediario" };
+      return { resposta: "Temos crediário próprio para nossos clientes!", intencao: "gestao" };
     if (/atendente|vendedor|humano|pessoa/.test(m))
       return { resposta: "Claro, vou te conectar com um atendente!", intencao: "atendente" };
     if (/gerente|reclamação|gestão|problema grave/.test(m))
@@ -227,17 +229,17 @@ async function testMenuPrincipal() {
   contem(rEnc, "Atendimento encerrado", "tchau → mensagem de encerramento");
   contem(rEnc, "Rildon Eletropeças", "tchau → menciona empresa");
 
-  subtitulo("Opção 4 — Horário");
+  subtitulo("Opção 3 — Horário (renumerada de 4 após remoção do Crediário, 2026-07-24)");
   await resetarSessao();
-  const rHor = await enviar("4", "4=horário");
-  contem(rHor, "07:50", "opção 4 → mostra horário");
+  const rHor = await enviar("3", "3=horário");
+  contem(rHor, "07:50", "opção 3 → mostra horário");
 
-  subtitulo("Opção 5 — inválida → IA responde (protocolo removido)");
+  subtitulo("Opção 4 — inválida → IA responde (Crediário removido do menu, 2026-07-24)");
   await resetarSessao();
   _iaMockFn = () => ({ resposta: "Não entendi. Como posso ajudar?", intencao: "chat" });
-  const rProt = await enviar("5", "5 não existe mais → IA");
+  const rProt = await enviar("4", "4 não existe mais → IA");
   _iaMockFn = null;
-  naoContem(rProt, "Consultar meu protocolo", "opção 5 removida do menu");
+  naoContem(rProt, "Crediário", "opção 4 (antigo Crediário) removida do menu");
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -296,42 +298,6 @@ async function testVendas() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// SUITE 3 — Crediário
-// ════════════════════════════════════════════════════════════════════════════
-async function testCrediario() {
-  titulo("SUITE 3 — Crediário");
-
-  subtitulo("Fluxo completo crediário");
-  await resetarSessao();
-  const rMenu = await enviar("2", "opção 2=crediário");
-  contem(rMenu, "Crediário", "opção 2 → menu crediário");
-  existeEmoji(rMenu, "1", "menu crediário → emoji ok");
-
-  await enviar("1", null);     // solicitar crediário
-  const rNome = await enviar("Ana Lima", "nome crediário");
-  contem(rNome, "CPF", "pede CPF");
-
-  const rCpfInv = await enviar("123", "CPF inválido");
-  contem(rCpfInv, "inválido", "rejeita CPF curto");
-
-  // CPF válido para testes (gerado matematicamente correto)
-  const rCpf = await enviar("52998224725", "CPF válido");
-  contem(rCpf, "crediário", "pede descrição do que quer comprar no crediário");
-
-  const rFim = await enviar("Quero comprar um alternador no crediário", "motivo");
-  contem(rFim, "Protocolo", "crediário finalizado com protocolo");
-  contem(rFim, "Posso ajudar", "fechamento natural crediário");
-  naoContem(rFim, "CPF", "CPF não exposto ao cliente (LGPD)");
-
-  subtitulo("Escape do crediário");
-  await resetarSessao();
-  await enviar("2", null);
-  await enviar("1", null);
-  const rEscCred = await enviar("cancelar", "cancelar crediário");
-  contem(rEscCred, "Rildon", "cancelar → volta ao menu");
-}
-
-// ════════════════════════════════════════════════════════════════════════════
 // SUITE 4 — Atendente e Gestão
 // ════════════════════════════════════════════════════════════════════════════
 async function testAtendenteGestao() {
@@ -349,12 +315,12 @@ async function testAtendenteGestao() {
   contem(rFimAte, "Protocolo", "atendente registrado");
   contem(rFimAte, "Posso ajudar", "fechamento natural atendente");
 
-  subtitulo("Opção 3 — Outros Contatos (lista estática, sem ticket)");
+  subtitulo("Opção 2 — Outros Contatos (renumerada de 3 após remoção do Crediário, lista estática, sem ticket)");
   await resetarSessao();
-  const rContatos = await enviar("3", "opção 3 do menu");
+  const rContatos = await enviar("2", "opção 2 do menu");
   contem(rContatos, "Outros Contatos", "mostra o título da lista");
   contem(rContatos, "Ouvidoria", "lista inclui contato de Ouvidoria");
-  contem(rContatos, "Crediário", "lista inclui contato de Crediário");
+  contem(rContatos, "Crediário", "lista inclui telefone direto de Crediário (fluxo próprio descontinuado, 2026-07-24)");
 
   subtitulo("IA detecta 'gestao' (reclamação) — mostra contatos, sem criar ticket");
   await resetarSessao();
@@ -408,10 +374,11 @@ async function testIA() {
   naoContem(rChat, "_Digite *0* para ver o menu de opções._", "IA chat não força '_Digite 0_' ao final");
   contem(rChat, "07:50", "IA chat responde corretamente");
 
-  subtitulo("IA detecta 'crediário' — primeira entrada → menu completo");
+  subtitulo("IA detecta menção a crediário (dobrado em 'gestao', 2026-07-24) → direciona pra Outros Contatos, sem criar ticket");
   await resetarSessao();
   const rCred = await enviar("quero parcelar minha compra", "ia crediário");
-  contem(rCred, "Crediário", "IA crediário → menu completo");
+  contem(rCred, "Outros Contatos", "IA crediário/gestao → lista de contatos diretos");
+  naoContem(rCred, "Protocolo", "não cria ticket pra menção de crediário");
 
   subtitulo("IA detecta 'atendente'");
   await resetarSessao();
@@ -515,12 +482,12 @@ async function testPosFluxo() {
   const rReabrir = await enviar("oi", "reabertura");
   contem(rReabrir, "Rildon", "reabertura após encerrar → menu ok");
 
-  subtitulo("Sequência longa — vendas → 0 → crediário → cancelar → atendente via IA");
+  subtitulo("Sequência longa — vendas → 0 → outros contatos → cancelar → atendente via IA");
   await resetarSessao();
   await enviar("1", null);  // formulário de orçamento
   await enviar("0", null);  // volta ao menu
-  await enviar("2", null);  // crediário
-  const rV2 = await enviar("cancelar", "cancelar crediário com 'cancelar'");
+  await enviar("2", null);  // outros contatos (renumerada de crediário, 2026-07-24) — resposta estática, sem sector
+  const rV2 = await enviar("cancelar", "'cancelar' após Outros Contatos");
   contem(rV2, "Rildon", "cancelar → menu principal");
   // Atendente não tem opção direta no menu — é acionado pela IA (intent=atendente)
   _iaMockFn = () => ({ resposta: "Claro! Vou te conectar com um atendente.", intencao: "atendente" });
@@ -559,19 +526,23 @@ async function testPersonas() {
   const rMudaAssunto = await enviar("vocês fazem crediário também?", "mudança de assunto na etapa de veículo");
   contem(rMudaAssunto, "outro assunto", "detecta mudança de assunto no meio do formulário de vendas");
 
-  subtitulo("Persona 'CPF errado várias vezes' — 3 tentativas inválidas seguidas antes de acertar");
+  // Substitui a antiga persona "CPF errado várias vezes" (dependia do
+  // sub-fluxo de crediário — nome→CPF→motivo — descontinuado em
+  // 2026-07-24). Preserva a mesma intenção de cobertura (entrada inválida
+  // repetida não trava o fluxo) usando o campo de nome do formulário de
+  // vendas, que ainda existe.
+  subtitulo("Persona 'nome inválido várias vezes' — 3 tentativas curtas seguidas antes de acertar");
   await resetarSessao();
-  await enviar("2", null);
   await enviar("1", null);
-  await enviar("Pedro Alves", null);
-  const rCpf1 = await enviar("111", "CPF inválido tentativa 1 (curto)");
-  contem(rCpf1, "inválido", "rejeita 1ª tentativa");
-  const rCpf2 = await enviar("00000000000", "CPF inválido tentativa 2 (dígitos iguais)");
-  contem(rCpf2, "inválido", "rejeita 2ª tentativa (dígitos iguais)");
-  const rCpf3 = await enviar("12345678900", "CPF inválido tentativa 3 (dígito verificador errado)");
-  contem(rCpf3, "inválido", "rejeita 3ª tentativa (dv errado)");
-  const rCpfOk = await enviar("52998224725", "CPF válido na 4ª tentativa");
-  contem(rCpfOk, "crediário", "aceita CPF válido após 3 tentativas erradas, não trava o fluxo");
+  await enviar("1", null);
+  const rNome1 = await enviar("Jo", "nome inválido tentativa 1 (muito curto)");
+  contem(rNome1, "nome", "rejeita 1ª tentativa");
+  const rNome2 = await enviar("X", "nome inválido tentativa 2 (1 char)");
+  contem(rNome2, "nome", "rejeita 2ª tentativa");
+  const rNome3 = await enviar("Zz", "nome inválido tentativa 3 (2 chars)");
+  contem(rNome3, "nome", "rejeita 3ª tentativa");
+  const rNomeOk = await enviar("Pedro Alves", "nome válido na 4ª tentativa");
+  contem(rNomeOk, "veículo", "aceita nome válido após 3 tentativas erradas, não trava o fluxo");
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -587,7 +558,7 @@ async function testPersonas2() {
 
   await resetarSessao();
   const rMenuPonto2 = await enviar("2)", "'2)' no menu principal");
-  contem(rMenuPonto2, "Oferecemos crediário", "'2)' deveria abrir crediário igual a '2' (string exclusiva do menu de crediário, não do menu principal)");
+  contem(rMenuPonto2, "Outros Contatos", "'2)' deveria mostrar Outros Contatos igual a '2'");
 
   subtitulo("Persona 'volta duas vezes seguidas' — '0' repetido sem digitar nada no meio");
   await resetarSessao();
@@ -627,7 +598,6 @@ async function main() {
   const suites = {
     menu:      testMenuPrincipal,
     vendas:    testVendas,
-    crediario: testCrediario,
     atendente: testAtendenteGestao,
     ia:        testIA,
     edge:      testEdgeCases,

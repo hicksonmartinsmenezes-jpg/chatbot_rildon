@@ -22,7 +22,7 @@ jest.mock("../src/services/notificacao.service", () => ({
   notificarAtendente: jest.fn(),
   notificarSeDisponivel: jest.fn(),
 }));
-jest.mock("../src/services/ai.service", () => ({ perguntarIA: jest.fn() }));
+jest.mock("../src/services/ai.service", () => ({ perguntarIA: jest.fn(), iaEmFalhaCritica: jest.fn().mockReturnValue(false) }));
 jest.mock("../src/services/botConfig.service", () => ({
   getBotConfig: jest.fn().mockResolvedValue({ iaAtiva: true }),
 }));
@@ -31,8 +31,6 @@ jest.mock("../src/flows/vendas.flow", () => {
   fn.finalizarOrcamento = jest.fn().mockResolvedValue("confirmado");
   return fn;
 });
-jest.mock("../src/flows/crediario.flow", () => jest.fn().mockResolvedValue(null));
-
 const sessionService = require("../src/services/session.service");
 const vendasFlow = require("../src/flows/vendas.flow");
 const mainFlow = require("../src/flows/main.flow");

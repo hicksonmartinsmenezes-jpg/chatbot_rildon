@@ -8,7 +8,8 @@
  * classe de bug já corrigida antes no intercept de confirmação de orçamento
  * — ver main.flow.confirmacao-orcamento.test.js). Corrigido computando
  * msgMenu = msgSemPontuacao quando ela isolada é um dígito válido do menu
- * (1-4), senão mantém msgNorm.
+ * (1-3, após a remoção do Crediário em 2026-07-24 — era 1-4 antes disso),
+ * senão mantém msgNorm.
  */
 jest.mock("../src/database/postgres", () => ({ query: jest.fn().mockResolvedValue({ rows: [] }) }));
 jest.mock("../src/services/session.service", () => ({
@@ -22,7 +23,7 @@ jest.mock("../src/services/notificacao.service", () => ({
   notificarAtendente: jest.fn(),
   notificarSeDisponivel: jest.fn(),
 }));
-jest.mock("../src/services/ai.service", () => ({ perguntarIA: jest.fn() }));
+jest.mock("../src/services/ai.service", () => ({ perguntarIA: jest.fn(), iaEmFalhaCritica: jest.fn().mockReturnValue(false) }));
 jest.mock("../src/services/botConfig.service", () => ({
   getBotConfig: jest.fn().mockResolvedValue({ iaAtiva: true }),
 }));
@@ -31,10 +32,8 @@ jest.mock("../src/flows/vendas.flow", () => {
   fn.finalizarOrcamento = jest.fn().mockResolvedValue("confirmado");
   return fn;
 });
-jest.mock("../src/flows/crediario.flow", () => jest.fn().mockResolvedValue(null));
 
 const sessionService = require("../src/services/session.service");
-const crediarioFlow = require("../src/flows/crediario.flow");
 const mainFlow = require("../src/flows/main.flow");
 
 const USER_ID = "5511999999999@s.whatsapp.net";
@@ -57,25 +56,21 @@ describe("mainFlow — opções do menu principal com pontuação", () => {
     }
   );
 
+  // Opção 2 (renumerada de 3 após a remoção do Crediário, 2026-07-24) —
+  // mensagem estática, sem sector/sessão (ver messages.js MSG.outrosContatos).
   test.each(["2", "2.", "2)"])(
-    "'%s' → roteia para o fluxo de crediário",
+    "'%s' → mostra a lista de Outros Contatos, sem entrar em fluxo/sessão",
     async (mensagem) => {
-      await mainFlow({ userId: USER_ID, message: mensagem });
-      expect(crediarioFlow).toHaveBeenCalledWith(mensagem, USER_ID, expect.any(Object));
+      const resposta = await mainFlow({ userId: USER_ID, message: mensagem });
+      expect(resposta).toContain("Outros Contatos");
+      expect(resposta).toContain("Ouvidoria");
+      expect(sessionService.updateSession).not.toHaveBeenCalled();
     }
   );
 
-  // Opção 3 virou "Outros Contatos" — mensagem estática, sem sector/sessão
-  // (ver messages.js MSG.outrosContatos, decisão do usuário de 2026-07-21).
-  test("'3.' → mostra a lista de Outros Contatos, sem entrar em fluxo/sessão", async () => {
-    const resposta = await mainFlow({ userId: USER_ID, message: "3." });
-    expect(resposta).toContain("Outros Contatos");
-    expect(resposta).toContain("Ouvidoria");
-    expect(sessionService.updateSession).not.toHaveBeenCalled();
-  });
-
-  test("'4!' → mostra horário de atendimento", async () => {
-    const resposta = await mainFlow({ userId: USER_ID, message: "4!" });
+  // Opção 3 (renumerada de 4)
+  test("'3!' → mostra horário de atendimento", async () => {
+    const resposta = await mainFlow({ userId: USER_ID, message: "3!" });
     expect(resposta).toContain("Horário de Atendimento");
   });
 

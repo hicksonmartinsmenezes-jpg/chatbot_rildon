@@ -311,6 +311,36 @@ body.light-theme .chat-input-area textarea:disabled {
   border-color: rgba(0,0,0,.08);
 }
 
+/* ─── Feature: enviar arquivo / responder mensagem (2026-07-23) ─────────── */
+body.light-theme .chat-attach-btn { background: rgba(0,0,0,.05); color: #54656f; }
+body.light-theme .chat-attach-btn:hover { background: rgba(0,0,0,.10); color: #111b21; }
+
+body.light-theme .reply-preview-bar,
+body.light-theme .media-preview-bar {
+  background: #f0f2f5;
+  border-top-color: rgba(0,0,0,.06);
+  border-left-color: #22c55e;
+}
+body.light-theme .reply-preview-text span,
+body.light-theme .media-preview-info span { color: #54656f; }
+body.light-theme .media-preview-info strong { color: #111b21; }
+body.light-theme .media-preview-thumb { background: rgba(0,0,0,.06); color: #54656f; }
+body.light-theme .chat-input-bar-cancel { color: #54656f; }
+body.light-theme .chat-input-bar-cancel:hover { background: rgba(0,0,0,.08); color: #111b21; }
+
+body.light-theme .bubble-reply-btn {
+  background: #ffffff;
+  color: #54656f;
+  box-shadow: 0 1px 3px rgba(0,0,0,.20);
+}
+body.light-theme .bubble-reply-btn:hover { background: #f0f2f5; color: #111b21; }
+
+body.light-theme .bubble-quote {
+  background: rgba(0,0,0,.05);
+  border-left-color: rgba(0,0,0,.25);
+  color: rgba(0,0,0,.62);
+}
+
 /* ─── Estado vazio do header de conversa ───────────────────────────────── */
 body.light-theme .chat-selected-empty { color: #9ca3af; }
 body.light-theme .chat-selected-empty i { color: #cbd5e1; }

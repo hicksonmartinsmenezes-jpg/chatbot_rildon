@@ -17,6 +17,9 @@ function mapHistory(row) {
     mediaPath: row.media_path,
     mediaMimetype: row.media_mimetype,
     mediaFilename: row.media_filename,
+    // Ver migration 019 — "responder mensagem específica" (reply/quote).
+    quotedMessageId: row.quoted_message_id,
+    quotedText: row.quoted_text,
     createdAt: row.created_at
   };
 }
@@ -35,9 +38,11 @@ async function create(data) {
       media_path,
       media_mimetype,
       media_filename,
+      quoted_message_id,
+      quoted_text,
       created_at
     )
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
     RETURNING *
     `,
     [
@@ -51,6 +56,8 @@ async function create(data) {
       data.mediaPath || null,
       data.mediaMimetype || null,
       data.mediaFilename || null,
+      data.quotedMessageId || null,
+      data.quotedText || null,
       data.createdAt || new Date()
     ]
   );
@@ -163,7 +170,7 @@ async function findGroupedByUser({ q, from, to, limit = 500, offset = 0 } = {}) 
     SELECT * FROM (
       SELECT DISTINCT ON (user_id)
         id, user_id, contact_name, message, response, sector, status, message_id,
-        media_path, media_mimetype, media_filename, created_at,
+        media_path, media_mimetype, media_filename, quoted_message_id, quoted_text, created_at,
         COUNT(*) OVER (PARTITION BY user_id) AS total_count
       FROM history
       ${where.length ? `WHERE ${where.join(" AND ")}` : ""}

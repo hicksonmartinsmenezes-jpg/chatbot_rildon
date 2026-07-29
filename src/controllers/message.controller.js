@@ -1,12 +1,43 @@
-const { sendMessage, sendTypingPresence } = require("../config/whatsapp");
+const { sendMessage, sendMedia, sendTypingPresence } = require("../config/whatsapp");
 const { saveHistory } = require("../services/history.service");
+const historyRepository = require("../repositories/history.repository");
 const { emitEvent }   = require("../services/socket.service");
 const humanMode       = require("../services/humanMode.service");
 const logger          = require("../utils/logger");
+const fs              = require("fs");
 const ticketRepository = require("../repositories/ticket.repository");
 const { canAccessTicket, isPrivileged, canUseFullConversationPanel } = require("../utils/access-control");
 const { getProfilePhotoCandidates } = require("../whatsapp/lid-map");
 const { buscarNomeContatoReal } = require("../whatsapp/contacts");
+
+// "Responder mensagem específica" (reply/quote, igual WhatsApp) — busca o
+// texto da mensagem citada pra (a) montar o objeto "quoted" que o Baileys
+// manda pro WhatsApp de verdade do cliente, e (b) salvar quoted_text no
+// histórico, pro painel poder mostrar a prévia da citação sem precisar de
+// outro SELECT.
+//
+// ESCOPO: só suporta citar mensagens do CLIENTE. Uma linha de `history`
+// mistura duas coisas sob um único `message_id`: quando a linha nasce de uma
+// mensagem recebida (message.service.js), o id é da mensagem do CLIENTE;
+// quando nasce de um envio manual do atendente (sendManualMessage/
+// sendMediaMessage), o id é da mensagem que o PRÓPRIO atendente mandou. Não
+// dá pra saber, só pelo message_id, qual dos dois lados ele representa sem
+// mais contexto — e citar uma resposta do bot/atendente exigiria guardar o
+// WhatsApp-id de CADA resposta automática separadamente (não é feito hoje).
+// Por isso, aqui: só aceita citar quando a linha tem `message` (texto do
+// cliente) preenchido — a mesma regra que o frontend usa pra decidir se
+// mostra o botão de responder numa bolha (ver conversations-render.js).
+async function _buscarContextoCitacao(userId, quotedMessageId) {
+  if (!quotedMessageId) return null;
+
+  // findAll já expande userId pras variantes lid/jid equivalentes (ver
+  // getProfilePhotoCandidates dentro de history.repository.js).
+  const linhas = await historyRepository.findAll({ userId, limit: 200 });
+  const linha = linhas.find(l => l.messageId === quotedMessageId && l.message);
+  if (!linha) return null;
+
+  return { quotedMessageId, quotedText: linha.message.slice(0, 300) };
+}
 
 // Autorização de conversa: privilegiados (admin/supervisor/api) sempre podem.
 // Atendente só acessa se houver ticket ATIVO atribuído a ele — ou não atribuído
@@ -28,7 +59,7 @@ async function canUserAccessConversation(user, userId) {
 
 async function sendManualMessage(req, res) {
   try {
-    const { userId, message } = req.body || {};
+    const { userId, message, quotedMessageId } = req.body || {};
 
     if (!userId || !message) {
       return res.status(400).json({
@@ -50,7 +81,12 @@ async function sendManualMessage(req, res) {
       return res.status(403).json({ error: "Você não tem permissão para enviar mensagem para esta conversa." });
     }
 
-    const sent = await sendMessage(userId, message.trim());
+    // "Responder mensagem específica" (reply/quote) — ver _buscarContextoCitacao
+    // acima para o escopo (só cita mensagens do cliente). quotedMessageId
+    // inválido/não encontrado não bloqueia o envio — só manda sem citação.
+    const citacao = await _buscarContextoCitacao(userId, quotedMessageId).catch(() => null);
+
+    const sent = await sendMessage(userId, message.trim(), citacao || {});
 
     // Atendente enviou mensagem → assume a conversa e pausa o bot para este cliente
     humanMode.ativar(userId, { agentName: req.user?.nome || req.user?.usuario || "" });
@@ -78,7 +114,9 @@ async function sendManualMessage(req, res) {
         response: message.trim(),
         sector: "manual",
         messageId: sent?.id || null,
-        status: "sent"
+        status: "sent",
+        quotedMessageId: citacao?.quotedMessageId || null,
+        quotedText: citacao?.quotedText || null
       });
 
       emitEvent("nova_mensagem", {
@@ -89,6 +127,8 @@ async function sendManualMessage(req, res) {
         sector: "manual",
         messageId: sent?.id || null,
         status: "sent",
+        quotedMessageId: citacao?.quotedMessageId || null,
+        quotedText: citacao?.quotedText || null,
         createdAt: new Date()
       });
     } catch (histErr) {
@@ -106,6 +146,126 @@ async function sendManualMessage(req, res) {
   } catch (error) {
     logger.error(`[sendManualMessage] ${error.message}`);
     res.status(500).json({ error: "Erro ao enviar mensagem." });
+  }
+}
+
+// Feature nova (2026-07-23, pedido do usuário): "enviar arquivo exatamente
+// igual WhatsApp" — foto/vídeo/documento pelo painel. req.file já foi
+// salvo em disco por multer (ver message.routes.js, destino = MEDIA_DIR de
+// mediaStorage.service.js — mesma pasta usada pra mídia RECEBIDA do
+// cliente, servida pela rota já existente GET /api/history/media/:id, sem
+// precisar de rota nova pra servir de volta).
+async function sendMediaMessage(req, res) {
+  const cleanupOnError = () => {
+    if (req.file?.path) fs.unlink(req.file.path, () => {});
+  };
+
+  try {
+    const { userId, caption, quotedMessageId } = req.body || {};
+    const { mediaType } = req; // setado por detectMessageMediaType em message.routes.js
+
+    if (!userId) {
+      cleanupOnError();
+      return res.status(400).json({ error: "userId é obrigatório." });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: "Nenhum arquivo enviado." });
+    }
+    if (!mediaType) {
+      cleanupOnError();
+      return res.status(400).json({ error: "Tipo de arquivo não suportado." });
+    }
+    if (caption && (typeof caption !== "string" || caption.length > 1024)) {
+      cleanupOnError();
+      return res.status(400).json({ error: "Legenda inválida (máx. 1024 caracteres)." });
+    }
+
+    if (!(await canUserAccessConversation(req.user, userId))) {
+      cleanupOnError();
+      return res.status(403).json({ error: "Você não tem permissão para enviar arquivo para esta conversa." });
+    }
+
+    const citacao = await _buscarContextoCitacao(userId, quotedMessageId).catch(() => null);
+
+    const legenda = (caption || "").trim();
+    const sent = await sendMedia(userId, req.file.path, legenda, mediaType, {
+      ...(citacao || {}),
+      mimetype: req.file.mimetype,
+      fileName: req.file.originalname,
+    });
+
+    humanMode.ativar(userId, { agentName: req.user?.nome || req.user?.usuario || "" });
+
+    let contactName = "";
+    try {
+      contactName = (await buscarNomeContatoReal(userId)) || "";
+    } catch (_) {}
+
+    // media_path guarda só o NOME do arquivo (nunca o caminho completo do
+    // disco) — mesma convenção de mediaStorage.service.js/migration 017.
+    const mediaFilename = require("path").basename(req.file.path);
+
+    // BUG EVITADO (achado ao implementar esta feature): o painel decide de
+    // qual lado renderizar a bolha (cliente à esquerda vs atendente à
+    // direita) olhando se a linha tem `message` (cliente) ou `response`
+    // (atendente/bot) preenchido — ver 07-conversations.js. Mídia RECEBIDA
+    // do cliente sempre grava um rótulo em `message` (ex: "[imagem
+    // recebido]"), então isso nunca fica vazio. Mídia ENVIADA pelo atendente
+    // sem legenda ficaria com `message` E `response` nulos, e só `mediaPath`
+    // setado — o painel cairia no mesmo `if (item.message || item.mediaPath)`
+    // usado pra mídia recebida e mostraria o arquivo enviado pelo ATENDENTE
+    // do lado do CLIENTE. Por isso `response` sempre recebe um rótulo aqui
+    // quando não há legenda (mesma convenção do lado receptor).
+    const respostaHistorico = legenda || "[arquivo enviado]";
+
+    let historyItem = null;
+    try {
+      historyItem = await saveHistory({
+        userId,
+        contactName,
+        message: null,
+        response: respostaHistorico,
+        sector: "manual",
+        messageId: sent?.id || null,
+        status: "sent",
+        mediaPath: mediaFilename,
+        mediaMimetype: req.file.mimetype,
+        mediaFilename: req.file.originalname,
+        quotedMessageId: citacao?.quotedMessageId || null,
+        quotedText: citacao?.quotedText || null
+      });
+
+      emitEvent("nova_mensagem", {
+        userId,
+        contactName,
+        message: null,
+        response: respostaHistorico,
+        sector: "manual",
+        messageId: sent?.id || null,
+        status: "sent",
+        mediaPath: mediaFilename,
+        mediaMimetype: req.file.mimetype,
+        mediaFilename: req.file.originalname,
+        quotedMessageId: citacao?.quotedMessageId || null,
+        quotedText: citacao?.quotedText || null,
+        createdAt: new Date()
+      });
+    } catch (histErr) {
+      logger.warn(`[sendMediaMessage] Histórico não salvo: ${histErr.message}`);
+    }
+
+    res.json({
+      success: true,
+      messageId: sent?.id || null,
+      remoteJid: sent?.remoteJid || null,
+      fromMe: sent?.fromMe ?? true,
+      history: historyItem
+    });
+
+  } catch (error) {
+    cleanupOnError();
+    logger.error(`[sendMediaMessage] ${error.message}`);
+    res.status(500).json({ error: "Erro ao enviar arquivo." });
   }
 }
 
@@ -154,6 +314,7 @@ async function releaseHumanMode(req, res) {
 
 module.exports = {
   sendManualMessage,
+  sendMediaMessage,
   sendTyping,
   listHumanMode,
   releaseHumanMode

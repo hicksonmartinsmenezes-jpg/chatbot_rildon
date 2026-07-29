@@ -529,27 +529,39 @@ body.tab-fullscreen #tab-conversations {
 
 /* ─── Badge não lidos (estilo WhatsApp) ──────────
    Sempre verde (cor fixa, não muda mais por status do ticket — pedido
-   do usuário) + descido um pouco dentro da linha (align-self: flex-end,
-   já que ".chat-item-bottom" centraliza os itens verticalmente por
-   padrão) + número centralizado com precisão (padding simétrico,
+   do usuário) + número centralizado com precisão (padding simétrico,
    line-height igual à altura do badge, sem text-shadow que distorcia
-   a leitura do centro). */
+   a leitura do centro).
+   Ajuste pedido pelo usuário (2026-07-24): verde vivo e chapado (sem
+   anel/glow, que deixava o conjunto com aparência mais escura/pesada),
+   número branco puro e nítido, sombra bem sutil só pra dar profundidade.
+   BUG REAL encontrado nesse ajuste: ".chat-item-bottom span" (linha 513
+   acima) e "body.light-theme .chat-item-bottom span" (15-light-theme.css)
+   têm mais especificidade que ".chat-unread" sozinha — o número nunca
+   chegou a ficar branco de verdade, sempre caía no cinza genérico dessas
+   regras (#94a3b8 no escuro / #475569 no claro). "!important" aqui é
+   proposital: este badge é sempre verde+branco fixo, não deve seguir a
+   cor de texto do tema em nenhuma circunstância.
+   Posição padronizada (2026-07-24): removido o "align-self: flex-end" +
+   "margin-top" que descia o badge manualmente — ".chat-item-bottom" já
+   centraliza verticalmente por padrão (align-items: center), então o
+   badge agora segue o mesmo alinhamento padrão de qualquer item da
+   linha, sem offset especial. */
 .chat-unread {
-  align-self: flex-end;
-  margin-top: 4px;
-
   box-sizing: border-box;
   min-width: 20px;
   height: 20px;
 
   border-radius: 999px;
 
-  background: #25D366;
+  background: #22c55e;
 
-  color: #ffffff;
+  color: #ffffff !important;
+  -webkit-font-smoothing: antialiased;
 
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 800;
+  letter-spacing: -.2px;
   line-height: 20px;
   text-align: center;
 
@@ -559,7 +571,7 @@ body.tab-fullscreen #tab-conversations {
 
   padding: 0 6px;
 
-  box-shadow: 0 1px 3px rgba(0,0,0,.4);
+  box-shadow: 0 1px 2px rgba(0,0,0,.2);
   flex-shrink: 0;
 }
 
@@ -926,6 +938,185 @@ body.tab-fullscreen #tab-conversations {
 
 .chat-input-area button:hover {
   transform: translateY(-2px);
+}
+
+/* ─── Feature: enviar arquivo (foto/vídeo/doc) igual WhatsApp ─────────────
+   Pedido do usuário, 2026-07-23. Botão de anexo + estado de "arrastando
+   arquivo" na área de input + prévia do arquivo escolhido antes de enviar. */
+.chat-attach-btn {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255,255,255,.06);
+  color: #aebac1;
+  font-size: 17px;
+  cursor: pointer;
+  transition: .2s;
+}
+
+.chat-attach-btn:hover {
+  background: rgba(255,255,255,.12);
+  color: #fff;
+}
+
+.chat-attach-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.chat-input-area.drag-over {
+  outline: 2px dashed #22c55e;
+  outline-offset: -4px;
+  background-color: rgba(34,197,94,.08);
+}
+
+/* Barras acima do input: "respondendo a..." e "arquivo selecionado" —
+   mesmo padrão visual dos dois, só ícone/ação muda. */
+.reply-preview-bar,
+.media-preview-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 16px;
+  background: #202c33;
+  border-top: 1px solid rgba(255,255,255,.06);
+  border-left: 3px solid #22c55e;
+}
+
+.reply-preview-bar.hidden,
+.media-preview-bar.hidden {
+  display: none;
+}
+
+.reply-preview-content,
+.media-preview-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: #aebac1;
+}
+
+.reply-preview-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.reply-preview-text strong {
+  color: #22c55e;
+  font-size: 12.5px;
+}
+
+.reply-preview-text span,
+.media-preview-info span {
+  font-size: 12.5px;
+  color: #8696a0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.media-preview-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.media-preview-info strong {
+  font-size: 13px;
+  color: #e9edef;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 260px;
+}
+
+.media-preview-thumb {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,.06);
+  color: #aebac1;
+  font-size: 18px;
+}
+
+.media-preview-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.chat-input-bar-cancel {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #aebac1;
+  cursor: pointer;
+}
+
+.chat-input-bar-cancel:hover {
+  background: rgba(255,255,255,.08);
+  color: #fff;
+}
+
+/* ─── Feature: responder mensagem específica (reply/quote) ────────────────
+   Botão de responder (some/aparece no hover, canto da bolha do cliente) e
+   a faixa de citação dentro da bolha de resposta, igual WhatsApp. */
+.bubble {
+  position: relative;
+}
+
+.bubble-reply-btn {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 50%;
+  background: #2a3942;
+  color: #aebac1;
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(.85);
+  transition: .15s;
+  box-shadow: 0 1px 3px rgba(0,0,0,.4);
+}
+
+.bubble:hover .bubble-reply-btn {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.bubble-reply-btn:hover {
+  background: #374855;
+  color: #fff;
+}
+
+.bubble-quote {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  margin-bottom: 5px;
+  border-radius: 6px;
+  background: rgba(255,255,255,.08);
+  border-left: 3px solid rgba(255,255,255,.35);
+  color: rgba(255,255,255,.75);
+  font-size: 12.5px;
 }
 
 /* ─── Estado vazio da janela ─────────── */

@@ -189,7 +189,9 @@ describe("message.routes", () => {
         .send({ userId: USER_ID, message: "  Olá!  " });
 
       expect(res.status).toBe(200);
-      expect(whatsapp.sendMessage).toHaveBeenCalledWith(USER_ID, "Olá!");
+      // 3º argumento: contexto de citação (reply/quote, ver migration 019) —
+      // {} quando a requisição não manda quotedMessageId nenhum.
+      expect(whatsapp.sendMessage).toHaveBeenCalledWith(USER_ID, "Olá!", {});
       expect(humanMode.ativar).toHaveBeenCalledWith(USER_ID, expect.objectContaining({ agentName: "Ana Admin" }));
       expect(historyService.saveHistory).toHaveBeenCalledWith(
         expect.objectContaining({ userId: USER_ID, response: "Olá!", sector: "manual" })

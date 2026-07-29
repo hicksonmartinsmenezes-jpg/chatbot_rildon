@@ -20,6 +20,21 @@ let hiddenActiveUserIds = new Set();
 let canManageAnyTicket = true;
 let _searchDebounceTimer = null;
 
+// ─── Feature: responder mensagem específica / enviar arquivo (pedido do
+// usuário, 2026-07-23, "igual WhatsApp") ──────────────────────────────────
+// replyingTo: { messageId, text } | null — mensagem do CLIENTE selecionada
+// pra citar na próxima resposta (texto OU arquivo). Escopo: só mensagens do
+// cliente podem ser citadas — mesma limitação documentada no backend
+// (message.controller.js, _buscarContextoCitacao) porque uma linha do
+// histórico não distingue de forma confiável o id da mensagem do cliente do
+// id da mensagem do próprio atendente.
+let replyingTo = null;
+// pendingMediaFile: File | null — arquivo escolhido (attach/drag&drop/paste)
+// aguardando confirmação; a legenda é digitada no textarea normal e o botão
+// de enviar já existente passa a mandar o arquivo em vez de texto puro
+// enquanto isso estiver setado (ver sendConversationMessage).
+let pendingMediaFile = null;
+
 function debouncedSearch() {
   clearTimeout(_searchDebounceTimer);
   _searchDebounceTimer = setTimeout(() => loadConversations(), 300);
@@ -89,19 +104,77 @@ async function _loadConversationsCore(silent = false) {
       }
     }
 
-    // BUG CORRIGIDO: contador de não-lidas ficava preso indefinidamente num
-    // contato já FECHADO (resolvido/cancelado) — reportado pelo usuário como
-    // "badge de mensagens novas aparece em Fechados" mesmo sem nada em
-    // Pendentes/Ativos. unreadMessages só zerava ao abrir a conversa; se
-    // ninguém abriu por último antes de fechar (ou o valor já estava velho
-    // de antes), ficava ali pra sempre. Se o ticket AINDA está resolvido/
-    // cancelado agora (dado fresco do servidor), qualquer não-lida
-    // acumulada é necessariamente antiga — uma mensagem nova de verdade já
-    // teria reaberto o ticket (reopenTicketIfClosed) e mudado o status.
+    // BUG CORRIGIDO (relatado pelo usuário): cliente com ticket fechado que
+    // manda mensagem FORA da janela de reopen (TICKET_REOPEN_WINDOW_MINUTOS,
+    // padrão 60min) não reabre o ticket antigo de propósito (ver comentário
+    // em reopenTicketIfClosed, ticket.service.js) — o bot responde
+    // normalmente, mas nenhum ticket novo é criado só por isso (uma saudação
+    // não deveria virar ticket sozinha). Resultado: ticketsByUser[uid] ainda
+    // aponta pro ticket ANTIGO "resolvido", e o filtro de Pendentes abaixo só
+    // tratava "sem ticket" ou "aberto" como pendente — um cliente nessa
+    // situação ficava com ticket fechado + conversa ativa e não aparecia em
+    // NENHUMA aba visível (não é "aberto" pra Pendentes, não é "hoje... já
+    // fechado de propósito" o suficiente pra ficar só em Fechados, já que
+    // voltou a falar). lastMsgAtByUser + estaPendente() tratam "fechado, mas
+    // cliente falou de novo depois do fechamento" igual a "sem ticket" —
+    // mesma lógica que _scheduleConvReload (12-socket.js) já assumia ao
+    // decidir pra qual aba trocar automaticamente, só que ali não havia essa
+    // comparação de fato — trocava pra Pendentes mesmo sem o cliente
+    // necessariamente aparecer lá.
+    // BUG CORRIGIDO (relatado pelo usuário: "resolvidos aparecendo em
+    // pendentes onde não tem mensagens novas deles"): o histórico guarda
+    // TAMBÉM linhas só do bot sem mensagem nenhuma do cliente — a pergunta
+    // automática da pesquisa de satisfação ("De 1 a 5...") é salva com
+    // message: null e createdAt alguns milissegundos DEPOIS do
+    // ticket.updatedAt (mesma transação de fechamento). Contar essa linha
+    // aqui fazia TODO ticket fechado com pesquisa disparada (a maioria)
+    // parecer "cliente falou de novo" e reaparecer em Pendentes pra sempre,
+    // mesmo sem nenhuma mensagem nova de verdade. Só conta como atividade
+    // do cliente quando a linha tem `message` de fato — e mesmo com
+    // mensagem real, a RESPOSTA da própria pesquisa (ex: cliente manda "5")
+    // também não conta: mesma lógica de handleSatisfactionReply
+    // (message.service.js) nunca reabrir o ticket por causa da nota —
+    // aqui reflete a mesma intenção, senão qualquer avaliação de 1-5
+    // estrelas faria o ticket já fechado (e já avaliado) voltar pra
+    // Pendentes sem nenhuma necessidade real de atendimento.
+    const lastMsgAtByUser = {};
+    for (const item of allHistory) {
+      if (!item?.userId || !item.message || item.sector === "pesquisa_satisfacao") continue;
+      const t = new Date(item.createdAt).getTime();
+      if (!lastMsgAtByUser[item.userId] || t > lastMsgAtByUser[item.userId]) lastMsgAtByUser[item.userId] = t;
+    }
+    window._lastMsgAtByUser = lastMsgAtByUser; // usado por _scheduleConvReload em 12-socket.js
+
+    function estaPendente(uid) {
+      const t = ticketsByUser[uid];
+      if (!t) return true;
+      if (t.status === "aberto") return true;
+      if (t.status === "resolvido" || t.status === "cancelado") {
+        const lastMsg = lastMsgAtByUser[uid];
+        return !!(lastMsg && t.updatedAt && lastMsg > new Date(t.updatedAt).getTime());
+      }
+      return false;
+    }
+    window.estaPendente = estaPendente; // usado por _scheduleConvReload em 12-socket.js
+
+    // BUG CORRIGIDO (relatado pelo usuário: "mensagens novas chegam mas não
+    // aparecem como notificação nem no ícone de quantas mensagens ele
+    // mandou" — em conversas já fechadas e reengajadas): esta limpeza de
+    // não-lidas partia da premissa de que "ticket ainda resolvido" só
+    // acontece quando NINGUÉM mandou mensagem nova (premissa válida antes
+    // do fix de estaPendente() acima). Com a janela de reopen
+    // (TICKET_REOPEN_WINDOW_MINUTOS), um ticket pode continuar "resolvido"
+    // PROPOSITALMENTE mesmo com mensagem nova de verdade do cliente (fora da
+    // janela) — essa limpeza rodava a cada poll/reload (a cada nova_mensagem
+    // recebida agenda um _scheduleConvReload, ver 12-socket.js) e zerava o
+    // contador quase imediatamente, apagando a notificação visual antes do
+    // atendente notar. Agora só zera quando o ticket está fechado E não é
+    // mais "pendente" (ninguém falou de novo) — usa estaPendente(), já
+    // corrigido para não contar a pesquisa de satisfação como atividade.
     let _unreadLimpo = false;
     for (const uid of Object.keys(unreadMessages)) {
       const t = ticketsByUser[uid];
-      if (t && (t.status === "resolvido" || t.status === "cancelado") && unreadMessages[uid]) {
+      if (t && (t.status === "resolvido" || t.status === "cancelado") && !estaPendente(uid) && unreadMessages[uid]) {
         unreadMessages[uid] = 0;
         _unreadLimpo = true;
       }
@@ -112,7 +185,22 @@ async function _loadConversationsCore(silent = false) {
     }
 
     // Atualiza badges de contagem — oculta quando zero
-    const pendentes   = Object.values(ticketsByUser).filter(t => t.status === "aberto").length;
+    //
+    // BUG CORRIGIDO (relatado pelo usuário: "diz 16 pendentes mas só tem 10
+    // na lista"): em modo restrito (ATTENDANT_CONVERSATIONS_FULL_ACCESS=false),
+    // o backend some do array `tickets` os tickets em_andamento ASSUMIDOS por
+    // OUTRO atendente/setor (ver hiddenActiveUserIds, ticket.controller.js) —
+    // então esses userIds nunca entram em ticketsByUser aqui. O 2º termo
+    // abaixo (usuários "sem ticket" que têm mensagem real no histórico) não
+    // sabia distinguir "cliente novo, realmente sem ticket" de "tem ticket
+    // em_andamento, só que é de outro atendente e foi ocultado" — os dois
+    // casos batem em "!ticketsByUser[uid]" igual, e o segundo contava como
+    // Pendente incorretamente (não é pendente, já está sendo atendido, só
+    // não é visível PRA MIM). A lista realmente exibida já excluía esses
+    // usuários via hiddenActiveUserIds (linha abaixo, "usersSeen") — o badge
+    // não aplicava esse mesmo filtro. Agora aplica.
+    const pendentes   = Object.keys(ticketsByUser).filter(uid => estaPendente(uid)).length
+      + Object.keys(lastMsgAtByUser).filter(uid => !ticketsByUser[uid] && !hiddenActiveUserIds.has(uid)).length;
     const emAndamento = Object.values(ticketsByUser).filter(t => t.status === "em_andamento").length;
     const badgeP = document.getElementById("badge-pendentes");
     const badgeA = document.getElementById("badge-em_andamento");
@@ -139,8 +227,10 @@ async function _loadConversationsCore(silent = false) {
 
     // Filtra por status de ticket conforme aba ativa
     if (activeTicketFilter === "pendentes") {
-      // Sem ticket = cliente novo ainda no menu do bot → também aparece em Pendentes
-      users = users.filter(uid => !ticketsByUser[uid] || ticketsByUser[uid]?.status === "aberto");
+      // Sem ticket = cliente novo ainda no menu do bot → também aparece em
+      // Pendentes. Ticket fechado + cliente falou de novo depois = mesma
+      // situação (ver BUG CORRIGIDO acima) — estaPendente() cobre os dois.
+      users = users.filter(uid => estaPendente(uid));
     } else if (activeTicketFilter === "em_andamento") {
       users = users.filter(uid => ticketsByUser[uid]?.status === "em_andamento");
     } else if (activeTicketFilter === "fechados") {
@@ -149,6 +239,9 @@ async function _loadConversationsCore(silent = false) {
         const t = ticketsByUser[uid];
         if (!t) return false;
         if (t.status !== "resolvido" && t.status !== "cancelado") return false;
+        // Reativado (cliente falou de novo depois de fechado) já foi pra
+        // Pendentes acima — não duplica aqui.
+        if (estaPendente(uid)) return false;
         return t.updatedAt && new Date(t.updatedAt).toDateString() === hoje;
       });
     }
@@ -288,6 +381,33 @@ async function openConversation(userId, updateActive = true) {
   _openConvAbort = new AbortController();
   const seq = ++_openConvSeq;
 
+  // BUG CORRIGIDO (pedido do usuário: "sempre que chega mensagem nova o
+  // painel...rola tela de mensagens para baixo"): essa função também é
+  // chamada pelo socket (12-socket.js, evento nova_mensagem) toda vez que
+  // chega mensagem nova NA CONVERSA JÁ ABERTA, pra mesclar o histórico —
+  // e o final da função sempre forçava `scrollTop = scrollHeight`
+  // (rolar pro final), mesmo se o atendente estivesse propositalmente
+  // com a rolagem pra cima lendo mensagens antigas. Agora só força ir pro
+  // final quando: (a) é uma conversa DIFERENTE sendo aberta agora (troca
+  // de conversa — comportamento esperado, sempre começa do final), ou (b)
+  // é a mesma conversa mas o atendente já estava perto do final (segue a
+  // conversa "ao vivo", igual WhatsApp/Slack). Se estava lendo mais pra
+  // cima, a posição de leitura é preservada.
+  const eraMesmaConversaJaAberta = selectedConversationUser === userId;
+  const messagesBoxAntes = document.getElementById("chat-messages");
+  const distanciaDoFinalAntes = messagesBoxAntes
+    ? messagesBoxAntes.scrollHeight - messagesBoxAntes.scrollTop - messagesBoxAntes.clientHeight
+    : 0;
+  const deveAcompanharFinal = !eraMesmaConversaJaAberta || distanciaDoFinalAntes < 150;
+
+  // Troca de conversa: nenhuma citação/arquivo pendente da conversa anterior
+  // deve "vazar" pra essa (ex: responder sem querer uma mensagem de outro
+  // cliente porque esqueceu de cancelar antes de trocar de aba).
+  if (selectedConversationUser !== userId) {
+    replyingTo = null;
+    pendingMediaFile = null;
+  }
+
   selectedConversationUser = userId;
 
   // Pedido do usuário: no celular a lista de conversas e a janela de chat
@@ -334,6 +454,12 @@ async function openConversation(userId, updateActive = true) {
       ? `Assumido por ${_lockedName} — sem ações disponíveis`
       : "Digite uma mensagem...";
   }
+
+  const attachBtn = document.getElementById("btn-attach-conversation");
+  if (attachBtn) attachBtn.disabled = _locked;
+
+  renderReplyPreviewBar();
+  renderMediaPreviewBar();
 
   if (header) {
     const name     = getContactName(userId) || formatPhone(userId);
@@ -428,10 +554,34 @@ async function openConversation(userId, updateActive = true) {
       html.push(`<div class="day-separator"><span>${safe(currentDay)}</span></div>`);
       lastDay = currentDay;
     }
-    if (item.message || item.mediaPath) {
+    // BUG CORRIGIDO (achado na sessão de testes, 2026-07-23): a condição
+    // antiga (`item.message || item.mediaPath`) fazia QUALQUER linha com
+    // mediaPath renderizar do lado do CLIENTE, mesmo quando a mídia foi
+    // enviada pelo ATENDENTE (feature de enviar arquivo — mediaPath +
+    // response, message sempre null nesse caso). Resultado: arquivo/foto
+    // enviado pelo atendente aparecia DUAS VEZES — uma à esquerda (errado)
+    // e uma à direita (certo, no bloco de baixo) — sempre, com ou sem
+    // legenda, já que `response` nunca fica null pro atendente (com
+    // legenda usa o texto digitado; sem legenda usa o fallback "[arquivo
+    // enviado]" do fix anterior). Mídia recebida do cliente sempre grava
+    // um rótulo em `message` (ex: "[imagem recebido]"), então checar só
+    // `item.message` já cobre os dois casos reais de mídia do cliente sem
+    // duplicar a do atendente.
+    if (item.message) {
+      // Feature: responder mensagem específica (pedido do usuário,
+      // 2026-07-23). Só mensagem de TEXTO do cliente pode ser citada — mesmo
+      // escopo do backend (message.controller.js, _buscarContextoCitacao):
+      // uma linha do histórico não distingue com segurança o id da mensagem
+      // do cliente do id da mensagem do próprio atendente, então citar uma
+      // mensagem de mídia (sem texto) ou sem messageId ficaria ambíguo.
+      const podeResponder = Boolean(item.message && item.messageId);
+      const replyBtn = podeResponder
+        ? `<button type="button" class="bubble-reply-btn" data-reply-msg-id="${escapeAttr(item.messageId)}" data-reply-text="${escapeAttr(item.message.slice(0, 300))}" title="Responder"><i class="fa-solid fa-reply"></i></button>`
+        : "";
       html.push(`
         <div class="bubble-row client-row">
           <div class="bubble client">
+            ${replyBtn}
             ${renderMediaBubble(item)}
             ${item.message ? `<p>${safe(item.message)}</p>` : ""}
             <small>${safe(shortTime(item.createdAt))}</small>
@@ -440,10 +590,19 @@ async function openConversation(userId, updateActive = true) {
       `);
     }
     if (item.response) {
+      // Prévia da mensagem citada (reply/quote) — mesmo visual do WhatsApp,
+      // uma faixa acima do texto respondido. Só existe quando esta resposta
+      // foi enviada com quotedMessageId (ver migration 019 e
+      // src/config/whatsapp.js, _buildQuotedMessage).
+      const quoteStrip = item.quotedText
+        ? `<div class="bubble-quote"><i class="fa-solid fa-reply"></i> ${safe(item.quotedText.slice(0, 160))}</div>`
+        : "";
       html.push(`
         <div class="bubble-row bot-row">
           <div class="bubble bot"${item.messageId ? ` data-msg-id="${escapeAttr(item.messageId)}"` : ""}>
-            <p>${safe(item.response)}</p>
+            ${quoteStrip}
+            ${renderMediaBubble(item)}
+            ${item.response ? `<p>${safe(item.response)}</p>` : ""}
             <small>${safe(shortTime(item.createdAt))} <span class="msg-status">${renderMessageStatus(item.status)}</span></small>
           </div>
         </div>
@@ -452,8 +611,18 @@ async function openConversation(userId, updateActive = true) {
   }
 
   messagesBox.innerHTML = html.join("");
+  bindConversationMessagesDelegation();
   // Aguarda render antes de rolar para garantir altura correta
-  requestAnimationFrame(() => { messagesBox.scrollTop = messagesBox.scrollHeight; });
+  requestAnimationFrame(() => {
+    if (deveAcompanharFinal) {
+      messagesBox.scrollTop = messagesBox.scrollHeight;
+    } else {
+      // Preserva a posição de leitura: mantém a mesma distância (em px) até
+      // o final que já existia antes do re-render, em vez de resetar pro topo
+      // (padrão do navegador ao trocar innerHTML) ou forçar pro final.
+      messagesBox.scrollTop = messagesBox.scrollHeight - messagesBox.clientHeight - distanciaDoFinalAntes;
+    }
+  });
 }
 
 // ─── Navegação mobile (lista ↔ chat) ─────────────────────────────────────────
@@ -657,6 +826,12 @@ function handleConversationKeydown(event) {
 async function sendConversationMessage() {
   if (sendingConversationMessage) return;
 
+  // Feature: enviar arquivo igual WhatsApp (pedido do usuário, 2026-07-23) —
+  // enquanto houver um arquivo escolhido (attach/drag&drop/paste), o mesmo
+  // botão/atalho de enviar manda o arquivo (com o texto do textarea como
+  // legenda) em vez de mensagem de texto pura.
+  if (pendingMediaFile) return sendPendingMedia();
+
   const input   = document.getElementById("conversation-message");
   const message = input?.value?.trim();
 
@@ -681,6 +856,11 @@ async function sendConversationMessage() {
   );
   const finalMessage = found ? found.message : message;
 
+  // Feature: responder mensagem específica (pedido do usuário, 2026-07-23).
+  // Captura ANTES de limpar o estado — se a requisição falhar, replyingTo
+  // não deve ter sido descartado (usuário ainda quer responder a mesma msg).
+  const quotedMessageId = replyingTo?.messageId || null;
+
   input.value = "";
   resetTextareaHeight(input);
 
@@ -696,7 +876,11 @@ async function sendConversationMessage() {
     const res = await apiFetch(`${BASE}/api/messages/send`, {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ userId: selectedConversationUser, message: finalMessage })
+      body:    JSON.stringify({
+        userId: selectedConversationUser,
+        message: finalMessage,
+        ...(quotedMessageId ? { quotedMessageId } : {})
+      })
     });
 
     if (!res) return;
@@ -706,6 +890,8 @@ async function sendConversationMessage() {
     }
 
     showToast("✅ Mensagem enviada!");
+    // Só limpa a citação depois do envio confirmado.
+    if (quotedMessageId && replyingTo?.messageId === quotedMessageId) cancelReplyTo();
     // Atendente respondeu → bot pausado para este cliente (atualização otimista da UI)
     if (selectedConversationUser) humanModeUsers.add(selectedConversationUser);
     // O evento socket nova_mensagem disparado pelo backend já atualiza a conversa.
@@ -725,6 +911,224 @@ async function sendConversationMessage() {
     if (sendBtn) { sendBtn.disabled = false; sendBtn.style.opacity = ""; }
   }
 }
+
+// ─── Feature: enviar arquivo (foto/vídeo/doc) igual WhatsApp ────────────────
+// Pedido do usuário (2026-07-23): "preciso da possibilidade de poder enviar
+// arquivo exatamente igual whatsapp (video, foto, doc)". Escolha do arquivo
+// via botão de anexo, drag&drop na janela da conversa, ou colar (Ctrl+V) —
+// ver initConversationMediaEvents(). Envia pra POST /api/messages/send-media
+// (multipart/form-data — apiFetch já trata isso automaticamente, ver
+// apiHeaders() em 02-auth.js).
+function openConversationFilePicker() {
+  document.getElementById("conversation-file-input")?.click();
+}
+
+function handleConversationFileInput(event) {
+  const file = event.target?.files?.[0];
+  if (file) setPendingMediaFile(file);
+  // Limpa o value pra permitir escolher o MESMO arquivo de novo depois de
+  // cancelar (input file não dispara "change" se o valor não mudar).
+  event.target.value = "";
+}
+
+function setPendingMediaFile(file) {
+  if (!selectedConversationUser) {
+    showToast("Selecione uma conversa antes de anexar um arquivo.");
+    return;
+  }
+  pendingMediaFile = file;
+  renderMediaPreviewBar();
+  document.getElementById("conversation-message")?.focus();
+}
+
+function cancelMediaSelection() {
+  pendingMediaFile = null;
+  renderMediaPreviewBar();
+}
+
+function _formatFileSize(bytes) {
+  if (!Number.isFinite(bytes)) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function renderMediaPreviewBar() {
+  const bar   = document.getElementById("media-preview-bar");
+  const thumb = document.getElementById("media-preview-thumb");
+  const name  = document.getElementById("media-preview-filename");
+  const size  = document.getElementById("media-preview-filesize");
+  if (!bar) return;
+
+  if (!pendingMediaFile) {
+    bar.classList.add("hidden");
+    if (thumb) thumb.innerHTML = "";
+    return;
+  }
+
+  bar.classList.remove("hidden");
+  if (name) name.textContent = pendingMediaFile.name || "arquivo";
+  if (size) size.textContent = _formatFileSize(pendingMediaFile.size);
+
+  if (thumb) {
+    if (pendingMediaFile.type?.startsWith("image/")) {
+      const url = URL.createObjectURL(pendingMediaFile);
+      thumb.innerHTML = `<img src="${url}" alt="Prévia">`;
+    } else if (pendingMediaFile.type?.startsWith("video/")) {
+      thumb.innerHTML = `<i class="fa-solid fa-file-video"></i>`;
+    } else {
+      thumb.innerHTML = `<i class="fa-solid fa-file-lines"></i>`;
+    }
+  }
+}
+
+async function sendPendingMedia() {
+  if (sendingConversationMessage) return;
+  if (!pendingMediaFile || !selectedConversationUser) return;
+
+  const input   = document.getElementById("conversation-message");
+  const caption = input?.value?.trim() || "";
+  const file    = pendingMediaFile;
+  const quotedMessageId = replyingTo?.messageId || null;
+
+  sendingConversationMessage = true;
+  const sendBtn = document.getElementById("btn-send-conversation");
+  if (sendBtn) { sendBtn.disabled = true; sendBtn.style.opacity = "0.5"; }
+
+  try {
+    const form = new FormData();
+    form.append("userId", selectedConversationUser);
+    form.append("media", file);
+    if (caption) form.append("caption", caption);
+    if (quotedMessageId) form.append("quotedMessageId", quotedMessageId);
+
+    const res = await apiFetch(`${BASE}/api/messages/send-media`, {
+      method: "POST",
+      body:   form,
+      timeoutMs: 60000 // upload pode demorar mais que o timeout padrão de 20s
+    });
+
+    if (!res) return;
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `HTTP ${res.status}`);
+    }
+
+    showToast("✅ Arquivo enviado!");
+    if (input) input.value = "";
+    resetTextareaHeight(input);
+    cancelMediaSelection();
+    if (quotedMessageId && replyingTo?.messageId === quotedMessageId) cancelReplyTo();
+    if (selectedConversationUser) humanModeUsers.add(selectedConversationUser);
+
+    if (!socket?.connected) {
+      await loadHistory(false);
+      await loadConversations();
+      if (selectedConversationUser) openConversation(selectedConversationUser);
+    }
+  } catch (err) {
+    showToast(`❌ Erro ao enviar arquivo: ${err.message}`);
+  } finally {
+    sendingConversationMessage = false;
+    if (sendBtn) { sendBtn.disabled = false; sendBtn.style.opacity = ""; }
+  }
+}
+
+// ─── Feature: responder mensagem específica (reply/quote) ───────────────────
+// Pedido do usuário (2026-07-23): "responder mensagens especificas também
+// funcionando igual whatsapp". Escopo: só mensagens de TEXTO do cliente
+// podem ser citadas — ver comentário em cima do bloco de render da bolha do
+// cliente (mais acima nesta seção) e _buscarContextoCitacao em
+// message.controller.js pro motivo técnico.
+function replyToMessage(messageId, text) {
+  if (!messageId) return;
+  replyingTo = { messageId, text: text || "" };
+  renderReplyPreviewBar();
+  document.getElementById("conversation-message")?.focus();
+}
+
+function cancelReplyTo() {
+  replyingTo = null;
+  renderReplyPreviewBar();
+}
+
+function renderReplyPreviewBar() {
+  const bar     = document.getElementById("reply-preview-bar");
+  const snippet = document.getElementById("reply-preview-snippet");
+  if (!bar) return;
+
+  if (!replyingTo) {
+    bar.classList.add("hidden");
+    return;
+  }
+
+  bar.classList.remove("hidden");
+  if (snippet) snippet.textContent = (replyingTo.text || "").slice(0, 140);
+}
+
+// Delegação de clique nas bolhas do cliente (botão "Responder") — a lista de
+// mensagens é toda recriada a cada openConversation(), então usa o mesmo
+// padrão de delegação (bind uma vez, no container fixo) de
+// bindConversationListDelegation/bindConversationHeaderDelegation acima.
+function bindConversationMessagesDelegation() {
+  const box = document.getElementById("chat-messages");
+  if (!box || box.dataset.delegated === "true") return;
+  box.dataset.delegated = "true";
+
+  box.addEventListener("click", (event) => {
+    const btn = event.target.closest("[data-reply-msg-id]");
+    if (!btn || !box.contains(btn)) return;
+    replyToMessage(btn.dataset.replyMsgId, btn.dataset.replyText || "");
+  });
+}
+
+// ─── Drag & drop + colar (Ctrl+V) na janela da conversa ──────────────────────
+// Pedido do usuário: "Isso + colar/arrastar direto na conversa" (attach
+// button JÁ cobre a escolha manual — isso cobre os outros dois jeitos).
+function initConversationMediaEvents() {
+  const dropzone = document.getElementById("chat-input-area");
+  const textarea = document.getElementById("conversation-message");
+
+  if (dropzone && dropzone.dataset.dndBound !== "true") {
+    dropzone.dataset.dndBound = "true";
+    ["dragover", "dragenter"].forEach(evt => {
+      dropzone.addEventListener(evt, (e) => {
+        if (!selectedConversationUser) return;
+        e.preventDefault();
+        dropzone.classList.add("drag-over");
+      });
+    });
+    ["dragleave", "dragend"].forEach(evt => {
+      dropzone.addEventListener(evt, () => dropzone.classList.remove("drag-over"));
+    });
+    dropzone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dropzone.classList.remove("drag-over");
+      const file = e.dataTransfer?.files?.[0];
+      if (file) setPendingMediaFile(file);
+    });
+  }
+
+  if (textarea && textarea.dataset.pasteBound !== "true") {
+    textarea.dataset.pasteBound = "true";
+    textarea.addEventListener("paste", (e) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.kind === "file") {
+          const file = item.getAsFile();
+          if (file) {
+            e.preventDefault();
+            setPendingMediaFile(file);
+            break;
+          }
+        }
+      }
+    });
+  }
+}
+
+document.addEventListener("DOMContentLoaded", initConversationMediaEvents);
 
 // ─── Chat rápido (modal legado) ───────────────────────────────────────────────
 function abrirChat(userId) {

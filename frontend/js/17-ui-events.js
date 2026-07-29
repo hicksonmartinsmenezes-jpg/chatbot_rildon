@@ -73,7 +73,14 @@
     "limparCatalogoForm",
     "limparCatalogoFormCodigo",
     "catalogoMostrarAbaVeiculo",
-    "catalogoMostrarAbaCodigo"
+    "catalogoMostrarAbaCodigo",
+    // Feature: enviar arquivo (foto/vídeo/doc) + responder mensagem
+    // específica, igual WhatsApp (pedido do usuário, 2026-07-23).
+    "openConversationFilePicker",
+    "cancelMediaSelection",
+    "cancelReplyTo",
+    // Toggle liga/desliga do bot, liberado para todos (2026-07-24)
+    "toggleBotStatus"
   ]);
 
   document.addEventListener("submit", (event) => {
@@ -193,6 +200,9 @@
         break;
       case "previewProfilePhoto":
         call("previewProfilePhoto", event);
+        break;
+      case "handleConversationFileInput":
+        call("handleConversationFileInput", event);
         break;
     }
   });

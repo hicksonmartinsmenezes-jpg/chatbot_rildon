@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
@@ -23,7 +23,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css">
   <!-- CSS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <link rel="stylesheet" href="dist/bundle.0359a1e509.css">
+  <link rel="stylesheet" href="dist/bundle.fbdda55422.css">
   <!-- CSS_BUNDLE_END -->
 <style>
     /* Centraliza colunas da tabela de histórico */
@@ -173,6 +173,13 @@
       <div class="top-actions">
         <button type="button" class="icon-btn" title="Atualizar" data-action="refreshAll">
           <i class="fa-solid fa-arrows-rotate"></i>
+        </button>
+
+        <!-- Liga/desliga o bot — liberado para qualquer atendente logado
+             (pedido do usuário, 2026-07-24). Backend: /api/bot-status. -->
+        <button type="button" class="icon-btn" id="bot-toggle-btn" title="Bot: carregando..." data-action="toggleBotStatus">
+          <i class="fa-solid fa-robot"></i>
+          <span id="bot-toggle-dot" class="bot-toggle-dot"></span>
         </button>
 
         <button type="button" class="icon-btn" id="theme-toggle" title="Alternar tema claro/escuro" data-action="toggleTheme">
@@ -443,7 +450,44 @@
               </div>
             </div>
 
-            <div class="chat-input-area">
+            <!-- Feature: responder mensagem específica (reply/quote), igual WhatsApp
+                 (pedido do usuário, 2026-07-23). Só aparece quando replyToMessage()
+                 seta um alvo (ver 07-conversations.js) — escondida por padrão. -->
+            <div class="reply-preview-bar hidden" id="reply-preview-bar">
+              <div class="reply-preview-content">
+                <i class="fa-solid fa-reply"></i>
+                <div class="reply-preview-text">
+                  <strong>Respondendo</strong>
+                  <span id="reply-preview-snippet"></span>
+                </div>
+              </div>
+              <button type="button" class="chat-input-bar-cancel" data-action="cancelReplyTo" title="Cancelar resposta">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+
+            <!-- Feature: enviar arquivo (foto/vídeo/doc) igual WhatsApp (pedido do
+                 usuário, 2026-07-23). Prévia do arquivo escolhido antes de enviar —
+                 a legenda é digitada no mesmo textarea de mensagem de texto. -->
+            <div class="media-preview-bar hidden" id="media-preview-bar">
+              <div class="media-preview-content">
+                <div class="media-preview-thumb" id="media-preview-thumb"></div>
+                <div class="media-preview-info">
+                  <strong id="media-preview-filename"></strong>
+                  <span id="media-preview-filesize"></span>
+                </div>
+              </div>
+              <button type="button" class="chat-input-bar-cancel" data-action="cancelMediaSelection" title="Remover arquivo">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+
+            <div class="chat-input-area" id="chat-input-area">
+              <input type="file" id="conversation-file-input" style="display:none" data-change-action="handleConversationFileInput">
+              <button type="button" id="btn-attach-conversation" class="chat-attach-btn" data-action="openConversationFilePicker" title="Anexar arquivo" disabled>
+                <i class="fa-solid fa-paperclip"></i>
+              </button>
+
              <textarea
               id="conversation-message"
               placeholder="Selecione uma conversa..."
@@ -452,7 +496,7 @@
               rows="1"
               disabled
               ></textarea>
-            
+
               <button type="button" id="btn-send-conversation" data-action="sendConversationMessage" title="Enviar">
                 <i class="fa-solid fa-paper-plane"></i>
               </button>
@@ -666,8 +710,27 @@
                 </select>
               </div>
               <div class="full">
-                <label>Tags (separadas por vírgula)</label>
-                <input id="contact-tags" type="text" placeholder="Ex: vip, cliente, lead">
+                <label>Tags</label>
+                <!-- Pedido do usuário (2026-07-24): tags fixas, só por seleção
+                     (nada de texto livre). "Clientes"/"Clientes Novos" NÃO
+                     aparecem aqui — são automáticas (ver contact-tags-auto
+                     abaixo), controladas pelo sistema quando o contato gera
+                     um ticket (marcarComoCliente, contacts.service.js). -->
+                <div id="contact-tags-checklist" class="camp-tag-checklist">
+                  <label class="camp-tag-pill">
+                    <input type="checkbox" value="Funcionário">
+                    <span>Funcionário</span>
+                  </label>
+                  <label class="camp-tag-pill">
+                    <input type="checkbox" value="Fabricante">
+                    <span>Fabricante</span>
+                  </label>
+                  <label class="camp-tag-pill">
+                    <input type="checkbox" value="Funcionário Pessoal">
+                    <span>Funcionário Pessoal</span>
+                  </label>
+                </div>
+                <p id="contact-tags-auto" class="contact-tags-auto hidden"></p>
               </div>
             </div>
             <div class="contacts-modal-actions">
@@ -1590,9 +1653,9 @@ Como podemos ajudar você hoje?
     </article>
 
     <article class="metric-card" data-accent="teal">
-      <span class="metric-card-icon"><i class="fa-solid fa-trophy"></i></span>
-      <strong id="metric-setor-top">—</strong>
-      <span class="metric-card-label">Setor destaque <i class="fa-solid fa-circle-info metric-card-info" title="Setor com maior volume de atendimentos"></i></span>
+      <span class="metric-card-icon"><i class="fa-solid fa-clock"></i></span>
+      <strong id="metric-horario-pico">—</strong>
+      <span class="metric-card-label">Horário de pico <i class="fa-solid fa-circle-info metric-card-info" title="Hora do dia com maior volume de atendimentos (últimos 30 dias)"></i></span>
     </article>
 
     <article class="metric-card" data-accent="pink">
@@ -1605,20 +1668,21 @@ Como podemos ajudar você hoje?
 
   <section class="metrics-charts">
 
-    <article class="chart-card">
+    <article class="chart-card chart-wide">
       <header class="chart-card-head">
-        <span class="chart-card-icon"><i class="fa-solid fa-chart-pie"></i></span>
-        <h3>Atendimentos por status</h3>
+        <span class="chart-card-icon"><i class="fa-solid fa-users"></i></span>
+        <h3>Atendentes <i class="fa-solid fa-circle-info metric-card-info" title="Quem está online agora, quem tem atendimento em andamento e o total já atendido por cada um (histórico)"></i></h3>
       </header>
-      <div class="chart-canvas-wrap"><canvas id="metric-chart-status"></canvas></div>
-    </article>
-
-    <article class="chart-card">
-      <header class="chart-card-head">
-        <span class="chart-card-icon"><i class="fa-solid fa-chart-column"></i></span>
-        <h3>Atendimentos por setor</h3>
-      </header>
-      <div class="chart-canvas-wrap"><canvas id="metric-chart-sector"></canvas></div>
+      <div class="metric-satisfaction-table-wrap">
+        <table class="metric-satisfaction-table">
+          <thead>
+            <tr><th>Atendente</th><th>Status</th><th>Em atendimento</th><th>Total atendido</th></tr>
+          </thead>
+          <tbody id="metric-atendentes-body">
+            <tr><td colspan="4" class="metric-satisfaction-empty">Nenhum atendente cadastrado.</td></tr>
+          </tbody>
+        </table>
+      </div>
     </article>
 
     <article class="chart-card chart-wide">
@@ -1627,6 +1691,14 @@ Como podemos ajudar você hoje?
         <h3>Atendimentos por dia</h3>
       </header>
       <div class="chart-canvas-wrap"><canvas id="metric-chart-day"></canvas></div>
+    </article>
+
+    <article class="chart-card chart-wide">
+      <header class="chart-card-head">
+        <span class="chart-card-icon"><i class="fa-solid fa-chart-column"></i></span>
+        <h3>Atendimentos por horário <i class="fa-solid fa-circle-info metric-card-info" title="Distribuição por hora do dia (últimos 30 dias) — ajuda a decidir escala/reforço de atendente"></i></h3>
+      </header>
+      <div class="chart-canvas-wrap"><canvas id="metric-chart-hora"></canvas></div>
     </article>
 
     <article class="chart-card chart-wide">
@@ -1699,7 +1771,7 @@ Como podemos ajudar você hoje?
           <legend>Dados do Veículo</legend>
 
           <div class="catalogo-erp-row">
-            <label for="catalogo-marca">Marca</label>
+            <label for="catalogo-marca">Fabricante</label>
             <input type="text" id="catalogo-marca" placeholder="Ex: Fiat, GM, Ford" autocomplete="off">
           </div>
 
@@ -1907,7 +1979,7 @@ Como podemos ajudar você hoje?
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1"></script>
 
   <!-- JS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <script src="dist/bundle.ab18b0fe91.js"></script>
+  <script src="dist/bundle.5cfa964b6b.js"></script>
   <!-- JS_BUNDLE_END -->
 
 

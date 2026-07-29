@@ -56,9 +56,13 @@ async function anonymizeCustomerData(whatsapp) {
       [PLACEHOLDER_NOME, telefone]
     );
 
+    // quoted_text (migration 019) também precisa ser anonimizado — sem isso,
+    // um trecho da mensagem original do cliente sobreviveria escondido na
+    // prévia de citação de uma resposta, mesmo com message/response já
+    // trocados pelo placeholder.
     const historyRes = await client.query(
       `UPDATE history
-       SET contact_name = $1, message = $2, response = $2
+       SET contact_name = $1, message = $2, response = $2, quoted_text = NULL
        WHERE user_id = $3`,
       [PLACEHOLDER_NOME, PLACEHOLDER_CONTEUDO, telefone]
     );

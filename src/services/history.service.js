@@ -11,7 +11,9 @@ async function saveHistory({
   status,
   mediaPath,
   mediaMimetype,
-  mediaFilename
+  mediaFilename,
+  quotedMessageId,
+  quotedText
 }) {
   return historyRepository.create({
     userId,
@@ -27,6 +29,9 @@ async function saveHistory({
     mediaPath: mediaPath || null,
     mediaMimetype: mediaMimetype || null,
     mediaFilename: mediaFilename || null,
+    // Ver migration 019 — "responder mensagem específica" (reply/quote).
+    quotedMessageId: quotedMessageId || null,
+    quotedText: quotedText || null,
     createdAt: new Date()
   });
 }

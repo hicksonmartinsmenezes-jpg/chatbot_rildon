@@ -22,6 +22,8 @@ numeração **não quebram a execução** — mas atrapalham a rastreabilidade.
 016_ticket_assigned_status_index.sql
 017_history_media_storage.sql
 018_satisfaction_feedback.sql
+019_reply_to_message.sql
+020_remove_crediario_sector.sql
 ```
 
 **Os números 005–008 nunca existiram neste repositório** (confirmado via
@@ -39,7 +41,7 @@ o schema real do banco com `schema.sql` (ex: `pg_dump --schema-only`).
 
 ## Convenção daqui para frente
 
-- Próxima migration: `019_*.sql`. Não reutilizar nem pular números.
+- Próxima migration: `021_*.sql`. Não reutilizar nem pular números.
 - Toda mudança de schema deve ir para **os dois lugares**: o arquivo de
   migration incremental (para bancos existentes) E o `schema.sql` (para
   instalações novas).
@@ -73,3 +75,10 @@ Quando o cliente responde a pesquisa (migration 015) com nota 1 ou 2, o bot
 pergunta em seguida "o que podemos melhorar?" e guarda a resposta livre
 aqui, antes de mandar o agradecimento final. Não há UI no painel pra listar
 esse feedback ainda — só fica registrado no ticket (visível via banco/API).
+
+## 020 — remoção do setor "crediario"
+
+Reverte a migration 014: tira `'crediario'` do `chk_ticket_sector`. Decisão
+do usuário (2026-07-24) de descontinuar a feature por completo (menu, fluxo,
+intenção da IA) — confirmado antes de aplicar que não havia nenhum ticket
+usando esse setor em produção.

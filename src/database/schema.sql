@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS tickets (
   satisfaction_feedback_at TIMESTAMPTZ,
 
   CONSTRAINT chk_ticket_status CHECK (status IN ('aberto','em_andamento','resolvido','cancelado')),
-  CONSTRAINT chk_ticket_sector CHECK (sector IN ('suporte','vendas','financeiro','garantia','geral','atendimento','gestao','crediario')),
+  CONSTRAINT chk_ticket_sector CHECK (sector IN ('suporte','vendas','financeiro','garantia','geral','atendimento','gestao')),
   CONSTRAINT chk_ticket_satisfaction_rating CHECK (satisfaction_rating IS NULL OR satisfaction_rating BETWEEN 1 AND 5)
 );
 
@@ -123,6 +123,11 @@ CREATE TABLE IF NOT EXISTS history (
   media_path      TEXT,
   media_mimetype  TEXT,
   media_filename  TEXT,
+  -- Ver migration 019: "responder mensagem específica" (reply/quote).
+  -- Só suporta citar mensagens do CLIENTE — ver comentário em
+  -- message.controller.js (_buscarContextoCitacao).
+  quoted_message_id TEXT,
+  quoted_text       TEXT,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

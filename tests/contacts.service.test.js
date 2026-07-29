@@ -101,4 +101,15 @@ describe("autoRegisterContact — equivalência lid/jid", () => {
     expect(state.contacts).toHaveLength(1);
     expect(id2).toBe(id1);
   });
+
+  // Pedido do usuário (2026-07-24): todo contato novo nasce "Clientes Novos"
+  // — vira "Clientes" só quando gera um ticket (ver marcarComoCliente,
+  // src/services/contacts.service.js, testado em contacts.service.marcar-cliente.test.js).
+  test("contato novo é criado com a tag 'Clientes Novos' por padrão", async () => {
+    await autoRegisterContact("5511988887777@s.whatsapp.net", "Novo Cliente");
+
+    const insertCall = pool.query.mock.calls.find(([sql]) => /^INSERT INTO contacts/.test(sql));
+    expect(insertCall).toBeDefined();
+    expect(insertCall[0]).toContain("'Clientes Novos'");
+  });
 });

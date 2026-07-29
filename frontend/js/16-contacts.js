@@ -266,18 +266,33 @@ async function loadContactsTags() {
 
 // ── Add/Edit Modal ────────────────────────────────────────────────────────────
 
+// Tags manuais fixas (selecionáveis no editar contato) — pedido do usuário,
+// 2026-07-24. "Clientes"/"Clientes Novos" ficam de fora de propósito: são
+// automáticas (ver _contactsAutoTags abaixo + marcarComoCliente no backend).
+const CONTACT_MANUAL_TAGS = ["Funcionário", "Fabricante", "Funcionário Pessoal"];
+
+// Tags do contato que NÃO vieram do checklist manual (ex: "Clientes",
+// "Clientes Novos", ou qualquer etiqueta legada) — preservadas ao salvar,
+// mesmo sem aparecer como checkbox, pra editar contato nunca apagar sozinho
+// uma classificação automática do sistema.
+let _contactsAutoTags = [];
+
 async function openContactModal(id = null) {
   _contactsEditingId = id;
+  _contactsAutoTags  = [];
   const overlay = document.getElementById("contact-modal-overlay");
   const title   = document.getElementById("contact-modal-title");
   if (!overlay) return;
 
   // Reset form
   ["contact-nome","contact-whatsapp","contact-estado","contact-status",
-   "contact-departamento","contact-atendente","contact-tags"].forEach(f => {
+   "contact-departamento","contact-atendente"].forEach(f => {
     const el = document.getElementById(f);
     if (el) el.value = "";
   });
+  document.querySelectorAll("#contact-tags-checklist input").forEach(el => el.checked = false);
+  const autoInfo = document.getElementById("contact-tags-auto");
+  if (autoInfo) { autoInfo.textContent = ""; autoInfo.classList.add("hidden"); }
 
   if (id) {
     title.textContent = "Editar Contato";
@@ -290,7 +305,23 @@ async function openContactModal(id = null) {
       document.getElementById("contact-status").value     = data.status || "ativo";
       document.getElementById("contact-departamento").value = data.departamento || "";
       document.getElementById("contact-atendente").value  = data.atendente_id || "";
-      document.getElementById("contact-tags").value       = (data.tags || []).join(", ");
+
+      const tagsAtuais = data.tags || [];
+      document.querySelectorAll("#contact-tags-checklist input").forEach(el => {
+        el.checked = tagsAtuais.includes(el.value);
+      });
+
+      // Qualquer tag que não é uma das 3 manuais é "automática" — preserva
+      // sem mostrar como checkbox (ex: "Clientes", "Clientes Novos").
+      _contactsAutoTags = tagsAtuais.filter(t => !CONTACT_MANUAL_TAGS.includes(t));
+      if (autoInfo) {
+        if (_contactsAutoTags.length) {
+          autoInfo.textContent = `Também marcado como: ${_contactsAutoTags.join(", ")} (automático, definido pelo sistema)`;
+          autoInfo.classList.remove("hidden");
+        } else {
+          autoInfo.classList.add("hidden");
+        }
+      }
     } catch (e) {
       showToast("Erro ao carregar contato.", "error");
       return;
@@ -315,8 +346,11 @@ async function saveContact() {
   const status      = document.getElementById("contact-status").value;
   const departamento= document.getElementById("contact-departamento").value.trim();
   const atendenteId = document.getElementById("contact-atendente").value;
-  const tagsRaw     = document.getElementById("contact-tags").value;
-  const tags        = tagsRaw.split(",").map(t => t.trim()).filter(Boolean);
+  // Tags manuais marcadas no checklist + tags automáticas preservadas do
+  // contato original (ex: "Clientes"/"Clientes Novos" — nunca editadas por
+  // aqui, ver openContactModal/_contactsAutoTags).
+  const tagsManuais = [...document.querySelectorAll("#contact-tags-checklist input:checked")].map(el => el.value);
+  const tags        = [...tagsManuais, ..._contactsAutoTags];
 
   if (!nome || !whatsapp) { showToast("Nome e WhatsApp são obrigatórios.", "error"); return; }
   const onlyDigits = whatsapp.replace(/\D/g, "");

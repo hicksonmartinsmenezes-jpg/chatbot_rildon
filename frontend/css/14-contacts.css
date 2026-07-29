@@ -465,6 +465,19 @@
 
 .contacts-form-grid .full { grid-column: 1 / -1; }
 
+/* Tags fixas do editar contato (pedido do usuário, 2026-07-24) — reaproveita
+   o estilo de pill de #camp-filter-tags (11-campaigns.css), só embrulhando
+   pra crescer normalmente dentro do grid do modal. */
+#contact-tags-checklist {
+  margin-top: 4px;
+}
+
+.contact-tags-auto {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--text-muted, #888);
+}
+
 .contacts-modal label {
   display: block;
   color: var(--muted);

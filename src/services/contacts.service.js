@@ -1,5 +1,47 @@
-const pool   = require("../database/postgres");
-const logger = require("../utils/logger");
+const pool          = require("../database/postgres");
+const logger        = require("../utils/logger");
+const { emitEvent } = require("./socket.service");
+
+// Tags de cliente/estágio — controladas pelo próprio sistema, não aparecem
+// como checkbox no editar contato do painel (pedido do usuário, 2026-07-24):
+// todo contato criado via autoRegisterContact (1ª mensagem no WhatsApp,
+// ver src/whatsapp/contacts.js) nasce como "Clientes Novos"; quando ele gera
+// o 1º ticket de verdade (createTicket, ticket.service.js), marcarComoCliente()
+// abaixo promove pra "Clientes" — a etiqueta de "novo" sai, "cliente" fica.
+const TAG_CLIENTE      = "Clientes";
+const TAG_CLIENTE_NOVO = "Clientes Novos";
+
+// Promove um contato de "Clientes Novos" para "Clientes" quando ele gera um
+// ticket — chamado por ticket.service.js/createTicket. Idempotente (não faz
+// nada se o contato já tiver a tag "Clientes" ou não existir ainda).
+async function marcarComoCliente(userIdOuTelefone) {
+  const digits = String(userIdOuTelefone || "")
+    .replace(/@(s\.whatsapp\.net|lid)$/i, "")
+    .replace(/\D/g, "");
+  if (!digits) return;
+
+  try {
+    const res = await pool.query(
+      `SELECT id, tags FROM contacts WHERE whatsapp = $1 LIMIT 1`,
+      [digits]
+    );
+    if (!res.rows.length) return;
+
+    const contato = res.rows[0];
+    const tagsAtuais = Array.isArray(contato.tags) ? contato.tags : [];
+    if (tagsAtuais.includes(TAG_CLIENTE)) return;
+
+    const novasTags = [...tagsAtuais.filter(t => t !== TAG_CLIENTE_NOVO), TAG_CLIENTE];
+    await pool.query(
+      `UPDATE contacts SET tags = $1::text[], updated_at = NOW() WHERE id = $2`,
+      [novasTags, contato.id]
+    );
+    logger.info(`[Contacts] ${digits} promovido a "${TAG_CLIENTE}" (gerou ticket)`);
+    emitEvent("contacts_updated", { reason: "ticket_gerado", whatsapp: digits });
+  } catch (err) {
+    logger.warn(`[marcarComoCliente] ${err.message}`);
+  }
+}
 
 async function listContacts({ page = 1, limit = 40, search = "", status = "", tag = "", atendenteId = "" } = {}) {
   const offset = (page - 1) * limit;
@@ -201,5 +243,8 @@ module.exports = {
   deleteContact,
   deleteContacts,
   importContacts,
-  getAllTags
+  getAllTags,
+  marcarComoCliente,
+  TAG_CLIENTE,
+  TAG_CLIENTE_NOVO
 };

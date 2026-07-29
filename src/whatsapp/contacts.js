@@ -83,9 +83,13 @@ async function autoRegisterContact(userId, contactName = "") {
       }
     }
 
+    // Pedido do usuário (2026-07-24): todo contato novo nasce marcado como
+    // "Clientes Novos" — vira "Clientes" automaticamente quando gerar o 1º
+    // ticket de verdade (ver marcarComoCliente em contacts.service.js,
+    // chamado por ticket.service.js/createTicket).
     const inserted = await pool.query(
       `INSERT INTO contacts (nome, whatsapp, status, tags)
-       VALUES ($1::text, $2::varchar, 'ativo', '{}'::text[])
+       VALUES ($1::text, $2::varchar, 'ativo', ARRAY['Clientes Novos']::text[])
        RETURNING id`,
       [safeName, phone]
     );
@@ -141,4 +145,42 @@ async function buscarNomeContatoReal(userId) {
   }
 }
 
-module.exports = { autoRegisterContact, buscarNomeContatoReal };
+// Bloqueio de contatos marcados como "Funcionário" (pedido do usuário,
+// 2026-07-24): quando o bot está processando normalmente, ele não deve
+// responder a ninguém marcado com essa tag no cadastro de contatos — típico
+// caso de alguém da própria equipe testando pelo WhatsApp pessoal, ou um
+// número interno que não deve receber atendimento automático. Usa
+// getProfilePhotoCandidates() como buscarNomeContatoReal() acima: o mesmo
+// contato físico pode estar salvo sob a variante @lid OU @s.whatsapp.net,
+// então checar só a chave exata do userId recebido deixaria a tag "furar"
+// quando o WhatsApp entrega a mensagem pela outra variante do mesmo número.
+const TAG_FUNCIONARIO = "Funcionário";
+
+async function contatoTemTagFuncionario(userId) {
+  try {
+    const candidatos = getProfilePhotoCandidates(userId);
+    const telefones = Array.from(new Set(
+      (candidatos.length ? candidatos : [userId])
+        .map(c => String(c || "").replace(/@(s\.whatsapp\.net|lid)$/i, "").replace(/\D/g, ""))
+        .filter(Boolean)
+    ));
+    if (!telefones.length) return false;
+
+    const res = await pool.query(
+      `SELECT 1 FROM contacts
+       WHERE whatsapp = ANY($1::text[])
+         AND $2 = ANY(tags)
+       LIMIT 1`,
+      [telefones, TAG_FUNCIONARIO]
+    );
+    return res.rows.length > 0;
+  } catch (err) {
+    // Falha segura: erro na checagem não deve travar/derrubar o atendimento
+    // de ninguém — só loga e trata como "não é funcionário" (comportamento
+    // igual ao resto do pipeline de auto-registro nesta função).
+    logger.warn(`[contatoTemTagFuncionario] ${err.message}`);
+    return false;
+  }
+}
+
+module.exports = { autoRegisterContact, buscarNomeContatoReal, contatoTemTagFuncionario };

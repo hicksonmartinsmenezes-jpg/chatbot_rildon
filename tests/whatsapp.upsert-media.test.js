@@ -17,9 +17,17 @@
 jest.mock("../src/services/socket.service", () => ({ emitEvent: jest.fn() }));
 jest.mock("../src/services/botConfig.service", () => ({
   getBotConfig: jest.fn(async () => ({ ativo: true })),
+  resolverBotOffEfetivo: jest.fn(({ ativoFalse, isNumeroTeste = false, isFuncionario = false }) => {
+    if (isFuncionario) return true;
+    if (ativoFalse && isNumeroTeste) return false;
+    return ativoFalse;
+  }),
 }));
 jest.mock("../src/services/history.service", () => ({ saveHistory: jest.fn(async () => {}) }));
-jest.mock("../src/whatsapp/contacts", () => ({ autoRegisterContact: jest.fn(async () => {}) }));
+jest.mock("../src/whatsapp/contacts", () => ({
+  autoRegisterContact: jest.fn(async () => {}),
+  contatoTemTagFuncionario: jest.fn(async () => false),
+}));
 jest.mock("../src/whatsapp/dedup", () => ({
   isDuplicateContent: jest.fn(() => false),
   marcarMensagemProcessada: jest.fn(async () => false),
@@ -48,6 +56,16 @@ jest.mock("../src/services/ai.service", () => ({
 jest.mock("../src/services/mediaStorage.service", () => ({
   salvarMidiaRecebida: jest.fn(),
 }));
+// BUG CORRIGIDO (2026-07-23): o aviso de "mídia não suportada" agora chama
+// reopenTicketIfClosed e checa humanMode/bot desligado (ver config/
+// whatsapp.js) — precisa mockar pra não tocar banco de verdade e pra poder
+// simular os dois estados nos testes abaixo.
+jest.mock("../src/services/ticket.service", () => ({
+  reopenTicketIfClosed: jest.fn(async () => false),
+}));
+jest.mock("../src/services/humanMode.service", () => ({
+  estaAtivo: jest.fn(() => false),
+}));
 jest.mock("qrcode-terminal", () => ({ generate: jest.fn() }));
 jest.mock("@whiskeysockets/baileys", () => ({
   __esModule: true,
@@ -62,6 +80,10 @@ const baileys = require("@whiskeysockets/baileys");
 const { analisarImagemPeca, suportaVisao, transcreverAudio, suportaAudio } = require("../src/services/ai.service");
 const { saveHistory } = require("../src/services/history.service");
 const { salvarMidiaRecebida } = require("../src/services/mediaStorage.service");
+const { reopenTicketIfClosed } = require("../src/services/ticket.service");
+const humanMode = require("../src/services/humanMode.service");
+const { getBotConfig } = require("../src/services/botConfig.service");
+const { emitEvent } = require("../src/services/socket.service");
 
 const JID = "5579999998888@s.whatsapp.net";
 
@@ -465,6 +487,143 @@ describe("config/whatsapp — messages.upsert com nota de voz (transcrição)", 
     );
     expect(saveHistory).toHaveBeenCalledWith(
       expect.objectContaining({ sector: "midia_nao_suportada", message: "[documento recebido]" })
+    );
+  });
+});
+
+// BUG CORRIGIDO (relatado pelo usuário, 2026-07-23): "as mensagens ainda não
+// carregam com bot desligado" e "chega com clientes já fechados porém não
+// aparece como novo atendimento". Duas causas raiz, ambas em
+// config/whatsapp.js: (1) o aviso de mídia não suportada nunca chamava
+// reopenTicketIfClosed (só o pipeline de TEXTO, via processMessage, fazia
+// isso) — cliente com ticket fechado mandando só uma foto/sticker nunca
+// reaparecia em Pendentes; (2) o mesmo aviso nunca checava humanMode nem bot
+// desligado, respondendo automaticamente por cima de atendente humano ou com
+// o bot desativado no painel.
+describe("config/whatsapp — mídia não suportada: reopen de ticket + respeito a humanMode/bot desligado", () => {
+  let processMessage, sockAtual;
+
+  function mensagemSticker() {
+    return {
+      key: { id: "MSG-STICKER-1", remoteJid: JID, fromMe: false },
+      pushName: "Cliente Teste",
+      message: {
+        stickerMessage: { mimetype: "image/webp" },
+      },
+    };
+  }
+
+  // getBotConfigCached() (config/whatsapp.js) guarda o resultado de
+  // getBotConfig() por 30s em memória (conn.cachedConfig) — como o módulo
+  // config/whatsapp é exigido uma ÚNICA vez no topo deste arquivo (compartilhado
+  // por todos os describes), o cache continua "quente" de um teste pro outro
+  // dentro da mesma execução rápida da suíte. Sem isso, o teste de "bot
+  // desligado" (que muda getBotConfig no meio da suíte) veria o valor antigo
+  // em cache. Usa um relógio simulado sempre CRESCENTE (avança 40s a cada
+  // teste) pra garantir que todo teste force um refetch — nunca herda o
+  // cache do teste anterior, independente da ordem.
+  let fakeNow = Date.now();
+  let nowSpy;
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    fakeNow += 40_000;
+    nowSpy = jest.spyOn(Date, "now").mockImplementation(() => fakeNow);
+
+    baileys.default.mockImplementation(() => {
+      sockAtual = criarSockFake();
+      return sockAtual;
+    });
+    baileys.downloadMediaMessage.mockResolvedValue(Buffer.from("bytes-fake-de-sticker"));
+    suportaVisao.mockReturnValue(false);
+    suportaAudio.mockReturnValue(false);
+    salvarMidiaRecebida.mockResolvedValue({
+      mediaPath: "MSG-STICKER-1-wxyz0001.webp",
+      mediaMimetype: "image/webp",
+      mediaFilename: null,
+    });
+    getBotConfig.mockResolvedValue({ ativo: true });
+    humanMode.estaAtivo.mockReturnValue(false);
+    reopenTicketIfClosed.mockResolvedValue(false);
+
+    processMessage = jest.fn(async () => "resposta do bot");
+    await whatsapp.connectWhatsApp(processMessage);
+  });
+
+  afterEach(() => {
+    nowSpy.mockRestore();
+  });
+
+  test("mídia sem legenda em geral (ex: imagem) chama reopenTicketIfClosed", async () => {
+    await sockAtual.__handlers["messages.upsert"]({ messages: [mensagemImagem()], type: "notify" });
+
+    expect(reopenTicketIfClosed).toHaveBeenCalledWith(JID);
+  });
+
+  // PEDIDO DO USUÁRIO (2026-07-27, 2ª parte): sticker é só uma reação — não
+  // deve reabrir um ticket fechado (diferente de foto/áudio/vídeo/documento,
+  // que continuam reabrindo normalmente, ver teste acima).
+  test("STICKER é a única exceção — NÃO chama reopenTicketIfClosed", async () => {
+    await sockAtual.__handlers["messages.upsert"]({ messages: [mensagemSticker()], type: "notify" });
+
+    expect(reopenTicketIfClosed).not.toHaveBeenCalled();
+  });
+
+  test("atendente já assumiu (humanMode ativo) → NÃO envia o aviso automático, mas ainda salva/emite a mídia no histórico", async () => {
+    humanMode.estaAtivo.mockReturnValue(true);
+
+    await sockAtual.__handlers["messages.upsert"]({ messages: [mensagemSticker()], type: "notify" });
+
+    expect(sockAtual.sendMessage).not.toHaveBeenCalled();
+    expect(saveHistory).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: JID, sector: "humano", response: null, message: "[sticker recebido]" })
+    );
+  });
+
+  test("bot desligado no painel → NÃO envia o aviso automático, mas ainda salva/emite a mídia no histórico", async () => {
+    getBotConfig.mockResolvedValue({ ativo: false });
+
+    await sockAtual.__handlers["messages.upsert"]({ messages: [mensagemSticker()], type: "notify" });
+
+    expect(sockAtual.sendMessage).not.toHaveBeenCalled();
+    expect(saveHistory).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: JID, sector: "bot_desligado", response: null, message: "[sticker recebido]" })
+    );
+  });
+
+  // PEDIDO DO USUÁRIO (2026-07-27): "o bot não responda stickers, isso
+  // resolverá boa parte dos problemas" — sticker é quase sempre uma reação
+  // (like, risada), igual emoji solto (ver pareceEncerramentoPosAvaliacao em
+  // ticket.service.js). Diferente dos outros tipos de mídia sem legenda
+  // (imagem/áudio/vídeo/documento, que continuam recebendo o aviso
+  // "não consigo processar arquivos"), sticker NUNCA recebe esse aviso —
+  // mesmo com o bot ligado e ninguém tendo assumido — mas ainda é salvo no
+  // histórico (sector distinto "sticker_sem_resposta"), pra não sumir do
+  // painel.
+  test("bot ligado e ninguém assumiu + STICKER → NÃO envia aviso, salva com sector distinto", async () => {
+    await sockAtual.__handlers["messages.upsert"]({ messages: [mensagemSticker()], type: "notify" });
+
+    expect(sockAtual.sendMessage).not.toHaveBeenCalled();
+    expect(saveHistory).toHaveBeenCalledWith(
+      expect.objectContaining({ sector: "sticker_sem_resposta", response: null, message: "[sticker recebido]" })
+    );
+    expect(emitEvent).toHaveBeenCalledWith(
+      "nova_mensagem",
+      expect.objectContaining({ sector: "sticker_sem_resposta", response: null })
+    );
+  });
+
+  // Regressão: outros tipos de mídia sem legenda (ex: imagem) continuam
+  // recebendo o aviso automático normalmente — só sticker mudou.
+  test("bot ligado e ninguém assumiu + IMAGEM sem legenda (caso normal) → continua enviando o aviso automático", async () => {
+    await sockAtual.__handlers["messages.upsert"]({ messages: [mensagemImagem()], type: "notify" });
+
+    expect(sockAtual.sendMessage).toHaveBeenCalledWith(
+      JID,
+      expect.objectContaining({ text: expect.stringContaining("ainda não consigo processar arquivos") })
+    );
+    expect(saveHistory).toHaveBeenCalledWith(
+      expect.objectContaining({ sector: "midia_nao_suportada" })
     );
   });
 });

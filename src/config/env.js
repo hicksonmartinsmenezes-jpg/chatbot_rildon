@@ -106,6 +106,34 @@ const envSchema = z.object({
   // ── Logs ────────────────────────────────────────────────────────────────────
   LOG_LEVEL:      z.enum(["success", "info", "warn", "error"]).default("info"),
   MAX_LOG_SIZE_MB: intStr(10),
+
+  // ── Modo de teste (pedido do usuário, 2026-07-24) ────────────────────────────
+  // Números de telefone (só dígitos, sem @s.whatsapp.net/@lid, separados por
+  // vírgula) que continuam recebendo resposta normal do bot mesmo com
+  // "Bot ativo = Desativado" no painel (Configurações > Funcionamento). Usado
+  // pra testar o fluxo em produção sem expor os clientes reais enquanto o bot
+  // está desligado. Ver resolverBotOffEfetivo() em botConfig.service.js — a
+  // tag "Funcionário" do contato tem prioridade sobre este bypass.
+  // Ex no .env: TEST_NUMBERS=5579999999999,5579888888888
+  //
+  // NOTA: config/whatsapp.js (onde essa lista é de fato consultada) lê
+  // process.env.TEST_NUMBERS diretamente, com o MESMO parsing abaixo,
+  // em vez de importar este módulo — evita acoplar esse arquivo (importado
+  // isoladamente pelos testes de whatsapp.*) à validação completa de env.js,
+  // que derruba o processo se qualquer variável obrigatória (API_TOKEN,
+  // DB_PASSWORD etc.) estiver faltando. Declarado aqui mesmo assim, pra
+  // seguir o padrão do projeto de documentar toda variável de ambiente num
+  // só lugar. Se mudar o formato/separador, mude nos dois lugares.
+  TEST_NUMBERS: z
+    .string()
+    .optional()
+    .default("")
+    .transform(v =>
+      v
+        .split(",")
+        .map(n => n.replace(/\D/g, ""))
+        .filter(Boolean)
+    ),
 });
 
 // ─── Executa a validação ──────────────────────────────────────────────────────

@@ -87,6 +87,29 @@ function isValidUserMessage(msg, type) {
   return jid.endsWith("@s.whatsapp.net") || jid.endsWith("@lid");
 }
 
+// PEDIDO DO USUÁRIO (2026-07-27): "mensagens enviadas pelo meu celular com o
+// número do bot não aparecem no chat do painel". isValidUserMessage() acima
+// descarta TODA mensagem fromMe, sem distinguir "enviei pelo painel/bot" (já
+// salva em outro lugar, ver sendManualMessage/sendMedia) de "enviei direto
+// pelo WhatsApp do celular" (nunca salva em lugar nenhum até agora). Esta
+// função identifica o segundo caso — mesmas regras de jid válido, só que
+// exigindo fromMe (o oposto de isValidUserMessage). Quem chama (onMessagesUpsert
+// em whatsapp.js) só chega aqui depois que marcarMensagemProcessada() já
+// descartou qualquer eco de mensagem que o PRÓPRIO bot/painel enviou (essas
+// têm o id registrado no envio — ver sendMessage/sendMedia), então uma
+// mensagem fromMe que passa por aqui é garantidamente originada no celular.
+function isOutgoingEcho(msg, type) {
+  const jid = msg.key.remoteJid;
+  if (type !== "notify") return false;
+  if (!jid) return false;
+  if (!msg.key.fromMe) return false;
+  if (jid.endsWith("@g.us")) return false;
+  if (jid.endsWith("@newsletter")) return false;
+  if (jid === "status@broadcast") return false;
+  if (jid.endsWith("@broadcast")) return false;
+  return jid.endsWith("@s.whatsapp.net") || jid.endsWith("@lid");
+}
+
 function parseMessageStatus(status) {
   switch (status) {
     case 1: return "sent";
@@ -102,5 +125,6 @@ module.exports = {
   getMediaType,
   getMediaObject,
   isValidUserMessage,
+  isOutgoingEcho,
   parseMessageStatus
 };

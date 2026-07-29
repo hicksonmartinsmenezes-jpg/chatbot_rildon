@@ -183,6 +183,21 @@
   display: block;
 }
 
+/* ─── Toggle liga/desliga do bot (topbar, visível para todos) ─────────────── */
+.bot-toggle-dot {
+  width: 9px;
+  height: 9px;
+  background: var(--green, #2ecc71);
+  border-radius: 50%;
+  position: absolute;
+  top: 8px;
+  right: 9px;
+}
+
+#bot-toggle-btn.bot-off .bot-toggle-dot {
+  background: var(--red, #e74c3c);
+}
+
 /* ─── Wrapper + dropdown de notificações ─ */
 .notif-wrap {
   position: relative;

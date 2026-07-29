@@ -28,6 +28,7 @@ const historyRoutes  = require("./routes/history.routes");
 const messageRoutes  = require("./routes/message.routes");
 const contactRoutes  = require("./routes/contact.routes");
 const settingsRoutes    = require("./routes/settings.routes");
+const botStatusRoutes   = require("./routes/botStatus.routes");
 const atendenteRoutes   = require("./routes/atendentes.routes");
 const catalogoRoutes    = require("./routes/catalogo.routes");
 
@@ -148,6 +149,10 @@ app.use("/api", authSession, ticketRoutes);
 app.use("/api", authSession, historyRoutes);
 app.use("/api", authSession, catalogoRoutes);
 app.use("/api", authSession, messageRoutes);
+// Pedido do usuário: liga/desliga do bot liberado pra QUALQUER atendente
+// logado (não só admin) — ver botStatus.routes.js para o motivo de ser uma
+// rota separada de settings.routes.js em vez de reaproveitar /api/settings.
+app.use("/api", authSession, botStatusRoutes);
 
 // Rotas apenas admin
 app.use("/api", authSession, requireAdmin, settingsRoutes);

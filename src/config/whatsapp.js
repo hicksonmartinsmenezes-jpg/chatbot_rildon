@@ -1,4 +1,4 @@
-const { getBotConfig }  = require("../services/botConfig.service");
+const { getBotConfig, resolverBotOffEfetivo } = require("../services/botConfig.service");
 const logger            = require("../utils/logger");
 const { emitEvent }     = require("../services/socket.service");
 const {
@@ -16,13 +16,17 @@ const {
   getMediaType,
   getMediaObject,
   isValidUserMessage,
+  isOutgoingEcho,
   parseMessageStatus
 } = require("../whatsapp/message-utils");
 const { isDuplicateContent, marcarMensagemProcessada, startDedupCleanup } = require("../whatsapp/dedup");
-const { autoRegisterContact } = require("../whatsapp/contacts");
+const { autoRegisterContact, contatoTemTagFuncionario, buscarNomeContatoReal } = require("../whatsapp/contacts");
 const { saveHistory } = require("../services/history.service");
+const { reopenTicketIfClosed } = require("../services/ticket.service");
+const humanMode        = require("../services/humanMode.service");
 const { analisarImagemPeca, suportaVisao, transcreverAudio, suportaAudio } = require("../services/ai.service");
 const { salvarMidiaRecebida } = require("../services/mediaStorage.service");
+const { scheduleFragment } = require("../services/messageFragment.service");
 
 const {
   default: makeWASocket,
@@ -58,6 +62,22 @@ const BOT_PROCESSING_FALLBACK =
   process.env.BOT_PROCESSING_FALLBACK ||
   "⚠️ Estou com uma instabilidade momentânea para processar sua mensagem. Tente novamente em instantes ou aguarde um atendente.";
 
+// Modo de teste (pedido do usuário, 2026-07-24) — números (só dígitos,
+// separados por vírgula) que continuam recebendo resposta do bot mesmo com
+// "ativo=false" no painel. Mesmo formato/definição de TEST_NUMBERS em
+// src/config/env.js, mas lido direto de process.env AQUI em vez de
+// `require("./env")`: env.js valida TODAS as variáveis obrigatórias do
+// projeto (API_TOKEN, DB_PASSWORD etc.) e derruba o processo se alguma
+// faltar — ótimo pro server.js real (primeiro módulo importado), mas
+// pesado demais como dependência de config/whatsapp.js, que os testes
+// (tests/whatsapp.*.test.js) importam isoladamente, mockando só banco/
+// socket/Baileys. Mesmo padrão já usado em src/database/postgres.js (lê
+// process.env direto, com fallback, sem depender do validador).
+const TEST_NUMBERS = String(process.env.TEST_NUMBERS || "")
+  .split(",")
+  .map(n => n.replace(/\D/g, ""))
+  .filter(Boolean);
+
 function withTimeout(promise, timeoutMs, label = "operação") {
   let timer;
   const timeout = new Promise((_, reject) => {
@@ -92,10 +112,15 @@ async function enviarComRetry(userId, response) {
 
   for (let i = 0; i < 3; i++) {
     try {
-      await currentSock.sendMessage(userId, { text: response });
+      const sent = await currentSock.sendMessage(userId, { text: response });
       // Garante que o flag fica sincronizado
       if (!conn.isWhatsAppConnected) conn.isWhatsAppConnected = true;
       logger.info(`[WhatsApp] ✓ Resposta enviada. Tentativa ${i + 1}`);
+      // Registra o id no dedup — mesmo motivo de sendMessage()/sendMedia():
+      // sem isso, o eco fromMe da PRÓPRIA resposta do bot seria confundido
+      // com mensagem enviada pelo celular (ver isOutgoingEcho em
+      // onMessagesUpsert) e duplicaria a linha no histórico do painel.
+      if (sent?.key?.id) { try { await marcarMensagemProcessada(sent.key.id); } catch (_) {} }
       return true;
     } catch (err) {
       logger.warn(`Tentativa ${i + 1} falhou: ${err.message}`);
@@ -317,7 +342,7 @@ async function analisarAudioRecebido(msg, bufferPreBaixado) {
 // duplicada pra extrair veículo/peça. "origem" é só pro log (ex: "foto",
 // "áudio"). Devolve true quando o chamador deve `continue` (já tratou a
 // mensagem, com sucesso ou com o fallback de erro do bot).
-async function processarTextoDerivadoDeMidia(origem, { userId, contactName, sendTo, messageId, texto, mediaInfo }) {
+async function processarTextoDerivadoDeMidia(origem, { userId, contactName, sendTo, messageId, texto, mediaInfo, isNumeroTeste = false, isFuncionario = false }) {
   try {
     logger.info(`[MESSAGE_IN_${origem.toUpperCase()}] ${userId}: [${origem}] → "${texto}"`);
 
@@ -334,6 +359,12 @@ async function processarTextoDerivadoDeMidia(origem, { userId, contactName, send
         mediaPath:     mediaInfo?.mediaPath || null,
         mediaMimetype: mediaInfo?.mediaMimetype || null,
         mediaFilename: mediaInfo?.mediaFilename || null,
+        // Modo de teste + bloqueio "Funcionário" (2026-07-24) — ver
+        // resolverBotOffEfetivo() em botConfig.service.js. Repassado aqui
+        // porque processMessage() em message.service.js é quem de fato
+        // decide se roda mainFlow (IA/ERP), re-buscando o botConfig fresco.
+        isNumeroTeste,
+        isFuncionario,
       }),
       MESSAGE_PROCESSING_TIMEOUT_MS,
       `processamento do bot (${origem})`
@@ -354,6 +385,100 @@ async function processarTextoDerivadoDeMidia(origem, { userId, contactName, send
   }
 }
 
+// PEDIDO DO USUÁRIO (2026-07-27): "mensagens enviadas pelo meu celular com o
+// número do bot não aparecem no chat do painel". isValidUserMessage()
+// descarta TODA mensagem fromMe (painel, bot E celular, sem distinguir).
+// Painel e bot já salvam sua própria resposta em saveHistory() no momento do
+// envio (sendManualMessage, processMessage) — e agora também registram o id
+// em marcarMensagemProcessada() na hora de enviar (ver sendMessage/sendMedia/
+// enviarComRetry acima), então o eco fromMe dessas duas origens nunca chega
+// até aqui (é descartado antes, no dedup do topo de onMessagesUpsert). Uma
+// mensagem fromMe que sobrevive até isOutgoingEcho() só pode ter vindo do
+// WhatsApp do celular diretamente — nunca foi salva em lugar nenhum até
+// agora. Trata como se fosse um envio manual: salva no histórico (sector
+// "manual", igual sendManualMessage), emite pro painel e pausa o bot pro
+// cliente (mesmo efeito de o atendente responder pelo painel).
+async function handleOutgoingFromPhone(msg) {
+  const jid = msg.key.remoteJid;
+  const messageId = msg.key.id;
+  const text = getTextMessage(msg).trim();
+  const midiaBruta = getMediaObject(msg);
+
+  if (!text && !midiaBruta) return; // nada exibível (ex: reação, recibo de leitura)
+
+  let userId = jid;
+  if (jid.includes("@lid")) {
+    const resolvedFromMap = resolveLid(jid);
+    if (resolvedFromMap) {
+      userId = resolvedFromMap;
+    } else if (msg.key.senderPn) {
+      const rawPn = String(msg.key.senderPn).replace(/[^\d]/g, "");
+      userId = `${rawPn}@s.whatsapp.net`;
+      setLidMapping(jid, userId, "senderPn");
+    }
+  }
+
+  let contactName = "";
+  try {
+    contactName = (await buscarNomeContatoReal(userId)) || "";
+  } catch (_) {}
+
+  let mediaInfo = {};
+  if (midiaBruta) {
+    try {
+      const mediaBuffer = await downloadMediaMessage(
+        msg,
+        "buffer",
+        {},
+        { logger, reuploadRequest: conn.sock?.updateMediaMessage }
+      );
+      if (mediaBuffer && mediaBuffer.length) {
+        mediaInfo = await salvarMidiaRecebida(mediaBuffer, midiaBruta.mimetype, messageId, {
+          originalFilename: midiaBruta.filename || null,
+        });
+      }
+    } catch (err) {
+      logger.warn(`[Celular] Falha ao baixar mídia enviada pelo celular para ${userId}: ${err.message}`);
+    }
+  }
+
+  const respostaFinal = text || (mediaInfo.mediaPath ? "[arquivo enviado]" : "");
+
+  try {
+    await saveHistory({
+      userId,
+      contactName,
+      message: null,
+      response: respostaFinal,
+      sector: "manual",
+      messageId,
+      status: "sent",
+      ...mediaInfo,
+    });
+  } catch (err) {
+    logger.warn(`[Celular] Falha ao salvar histórico de mensagem enviada pelo celular: ${err.message}`);
+  }
+
+  try {
+    emitEvent("nova_mensagem", {
+      userId,
+      contactName,
+      message: null,
+      response: respostaFinal,
+      messageId,
+      sector: "manual",
+      createdAt: new Date(),
+      ...mediaInfo,
+    });
+  } catch (err) {
+    logger.warn(`[Celular] Falha ao emitir evento pro painel: ${err.message}`);
+  }
+
+  // Mesmo efeito de sendManualMessage: atendente (agora pelo celular) está
+  // respondendo diretamente — pausa o bot pra esse cliente.
+  humanMode.ativar(userId, { agentName: "Celular" });
+}
+
 // Handler de messages.upsert: pipeline completo de uma mensagem recebida —
 // dedup, resolução de LID, auto-registro de contato, checagem de bot
 // ativo/inativo, tratamento de mídia sem texto, dedup de conteúdo e,
@@ -372,7 +497,15 @@ async function onMessagesUpsert({ messages, type }) {
     const jid = msg.key.remoteJid;
 
     if (!isValidUserMessage(msg, type)) {
-      if (!msg.key.fromMe) logger.info(`Mensagem ignorada | type=${type} | jid=${jid}`);
+      if (isOutgoingEcho(msg, type)) {
+        try {
+          await handleOutgoingFromPhone(msg);
+        } catch (err) {
+          logger.warn(`[Celular] Erro ao processar mensagem enviada pelo celular: ${err.message}`);
+        }
+      } else if (!msg.key.fromMe) {
+        logger.info(`Mensagem ignorada | type=${type} | jid=${jid}`);
+      }
       continue;
     }
 
@@ -417,12 +550,47 @@ async function onMessagesUpsert({ messages, type }) {
     // "inconsistent types deduced for parameter" do PostgreSQL.
     await autoRegisterContact(userId, contactName);
 
+    // MODO DE TESTE + BLOQUEIO "FUNCIONÁRIO" (pedido do usuário, 2026-07-24):
+    // resolvidos aqui, o mais cedo possível dentro do handler — antes de
+    // qualquer análise de imagem/áudio por IA logo abaixo, e antes do texto
+    // sequer chegar em processMessage (mainFlow/IA/ERP). Assim um contato
+    // bloqueado nunca gera custo de IA nem chega a ser processado.
+    // Prioridade da regra: tag "Funcionário" > número de teste > ativo
+    // normal do painel — ver resolverBotOffEfetivo() em botConfig.service.js
+    // (fonte única da regra, reaplicada também dentro de processMessage).
+    const isFuncionario = await contatoTemTagFuncionario(userId);
+    const numeroDigits = String(userId || "").replace(/@(s\.whatsapp\.net|lid)$/i, "").replace(/\D/g, "");
+    const isNumeroTeste = TEST_NUMBERS.includes(numeroDigits);
+
     const text = getTextMessage(msg).trim();
 
+    // BUG CORRIGIDO (reportado pelo usuário, 2026-07-23): esse `continue`
+    // saía do loop e pulava a mensagem POR COMPLETO — antes até de baixar
+    // mídia, salvar histórico ou emitir pro painel. Com o bot desligado
+    // (Configurações > Bot ativo = Desativado), mensagens novas simplesmente
+    // sumiam sem notificação nenhuma, e mensagens de clientes com ticket já
+    // fechado nunca reabriam o atendimento (reopenTicketIfClosed vive dentro
+    // de processMessage/message.service.js, nunca alcançado). Mesma causa
+    // raiz do bug já corrigido em message.service.js (ver BUG CORRIGIDO lá) —
+    // aquele conserto sozinho não bastava porque este segundo gate, aqui em
+    // cima, ainda impedia a mensagem de sequer chegar em processMessage.
+    // Agora `botOff` só desliga as respostas automáticas mais abaixo (aviso
+    // de mídia não suportada, "digitando...") — a mensagem sempre segue o
+    // fluxo normal até o `conn.messageHandler(...)` (processMessage), que já
+    // sabe lidar com bot desligado (reabre ticket, emite pro painel, salva
+    // histórico, sem resposta automática).
     const botConfig = await getBotConfigCached();
-    if (botConfig.ativo === false || botConfig.ativo === "false") {
-      logger.warn("Bot desativado. Mensagem ignorada.");
-      continue;
+    const botOff = resolverBotOffEfetivo({
+      ativoFalse: botConfig.ativo === false || botConfig.ativo === "false",
+      isNumeroTeste,
+      isFuncionario,
+    });
+    if (isFuncionario) {
+      logger.info(`[Funcionário] ${userId} tem a tag "Funcionário" — bot não responde automaticamente (só atendimento manual pelo painel).`);
+    } else if (botOff) {
+      logger.warn(`Bot desativado — mensagem de ${userId} será registrada normalmente, sem resposta automática.`);
+    } else if (isNumeroTeste && botConfig.ativo === false) {
+      logger.info(`[Modo de teste] ${userId} é número de teste autorizado — bot segue ativo mesmo com ativo=false no painel.`);
     }
 
     // ── Download + persistência da mídia (se houver) ─────────────────────
@@ -467,14 +635,17 @@ async function onMessagesUpsert({ messages, type }) {
     // de processar; sem legenda, usa só a descrição (comportamento já
     // existente, preservado).
     const imageMessageRecebida = conteudoRecebido?.imageMessage;
-    if (imageMessageRecebida && suportaVisao()) {
+    // isFuncionario primeiro no &&: contato bloqueado nunca deve gerar uma
+    // chamada de IA de visão (custo/latência à toa para quem não vai
+    // receber resposta nenhuma) — ver checagem no topo do handler.
+    if (!isFuncionario && imageMessageRecebida && suportaVisao()) {
       const descricao = await analisarFotoRecebida(msg, mediaBuffer);
       if (descricao) {
         const legenda = imageMessageRecebida.caption?.trim();
         const textoParaPipeline = legenda
           ? `${legenda}\n\n[Imagem enviada pelo cliente: ${descricao}]`
           : descricao;
-        await processarTextoDerivadoDeMidia("foto", { userId, contactName, sendTo, messageId, texto: textoParaPipeline, mediaInfo });
+        await processarTextoDerivadoDeMidia("foto", { userId, contactName, sendTo, messageId, texto: textoParaPipeline, mediaInfo, isNumeroTeste, isFuncionario });
         continue;
       }
       // descricao null (não é peça, provedor falhou, mídia expirada etc.) →
@@ -490,10 +661,10 @@ async function onMessagesUpsert({ messages, type }) {
       // menu de anexo — ver getMediaType) + Groq configurada (independente
       // do AI_PROVIDER de chat — ver suportaAudio() em ai.service.js):
       // transcreve e processa o texto pelo pipeline normal, igual à foto.
-      if (tipoMidia === "áudio" && suportaAudio()) {
+      if (!isFuncionario && tipoMidia === "áudio" && suportaAudio()) {
         const transcricao = await analisarAudioRecebido(msg, mediaBuffer);
         if (transcricao) {
-          await processarTextoDerivadoDeMidia("áudio", { userId, contactName, sendTo, messageId, texto: transcricao, mediaInfo });
+          await processarTextoDerivadoDeMidia("áudio", { userId, contactName, sendTo, messageId, texto: transcricao, mediaInfo, isNumeroTeste, isFuncionario });
           continue;
         }
         // transcricao null (sem chave, erro, áudio sem fala reconhecível etc.)
@@ -520,19 +691,60 @@ async function onMessagesUpsert({ messages, type }) {
           `Por favor, descreva sua dúvida em *texto* e será um prazer ajudar! 😊\n\n` +
           `Digite *0* para ver o menu.`;
 
-        try {
-          await enviarComRetry(sendTo, avisoMidia);
-        } catch (err) {
-          logger.error(`Erro ao enviar aviso de mídia: ${err.message}`);
+        // BUG CORRIGIDO (2026-07-23): esse aviso automático nunca checava
+        // humanMode nem bot desligado — respondia por cima até de um
+        // atendente que já tinha assumido o ticket (reproduzido em produção,
+        // ticket #2026-0089: cliente mandou imagem DEPOIS do atendente
+        // assumir, e saiu "não consigo processar arquivos" mesmo assim), e
+        // mandava a mesma mensagem automática mesmo com o bot desligado no
+        // painel. Mesma regra do resto do pipeline agora (ver
+        // message.service.js): só envia resposta automática quando o bot
+        // está ligado E ninguém assumiu — a mensagem em si sempre é salva/
+        // emitida pro painel, para não sumir do histórico.
+        const semRespostaAutomatica = botOff || humanMode.estaAtivo(userId);
+
+        // PEDIDO DO USUÁRIO (2026-07-27): sticker é quase sempre uma reação
+        // (like, risada, "positivo") — mesma categoria de emoji/reação de
+        // despedida já tratada em pareceEncerramentoPosAvaliacao
+        // (ticket.service.js). Responder "não consigo processar arquivos,
+        // descreva em texto" pra uma reação é estranho e alimenta parte dos
+        // problemas de menu/reabertura vistos em produção. Sticker nunca
+        // recebe o aviso automático (mesmo com o bot ligado) — mas ainda é
+        // salvo no histórico normalmente, pra não sumir do painel.
+        //
+        // PEDIDO DO USUÁRIO (2ª parte, mesma conversa): sticker também NÃO
+        // reabre um ticket fechado — diferente dos outros tipos de mídia
+        // (foto/áudio/vídeo/documento), que continuam reabrindo normalmente
+        // logo abaixo (BUG CORRIGIDO 2026-07-23: aviso de mídia não chamava
+        // reopenTicketIfClosed, cliente com ticket fechado mandando só uma
+        // foto ficava "preso" sem reaparecer em Pendentes — isso continua
+        // valendo pra tudo, EXCETO sticker).
+        const ehSticker = tipoMidia === "sticker";
+
+        if (!ehSticker) {
+          try { await reopenTicketIfClosed(userId); } catch (e) { logger.warn(`Erro ao reabrir ticket (mídia): ${e.message}`); }
         }
+
+        if (!semRespostaAutomatica && !ehSticker) {
+          try {
+            await enviarComRetry(sendTo, avisoMidia);
+          } catch (err) {
+            logger.error(`Erro ao enviar aviso de mídia: ${err.message}`);
+          }
+        }
+
+        const respostaFinal = (semRespostaAutomatica || ehSticker) ? null : avisoMidia;
+        const setorFinal = semRespostaAutomatica
+          ? (isFuncionario ? "funcionario_bloqueado" : (botOff ? "bot_desligado" : "humano"))
+          : (ehSticker ? "sticker_sem_resposta" : "midia_nao_suportada");
 
         try {
           await saveHistory({
             userId,
             contactName,
             message:  `[${tipoMidia} recebido]`,
-            response: avisoMidia,
-            sector:   "midia_nao_suportada",
+            response: respostaFinal,
+            sector:   setorFinal,
             messageId,
             mediaPath:     mediaInfo?.mediaPath || null,
             mediaMimetype: mediaInfo?.mediaMimetype || null,
@@ -543,8 +755,8 @@ async function onMessagesUpsert({ messages, type }) {
             contactName,
             message:  `[${tipoMidia} recebido]`,
             messageId,
-            response: avisoMidia,
-            sector:   "midia_nao_suportada",
+            response: respostaFinal,
+            sector:   setorFinal,
             createdAt: new Date(),
             mediaPath:     mediaInfo?.mediaPath || null,
             mediaMimetype: mediaInfo?.mediaMimetype || null,
@@ -563,14 +775,65 @@ async function onMessagesUpsert({ messages, type }) {
       continue;
     }
 
+    logger.info(`[MESSAGE_IN] ${userId}: ${text}`);
+
+    // UX: mostra "digitando..." antes de processar IA/fluxo quando possível.
+    sendTypingPresence(sendTo).catch(err =>
+      logger.debug?.(`[Typing] não enviado para ${sendTo}: ${err.message}`)
+    );
+
+    // BUG CORRIGIDO (item #4 da análise de conversas — fragmentação):
+    // mensagem de texto puro (sem mídia — mediaInfo é preenchido só quando
+    // há foto/vídeo/áudio/documento anexado, ver acima) passa por
+    // scheduleFragment() antes de chegar no bot, pra juntar fragmentos
+    // rápidos do mesmo cliente numa só chamada. Mensagem com mídia
+    // (imagem+legenda sem análise de visão disponível, por exemplo) segue
+    // direto, sem essa espera — ver messageFragment.service.js.
+    if (!mediaInfo) {
+      scheduleFragment(userId, { text, messageId }, async ({ text: textoFinal, messageId: messageIdFinal }) => {
+        try {
+          const response = await withTimeout(
+            conn.messageHandler({
+              userId,
+              contactName,
+              message: textoFinal,
+              messageId: messageIdFinal,
+              mediaPath: null,
+              mediaMimetype: null,
+              mediaFilename: null,
+              isNumeroTeste,
+              isFuncionario,
+            }),
+            MESSAGE_PROCESSING_TIMEOUT_MS,
+            "processamento do bot"
+          );
+
+          // Retorno vazio é normal quando atendimento humano está ativo.
+          if (!response) {
+            logger.debug?.(`[MESSAGE_NO_BOT_RESPONSE] ${userId}`);
+            return;
+          }
+
+          await enviarComRetry(sendTo, response);
+        } catch (err) {
+          logger.error(`[BOT_PROCESSING_ERROR] ${userId}: ${err.stack || err.message}`);
+          try {
+            await enviarComRetry(sendTo, BOT_PROCESSING_FALLBACK);
+          } catch (sendErr) {
+            logger.error(`[BOT_FALLBACK_SEND_ERROR] ${userId}: ${sendErr.message}`);
+          }
+          emitEvent("bot_error", {
+            userId,
+            message: "Erro ao processar mensagem do cliente.",
+            detail: err.message,
+            createdAt: new Date()
+          });
+        }
+      });
+      continue;
+    }
+
     try {
-      logger.info(`[MESSAGE_IN] ${userId}: ${text}`);
-
-      // UX: mostra "digitando..." antes de processar IA/fluxo quando possível.
-      sendTypingPresence(sendTo).catch(err =>
-        logger.debug?.(`[Typing] não enviado para ${sendTo}: ${err.message}`)
-      );
-
       const response = await withTimeout(
         conn.messageHandler({
           userId,
@@ -580,6 +843,8 @@ async function onMessagesUpsert({ messages, type }) {
           mediaPath:     mediaInfo?.mediaPath || null,
           mediaMimetype: mediaInfo?.mediaMimetype || null,
           mediaFilename: mediaInfo?.mediaFilename || null,
+          isNumeroTeste,
+          isFuncionario,
         }),
         MESSAGE_PROCESSING_TIMEOUT_MS,
         "processamento do bot"
@@ -689,7 +954,22 @@ async function getProfilePhotoUrl(userId) {
   return null;
 }
 
-async function sendMessage(userId, text) {
+// Reconstrói o objeto mínimo que o Baileys precisa para exibir a prévia de
+// "respondendo a" (quoted) no WhatsApp do cliente — não precisamos do objeto
+// original completo da mensagem (Baileys aceita esse formato reduzido, desde
+// que key.id/key.remoteJid/key.fromMe estejam corretos e message tenha algum
+// texto). Ver BUG CORRIGIDO / escopo em message.controller.js
+// (_buscarContextoCitacao): por ora só citamos mensagens do CLIENTE
+// (fromMe sempre false).
+function _buildQuotedMessage(resolvedJid, quotedMessageId, quotedText) {
+  if (!quotedMessageId) return undefined;
+  return {
+    key: { remoteJid: resolvedJid, id: quotedMessageId, fromMe: false },
+    message: { conversation: quotedText || "" },
+  };
+}
+
+async function sendMessage(userId, text, { quotedMessageId, quotedText } = {}) {
   if (!conn.sock) throw new Error("WhatsApp não inicializado.");
   if (!conn.isWhatsAppConnected) throw new Error("WhatsApp não autenticado. Escaneie o QR Code no painel.");
 
@@ -712,8 +992,18 @@ async function sendMessage(userId, text) {
       }
     }
 
-    const sent = await conn.sock.sendMessage(resolvedJid, { text });
-    logger.info(`[sendMessage] ✓ Enviado para ${resolvedJid}`);
+    const quoted = _buildQuotedMessage(resolvedJid, quotedMessageId, quotedText);
+    const sent = await conn.sock.sendMessage(resolvedJid, { text }, quoted ? { quoted } : undefined);
+    logger.info(`[sendMessage] ✓ Enviado para ${resolvedJid}${quoted ? " (em resposta a " + quotedMessageId + ")" : ""}`);
+
+    // Registra o id no dedup ASSIM QUE enviamos — quando o Baileys ecoar essa
+    // mesma mensagem de volta via messages.upsert (fromMe:true, comum com
+    // múltiplos dispositivos), onMessagesUpsert já vai reconhecer que FOI
+    // A GENTE quem mandou (painel/bot) e não duplicar no histórico. Ver
+    // isOutgoingEcho() em message-utils.js e o comentário em
+    // onMessagesUpsert — sem isso, o mesmo id chegaria "não reconhecido" e
+    // seria tratado (errado) como mensagem enviada pelo celular.
+    if (sent?.key?.id) { try { await marcarMensagemProcessada(sent.key.id); } catch (_) {} }
 
     return { id: sent.key.id, remoteJid: sent.key.remoteJid, fromMe: sent.key.fromMe };
 
@@ -727,9 +1017,23 @@ async function sendMessage(userId, text) {
   }
 }
 
-async function sendMedia(userId, filePath, caption = "", mediaType = "image") {
+// mediaType: "image" | "video" | "document" | "pdf" (legado, ver nota abaixo) | "audio"
+// options: { quotedMessageId, quotedText, mimetype, fileName }
+//   - mimetype/fileName: só relevantes pra "document"/"video" com nome/tipo
+//     próprio (vem do upload do painel — ver mediaStorage/message.controller);
+//     sem eles, cai no fallback genérico (mesmo comportamento de antes).
+// BUG CORRIGIDO (2026-07-23, feature nova "enviar arquivo igual WhatsApp"):
+// só existiam os tipos "pdf"/"audio"/"image" (uso exclusivo de campanhas via
+// broadcast.service.js, que só oferece essas 3 opções pro usuário) — não
+// havia "video" nem um "document" genérico (qualquer extensão, como o
+// WhatsApp de verdade aceita ao anexar um documento). "pdf" continua
+// funcionando exatamente igual (broadcast.service.js não muda), só não é
+// mais o único jeito de mandar documento.
+async function sendMedia(userId, filePath, caption = "", mediaType = "image", options = {}) {
   if (!conn.sock) throw new Error("WhatsApp não inicializado.");
   if (!conn.isWhatsAppConnected) throw new Error("WhatsApp não autenticado. Escaneie o QR Code no painel.");
+
+  const { quotedMessageId, quotedText, mimetype, fileName: fileNameOverride } = options;
 
   try {
     // Mesma lógica de sendMessage: se o número tem @lid conhecido, envia pelo @lid.
@@ -747,7 +1051,7 @@ async function sendMedia(userId, filePath, caption = "", mediaType = "image") {
     let msgContent;
     const fileData = { url: filePath };
     const path = require("path");
-    const fileName = path.basename(filePath);
+    const fileName = fileNameOverride || path.basename(filePath);
 
     if (mediaType === "pdf") {
       msgContent = {
@@ -756,18 +1060,36 @@ async function sendMedia(userId, filePath, caption = "", mediaType = "image") {
         fileName,
         caption: caption || undefined,
       };
+    } else if (mediaType === "document") {
+      msgContent = {
+        document: fileData,
+        mimetype: mimetype || "application/octet-stream",
+        fileName,
+        caption: caption || undefined,
+      };
+    } else if (mediaType === "video") {
+      msgContent = {
+        video: fileData,
+        mimetype: mimetype || "video/mp4",
+        caption: caption || undefined,
+      };
     } else if (mediaType === "audio") {
       msgContent = {
         audio: fileData,
-        mimetype: "audio/mpeg",
+        mimetype: mimetype || "audio/mpeg",
         ptt: false,
       };
     } else {
       msgContent = { image: fileData, caption: caption || undefined };
     }
 
-    const sent = await conn.sock.sendMessage(resolvedJid, msgContent);
+    const quoted = _buildQuotedMessage(resolvedJid, quotedMessageId, quotedText);
+    const sent = await conn.sock.sendMessage(resolvedJid, msgContent, quoted ? { quoted } : undefined);
     logger.info(`[WhatsApp] ✓ Mídia (${mediaType}) enviada para ${resolvedJid}`);
+
+    // Ver mesmo comentário em sendMessage() — registra o id no dedup pra não
+    // duplicar quando o eco fromMe chegar de volta.
+    if (sent?.key?.id) { try { await marcarMensagemProcessada(sent.key.id); } catch (_) {} }
 
     return { id: sent.key.id, remoteJid: sent.key.remoteJid, fromMe: sent.key.fromMe };
 

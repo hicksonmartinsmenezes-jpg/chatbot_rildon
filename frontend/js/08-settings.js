@@ -222,6 +222,70 @@ function resetSettings() {
   });
 }
 
+// ─── Toggle rápido do bot (visível para QUALQUER atendente, não só admin) ────
+// Pedido do usuário (2026-07-24): todo atendente deve poder ligar/desligar o
+// bot direto da topbar, sem precisar de acesso à Central de Configurações
+// (essa continua admin-only). Usa /api/bot-status, uma rota enxuta separada
+// de /api/settings — ver src/routes/botStatus.routes.js.
+window.botAtivoAtual = true;
+
+function renderBotToggleStatus(ativo) {
+  window.botAtivoAtual = ativo;
+  const btn = document.getElementById("bot-toggle-btn");
+  if (!btn) return;
+  btn.classList.toggle("bot-off", !ativo);
+  btn.title = ativo ? "Bot ativo — clique para desligar" : "Bot desativado — clique para ligar";
+}
+
+async function loadBotToggleStatus() {
+  try {
+    const res = await apiFetch(`${BASE}/api/bot-status`);
+    if (!res?.ok) return;
+    const { ativo } = await res.json();
+    renderBotToggleStatus(ativo !== false);
+  } catch (_) {}
+}
+
+async function toggleBotStatus() {
+  const novoValor = !window.botAtivoAtual;
+
+  const doToggle = async () => {
+    try {
+      const res = await apiFetch(`${BASE}/api/bot-status`, {
+        method: "PUT",
+        headers: apiHeaders(),
+        body: JSON.stringify({ ativo: novoValor })
+      });
+      if (!res) return;
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const { ativo } = await res.json();
+      renderBotToggleStatus(ativo !== false);
+      showToast(ativo ? "🤖 Bot ativado." : "🤖 Bot desativado.");
+    } catch (err) {
+      showToast(`❌ Erro ao alterar status do bot: ${err.message}`);
+    }
+  };
+
+  const message = novoValor
+    ? "O bot vai voltar a responder automaticamente TODOS os clientes. Continuar?"
+    : "O bot vai parar de responder automaticamente TODOS os clientes (afeta todo mundo, não só esta conversa). Continuar?";
+
+  if (typeof showConfirmModal === "function") {
+    showConfirmModal({
+      title:       novoValor ? "Ativar o bot" : "Desativar o bot",
+      message,
+      confirmText: novoValor ? "Ativar" : "Desativar",
+      cancelText:  "Cancelar",
+      danger:      !novoValor,
+      onConfirm:   doToggle
+    });
+    return;
+  }
+
+  if (!confirm(message)) return;
+  return doToggle();
+}
+
 // ─── Respostas Rápidas ────────────────────────────────────────────────────────
 let quickRepliesCache = [];
 

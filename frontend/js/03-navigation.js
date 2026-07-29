@@ -87,7 +87,9 @@ function refreshAll() {
     await Promise.allSettled([
       typeof loadTickets === 'function' ? loadTickets() : null,
       typeof loadHistory === 'function' ? loadHistory(false) : null,
-      currentTab === "conversations" && typeof loadConversations === 'function' ? loadConversations() : null
+      currentTab === "conversations" && typeof loadConversations === 'function' ? loadConversations() : null,
+      // Liberado para todos (não gated por perfil, ao contrário de loadSettings)
+      typeof loadBotToggleStatus === 'function' ? loadBotToggleStatus() : null
     ].filter(Boolean));
   });
 }

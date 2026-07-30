@@ -280,6 +280,172 @@ function toggleCatalogoAplicacao(btnEl) {
     : '<i class="fa-solid fa-chevron-down"></i> Ver aplicação completa';
 }
 
+// "Ver referências" (pedido do usuário, 2026-07-30, inspirado na tela
+// "Equivalentes" do X2): mostra os códigos de outros fabricantes cadastrados
+// como equivalentes dessa mesma peça (ficha.equivalentesLista, já indexado
+// em catalogo-x2.service.js). Fica escondido por padrão — só expande ao
+// clicar, mesmo padrão de toggleCatalogoAplicacao acima.
+function toggleCatalogoReferencias(btnEl) {
+  const card = btnEl.closest(".catalogo-card");
+  if (!card) return;
+  const painel = card.querySelector(".catalogo-referencias");
+  if (!painel) return;
+
+  const vaiExpandir = painel.classList.contains("hidden");
+  painel.classList.toggle("hidden");
+  // Pedido do usuário (2026-07-30): o painel de referências ficava espremido
+  // na largura de UMA coluna do grid (.catalogo-grid é auto-fill, então com
+  // poucos resultados sobra muito espaço vazio à direita). Enquanto aberto,
+  // o card estica pra ocupar o grid inteiro (grid-column: 1 / -1), dando
+  // espaço de verdade pros cards de equivalentes com foto.
+  card.classList.toggle("catalogo-card-expandido", vaiExpandir);
+  btnEl.innerHTML = vaiExpandir
+    ? '<i class="fa-solid fa-chevron-up"></i> Ocultar referências'
+    : `<i class="fa-solid fa-link"></i> Ver referências (${btnEl.dataset.total})`;
+}
+
+// Pedido do usuário (2026-07-30): clicar no nome de um produto equivalente
+// (dentro do card com foto) deve abrir esse produto direto, sem precisar
+// pesquisar de novo manualmente. Reaproveita a aba "Busca por Código" já
+// existente (buscarCatalogoPorCodigo), só preenchendo o campo e disparando
+// a busca pelo código interno do produto encontrado. Também abre
+// automaticamente o "Ver referências" desse produto encontrado (pedido do
+// usuário logo em seguida: "não mostrou as referências também dessa peça
+// que selecionei") — sem isso o usuário chegava no produto com o painel
+// fechado, precisando clicar de novo pra continuar navegando pela cadeia
+// de equivalentes.
+async function catalogoAbrirProdutoEquivalente(codigo) {
+  catalogoMostrarAbaCodigo();
+  const input = document.getElementById("catalogo-codigo-busca");
+  if (input) input.value = codigo;
+  await buscarCatalogoPorCodigo();
+
+  const wrap = document.getElementById("catalogo-resultados");
+  wrap?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  const refBtn = wrap?.querySelector(".catalogo-card .catalogo-ref-btn");
+  if (refBtn) toggleCatalogoReferencias(refBtn);
+}
+
+// Cartão de cabeçalho igual à tela "Equivalentes" do X2 (foto + "Código
+// Produto X - NOME" + Código Barras + Código Fornecedor) — pedido do
+// usuário (2026-07-30): "quando eu clicar, apareça uma lista exatamente
+// assim embaixo". Usa os mesmos dados já indexados (barras, referencia).
+function _catalogoRefBannerHTML(produto) {
+  return `
+    <div class="catalogo-ref-banner">
+      <div class="catalogo-ref-banner-photo">
+        <i class="fa-solid fa-image catalogo-ref-banner-photo-fallback"></i>
+        <img
+          src="/api/catalogo/produtos/${encodeURIComponent(produto.codigo)}/fotos/0"
+          alt="${safe(produto.nome)}"
+          loading="lazy"
+          onerror="this.remove();"
+        >
+      </div>
+      <div class="catalogo-ref-banner-info">
+        <strong class="catalogo-ref-banner-title">
+          Código Produto ${safe(produto.codigo)} - ${safe(produto.nome)}
+          <i class="fa-regular fa-file-lines"></i>
+        </strong>
+        <div class="catalogo-ref-banner-meta">
+          ${produto.barras ? `<span><i class="fa-solid fa-barcode"></i> Código Barras - ${safe(produto.barras)}</span>` : ""}
+          ${produto.referencia ? `<span><i class="fa-solid fa-user"></i> Código Fornecedor - ${safe(produto.referencia)}</span>` : ""}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// Card completo (foto + Código Produto + Código Barras + Código Fornecedor)
+// pra cada código equivalente que a própria loja também revende — pedido do
+// usuário (2026-07-30): "cada equivalente devia ter um card completo", não
+// só o código cru. Reaproveita o mesmo visual do banner do produto
+// principal (_catalogoRefBannerHTML), só adiciona o botão de copiar código
+// equivalente (o código usado na busca pode ser diferente do código interno
+// do produto encontrado — ex: FK1324 aponta pra um produto cujo código
+// interno de catálogo é outro).
+function _catalogoRefEquivCardHTML(det) {
+  const p = det.produto;
+  return `
+    <div class="catalogo-ref-banner catalogo-ref-equiv-card">
+      <div class="catalogo-ref-banner-photo">
+        <i class="fa-solid fa-image catalogo-ref-banner-photo-fallback"></i>
+        <img
+          src="/api/catalogo/produtos/${encodeURIComponent(p.codigo)}/fotos/0"
+          alt="${safe(p.nome)}"
+          loading="lazy"
+          onerror="this.remove();"
+        >
+      </div>
+      <div class="catalogo-ref-banner-info">
+        <strong
+          class="catalogo-ref-banner-title catalogo-ref-banner-title-link"
+          title="Abrir esse produto"
+          onclick="event.stopPropagation(); catalogoAbrirProdutoEquivalente('${escapeAttr(p.codigo)}')"
+        >Código Produto ${safe(p.codigo)} - ${safe(p.nome)}</strong>
+        <div class="catalogo-ref-banner-meta">
+          ${p.barras ? `<span><i class="fa-solid fa-barcode"></i> Código Barras - ${safe(p.barras)}</span>` : ""}
+          ${p.referencia ? `<span><i class="fa-solid fa-user"></i> Código Fornecedor - ${safe(p.referencia)}</span>` : ""}
+        </div>
+      </div>
+      <button
+        type="button"
+        class="catalogo-ref-chip catalogo-ref-equiv-copy"
+        title="Copiar código"
+        onclick="event.stopPropagation(); copiarCodigoCatalogo('${escapeAttr(det.codigo)}', this)"
+      >
+        <i class="fa-regular fa-copy"></i> ${safe(det.codigo)}
+      </button>
+    </div>
+  `;
+}
+
+// Chip simples (só o código) — usado quando o código equivalente é de um
+// fabricante que a loja não revende, então não existe produto cadastrado
+// pra montar o card completo acima.
+function _catalogoRefChipHTML(det) {
+  return `
+    <button
+      type="button"
+      class="catalogo-ref-chip"
+      title="Copiar código"
+      onclick="event.stopPropagation(); copiarCodigoCatalogo('${escapeAttr(det.codigo)}', this)"
+    >
+      <i class="fa-regular fa-copy"></i> ${safe(det.codigo)}
+    </button>
+  `;
+}
+
+function _catalogoReferenciasHTML(produto) {
+  const equivalentes = Array.isArray(produto.equivalentes) ? produto.equivalentes : [];
+  if (!equivalentes.length) return "";
+
+  // equivalentesDetalhados (novo, 2026-07-30): cada código equivalente já
+  // vem com o produto de verdade resolvido, se a loja também vender essa
+  // peça (ver _resolverEquivalente em catalogo-x2.service.js). Fallback pro
+  // formato antigo (só código cru) se o backend ainda não tiver sido
+  // reiniciado / bundle antigo em cache.
+  const detalhes = Array.isArray(produto.equivalentesDetalhados) && produto.equivalentesDetalhados.length
+    ? produto.equivalentesDetalhados
+    : equivalentes.map(codigo => ({ codigo, produto: null }));
+
+  const cards = detalhes.filter(d => d.produto).map(_catalogoRefEquivCardHTML).join("");
+  const chips = detalhes.filter(d => !d.produto).map(_catalogoRefChipHTML).join("");
+
+  return `
+    <button type="button" class="catalogo-expand-btn catalogo-ref-btn" data-total="${equivalentes.length}" onclick="toggleCatalogoReferencias(this)">
+      <i class="fa-solid fa-link"></i> Ver referências (${equivalentes.length})
+    </button>
+    <div class="catalogo-referencias hidden">
+      ${_catalogoRefBannerHTML(produto)}
+      <span class="catalogo-referencias-label">Códigos equivalentes (outros fabricantes):</span>
+      ${cards ? `<div class="catalogo-ref-equiv-cards">${cards}</div>` : ""}
+      ${chips ? `<div class="catalogo-referencias-list">${chips}</div>` : ""}
+    </div>
+  `;
+}
+
 // mostrarBadgeNeutro: só faz sentido quando a busca envolveu marca/modelo
 // (aí sim vale avisar "confirme com o cliente" quando nada bateu). No modo
 // navegação (só Seção/Linha, sem veículo informado) não tem comparação
@@ -343,6 +509,7 @@ function _catalogoCardHTML(produto, mostrarBadgeNeutro) {
         ` : ""}
 
         <div class="catalogo-card-badges">${badges.join("")}</div>
+        ${_catalogoReferenciasHTML(produto)}
       </div>
     </article>
   `;

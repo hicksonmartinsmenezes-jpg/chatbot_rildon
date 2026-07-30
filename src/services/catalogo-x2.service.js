@@ -115,9 +115,28 @@ function _indexarProduto(p) {
   if (!ficha) return;
 
   const fabricante = _normalizarFabricante(_extrairFabricante(p.nome));
+  // Pedido do usuário (2026-07-30): painel precisa mostrar "Ver referências"
+  // — os códigos equivalentes/OEM (de outros fabricantes) que apontam pra
+  // essa mesma peça, igual à tela "Equivalentes" do X2. O dado já vem
+  // pronto do parser (ficha.equivalentesLista); só precisava ser carregado
+  // pro item indexado — antes só era usado internamente pra montar o
+  // equivalenteIndex (busca REVERSA: código OEM -> produto), descartado
+  // depois. Guarda também o texto das referências cruzadas por família
+  // (ex: "Alternador:", "Motor de Partida:"), quando existir.
+  const equivalentes = [...new Set(ficha.equivalentesLista || [])];
+  const referenciasCruzadas = ficha.referenciasCruzadas && Object.keys(ficha.referenciasCruzadas).length
+    ? ficha.referenciasCruzadas
+    : null;
   const base = {
     codigo: p.codigo, nome: p.nome, secao: p.secao, linha: p.linha,
     referencia: ficha.referencia || null, fabricante,
+    equivalentes, referenciasCruzadas,
+    // Código de barras (pedido do usuário, 2026-07-30): usado no cabeçalho
+    // do painel "Ver referências", que reproduz o mesmo cartão visual da
+    // tela "Equivalentes" do X2 (Código Produto / Código Barras / Código
+    // Fornecedor). Já vinha no JSON bruto (p.barras), só não estava
+    // indexado pra nenhum uso anterior.
+    barras: p.barras || null,
   };
   totalProdutosIndexados++;
 
@@ -330,6 +349,40 @@ function listarFabricantes() {
 // Aceita 3 tipos de entrada: código interno da loja (p.codigo), referência
 // própria do fabricante (ficha.referencia) ou um código equivalente/OEM
 // cadastrado — os 3 já têm índice pronto.
+// Resolve um código equivalente/OEM para o produto de VERDADE cadastrado no
+// catálogo (se X2 também vender essa peça, seja com esse código como
+// código interno ou como referência/código de fornecedor). Pedido do
+// usuário (2026-07-30): no painel "Ver referências", cada código
+// equivalente deveria mostrar um card completo (foto + nome + barras +
+// fornecedor) igual ao cartão do produto principal — não só o código cru.
+// A maioria dos códigos equivalentes é de fabricante que a loja NÃO
+// revende (por isso fica null e o frontend cai pro chip simples), mas
+// quando a loja também vende aquela peça (ex: outra linha do catálogo com
+// o mesmo código como referência), mostramos o card cheio.
+function _resolverEquivalente(codigoBruto) {
+  const norm = _normalizarCodigo(codigoBruto);
+  if (!norm) return null;
+  if (produtosPorCodigoIndex.has(norm)) return produtosPorCodigoIndex.get(norm);
+  if (referenciaIndex.has(norm)) return referenciaIndex.get(norm);
+  return null;
+}
+
+function _detalharEquivalentes(equivalentes) {
+  if (!equivalentes || !equivalentes.length) return [];
+  return equivalentes.map(codigoBruto => {
+    const resolvido = _resolverEquivalente(codigoBruto);
+    return {
+      codigo: codigoBruto,
+      produto: resolvido ? {
+        codigo: resolvido.codigo,
+        nome: resolvido.nome,
+        barras: resolvido.barras || null,
+        referencia: resolvido.referencia || null,
+      } : null,
+    };
+  });
+}
+
 function buscarPorCodigo(codigoBruto, { limite = 30 } = {}) {
   const codigo = _normalizarCodigo(codigoBruto);
   // Sem mínimo de tamanho artificial: a busca é por igualdade exata num Map
@@ -358,6 +411,10 @@ function buscarPorCodigo(codigoBruto, { limite = 30 } = {}) {
       referencia: item.referencia,
       fabricante: item.fabricante,
       aplicacao: item.aplicacao,
+      equivalentes: item.equivalentes || [],
+      equivalentesDetalhados: _detalharEquivalentes(item.equivalentes),
+      referenciasCruzadas: item.referenciasCruzadas || null,
+      barras: item.barras || null,
       marcaCompativel: false,
       anoCompativel: false,
     });
@@ -518,6 +575,10 @@ function buscarProdutosPainel({ marca = "", modelo = "", ano = null, categoria =
       referencia: p.referencia,
       fabricante: p.fabricante,
       aplicacao: p.aplicacao,
+      equivalentes: p.equivalentes || [],
+      equivalentesDetalhados: _detalharEquivalentes(p.equivalentes),
+      referenciasCruzadas: p.referenciasCruzadas || null,
+      barras: p.barras || null,
       marcaCompativel: false,
       anoCompativel: false,
     }));
@@ -578,6 +639,10 @@ function buscarProdutosPainel({ marca = "", modelo = "", ano = null, categoria =
     referencia: p.referencia,
     fabricante: p.fabricante,
     aplicacao: p.aplicacao,
+    equivalentes: p.equivalentes || [],
+    equivalentesDetalhados: _detalharEquivalentes(p.equivalentes),
+    referenciasCruzadas: p.referenciasCruzadas || null,
+    barras: p.barras || null,
     marcaCompativel,
     anoCompativel,
   }));

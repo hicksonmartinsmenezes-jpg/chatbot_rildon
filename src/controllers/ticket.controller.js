@@ -3,7 +3,7 @@ const humanMode = require("../services/humanMode.service");
 const { emitEvent } = require("../services/socket.service");
 const ticketRepository = require("../repositories/ticket.repository");
 const { getProfilePhotoCandidates, canonicalizeUserId } = require("../whatsapp/lid-map");
-const { buscarNomeContatoReal } = require("../whatsapp/contacts");
+const { buscarNomeContatoReal, contatoTemTagFuncionario } = require("../whatsapp/contacts");
 const { sendMessage } = require("../config/whatsapp");
 const { saveHistory } = require("../services/history.service");
 const { updateSession } = require("../services/session.service");
@@ -281,7 +281,7 @@ async function patchTicket(req, res) {
       status === "resolvido" &&
       !jaEstavaResolvido &&
       !skipSurvey &&
-      !foiReabertoManualmenteRecente(atual.id)
+      !(await foiReabertoManualmenteRecente(atual.id))
     ) {
       await enviarPesquisaSatisfacao(ticket);
     }
@@ -311,6 +311,12 @@ async function patchTicket(req, res) {
 // atendente já assumiu o ticket de verdade mesmo se a saudação falhar.
 async function enviarSaudacaoAtendente(ticket, user) {
   try {
+    // PEDIDO DO USUÁRIO (2026-07-29): contato com a tag "Funcionário" é
+    // número de teste interno (ver contatoTemTagFuncionario/bloqueio do bot
+    // em config/whatsapp.js) — não deve receber a saudação automática do
+    // atendente, mesmo mensagem manual escapa do gate de botOff normal.
+    if (await contatoTemTagFuncionario(ticket.userId)) return;
+
     const settings = await getSettings();
     const template = settings?.atendimento?.mensagemSaudacaoAtendente;
     if (!template || !template.trim()) return;
@@ -363,6 +369,11 @@ async function enviarSaudacaoAtendente(ticket, user) {
 // de enviarSaudacaoAtendente.
 async function enviarPesquisaSatisfacao(ticket) {
   try {
+    // PEDIDO DO USUÁRIO (2026-07-29): mesmo motivo de enviarSaudacaoAtendente
+    // acima — contato tag "Funcionário" é número de teste interno, não deve
+    // receber pesquisa de satisfação automática ao fechar o ticket.
+    if (await contatoTemTagFuncionario(ticket.userId)) return;
+
     const settings = await getSettings();
     const template = settings?.atendimento?.mensagemPesquisaSatisfacao;
     if (!template || !template.trim()) return;
@@ -481,7 +492,7 @@ async function assumirTicket(req, res) {
     // preserva quando a AVALIAÇÃO em si foi recente). foiReabertoManualmenteRecente()
     // rastreia isso à parte, com o relógio começando no clique em Reabrir,
     // não em quando foi avaliado antes.
-    if (!ticket.satisfactionAskedAt && !foiReabertoManualmenteRecente(ticket.id)) {
+    if (!ticket.satisfactionAskedAt && !(await foiReabertoManualmenteRecente(ticket.id))) {
       // Best-effort (ver função acima, nunca lança) — aguardamos pra
       // garantir que a saudação foi de fato tentada antes de responder,
       // evitando uma promise solta que poderia terminar depois do processo

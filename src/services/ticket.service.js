@@ -106,8 +106,17 @@ function _pareceEscapeDeFeedback(message) {
 // janela, cobre o caso real de atendimento encerrado por engano (timeout de
 // inatividade, por exemplo) e o cliente responder poucos minutos depois —
 // aí sim é a mesma conversa, não um atendimento novo.
-const REOPEN_WINDOW_MS =
-  Number(process.env.TICKET_REOPEN_WINDOW_MINUTOS || 60) * 60 * 1000;
+//
+// Pedido do usuário (2026-07-30): esse valor agora é configurável na Central
+// de Configurações (Atendimento humano → "Tempo de reabertura sem
+// pesquisa/saudação"), não só via .env — por isso virou uma função async que
+// lê settings.service (com cache de 30s, já usado pelo resto do arquivo) em
+// vez de uma constante fixa calculada uma única vez no load do módulo.
+async function _getReopenWindowMs() {
+  const settings = await getSettings();
+  const minutos = Number(settings?.atendimento?.tempoReaberturaSemPesquisa);
+  return (Number.isFinite(minutos) && minutos > 0 ? minutos : 60) * 60 * 1000;
+}
 
 // Cooldown de reabertura: evita reabrir o mesmo ticket múltiplas vezes em rajada
 const _reopenCooldown = new Map();
@@ -219,12 +228,13 @@ async function listTickets({ status, search, dateStart, dateEnd } = {}) {
 // há muito tempo (ou nunca avaliado) reseta normalmente — é
 // provavelmente um atendimento novo e não relacionado, então merece
 // pesquisa própria quando fechar de novo.
-function _deveManterSatisfacaoAoReabrir(ticketAtual) {
+async function _deveManterSatisfacaoAoReabrir(ticketAtual) {
   if (!ticketAtual) return false;
   if (ticketAtual.status !== "resolvido") return false;
   if (!ticketAtual.satisfactionRatedAt) return false;
+  const janelaMs = await _getReopenWindowMs();
   const avaliadoRecentemente =
-    (Date.now() - new Date(ticketAtual.satisfactionRatedAt).getTime()) <= REOPEN_WINDOW_MS;
+    (Date.now() - new Date(ticketAtual.satisfactionRatedAt).getTime()) <= janelaMs;
   return avaliadoRecentemente;
 }
 
@@ -251,11 +261,12 @@ function marcarReaberturaManual(ticketId) {
   _reaberturaManualEm.set(String(ticketId), Date.now());
 }
 
-function foiReabertoManualmenteRecente(ticketId) {
+async function foiReabertoManualmenteRecente(ticketId) {
   if (ticketId == null) return false;
   const t = _reaberturaManualEm.get(String(ticketId));
   if (!t) return false;
-  if (Date.now() - t > REOPEN_WINDOW_MS) {
+  const janelaMs = await _getReopenWindowMs();
+  if (Date.now() - t > janelaMs) {
     _reaberturaManualEm.delete(String(ticketId));
     return false;
   }
@@ -269,7 +280,7 @@ async function updateTicketStatus(id, status, { ticketAtual } = {}) {
     (ticketAtual.status === "resolvido" || ticketAtual.status === "cancelado");
   if (foiReaberturaManual) marcarReaberturaManual(ticketAtual.id);
 
-  const manterSatisfacao = status === "aberto" && _deveManterSatisfacaoAoReabrir(ticketAtual);
+  const manterSatisfacao = status === "aberto" && await _deveManterSatisfacaoAoReabrir(ticketAtual);
   return ticketRepository.updateStatus(id, status, { resetSatisfaction: !manterSatisfacao });
 }
 
@@ -321,8 +332,9 @@ async function reopenTicketIfClosed(userId) {
     if (!tickets.length) { _reopenCooldown.delete(userId); return false; }
 
     const latest = tickets[0]; // já ordenado DESC
+    const janelaMs = await _getReopenWindowMs();
     const fechadoRecentemente =
-      latest.updatedAt && (Date.now() - new Date(latest.updatedAt).getTime()) <= REOPEN_WINDOW_MS;
+      latest.updatedAt && (Date.now() - new Date(latest.updatedAt).getTime()) <= janelaMs;
 
     if ((latest.status === "resolvido" || latest.status === "cancelado") && !fechadoRecentemente) {
       // Fechado há mais tempo que a janela — trata como se não houvesse

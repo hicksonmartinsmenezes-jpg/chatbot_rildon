@@ -108,6 +108,7 @@ function fillSettingsForm(s) {
   setValue("set-human-sectors",     atendimento.setores);
   setValue("set-default-status",    atendimento.statusPadrao || "aberto");
   setValue("set-transfer-message",  atendimento.mensagemTransferencia);
+  setValue("set-reopen-window-minutes", atendimento.tempoReaberturaSemPesquisa || 60);
 
   setValue("set-panel-name",    aparencia.nomePainel);
   setValue("set-primary-color", aparencia.corPrincipal || "#1d6cf5");
@@ -145,7 +146,8 @@ function collectSettingsForm() {
     atendimento: {
       setores:               getValue("set-human-sectors"),
       statusPadrao:          getValue("set-default-status"),
-      mensagemTransferencia: getValue("set-transfer-message")
+      mensagemTransferencia: getValue("set-transfer-message"),
+      tempoReaberturaSemPesquisa: getNumberValue("set-reopen-window-minutes", 60)
     },
     aparencia: {
       nomePainel:  getValue("set-panel-name"),

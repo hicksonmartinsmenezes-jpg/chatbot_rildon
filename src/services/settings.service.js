@@ -50,7 +50,16 @@ const DEFAULT_SETTINGS = {
     mensagemPedirMelhoria:
       "Poxa, sentimos muito! 😕 O que podemos melhorar?",
     mensagemAgradecimentoPesquisa:
-      "Muito obrigado pela sua avaliação! 🙏"
+      "Muito obrigado pela sua avaliação! 🙏",
+    // Pedido do usuário (2026-07-30): tempo (em minutos) que evita reenviar
+    // a pesquisa de satisfação (e a saudação do atendente) quando um ticket
+    // fechado é reaberto — automaticamente (cliente manda mensagem de novo)
+    // ou manualmente (botão "Reabrir" em Fechados). Fora dessa janela, é
+    // tratado como atendimento novo e a pesquisa dispara normalmente de
+    // novo ao fechar. Antes só existia via variável de ambiente
+    // TICKET_REOPEN_WINDOW_MINUTOS (sem UI); o default abaixo preserva o
+    // valor já configurado no .env pra quem já tinha isso ajustado.
+    tempoReaberturaSemPesquisa: Number(process.env.TICKET_REOPEN_WINDOW_MINUTOS) || 60
   },
   aparencia: {
     tema: "dark",

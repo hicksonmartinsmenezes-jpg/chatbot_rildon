@@ -232,10 +232,9 @@ const GAP_DIVISORIA_TEXTO = 16;
 // Respiro entre o código e o nome, dentro do mesmo bloco de texto.
 const GAP_CODIGO_NOME = 3;
 
-// Mesma cor --primary do painel (12-ux-global.css) — usada no texto do
-// código, de volta desde 2026-07-30 (código voltou a ser texto azul junto
-// da descrição, em vez de caixa/badge sobre a foto).
-const AZUL = "#2563eb";
+// Cor do texto do código — pedido do usuário (2026-07-30): "azul oceano/
+// petróleo", rgb(0, 96, 151), mais sóbrio que o azul do painel usado antes.
+const AZUL = "#006097";
 
 // Pedido do usuário (2026-07-29): "use isso de referência, preciso que
 // fique exatamente assim as bordas e caixa" — cor medida pixel a pixel na

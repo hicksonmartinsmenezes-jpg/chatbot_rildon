@@ -698,7 +698,10 @@ describe("ai.service — analisarImagemPeca()", () => {
     expect(url).toContain("chave-gemini-teste");
 
     const body = JSON.parse(options.body);
-    expect(body.contents[0].parts[0].text).toContain("Descreva em UMA frase");
+    // Prompt reescrito em 2026-07-29 (reativação parcial da visão, com
+    // autoavaliação de confiança) — não descreve mais em "UMA frase" logo de
+    // cara, tem 3 passos. Checa um trecho que sobrevive à reescrita.
+    expect(body.contents[0].parts[0].text).toContain("PASSO 3");
     expect(body.contents[0].parts[1].inline_data).toEqual({ mime_type: "image/png", data: "base64falso" });
 
     expect(res).toBe("motor de partida, aparenta ser de carro de passeio");
@@ -743,6 +746,26 @@ describe("ai.service — analisarImagemPeca()", () => {
       status: 200,
       json: async () => ({
         candidates: [{ content: { parts: [{ text: "NAO_E_PECA" }] } }],
+      }),
+    });
+
+    const res = await analisarImagemPeca("base64falso", "image/jpeg");
+    expect(res).toBeNull();
+  });
+
+  // PEDIDO DO USUÁRIO (2026-07-29, reativação parcial da visão): "FOTO_INCERTA"
+  // é o sentinel do PASSO 2 do prompt — a própria IA julga que parece foto de
+  // celular de uma peça física real (não catálogo/produto) e se abstém de
+  // adivinhar, em vez de arriscar uma descrição errada.
+  test("resposta EXATA 'FOTO_INCERTA' → null (foto parece tirada com celular, IA se abstém)", async () => {
+    process.env.GEMINI_API_KEY = "chave-gemini-teste";
+    const { analisarImagemPeca } = loadAiService({ provider: "gemini" });
+
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        candidates: [{ content: { parts: [{ text: "FOTO_INCERTA" }] } }],
       }),
     });
 

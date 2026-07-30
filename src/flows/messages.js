@@ -18,7 +18,7 @@ const MSG = {
     PEDIR_NOME:     "📝 Para solicitar orçamento, informe seu *nome completo*:",
     // Pedido do usuário (2026-07-28): reduzir o "ping-pong" de perguntas —
     // antes pedia só o veículo aqui e a peça na etapa seguinte, sempre em
-    // 2 mensagens. Agora já convida a responder os dois juntos numa
+    // 2 mensagens. Passou a convidar a responder os dois juntos numa
     // mensagem só (ex: "Uno 2015, alternador"). A lógica de separar
     // veículo/peça de uma resposta combinada já existia (vendas.flow.js,
     // split por ano ou por quebra de linha) — só era usada como atalho
@@ -26,7 +26,13 @@ const MSG = {
     // se não conseguir separar com confiança, pergunta a peça de novo
     // separadamente na próxima etapa, sem perder nem confundir o que o
     // cliente já disse.
-    PEDIR_VEICULO:  "🚗 Me diga o *veículo* _(marca, modelo e ano)_ e a *peça ou serviço* que você precisa — pode mandar tudo numa mensagem só!\n_Digite *pular* se não quiser informar o veículo._",
+    // Pedido do usuário (2026-07-29): remover o convite "pode mandar tudo
+    // numa mensagem só" + a dica "*pular*" do texto exibido — só a
+    // pergunta do veículo permanece visível. A palavra "pular" continua
+    // funcionando normalmente se o cliente digitar por conta própria (ver
+    // vendas.flow.js, step aguardando_veiculo) — só a dica na mensagem
+    // que saiu.
+    PEDIR_VEICULO:  "🚗 Me diga o *veículo* _(marca, modelo e ano)_",
     PEDIR_ORCAMENTO: "🔧 Qual *peça* você precisa?",
 
     // Pedido do usuário: quando o cliente só faz uma pergunta de
@@ -37,7 +43,22 @@ const MSG = {
     CONFIRMAR_ORCAMENTO: "Deseja que eu já registre esse orçamento? Digite *sim* para confirmar ou *0* para voltar ao menu.",
 
     ORCAMENTO_SOLICITADO: (ticket) => {
-      const veiculoMatch = ticket.description?.match(/Veículo:\s*([^|]+)/);
+      // BUG CORRIGIDO (achado em sessão de testes ao vivo, 2026-07-29 —
+      // persona que digitou "pular" no veículo): quando o cliente já tem
+      // ticket aberto no dia, ticketRepository.prependDescription empilha
+      // cada novo pedido no TOPO da description, separado por "\n---\n" +
+      // "(pedido anterior) " antes do texto antigo — a description inteira
+      // acumula TODOS os pedidos do dia. O regex de veículo/produto rodava
+      // sobre essa string inteira; se o pedido ATUAL não tinha veículo
+      // (cliente pulou), o /Veículo:\s*([^|]+)/ sem "g" caía pro PRÓXIMO
+      // "Veículo:" que aparecesse — de um pedido anterior — e a confirmação
+      // mostrava um veículo errado (ex: "Hilux 2015" de um pedido passado,
+      // pra um item novo de "correia dentada" sem veículo nenhum). Fix:
+      // isolar só o primeiro segmento (antes do separador "\n---\n") —
+      // é sempre o pedido que acabou de ser registrado — e rodar os regex
+      // só nele.
+      const segmentoAtual = (ticket.description || "").split(/\n---\n/)[0];
+      const veiculoMatch = segmentoAtual.match(/Veículo:\s*([^|]+)/);
       // BUG CORRIGIDO (relatado pelo usuário — caso V. Hugo, orçamento com
       // vários itens em linhas separadas: "8 Corujinhas...;\n8 conectores...;
       // \n1 multímetro;\n10m de conduíte..."): "." não casa quebra de linha
@@ -46,10 +67,12 @@ const MSG = {
       // (vendas.flow.js._finalizarOrcamento salva produtoTexto inteiro,
       // sem truncar), só a MENSAGEM DE CONFIRMAÇÃO exibida ao cliente/painel
       // cortava os itens depois do primeiro. [\s\S]+ casa qualquer caractere
-      // (inclusive quebra de linha), preservando a lista inteira.
-      const pecaMatch    = ticket.description?.match(/Produto:\s*([\s\S]+)/);
+      // (inclusive quebra de linha), preservando a lista inteira dentro do
+      // segmento atual (o "\n---\n" acima já corta antes de qualquer pedido
+      // anterior, então isso continua pegando a lista inteira do pedido novo).
+      const pecaMatch    = segmentoAtual.match(/Produto:\s*([\s\S]+)/);
       const veiculo      = veiculoMatch ? veiculoMatch[1].trim() : null;
-      const peca         = pecaMatch    ? pecaMatch[1].trim()    : ticket.description;
+      const peca         = pecaMatch    ? pecaMatch[1].trim()    : segmentoAtual;
 
       return (
         `✅ *Orçamento registrado!*\n\n` +

@@ -53,4 +53,42 @@ describe("MSG.vendas.ORCAMENTO_SOLICITADO — orçamento com múltiplos itens", 
     const texto = MSG.vendas.ORCAMENTO_SOLICITADO(ticket);
     expect(texto).toContain("pastilha de freio dianteira");
   });
+
+  // BUG CORRIGIDO (achado em sessão de testes ao vivo, 2026-07-29): 2º
+  // pedido do dia sem veículo informado (cliente digitou "pular") mostrava
+  // o veículo de um pedido ANTERIOR do mesmo ticket, porque o regex de
+  // veículo rodava sobre a description inteira (todos os pedidos
+  // acumulados via prependDescription) em vez de só o pedido atual —
+  // ver comentário em ORCAMENTO_SOLICITADO.
+  it("NÃO mostra o veículo de um pedido anterior quando o pedido atual não informou veículo", () => {
+    const ticket = {
+      customerName: "Design / Marketing",
+      protocolo: "2026-0223",
+      description:
+        "Produto: correia dentada\n" +
+        "---\n" +
+        "(pedido anterior) Veículo: Hilux 2015 | Produto: Farol de milha",
+    };
+
+    const texto = MSG.vendas.ORCAMENTO_SOLICITADO(ticket);
+    expect(texto).not.toContain("🚗");
+    expect(texto).not.toContain("Hilux 2015");
+    expect(texto).toContain("correia dentada");
+  });
+
+  it("mostra o veículo certo do pedido atual mesmo com pedidos anteriores de outro veículo", () => {
+    const ticket = {
+      customerName: "Design / Marketing",
+      protocolo: "2026-0223",
+      description:
+        "Veículo: Honda Civic 2019 | Produto: Alternador\n" +
+        "---\n" +
+        "(pedido anterior) Veículo: GM Corsa 2010 | Produto: jogo de palhetas",
+    };
+
+    const texto = MSG.vendas.ORCAMENTO_SOLICITADO(ticket);
+    expect(texto).toContain("🚗 Honda Civic 2019");
+    expect(texto).not.toContain("GM Corsa 2010");
+    expect(texto).toContain("Alternador");
+  });
 });

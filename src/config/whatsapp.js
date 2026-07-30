@@ -24,8 +24,9 @@ const { autoRegisterContact, contatoTemTagFuncionario, buscarNomeContatoReal } =
 const { saveHistory } = require("../services/history.service");
 const { reopenTicketIfClosed } = require("../services/ticket.service");
 const humanMode        = require("../services/humanMode.service");
-const { analisarImagemPeca, suportaVisao, transcreverAudio, suportaAudio } = require("../services/ai.service");
+const { transcreverAudio, suportaAudio, analisarImagemPeca, suportaVisao } = require("../services/ai.service");
 const { salvarMidiaRecebida } = require("../services/mediaStorage.service");
+const { updateSession } = require("../services/session.service");
 const { scheduleFragment } = require("../services/messageFragment.service");
 
 const {
@@ -251,51 +252,16 @@ async function onMessagesUpdate(updates) {
   }
 }
 
-// Analisa foto enviada sem legenda via IA de visão (quando o provedor ativo
-// suporta imagem — ver suportaVisao() em ai.service.js). Baixa a mídia em
-// memória (nunca persistida em disco), converte para base64 e pede uma
-// descrição textual curta pro provedor; essa descrição então passa pelo
-// MESMO pipeline de uma mensagem digitada (mainFlow, sessão, histórico,
-// socket) — nenhuma lógica de negócio duplicada pra extrair veículo/peça.
-// Retorna null em qualquer falha (mídia expirada, provedor indisponível,
-// imagem não reconhecida como peça/veículo), sinalizando pro chamador usar
-// o fallback padrão de "não consigo processar arquivos".
-// "bufferPreBaixado" é opcional: onMessagesUpsert já baixa a mídia UMA vez
-// pra salvar em disco (painel de atendimento — ver mediaStorage.service.js)
-// e repassa o mesmo buffer aqui, evitando baixar a mesma mídia duas vezes.
-// Sem esse parâmetro, a função baixa por conta própria (mantém a função
-// utilizável isoladamente).
-async function analisarFotoRecebida(msg, bufferPreBaixado) {
-  try {
-    const conteudo = unwrapMessage(msg.message);
-    const imageMessage = conteudo?.imageMessage;
-    if (!imageMessage) return null;
+// REMOVIDO (2026-07-29, pedido do usuário): analisarFotoRecebida() chamava
+// IA de visão (analisarImagemPeca) pra descrever a foto do cliente — custo e
+// confiabilidade. Ver bloco de tratamento de imageMessage em
+// onMessagesUpsert (mais abaixo) pra a nova regra 100% determinística
+// (legenda vira texto normal; sem legenda, pergunta se quer orçamento após
+// 3s). analisarImagemPeca()/suportaVisao() continuam existindo em
+// ai.service.js (não removidos de lá — só pararam de ser chamados aqui),
+// caso um dia façam sentido de novo pra outro uso.
 
-    // "!== undefined" (não "||") de propósito: onMessagesUpsert já tentou
-    // baixar a mídia pro storage e pode ter falhado (buffer null explícito,
-    // não "nunca tentado") — nesse caso NÃO tenta baixar de novo aqui
-    // (evitaria um retry silencioso mascarando a falha original). Só baixa
-    // por conta própria quando ninguém baixou ainda (chamada isolada, sem
-    // 2º argumento).
-    const buffer = bufferPreBaixado !== undefined ? bufferPreBaixado : await downloadMediaMessage(
-      msg,
-      "buffer",
-      {},
-      { logger, reuploadRequest: conn.sock?.updateMediaMessage }
-    );
-    if (!buffer || !buffer.length) return null;
-
-    const base64 = buffer.toString("base64");
-    const mimeType = imageMessage.mimetype || "image/jpeg";
-
-    return await analisarImagemPeca(base64, mimeType);
-  } catch (err) {
-    logger.warn(`[Visão-Foto] Falha ao baixar/analisar imagem: ${err.message}`);
-    return null;
-  }
-}
-
-// Análoga a analisarFotoRecebida, mas para nota de voz/áudio: baixa a mídia em
+// Análoga à antiga analisarFotoRecebida, mas para nota de voz/áudio: baixa a mídia em
 // memória e pede a transcrição via transcreverAudio() (Groq Whisper — ver
 // ai.service.js). Retorna null em qualquer falha (áudio expirado, provedor
 // indisponível, transcrição vazia), sinalizando pro chamador usar o fallback
@@ -626,32 +592,120 @@ async function onMessagesUpsert({ messages, type }) {
       }
     }
 
-    // BUG REAL (achado em teste ao vivo, 2026-07-20): esta checagem de foto
-    // rodava só dentro do bloco `if (!text)` abaixo — cliente que manda foto
-    // COM legenda (ex: "vcs tem essa peça?") tinha só a legenda processada
-    // como texto normal, e a imagem NUNCA era examinada, mesmo com visão
-    // disponível. Roda ANTES do `if (!text)` de propósito, pra cobrir os
-    // dois casos. Com legenda, combina legenda + descrição da imagem antes
-    // de processar; sem legenda, usa só a descrição (comportamento já
-    // existente, preservado).
+    // PEDIDO DO USUÁRIO (2026-07-29): parar de usar IA de visão pra
+    // interpretar foto de cliente — custo e confiabilidade (a IA às vezes
+    // "via" coisas erradas ou a chamada falhava/demorava).
+    //   • Foto COM legenda → o cliente já disse o que é em texto — processa
+    //     só a legenda, no MESMO pipeline de sempre (mainFlow/vendas/IA de
+    //     TEXTO), exatamente como se tivesse digitado aquilo sem anexar
+    //     nada. Nunca tenta "ver" a imagem.
+    //   • Foto SEM legenda → espera 3s (pedido do usuário — resposta
+    //     instantânea a uma foto muda soa "robótica demais") e pergunta se
+    //     o cliente quer registrar um orçamento, reaproveitando o MESMO
+    //     intercept de confirmação ("aguardandoConfirmacaoOrcamento", já
+    //     usado em main.flow.js pra perguntas de disponibilidade da IA) —
+    //     respondendo "sim" o cliente cai no fluxo normal de vendas (pede
+    //     nome/veículo/peça a partir daí).
+    // REATIVAÇÃO PARCIAL DA VISÃO (2026-07-29, mesmo dia, pedido do
+    // usuário): "caso o bot consiga reconhecer a peça responda de um jeito
+    // melhor, caso não, pergunte se deseja orçamento mesmo sem descrição" —
+    // mas só usando a IA de visão em fotos que NÃO pareçam tiradas com
+    // celular (ver PASSO 2 do PROMPT_VISAO em ai.service.js: a própria IA se
+    // autoavalia e devolve null/"FOTO_INCERTA" pra foto real de peça usada
+    // em oficina, só arrisca identificar foto de catálogo/produto). Roda em
+    // paralelo com os 3s de espera (não soma delay extra além do maior dos
+    // dois) — só quando vai mesmo responder automaticamente (economiza
+    // chamada de IA se bot desligado/humano assumiu).
+    // Roda ANTES do `if (!text)` de propósito, pra cobrir os dois casos
+    // (foto com legenda tem `text` preenchido com a legenda).
     const imageMessageRecebida = conteudoRecebido?.imageMessage;
-    // isFuncionario primeiro no &&: contato bloqueado nunca deve gerar uma
-    // chamada de IA de visão (custo/latência à toa para quem não vai
-    // receber resposta nenhuma) — ver checagem no topo do handler.
-    if (!isFuncionario && imageMessageRecebida && suportaVisao()) {
-      const descricao = await analisarFotoRecebida(msg, mediaBuffer);
-      if (descricao) {
-        const legenda = imageMessageRecebida.caption?.trim();
-        const textoParaPipeline = legenda
-          ? `${legenda}\n\n[Imagem enviada pelo cliente: ${descricao}]`
-          : descricao;
-        await processarTextoDerivadoDeMidia("foto", { userId, contactName, sendTo, messageId, texto: textoParaPipeline, mediaInfo, isNumeroTeste, isFuncionario });
+    if (!isFuncionario && imageMessageRecebida) {
+      const legenda = imageMessageRecebida.caption?.trim();
+
+      if (legenda) {
+        await processarTextoDerivadoDeMidia("foto", { userId, contactName, sendTo, messageId, texto: legenda, mediaInfo, isNumeroTeste, isFuncionario });
         continue;
       }
-      // descricao null (não é peça, provedor falhou, mídia expirada etc.) →
-      // segue fluxo normal: com legenda, o texto dela é processado como
-      // mensagem comum logo abaixo; sem legenda, cai no aviso padrão de
-      // mídia não suportada dentro do `if (!text)`.
+
+      // Mesma regra do aviso de mídia não suportada (mais abaixo): nunca
+      // responde por cima de humano/bot desligado, e ainda reabre ticket
+      // fechado (cliente com atendimento encerrado que manda só uma foto
+      // muda volta pra Pendentes normalmente).
+      const semRespostaAutomaticaFoto = botOff || humanMode.estaAtivo(userId);
+
+      try { await reopenTicketIfClosed(userId); } catch (e) { logger.warn(`Erro ao reabrir ticket (foto sem legenda): ${e.message}`); }
+
+      let perguntaOrcamento =
+        "📷 Recebi sua foto!\n\n" +
+        "Deseja que eu já registre um orçamento pra essa peça? Digite *sim* para confirmar ou *0* para voltar ao menu.";
+
+      if (!semRespostaAutomaticaFoto) {
+        const visaoDisponivel = suportaVisao() && mediaBuffer && mediaBuffer.length;
+        if (!visaoDisponivel) {
+          logger.info(`[Foto] Visão não tentada para ${userId} (suportaVisao=${suportaVisao()}, mediaBuffer=${!!(mediaBuffer && mediaBuffer.length)}) — pergunta genérica.`);
+        }
+        const analiseVisaoPromise = visaoDisponivel
+          ? analisarImagemPeca(mediaBuffer.toString("base64"), midiaBruta.mimetype).catch(err => {
+              logger.warn(`Erro ao analisar foto (visão) de ${userId}: ${err.message}`);
+              return null;
+            })
+          : Promise.resolve(null);
+
+        // Espera pelo maior entre os 3s (naturalidade da resposta) e o tempo
+        // que a análise de visão levar — nunca soma os dois delays.
+        const [, descricaoReconhecida] = await Promise.all([
+          new Promise(resolve => setTimeout(resolve, 3000)),
+          analiseVisaoPromise,
+        ]);
+
+        if (descricaoReconhecida) {
+          perguntaOrcamento =
+            `📷 Vi que é *${descricaoReconhecida}*! 😊\n\n` +
+            "Deseja que eu já registre um orçamento pra essa peça? Digite *sim* para confirmar ou *0* para voltar ao menu.";
+        }
+
+        try {
+          await enviarComRetry(sendTo, perguntaOrcamento);
+          await updateSession(userId, { aguardandoConfirmacaoOrcamento: true });
+        } catch (err) {
+          logger.error(`Erro ao enviar pergunta de orçamento (foto sem legenda) para ${userId}: ${err.message}`);
+        }
+      }
+
+      const setorFoto = semRespostaAutomaticaFoto
+        ? (botOff ? "bot_desligado" : "humano")
+        : "foto_sem_legenda_aguardando_confirmacao";
+      const respostaFoto = semRespostaAutomaticaFoto ? null : perguntaOrcamento;
+
+      try {
+        await saveHistory({
+          userId,
+          contactName,
+          message:  "[imagem recebida]",
+          response: respostaFoto,
+          sector:   setorFoto,
+          messageId,
+          mediaPath:     mediaInfo?.mediaPath || null,
+          mediaMimetype: mediaInfo?.mediaMimetype || null,
+          mediaFilename: mediaInfo?.mediaFilename || null,
+        });
+        emitEvent("nova_mensagem", {
+          userId,
+          contactName,
+          message:  "[imagem recebida]",
+          messageId,
+          response: respostaFoto,
+          sector:   setorFoto,
+          createdAt: new Date(),
+          mediaPath:     mediaInfo?.mediaPath || null,
+          mediaMimetype: mediaInfo?.mediaMimetype || null,
+          mediaFilename: mediaInfo?.mediaFilename || null,
+        });
+      } catch (err) {
+        logger.warn(`Erro ao salvar histórico de foto sem legenda para ${userId}: ${err.message}`);
+      }
+
+      continue;
     }
 
     if (!text) {

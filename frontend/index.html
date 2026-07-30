@@ -23,11 +23,10 @@
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css">
   <!-- CSS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <link rel="stylesheet" href="dist/bundle.fbdda55422.css">
+  <link rel="stylesheet" href="dist/bundle.79027f8651.css">
   <!-- CSS_BUNDLE_END -->
 <style>
     /* Centraliza colunas da tabela de histórico */
-    .hrow-sector,
     .hrow-count,
     .hrow-date {
       display: flex !important;
@@ -170,6 +169,15 @@
   <!-- Main -->
   <div class="main" id="dashboard">
     <header class="topbar" id="dashboard-header">
+      <div class="topbar-brand">
+        <!-- Pedido do usuário (2026-07-30): logo no canto superior esquerdo
+             do painel, uma versão pra cada tema. As duas imagens ficam
+             sempre no DOM; o CSS mostra só a certa conforme
+             body.light-theme (ver 02-layout.css). -->
+        <img src="logo-fundo-escuro.svg" alt="Rildon Eletropeças" class="brand-logo brand-logo-dark">
+        <img src="logo-fundo-claro.svg" alt="Rildon Eletropeças" class="brand-logo brand-logo-light">
+      </div>
+
       <div class="top-actions">
         <button type="button" class="icon-btn" title="Atualizar" data-action="refreshAll">
           <i class="fa-solid fa-arrows-rotate"></i>
@@ -228,8 +236,6 @@
           <i class="fa-solid fa-right-from-bracket"></i>
           Sair
         </button>
-
-        <div class="green-bar"></div>
       </div>
     </header>
 
@@ -270,14 +276,6 @@
             <p>Acompanhe atendimentos, desempenho por setor e movimentação recente em tempo real.</p>
           </div>
 
-          <div class="dashboard-hero-actions">
-            <button type="button" class="btn-refresh" data-action="refreshAll">
-              <i class="fa-solid fa-arrows-rotate"></i> Atualizar dados
-            </button>
-            <span class="dashboard-live-badge">
-              <i class="fa-solid fa-circle"></i> Operação ativa
-            </span>
-          </div>
         </section>
 
         <section class="panel dashboard-filter-panel">
@@ -730,7 +728,7 @@
                     <span>Funcionário Pessoal</span>
                   </label>
                 </div>
-                <p id="contact-tags-auto" class="contact-tags-auto hidden"></p>
+                <div id="contact-tags-auto" class="contact-tags-auto hidden"></div>
               </div>
             </div>
             <div class="contacts-modal-actions">
@@ -1439,6 +1437,9 @@ Como podemos ajudar você hoje?
 
               <label>Mensagem ao transferir</label>
               <textarea id="set-transfer-message" placeholder="Mensagem enviada quando o cliente pede atendente"></textarea>
+
+              <label>Tempo até reenviar pesquisa de satisfação ao reabrir (minutos)</label>
+              <input id="set-reopen-window-minutes" type="number" min="1" step="1" placeholder="60">
             </div>
           </div>
 
@@ -1979,7 +1980,7 @@ Como podemos ajudar você hoje?
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1"></script>
 
   <!-- JS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <script src="dist/bundle.5cfa964b6b.js"></script>
+  <script src="dist/bundle.15eb2a8567.js"></script>
   <!-- JS_BUNDLE_END -->
 
 

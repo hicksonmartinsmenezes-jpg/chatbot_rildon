@@ -474,8 +474,54 @@
 
 .contact-tags-auto {
   margin: 8px 0 0;
+}
+
+.contact-tags-auto-label {
+  display: block;
   font-size: 12px;
   color: var(--text-muted, #888);
+  margin-bottom: 5px;
+}
+
+.contact-tags-auto-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Chip removível — pedido do usuário (2026-07-30): tags automáticas
+   ("Clientes Novos" etc.) grudavam no contato pra sempre, sem jeito de
+   tirar pelo modal (ver renderContactAutoTagsUI, 16-contacts.js). */
+.contact-tags-auto-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 4px 6px 4px 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.contact-tags-auto-chip button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(248, 113, 113, 0.12);
+  color: #f87171;
+  cursor: pointer;
+  font-size: 10px;
+  transition: background .15s, color .15s;
+}
+
+.contact-tags-auto-chip button:hover {
+  background: #f87171;
+  color: #fff;
 }
 
 .contacts-modal label {

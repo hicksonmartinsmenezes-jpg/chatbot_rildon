@@ -134,7 +134,7 @@
 /* Colunas: cliente | setor | atend. | data | ações */
 .hrow {
   display: grid;
-  grid-template-columns: 2.2fr 1fr 0.6fr 1.4fr auto;
+  grid-template-columns: 2.2fr 0.6fr 1.4fr auto;
   align-items: center;
   gap: 0 12px;
   padding: 0 16px;
@@ -221,26 +221,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-/* Coluna: setor */
-.hrow-sector {
-  display: flex;
-  justify-content: center;
-  text-align: center;
-}
-
-.history-sector {
-  display: inline-block;
-  background: rgba(29,108,245,.10);
-  color: #93c5fd;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 9px;
-  font-weight: 900;
-  text-transform: uppercase;
-  letter-spacing: .6px;
-  border: 1px solid rgba(29,108,245,.20);
 }
 
 /* Coluna: atendimentos */

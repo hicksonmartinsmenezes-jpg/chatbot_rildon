@@ -376,12 +376,15 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 }
 
 /* Dashboard */
+/* Pedido do usuário (2026-07-30): fundo do hero igual ao dos 4 cards
+   executivos (.executive-card, 09-dashboard.css) — essa regra carrega
+   DEPOIS de 09-dashboard.css no bundle, então era ela quem definia a cor
+   de fato (o glow azul+verde mais forte que destoava dos cards). */
 .dashboard-executive-hero {
   border-radius: var(--radius-xl);
   background:
-    radial-gradient(circle at top left, rgba(37, 99, 235, 0.28), transparent 34%),
-    radial-gradient(circle at bottom right, rgba(34, 197, 94, 0.14), transparent 30%),
-    linear-gradient(135deg, #101827, #0b1120 58%, #070a10);
+    radial-gradient(circle at 80% 0%, rgba(96, 165, 250, 0.16), transparent 55%),
+    linear-gradient(135deg, #1a1a1a 0%, #111111 50%, #0d0d0d 100%);
   box-shadow: var(--shadow-strong);
 }
 

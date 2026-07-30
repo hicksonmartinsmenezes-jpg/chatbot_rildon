@@ -119,7 +119,7 @@
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   padding: 0 28px;
 }
 
@@ -138,6 +138,31 @@
   margin-left: 6px;
   font-weight: 900;
 }
+
+/* Logo no canto superior esquerdo do painel (pedido do usuário, 2026-07-30)
+   — duas versões (fundo escuro/claro) trocadas via body.light-theme, cada
+   uma pensada pro contraste certo em cada tema. */
+.topbar-brand {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* O SVG original veio com width/height de página A4 (herança do arquivo
+   CorelDRAW) desproporcional ao desenho real (viewBox 21000x7070.71,
+   ~2.97:1) — isso fazia o navegador calcular a largura automática errada
+   e encolher a logo quase a nada. Força a proporção certa aqui em vez de
+   depender do "width: auto" do navegador. */
+.brand-logo {
+  height: 67px;
+  width: 199px;
+  display: block;
+}
+
+.brand-logo-light { display: none; }
+
+body.light-theme .brand-logo-dark  { display: none; }
+body.light-theme .brand-logo-light { display: block; }
 
 /* ─── Ações do topo ───────────────────── */
 .top-actions {
@@ -608,6 +633,11 @@
   .topbar {
     height: 46px;
     padding: 0 10px;
+  }
+
+  .brand-logo {
+    height: 41px;
+    width: 121px;
   }
 
   .top-actions {

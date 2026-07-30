@@ -7,7 +7,6 @@ function renderHistoryRow({ latest, count }) {
   const isPhone     = isBRPhone(phoneRaw);
   const contactName = latest.contactName || latest.contact_name || "Cliente";
   const nameDisplay = contactName !== "Cliente" ? contactName : phoneRaw;
-  const sector      = latest.sector || "geral";
   const ident       = isPhone ? phoneRaw : "ID WhatsApp";
 
   return `
@@ -18,9 +17,6 @@ function renderHistoryRow({ latest, count }) {
           <strong>${safe(nameDisplay)}</strong>
           <small>${safe(ident)}</small>
         </span>
-      </span>
-      <span class="hrow-sector" style="display:flex;align-items:center;justify-content:center;">
-        <span class="history-sector">${safe(sector)}</span>
       </span>
       <span class="hrow-count" style="display:flex;align-items:center;justify-content:center;gap:5px;">
         ${count > 1 ? `<i class="fa-solid fa-clock-rotate-left"></i> ${count}` : `<span style="color:#334155">1</span>`}
@@ -189,7 +185,6 @@ async function loadHistory(render = true) {
           <div class="history-table">
             <div class="hrow hrow-head">
               <span class="hrow-client">Cliente</span>
-              <span class="hrow-sector" style="display:flex;align-items:center;justify-content:center;">Setor</span>
               <span class="hrow-count" style="display:flex;align-items:center;justify-content:center;">Atend.</span>
               <span class="hrow-date" style="display:flex;align-items:center;justify-content:center;">Última interação</span>
               <span class="hrow-actions">Ações</span>

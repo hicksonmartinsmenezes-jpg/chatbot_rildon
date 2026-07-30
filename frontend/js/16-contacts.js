@@ -311,17 +311,16 @@ async function openContactModal(id = null) {
         el.checked = tagsAtuais.includes(el.value);
       });
 
-      // Qualquer tag que não é uma das 3 manuais é "automática" — preserva
-      // sem mostrar como checkbox (ex: "Clientes", "Clientes Novos").
+      // Qualquer tag que não é uma das 3 manuais é "automática" — o sistema
+      // que põe sozinho (ex: "Clientes", "Clientes Novos" quando o contato
+      // gera um ticket). BUG CORRIGIDO (pedido do usuário 2026-07-30: "toda
+      // vez que eu edito um contato adiciona mais uma tag", ex: contato do
+      // Crediário ficou com "Clientes Novos" grudado mesmo marcando
+      // Funcionário): antes essas tags só apareciam como texto informativo,
+      // sem jeito de tirar — agora viram chips com X pra remover quando não
+      // fizerem sentido pro contato (ver renderContactAutoTagsUI abaixo).
       _contactsAutoTags = tagsAtuais.filter(t => !CONTACT_MANUAL_TAGS.includes(t));
-      if (autoInfo) {
-        if (_contactsAutoTags.length) {
-          autoInfo.textContent = `Também marcado como: ${_contactsAutoTags.join(", ")} (automático, definido pelo sistema)`;
-          autoInfo.classList.remove("hidden");
-        } else {
-          autoInfo.classList.add("hidden");
-        }
-      }
+      renderContactAutoTagsUI();
     } catch (e) {
       showToast("Erro ao carregar contato.", "error");
       return;
@@ -338,6 +337,47 @@ function closeContactModal() {
   document.getElementById("contact-modal-overlay")?.classList.add("hidden");
   _contactsEditingId = null;
 }
+
+// Renderiza as tags automáticas (Clientes, Clientes Novos etc.) como chips
+// com um X pra remover — antes eram só texto informativo e ficavam presas
+// no contato pra sempre, mesmo quando não faziam mais sentido (ex: contato
+// interno do Crediário marcado como "Clientes Novos" por engano).
+function renderContactAutoTagsUI() {
+  const box = document.getElementById("contact-tags-auto");
+  if (!box) return;
+
+  if (!_contactsAutoTags.length) {
+    box.innerHTML = "";
+    box.classList.add("hidden");
+    return;
+  }
+
+  box.classList.remove("hidden");
+  box.innerHTML = `
+    <span class="contact-tags-auto-label">Também marcado como (automático):</span>
+    <div class="contact-tags-auto-list">
+      ${_contactsAutoTags.map(tag => `
+        <span class="contact-tags-auto-chip">
+          ${safe(tag)}
+          <button type="button" title="Remover tag automática" data-remove-auto-tag="${escapeAttr(tag)}">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </span>
+      `).join("")}
+    </div>
+  `;
+}
+
+function removeContactAutoTag(tag) {
+  _contactsAutoTags = _contactsAutoTags.filter(t => t !== tag);
+  renderContactAutoTagsUI();
+}
+
+document.addEventListener("click", (event) => {
+  const btn = event.target.closest("[data-remove-auto-tag]");
+  if (!btn) return;
+  removeContactAutoTag(btn.dataset.removeAutoTag);
+});
 
 async function saveContact() {
   const nome        = document.getElementById("contact-nome").value.trim();
@@ -453,18 +493,23 @@ async function exportContactsCSV() {
 
 // ── Send message shortcut ─────────────────────────────────────────────────────
 
+// Pedido do usuário (2026-07-30): "quando eu clicar em mandar mensagem
+// preciso que abra diretamente o chat". Antes abria um modal pequeno e
+// isolado (sem histórico, sem ações de ticket). Agora vai direto pra aba
+// Atendimentos e abre a conversa de verdade com esse contato (mesmo fluxo
+// de clicar numa conversa na lista), já pronta pra digitar e enviar.
 function contactSendMsg(whatsapp, nome) {
-  const modal = document.getElementById("chat-modal");
-  if (!modal) return;
   const digits = String(whatsapp || "").replace(/\D/g, "");
   if (!digits) { showToast("WhatsApp inválido para este contato.", "error"); return; }
-  currentChatUser = `${digits}@s.whatsapp.net`;
-  modal.dataset.whatsapp = currentChatUser;
-  const userEl = document.getElementById("chat-user");
-  if (userEl) userEl.textContent = `Cliente: ${nome || formatPhone(currentChatUser)}`;
-  const msgEl = document.getElementById("chat-message");
-  if (msgEl) msgEl.value = "";
-  modal.classList.remove("hidden");
+  const userId = `${digits}@s.whatsapp.net`;
+
+  switchTab("conversations");
+
+  if (typeof openConversation === "function") {
+    openConversation(userId);
+  }
+
+  setTimeout(() => document.getElementById("conversation-message")?.focus(), 150);
 }
 
 // ── Load users for atendente dropdown ────────────────────────────────────────

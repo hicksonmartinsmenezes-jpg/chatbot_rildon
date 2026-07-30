@@ -34,7 +34,7 @@ body.light-theme .sidebar-badge { border-color: #ffffff; }
 
 body.light-theme .brand strong { color: #0f172a; }
 body.light-theme .icon-btn,
-body.light-theme .logout-btn { color: #374151; }
+body.light-theme .logout-btn { color: #000000; }
 body.light-theme .icon-btn:hover,
 body.light-theme .logout-btn:hover { background: rgba(0,0,0,.06); color: #0f172a; }
 body.light-theme .avatar-text strong { color: #0f172a; }
@@ -175,8 +175,28 @@ body.light-theme .executive-card {
     inset 0 1px 0 rgba(255, 255, 255, 0.7) !important;
 }
 body.light-theme .executive-card-icon {
-  background: rgba(37, 99, 235, 0.10);
-  color: #2563eb;
+  background: rgba(0, 0, 0, 0.06);
+  color: #000000;
+}
+
+/* Ícones dos cards de Métricas (pedido do usuário, 2026-07-30: "os ícones
+   de todos os cards também deixe pretos") — no tema escuro cada card usa
+   uma cor de destaque diferente (var(--accent)); no tema claro isso vira
+   preto uniforme. */
+body.light-theme .metric-card-icon,
+body.light-theme .chart-card-icon {
+  background: rgba(0, 0, 0, 0.06);
+  border-color: rgba(0, 0, 0, 0.12);
+  color: #000000;
+}
+
+/* Cards de estatística das Campanhas (csc-blue/green/red/purple) — mesma
+   ideia: cada um tinha uma cor própria, agora preto uniforme no claro. */
+body.light-theme .csc-blue   .csc-icon,
+body.light-theme .csc-green  .csc-icon,
+body.light-theme .csc-red    .csc-icon,
+body.light-theme .csc-purple .csc-icon {
+  color: #000000;
 }
 body.light-theme .executive-card strong {
   color: #0f172a !important;

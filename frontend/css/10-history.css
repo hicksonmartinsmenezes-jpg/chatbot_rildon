@@ -27,7 +27,9 @@
 /* ─── Filtros do histórico ────────────── */
 .history-filters {
   display: grid;
-  grid-template-columns: minmax(280px, 1fr) 160px 160px auto auto;
+  /* Pedido do usuário (2026-07-30): 2 campos novos de horário (além dos 2
+     de data já existentes) — search + 4 campos pequenos + 2 botões. */
+  grid-template-columns: minmax(260px, 1fr) repeat(4, minmax(110px, 130px)) auto auto;
   gap: 10px;
   align-items: end;
 }

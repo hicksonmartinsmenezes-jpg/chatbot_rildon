@@ -23,7 +23,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css">
   <!-- CSS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <link rel="stylesheet" href="dist/bundle.79027f8651.css">
+  <link rel="stylesheet" href="dist/bundle.9fff789bc9.css">
   <!-- CSS_BUNDLE_END -->
 <style>
     /* Centraliza colunas da tabela de histórico */
@@ -40,41 +40,58 @@
 <body>
   <!-- Login -->
   <section id="login-screen" class="login-screen">
-    <div class="login-card">
-      <img src="FlaticonSalesRildon.svg" class="logo-img" alt="Rildon Eletropeças">
-      <h2>Rildon Eletropeças</h2>
-      <p>Acesso ao painel administrativo</p>
+    <div class="login-layout">
 
-      <form id="login-form" data-submit-action="login" novalidate>
-        <div class="login-field">
-          <i class="fa-solid fa-user login-field-icon"></i>
-          <input type="text" id="login-user" autocomplete="username" aria-label="Usuário" placeholder="Usuário" required>
+      <!-- Painel visual (fachada da loja) — pedido do usuário (2026-07-30):
+           "melhorar a tela de login... algum jeito interessante com um
+           efeito". Escondido em telas estreitas (ver 04-login.css). -->
+      <div class="login-visual" id="login-visual">
+        <div class="login-visual-image"></div>
+        <div class="login-visual-overlay"></div>
+        <div class="login-visual-shine"></div>
+        <div class="login-visual-caption">
+          <strong>Rildon Eletro Peças</strong>
+          <span>Painel de Atendimento</span>
         </div>
+      </div>
 
-        <div class="login-field">
-          <div class="password-wrapper">
-            <i class="fa-solid fa-lock login-field-icon"></i>
-            <input type="password" id="login-pass" autocomplete="current-password" aria-label="Senha" placeholder="Senha" required>
-            <button type="button" class="toggle-pass" data-action="togglePasswordVisibility" aria-label="Mostrar/ocultar senha" tabindex="-1">
-              <i id="toggle-pass-icon" class="fa-solid fa-eye"></i>
-            </button>
+      <div class="login-card">
+        <img src="FlaticonSalesRildon.svg" class="logo-img" alt="Rildon Eletropeças">
+        <h2>Rildon Eletropeças</h2>
+        <p>Acesso ao painel administrativo</p>
+
+        <form id="login-form" data-submit-action="login" novalidate>
+          <div class="login-field">
+            <i class="fa-solid fa-user login-field-icon"></i>
+            <input type="text" id="login-user" autocomplete="username" aria-label="Usuário" placeholder="Usuário" required>
           </div>
-        </div>
 
-        <button type="submit">Entrar</button>
-      </form>
-      <span id="login-error" role="alert"></span>
+          <div class="login-field">
+            <div class="password-wrapper">
+              <i class="fa-solid fa-lock login-field-icon"></i>
+              <input type="password" id="login-pass" autocomplete="current-password" aria-label="Senha" placeholder="Senha" required>
+              <button type="button" class="toggle-pass" data-action="togglePasswordVisibility" aria-label="Mostrar/ocultar senha" tabindex="-1">
+                <i id="toggle-pass-icon" class="fa-solid fa-eye"></i>
+              </button>
+            </div>
+          </div>
 
-      <form id="login-2fa-form" class="hidden" data-submit-action="submitTwoFactorLogin" novalidate>
-        <p class="login-2fa-hint">Digite o código do seu app autenticador (ou um código de backup).</p>
-        <div class="login-field">
-          <i class="fa-solid fa-shield-halved login-field-icon"></i>
-          <input type="text" id="login-2fa-code" inputmode="numeric" autocomplete="one-time-code" aria-label="Código de verificação" placeholder="Código de 6 dígitos" required>
-        </div>
-        <button type="submit">Verificar</button>
-        <button type="button" class="login-2fa-back" data-action="cancelTwoFactorLogin">Voltar</button>
-        <span id="login-2fa-error" role="alert"></span>
-      </form>
+          <button type="submit">Entrar</button>
+        </form>
+        <span id="login-error" role="alert"></span>
+
+        <form id="login-2fa-form" class="hidden" data-submit-action="submitTwoFactorLogin" novalidate>
+          <p class="login-2fa-hint">Digite o código do seu app autenticador (ou um código de backup).</p>
+          <div class="login-field">
+            <i class="fa-solid fa-shield-halved login-field-icon"></i>
+            <input type="text" id="login-2fa-code" inputmode="numeric" autocomplete="one-time-code" aria-label="Código de verificação" placeholder="Código de 6 dígitos" required>
+          </div>
+          <button type="submit">Verificar</button>
+          <button type="button" class="login-2fa-back" data-action="cancelTwoFactorLogin">Voltar</button>
+          <span id="login-2fa-error" role="alert"></span>
+        </form>
+      </div>
+
     </div>
   </section>
 
@@ -525,6 +542,19 @@
             <div class="history-date-field">
               <label>Até</label>
               <input type="date" id="history-date-end" data-change-action="loadHistoryTrue">
+            </div>
+
+            <!-- Pedido do usuário (2026-07-30): "quero poder filtrar atendimentos
+                 por horário por dia também" — filtra pela hora do dia da ÚLTIMA
+                 interação do cliente, além do intervalo de data acima. -->
+            <div class="history-date-field">
+              <label>Hora início</label>
+              <input type="time" id="history-time-start" data-change-action="loadHistoryTrue">
+            </div>
+
+            <div class="history-date-field">
+              <label>Hora fim</label>
+              <input type="time" id="history-time-end" data-change-action="loadHistoryTrue">
             </div>
 
             <button type="button" class="history-clear-btn" data-action="clearHistoryFilters">
@@ -1438,8 +1468,9 @@ Como podemos ajudar você hoje?
               <label>Mensagem ao transferir</label>
               <textarea id="set-transfer-message" placeholder="Mensagem enviada quando o cliente pede atendente"></textarea>
 
-              <label>Tempo até reenviar pesquisa de satisfação ao reabrir (minutos)</label>
+              <label>Tempo para reaproveitar o atendimento ao voltar a falar (minutos)</label>
               <input id="set-reopen-window-minutes" type="number" min="1" step="1" placeholder="60">
+              <p class="settings-field-hint">Dentro desse tempo após fechar, o cliente que mandar mensagem de novo continua no MESMO ticket/protocolo (sem repetir saudação do atendente nem pesquisa de satisfação). Depois desse tempo, uma mensagem nova abre um ticket novo do zero.</p>
             </div>
           </div>
 
@@ -1509,6 +1540,21 @@ Como podemos ajudar você hoje?
 
               <label>Texto do alerta</label>
               <input id="set-toast-message" type="text" placeholder="Novo atendimento recebido!">
+
+              <!-- Pedido do usuário (2026-07-30): status + botão pra (re)ativar a
+                   notificação nativa do navegador (Notification Web API). Isso NÃO é
+                   uma configuração salva no servidor (é permissão do navegador, por
+                   dispositivo) — só lê/pede a permissão ao vivo. Existe pra cobrir o
+                   caso de o atendente ter fechado/negado o popup de permissão sem
+                   querer logo após o login (única vez que era pedido antes) e não ter
+                   como tentar de novo sem mexer nas configurações do próprio Chrome. -->
+              <div class="settings-switch-row settings-browser-notif-row">
+                <div>
+                  <strong>Notificações do navegador (SO)</strong>
+                  <span id="browser-notif-status">Verificando...</span>
+                </div>
+                <button type="button" id="btn-ativar-notif-navegador" class="settings-inline-btn" onclick="ativarNotificacaoNavegador()">Ativar</button>
+              </div>
             </div>
           </div>
 
@@ -1598,7 +1644,6 @@ Como podemos ajudar você hoje?
 
   <header class="metrics-hero">
     <div class="metrics-hero-text">
-      <span class="metrics-kicker"><i class="fa-solid fa-chart-line"></i> Painel analítico</span>
       <h2>Métricas do Sistema</h2>
       <p>Resumo analítico dos atendimentos, setores e desempenho.</p>
     </div>
@@ -1980,7 +2025,7 @@ Como podemos ajudar você hoje?
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1"></script>
 
   <!-- JS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <script src="dist/bundle.15eb2a8567.js"></script>
+  <script src="dist/bundle.a89bcfd53b.js"></script>
   <!-- JS_BUNDLE_END -->
 
 

@@ -19,12 +19,26 @@ function sameLocalDate(a, b) {
   );
 }
 
-function isHistoryInsideDateRange(item, start, end) {
-  if (!start && !end) return true;
+// Pedido do usuário (2026-07-30): "quero poder filtrar atendimentos por
+// horário por dia também" — startTime/endTime são "HH:MM", comparados
+// contra a hora LOCAL (do navegador) da última interação do cliente, além
+// do intervalo de data já existente.
+function isHistoryInsideDateRange(item, start, end, startTime, endTime) {
+  if (!start && !end && !startTime && !endTime) return true;
   if (!item?.createdAt) return false;
   const itemDate = new Date(item.createdAt);
   if (start) { const s = new Date(`${start}T00:00:00`); if (itemDate < s) return false; }
   if (end)   { const e = new Date(`${end}T23:59:59`);   if (itemDate > e) return false; }
+
+  const minutosDoDia = itemDate.getHours() * 60 + itemDate.getMinutes();
+  if (startTime) {
+    const [h, m] = startTime.split(":").map(Number);
+    if (minutosDoDia < h * 60 + m) return false;
+  }
+  if (endTime) {
+    const [h, m] = endTime.split(":").map(Number);
+    if (minutosDoDia > h * 60 + m) return false;
+  }
   return true;
 }
 

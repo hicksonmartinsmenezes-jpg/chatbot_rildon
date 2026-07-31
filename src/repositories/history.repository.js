@@ -65,7 +65,7 @@ async function create(data) {
   return mapHistory(result.rows[0]);
 }
 
-async function findAll({ userId, limit = 50, offset = 0, q, from, to } = {}) {
+async function findAll({ userId, limit = 50, offset = 0, q, from, to, horaInicio, horaFim } = {}) {
   const values = [];
   const where = [];
 
@@ -102,6 +102,20 @@ async function findAll({ userId, limit = 50, offset = 0, q, from, to } = {}) {
     where.push(`(created_at AT TIME ZONE '${tz}')::date <= $${values.length}::date`);
   }
 
+  // Pedido do usuário (2026-07-30): "quero poder filtrar atendimentos por
+  // horário por dia também" — além do intervalo de DATA já existente,
+  // filtra também pelo horário do dia (ex: só atendimentos entre 08:00 e
+  // 12:00), no fuso horário da loja. horaInicio/horaFim vêm como "HH:MM".
+  if (horaInicio) {
+    values.push(horaInicio);
+    where.push(`(created_at AT TIME ZONE '${tz}')::time >= $${values.length}::time`);
+  }
+
+  if (horaFim) {
+    values.push(horaFim);
+    where.push(`(created_at AT TIME ZONE '${tz}')::time <= $${values.length}::time`);
+  }
+
   values.push(Number(limit) || 50);
   const limitIndex = values.length;
 
@@ -135,7 +149,7 @@ async function findAll({ userId, limit = 50, offset = 0, q, from, to } = {}) {
 // recente por cliente, e a window function COUNT(*) OVER (PARTITION BY
 // user_id) traz o total de interações daquele cliente (usado pelo "Atend."
 // na tela) sem precisar de uma segunda query.
-async function findGroupedByUser({ q, from, to, limit = 500, offset = 0 } = {}) {
+async function findGroupedByUser({ q, from, to, horaInicio, horaFim, limit = 500, offset = 0 } = {}) {
   const values = [];
   const where = [];
 
@@ -157,6 +171,17 @@ async function findGroupedByUser({ q, from, to, limit = 500, offset = 0 } = {}) 
   if (to) {
     values.push(to);
     where.push(`(created_at AT TIME ZONE '${tz}')::date <= $${values.length}::date`);
+  }
+
+  // Ver comentário equivalente em findAll acima.
+  if (horaInicio) {
+    values.push(horaInicio);
+    where.push(`(created_at AT TIME ZONE '${tz}')::time >= $${values.length}::time`);
+  }
+
+  if (horaFim) {
+    values.push(horaFim);
+    where.push(`(created_at AT TIME ZONE '${tz}')::time <= $${values.length}::time`);
   }
 
   values.push(Number(limit) || 500);

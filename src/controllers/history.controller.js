@@ -6,7 +6,7 @@ const logger = require("../utils/logger");
 
 async function getHistoryHandler(req, res) {
   try {
-    const { userId, q, from, to } = req.query;
+    const { userId, q, from, to, horaInicio, horaFim } = req.query;
 
     const page = Math.max(
       parseInt(req.query.page || "1", 10),
@@ -27,6 +27,8 @@ async function getHistoryHandler(req, res) {
       q:    q    || undefined,
       from: from || undefined,
       to:   to   || undefined,
+      horaInicio: horaInicio || undefined,
+      horaFim:    horaFim    || undefined,
     });
 
     res.json({
@@ -57,7 +59,7 @@ async function getHistoryHandler(req, res) {
 // (findGroupedByUser) sobre o bug que isso corrige.
 async function getHistoryGroupedHandler(req, res) {
   try {
-    const { q, from, to } = req.query;
+    const { q, from, to, horaInicio, horaFim } = req.query;
 
     const limit = Math.min(
       Math.max(parseInt(req.query.limit || "500", 10), 1),
@@ -69,6 +71,8 @@ async function getHistoryGroupedHandler(req, res) {
       q:    q    || undefined,
       from: from || undefined,
       to:   to   || undefined,
+      horaInicio: horaInicio || undefined,
+      horaFim:    horaFim    || undefined,
       limit,
       offset,
     });

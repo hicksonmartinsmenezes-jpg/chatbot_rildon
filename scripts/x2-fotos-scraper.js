@@ -25,6 +25,8 @@
  *   node scripts/x2-fotos-scraper.js --secoes=farois,filtros,lampadas          (várias seções escolhidas, 1 login só)
  *   node scripts/x2-fotos-scraper.js --todas                                   (as 26 seções, uma atrás da outra, 1 login só)
  *   node scripts/x2-fotos-scraper.js --secao=gerador --retry-sem-foto           (tenta de novo os já marcados sem_foto/placeholder, caso o X2 tenha cadastrado a foto depois — não descobre produto NOVO)
+ *   node scripts/x2-fotos-scraper.js --secao=gerador --reiniciar                (PEDIDO DO USUÁRIO 2026-07-30: apaga o progresso salvo e o staging dessa seção, baixa tudo de novo do zero — ignora o que já tinha sido feito)
+ *   node scripts/x2-fotos-scraper.js --secao=gerador --exportar-fotos          (só depois que TODOS os produtos da seção estiverem processados — copia as fotos soltas, sem zip, pra src/config/catalogo-x2/fotos/<secao>/<codigo>/)
  *
  * Rodar de novo com o MESMO --secao (ou --secoes/--todas) continua de onde
  * parou (o progresso é salvo fora da pasta do projeto — ver WORK_DIR abaixo
@@ -151,6 +153,20 @@ function salvarProgresso(secaoSlug, progresso) {
 
 function stagingSecaoDir(secaoSlug) {
   return path.join(STAGING_DIR, secaoSlug);
+}
+
+// Pedido do usuário (2026-07-30): "faça tudo novamente" — apaga o progresso
+// salvo (o .json em PROGRESS_DIR) e as fotos já baixadas no staging dessa
+// seção, fazendo o próximo `calcularFila` tratar TODOS os códigos como
+// pendentes de novo, do zero. Não mexe no .zip/pasta já exportados
+// anteriormente pro projeto — só reseta o processo de baixar de novo; a
+// exportação final (montarZipFinal/exportarFotosSoltas) sobrescreve quando
+// rodar de novo depois.
+function reiniciarSecao(secaoSlug) {
+  const p = progressPath(secaoSlug);
+  if (fs.existsSync(p)) fs.unlinkSync(p);
+  const dir = stagingSecaoDir(secaoSlug);
+  if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
 }
 
 // ─── Navegador ──────────────────────────────────────────────────────────
@@ -399,7 +415,11 @@ async function processarSecaoComPopup(popup, secaoSlug, { limit, retrySemFoto } 
   return { secaoSlug, totalFeitos, total: codigos.length, pulada: false };
 }
 
-async function rodarSecao(secaoSlug, { limit, channel, retrySemFoto }) {
+async function rodarSecao(secaoSlug, { limit, channel, retrySemFoto, reiniciar }) {
+  if (reiniciar) {
+    console.log(`Reiniciando "${secaoSlug}" do zero (apagando progresso e staging salvos)...`);
+    reiniciarSecao(secaoSlug);
+  }
   const context = await abrirNavegador(channel);
   try {
     const popup = await garantirPopupAberto(context);
@@ -412,7 +432,11 @@ async function rodarSecao(secaoSlug, { limit, channel, retrySemFoto }) {
 // Roda várias seções em UMA ÚNICA sessão de navegador — só pausa 1x pro
 // usuário logar/abrir o popup, depois processa seção por seção sozinho.
 // `limit`, se passado, se aplica a CADA seção (não ao total).
-async function rodarMuitasSecoes(slugs, { limit, channel, retrySemFoto }) {
+async function rodarMuitasSecoes(slugs, { limit, channel, retrySemFoto, reiniciar }) {
+  if (reiniciar) {
+    console.log(`Reiniciando ${slugs.length} seção(ões) do zero (apagando progresso e staging salvos)...`);
+    for (const s of slugs) reiniciarSecao(s);
+  }
   const context = await abrirNavegador(channel);
   const resumo = [];
   try {
@@ -494,6 +518,57 @@ async function montarZipFinal(secaoSlug) {
   console.log(`\nFalta atualizar a linha "${labelSecao}" na tabela de src/config/catalogo-x2/README.md com a nova contagem/data.`);
 }
 
+// Pedido do usuário (2026-07-30): "pode salvar todas normalmente" — em vez
+// de compactar num .zip, copia as fotos soltas (uma arquivo por foto,
+// exatamente no formato original baixado — sem recompressão nenhuma) pra
+// dentro do projeto. Mesma regra de segurança do .zip: só escreve no
+// OneDrive numa passada só, DEPOIS que a seção inteira já foi baixada pro
+// staging (fora do OneDrive) — nunca escreve foto por foto direto na pasta
+// do projeto durante o scraping em si (ver comentário no topo do arquivo
+// sobre por que o staging fica fora do OneDrive).
+async function exportarFotosSoltas(secaoSlug) {
+  const labelSecao = SECOES[secaoSlug];
+  if (!labelSecao) {
+    throw new Error(`Seção desconhecida: "${secaoSlug}". Opções: ${Object.keys(SECOES).join(', ')}`);
+  }
+
+  const jsonPath = path.join(CATALOGO_DIR, `${secaoSlug}.json`);
+  const produtos = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+  const codigos = produtos.map((p) => p.codigo);
+  const progresso = carregarProgresso(secaoSlug);
+
+  const faltando = codigos.filter((c) => !progresso[c]);
+  if (faltando.length) {
+    console.log(`ATENÇÃO: ${faltando.length} de ${codigos.length} produtos ainda não foram processados nesta seção.`);
+    console.log('A exportação só roda quando a seção estiver 100% processada — rode sem --exportar-fotos pra continuar.');
+    return;
+  }
+
+  const stagingDir = stagingSecaoDir(secaoSlug);
+  const destDir = path.join(FOTOS_DIR, secaoSlug);
+  let copiadas = 0, semFotoCount = 0, placeholderCount = 0, erroCount = 0;
+
+  for (const codigo of codigos) {
+    const st = progresso[codigo];
+    if (st.status === 'sem_foto') { semFotoCount++; continue; }
+    if (st.status === 'placeholder') { placeholderCount++; continue; }
+    if (st.status !== 'ok') { erroCount++; continue; }
+    const dirOrigem = path.join(stagingDir, codigo);
+    const arquivos = (st.arquivos && st.arquivos.length) ? st.arquivos : (fs.existsSync(dirOrigem) ? fs.readdirSync(dirOrigem) : []);
+    if (!arquivos.length) continue;
+    const dirDestino = path.join(destDir, codigo);
+    fs.mkdirSync(dirDestino, { recursive: true });
+    for (const nome of arquivos) {
+      fs.copyFileSync(path.join(dirOrigem, nome), path.join(dirDestino, nome));
+      copiadas++;
+    }
+  }
+
+  console.log(`\nFotos exportadas para: ${destDir}`);
+  console.log(`${copiadas} fotos, de ${codigos.length - semFotoCount - placeholderCount - erroCount} produtos com foto real.`);
+  console.log(`${semFotoCount} sem foto cadastrada no X2, ${placeholderCount} só com o placeholder "imagem não disponível", ${erroCount} com erro (revise manualmente).`);
+}
+
 // Conta arquivos DE VERDADE em disco (não só o que o checkpoint de progresso
 // diz que baixou) — prova concreta de que as fotos existem fisicamente.
 function contarArquivosReais(secaoSlug) {
@@ -540,8 +615,10 @@ async function main() {
   const limitArg = args.find((a) => a.startsWith('--limit='));
   const channelArg = args.find((a) => a.startsWith('--channel='));
   const buildZip = args.includes('--build-zip');
+  const exportarFotos = args.includes('--exportar-fotos');
   const status = args.includes('--status');
   const retrySemFoto = args.includes('--retry-sem-foto');
+  const reiniciar = args.includes('--reiniciar');
 
   const limit = limitArg ? parseInt(limitArg.split('=')[1], 10) : null;
   const channel = channelArg ? channelArg.split('=')[1] : 'chrome';
@@ -561,6 +638,9 @@ async function main() {
     console.log('  ... adicione --retry-sem-foto em qualquer um dos modos acima pra tentar de novo');
     console.log('      os produtos já conhecidos que ficaram marcados sem_foto/placeholder (caso o');
     console.log('      X2 tenha cadastrado a foto depois). Não descobre produto NOVO no X2.');
+    console.log('  ... adicione --reiniciar em qualquer um dos modos acima pra apagar o progresso');
+    console.log('      salvo e baixar TUDO de novo do zero (ignora o que já tinha sido feito).');
+    console.log('  node scripts/x2-fotos-scraper.js --secao=<slug> --exportar-fotos             (seção 100% processada → copia as fotos soltas, sem zip, pra src/config/catalogo-x2/fotos/<slug>/)');
     console.log('\nSeções disponíveis:');
     console.log(Object.keys(SECOES).map((s) => `  ${s}`).join('\n'));
     process.exit(1);
@@ -575,8 +655,17 @@ async function main() {
     return;
   }
 
+  if (exportarFotos) {
+    if (!secaoArg) {
+      console.log('--exportar-fotos precisa de --secao=<slug> específico (exporta uma seção por vez, de propósito).');
+      process.exit(1);
+    }
+    await exportarFotosSoltas(secaoArg.split('=')[1]);
+    return;
+  }
+
   if (todas) {
-    await rodarMuitasSecoes(Object.keys(SECOES), { limit, channel, retrySemFoto });
+    await rodarMuitasSecoes(Object.keys(SECOES), { limit, channel, retrySemFoto, reiniciar });
     return;
   }
 
@@ -586,11 +675,11 @@ async function main() {
     if (desconhecidos.length) {
       throw new Error(`Seção(ões) desconhecida(s): ${desconhecidos.join(', ')}. Opções: ${Object.keys(SECOES).join(', ')}`);
     }
-    await rodarMuitasSecoes(slugs, { limit, channel, retrySemFoto });
+    await rodarMuitasSecoes(slugs, { limit, channel, retrySemFoto, reiniciar });
     return;
   }
 
-  await rodarSecao(secaoArg.split('=')[1], { limit, channel, retrySemFoto });
+  await rodarSecao(secaoArg.split('=')[1], { limit, channel, retrySemFoto, reiniciar });
 }
 
 if (require.main === module) {
@@ -610,6 +699,8 @@ module.exports = {
   WORK_DIR,
   CATALOGO_DIR,
   calcularFila,
+  reiniciarSecao,
+  exportarFotosSoltas,
   rodarSecao,
   rodarMuitasSecoes,
   montarZipFinal,

@@ -145,13 +145,27 @@ async function _loadConversationsCore(silent = false) {
     }
     window._lastMsgAtByUser = lastMsgAtByUser; // usado por _scheduleConvReload em 12-socket.js
 
+    // Pedido do usuário (2026-07-31): "remova os atendimentos de ontem que
+    // estão em pendentes (sem ticket ou resolvidos), mantenha só os de hoje
+    // sem mandar pesquisa de satisfação" — os dois casos abaixo ("sem
+    // ticket" e "resolvido/cancelado reengajado") vinham de QUALQUER dia do
+    // histórico inteiro (sem corte de data), então um cliente que só passou
+    // pelo menu do bot uma vez meses atrás (sem gerar ticket) ou que reabriu
+    // uma conversa fechada há dias ficava em Pendentes PARA SEMPRE. Isso é
+    // puramente um filtro de exibição (não fecha ticket, não muda status,
+    // não passa pelo controller) — por isso não há risco de disparar
+    // pesquisa de satisfação como efeito colateral. Ticket genuinamente
+    // "aberto" continua pendente independente do dia (esse não foi o caso
+    // relatado, e um ticket aberto de verdade sempre precisa de ação).
+    const hoje = new Date().toDateString();
     function estaPendente(uid) {
       const t = ticketsByUser[uid];
-      if (!t) return true;
+      const lastMsg = lastMsgAtByUser[uid];
+      const ehDeHoje = !!(lastMsg && new Date(lastMsg).toDateString() === hoje);
+      if (!t) return ehDeHoje;
       if (t.status === "aberto") return true;
       if (t.status === "resolvido" || t.status === "cancelado") {
-        const lastMsg = lastMsgAtByUser[uid];
-        return !!(lastMsg && t.updatedAt && lastMsg > new Date(t.updatedAt).getTime());
+        return !!(lastMsg && t.updatedAt && lastMsg > new Date(t.updatedAt).getTime() && ehDeHoje);
       }
       return false;
     }
@@ -200,7 +214,7 @@ async function _loadConversationsCore(silent = false) {
     // usuários via hiddenActiveUserIds (linha abaixo, "usersSeen") — o badge
     // não aplicava esse mesmo filtro. Agora aplica.
     const pendentes   = Object.keys(ticketsByUser).filter(uid => estaPendente(uid)).length
-      + Object.keys(lastMsgAtByUser).filter(uid => !ticketsByUser[uid] && !hiddenActiveUserIds.has(uid)).length;
+      + Object.keys(lastMsgAtByUser).filter(uid => !ticketsByUser[uid] && !hiddenActiveUserIds.has(uid) && new Date(lastMsgAtByUser[uid]).toDateString() === hoje).length;
     const emAndamento = Object.values(ticketsByUser).filter(t => t.status === "em_andamento").length;
     const badgeP = document.getElementById("badge-pendentes");
     const badgeA = document.getElementById("badge-em_andamento");
@@ -234,7 +248,7 @@ async function _loadConversationsCore(silent = false) {
     } else if (activeTicketFilter === "em_andamento") {
       users = users.filter(uid => ticketsByUser[uid]?.status === "em_andamento");
     } else if (activeTicketFilter === "fechados") {
-      const hoje = new Date().toDateString();
+      // `hoje` já declarado acima (usado também por estaPendente/badge).
       users = users.filter(uid => {
         const t = ticketsByUser[uid];
         if (!t) return false;
@@ -285,9 +299,6 @@ async function _loadConversationsCore(silent = false) {
       const statusPill = ticket
         ? `<span class="conv-status-pill status-${ticketStatus}">${safe(statusLabel(ticket.status))}</span>`
         : "";
-      const sectorTag = ticket?.sector
-        ? `<span class="conv-sector-tag">${safe(ticket.sector)}</span>`
-        : "";
       const statusClass = ticketStatus ? `ci-status-${ticketStatus}` : "";
       // Pedido do usuário: badge sempre verde (igual ao WhatsApp), sem variar
       // por status do ticket — a cor por status é o que causava o badge
@@ -306,7 +317,7 @@ async function _loadConversationsCore(silent = false) {
               <span>${safe(preview)}</span>
               ${unread > 0 ? `<span class="chat-unread">${unreadLabel}</span>` : ""}
             </span>
-            ${(statusPill || sectorTag) ? `<span class="chat-item-row3">${statusPill}${sectorTag}</span>` : ""}
+            ${statusPill ? `<span class="chat-item-row3">${statusPill}</span>` : ""}
           </span>
         </button>
       `;
@@ -1230,8 +1241,49 @@ function pushNotification(type, text, userId) {
 function requestNotificationPermission() {
   if (!("Notification" in window)) return;
   if (Notification.permission === "default") {
-    Notification.requestPermission().catch(() => {});
+    Notification.requestPermission().catch(() => {
+    }).finally(() => atualizarStatusNotificacaoNavegador());
   }
+}
+
+// Pedido do usuário (2026-07-30): status + botão em Configurações pra
+// (re)ativar a notificação do navegador — a permissão só era pedida 1x
+// automaticamente logo após login; se o atendente fechasse/negasse o popup
+// sem querer, não tinha como tentar de novo sem mexer manualmente nas
+// configurações do site no Chrome. Chamado ao abrir a aba Configurações
+// (switchTab, 03-navigation.js) e depois de qualquer tentativa de pedir
+// permissão, pra refletir o estado real.
+function atualizarStatusNotificacaoNavegador() {
+  const status = document.getElementById("browser-notif-status");
+  const btn = document.getElementById("btn-ativar-notif-navegador");
+  if (!status || !btn) return;
+
+  if (!("Notification" in window)) {
+    status.textContent = "Não suportado neste navegador.";
+    btn.classList.add("hidden");
+    return;
+  }
+
+  if (Notification.permission === "granted") {
+    status.textContent = "Ativadas — você recebe aviso do sistema com o painel em segundo plano.";
+    btn.classList.add("hidden");
+  } else if (Notification.permission === "denied") {
+    status.textContent = "Bloqueadas pelo navegador. Precisa liberar manualmente nas permissões do site (ícone de cadeado na barra de endereço).";
+    btn.classList.add("hidden");
+  } else {
+    status.textContent = "Ainda não ativadas.";
+    btn.classList.remove("hidden");
+  }
+}
+
+// Só funciona chamado a partir de um clique de verdade (gesto do usuário) —
+// por isso é uma função separada, ligada ao botão "Ativar" acima, e não
+// disparada sozinha.
+function ativarNotificacaoNavegador() {
+  if (!("Notification" in window)) return;
+  Notification.requestPermission()
+    .catch(() => {})
+    .finally(() => atualizarStatusNotificacaoNavegador());
 }
 
 function showDesktopNotification(type, text, userId) {

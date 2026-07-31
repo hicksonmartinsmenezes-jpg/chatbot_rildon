@@ -158,6 +158,31 @@ function _indexarProduto(p) {
     if (refNorm.length >= 4 && !referenciaIndex.has(refNorm)) {
       referenciaIndex.set(refNorm, base);
     }
+
+    // Pedido do usuário (2026-07-30, painel "Ver referências"): "aqueles
+    // códigos embaixo são outras referências? preciso que coloque todas
+    // possíveis". Achado ao vivo: vários fornecedores prefixam a referência
+    // do fabricante original com 1-2 letras próprias ao cadastrar a peça —
+    // ex: "V1986AE0105" cadastrado aqui pro código Bosch "1986AE0105", ou
+    // "SF00MA45253" pro código Bosch "F00MA45253". O equivalente batia
+    // exatamente com o produto certo, só não encontrava porque sobrava essa
+    // letra a mais na comparação. Registra também a referência SEM esse
+    // prefixo como alias — só quando não colide com outra referência já
+    // cadastrada, e só se sobrar pelo menos 4 caracteres com 1 dígito (pra
+    // não virar match de qualquer coisa).
+    for (const cortar of [1, 2]) {
+      if (refNorm.length <= cortar) continue;
+      const prefixo = refNorm.slice(0, cortar);
+      const semPrefixo = refNorm.slice(cortar);
+      if (
+        /^[A-Z]+$/.test(prefixo) &&
+        semPrefixo.length >= 4 &&
+        /\d/.test(semPrefixo) &&
+        !referenciaIndex.has(semPrefixo)
+      ) {
+        referenciaIndex.set(semPrefixo, base);
+      }
+    }
   }
 
   // códigos equivalentes/OEM (já extraídos pelo parser) + os embutidos em

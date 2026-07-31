@@ -222,6 +222,36 @@
   margin-top: 2px;
 }
 
+/* Botão "Ativar" das notificações do navegador (pedido do usuário,
+   2026-07-30) — não é um switch (permissão do navegador não dá pra ligar
+   programaticamente), é uma ação explícita. */
+.settings-inline-btn {
+  flex-shrink: 0;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 8px;
+  background: var(--primary, #2563eb);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: filter 0.15s;
+}
+
+.settings-inline-btn:hover { filter: brightness(1.08); }
+.settings-inline-btn.hidden { display: none; }
+
+/* Texto de apoio abaixo de um campo — pedido do usuário (2026-07-30):
+   deixar claro que o tempo de reabertura de ticket também decide se uma
+   mensagem cria protocolo novo, não só se pula a pesquisa de satisfação. */
+.settings-field-hint {
+  margin: -8px 0 4px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
 .switch {
   position: relative;
   width: 48px;

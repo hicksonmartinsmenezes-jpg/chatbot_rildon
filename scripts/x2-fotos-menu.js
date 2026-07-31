@@ -34,6 +34,7 @@ const {
   carregarProgresso,
   rodarMuitasSecoes,
   montarZipFinal,
+  exportarFotosSoltas,
 } = require('./x2-fotos-scraper');
 const { rodar: rodarSync } = require('./x2-catalogo-sync');
 
@@ -112,6 +113,7 @@ async function main() {
         { title: 'Baixar fotos (escolher seções)', value: 'baixar' },
         { title: 'Procurar produtos novos no X2', value: 'sync' },
         { title: 'Montar .zip final de uma seção já completa', value: 'zip' },
+        { title: 'Exportar fotos soltas (sem zip) de uma seção já completa', value: 'exportar' },
         { title: 'Sair', value: 'sair' },
       ],
     });
@@ -160,6 +162,22 @@ async function main() {
       continue;
     }
 
+    if (acao === 'exportar') {
+      const { secao } = await prompts({
+        type: 'autocomplete',
+        name: 'secao',
+        message: 'Qual seção exportar (fotos soltas, sem zip)?',
+        choices: [
+          ...montarChoices().map((c) => ({ title: `${c.title} — ${c.description}`, value: c.value })),
+          { title: '« Voltar', value: null },
+        ],
+      });
+      if (!secao) continue;
+      await exportarFotosSoltas(secao);
+      console.log('');
+      continue;
+    }
+
     // acao === 'baixar'
     const secoes = await escolherSecoes(montarChoices());
     if (!secoes) continue;
@@ -178,8 +196,18 @@ async function main() {
       initial: false,
     });
 
-    await rodarMuitasSecoes(secoes, { limit, channel: 'chrome', retrySemFoto });
-    console.log('\nPronto! Pra montar o .zip final de uma seção completa, escolha essa opção no menu.\n');
+    // Pedido do usuário (2026-07-30): opção de reiniciar do zero, apagando
+    // o progresso salvo dessas seções — pergunta explícita e com default
+    // "não" de propósito (é destrutivo: perde o que já tinha baixado).
+    const { reiniciar } = await prompts({
+      type: 'confirm',
+      name: 'reiniciar',
+      message: 'Reiniciar do ZERO essas seções (apaga o progresso e as fotos já baixadas, baixa tudo de novo)?',
+      initial: false,
+    });
+
+    await rodarMuitasSecoes(secoes, { limit, channel: 'chrome', retrySemFoto, reiniciar });
+    console.log('\nPronto! Pra exportar as fotos de uma seção completa (sem zip), escolha essa opção no menu.\n');
   }
 }
 

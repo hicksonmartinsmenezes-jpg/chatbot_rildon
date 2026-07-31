@@ -387,6 +387,31 @@ async function askSatisfaction(id) {
   return result.rows[0] ? mapTicket(result.rows[0]) : null;
 }
 
+// Pedido do usuário (2026-07-30): "padronize uma pesquisa de satisfação por
+// atendimento do cliente ao dia" — um cliente que abre e fecha vários
+// atendimentos no mesmo dia (ex: pergunta de manhã, volta à tarde por outro
+// assunto) não deve receber a pesquisa "De 1 a 5..." de novo a cada
+// fechamento, só na primeira vez naquele dia. Verifica em QUALQUER ticket
+// do cliente (não só o que está fechando agora) se já existe
+// satisfaction_asked_at no dia de hoje, no fuso horário da loja (mesmo
+// padrão de TZ usado no resto deste arquivo). Chamado ANTES da reivindicação
+// atômica em enviarPesquisaSatisfacao (ticket.controller.js) — se já
+// pesquisou hoje, nem tenta reivindicar/enviar de novo.
+async function hasSurveyAskedToday(userId) {
+  const TZ = safeTZ();
+  const result = await pool.query(
+    `
+    SELECT 1 FROM tickets
+    WHERE user_id = $1
+      AND satisfaction_asked_at IS NOT NULL
+      AND DATE(satisfaction_asked_at AT TIME ZONE '${TZ}') = DATE(NOW() AT TIME ZONE '${TZ}')
+    LIMIT 1
+    `,
+    [userId]
+  );
+  return result.rowCount > 0;
+}
+
 // Registra a nota (1-5) respondida pelo cliente.
 async function rateSatisfaction(id, rating) {
   const idStr = String(id);
@@ -468,6 +493,7 @@ module.exports = {
   stats,
   gerarProtocolo,
   askSatisfaction,
+  hasSurveyAskedToday,
   rateSatisfaction,
   saveSatisfactionFeedback,
   prependDescription

@@ -344,7 +344,11 @@ function _catalogoRefBannerHTML(produto) {
         >
       </div>
       <div class="catalogo-ref-banner-info">
-        <strong class="catalogo-ref-banner-title">
+        <strong
+          class="catalogo-ref-banner-title catalogo-ref-banner-title-link"
+          title="Abrir esse produto"
+          onclick="event.stopPropagation(); catalogoAbrirProdutoEquivalente('${escapeAttr(produto.codigo)}')"
+        >
           Código Produto ${safe(produto.codigo)} - ${safe(produto.nome)}
           <i class="fa-regular fa-file-lines"></i>
         </strong>

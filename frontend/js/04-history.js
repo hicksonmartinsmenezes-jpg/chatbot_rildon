@@ -125,6 +125,9 @@ async function loadHistory(render = true) {
   const search    = document.getElementById("search-history")?.value    || "";
   const startDate = document.getElementById("history-date-start")?.value || "";
   const endDate   = document.getElementById("history-date-end")?.value   || "";
+  // Pedido do usuário (2026-07-30): filtro de horário do dia, além da data.
+  const startTime = document.getElementById("history-time-start")?.value || "";
+  const endTime   = document.getElementById("history-time-end")?.value   || "";
   const container = document.getElementById("history-container");
 
   if (render && container) {
@@ -144,6 +147,8 @@ async function loadHistory(render = true) {
     if (search)    params.append("q",    search);
     if (startDate) params.append("from", startDate);
     if (endDate)   params.append("to",   endDate);
+    if (startTime) params.append("horaInicio", startTime);
+    if (endTime)   params.append("horaFim",    endTime);
 
     const res = await apiFetch(`${BASE}/api/history/grouped?${params}`);
     if (!res) return [];
@@ -165,7 +170,7 @@ async function loadHistory(render = true) {
       ].join(" "));
 
       const matchesSearch = !searchTerm || haystack.includes(searchTerm);
-      const matchesDate   = isHistoryInsideDateRange(item, startDate, endDate);
+      const matchesDate   = isHistoryInsideDateRange(item, startDate, endDate, startTime, endTime);
       return matchesSearch && matchesDate;
     });
 
@@ -205,7 +210,7 @@ async function loadHistory(render = true) {
 }
 
 function clearHistoryFilters() {
-  ["search-history", "history-date-start", "history-date-end"].forEach(id => {
+  ["search-history", "history-date-start", "history-date-end", "history-time-start", "history-time-end"].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });

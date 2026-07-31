@@ -348,3 +348,33 @@ function showSessionExpired() {
 function getSessionToken() {
   return getCurrentUser() ? "cookie-session" : "";
 }
+
+// ─── Efeito de paralaxe na tela de login (pedido do usuário, 2026-07-30:
+// "algum jeito interessante... com um efeito") ─────────────────────────────
+// Move sutilmente a foto da fachada conforme o mouse, dando sensação de
+// profundidade. Só roda em telas com mouse de verdade (pointer: fine) e
+// desliga sozinho se o usuário preferir menos movimento.
+function initLoginParallax() {
+  const visual = document.getElementById("login-visual");
+  const image = visual?.querySelector(".login-visual-image");
+  if (!visual || !image) return;
+
+  const semMovimento = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const temMouse = window.matchMedia("(pointer: fine)").matches;
+  if (semMovimento || !temMouse) return;
+
+  visual.addEventListener("mousemove", (e) => {
+    const rect = visual.getBoundingClientRect();
+    const px = (e.clientX - rect.left) / rect.width - 0.5;  // -0.5..0.5
+    const py = (e.clientY - rect.top) / rect.height - 0.5;
+    image.style.setProperty("--login-parallax-x", `${(-px * 14).toFixed(1)}px`);
+    image.style.setProperty("--login-parallax-y", `${(-py * 14).toFixed(1)}px`);
+  });
+
+  visual.addEventListener("mouseleave", () => {
+    image.style.setProperty("--login-parallax-x", "0px");
+    image.style.setProperty("--login-parallax-y", "0px");
+  });
+}
+
+document.addEventListener("DOMContentLoaded", initLoginParallax);

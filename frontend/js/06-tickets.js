@@ -173,7 +173,7 @@ function renderRecentTickets(tickets = []) {
     <div class="recent-ticket-item">
       <div>
         <strong>#${safe(ticket.protocolo || ticket.id || "—")} — ${safe(tipoLabel(ticket.type || "geral"))}</strong>
-        <span>${safe(ticket.customerName || "Cliente não informado")} • ${safe(ticket.sector || "geral")}</span>
+        <span>${safe(ticket.customerName || "Cliente não informado")}</span>
       </div>
       <small>${safe(statusLabel(ticket.status || "aberto"))}</small>
     </div>

@@ -378,6 +378,15 @@ async function enviarPesquisaSatisfacao(ticket) {
     const template = settings?.atendimento?.mensagemPesquisaSatisfacao;
     if (!template || !template.trim()) return;
 
+    // Pedido do usuário (2026-07-30): "padronize uma pesquisa de satisfação
+    // por atendimento do cliente ao dia" — pra não ficar chato/repetitivo
+    // com quem fala com a loja mais de uma vez no mesmo dia (manhã e
+    // tarde, por assuntos diferentes), só a PRIMEIRA vez que um
+    // atendimento fecha no dia manda a pesquisa; os fechamentos seguintes
+    // do mesmo cliente naquele dia não mandam de novo. Ver
+    // hasSurveyAskedToday em ticket.repository.js.
+    if (await ticketRepository.hasSurveyAskedToday(ticket.userId)) return;
+
     // BUG CORRIGIDO (relatado pelo usuário): o guard "jaEstavaResolvido"
     // em patchTicket (acima) ajuda no caso comum, mas é check-then-act —
     // duas requisições de fechamento quase simultâneas (ex: botão da

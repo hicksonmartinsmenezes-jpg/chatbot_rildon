@@ -19,6 +19,24 @@
   40%, 60% { transform: translateX(4px); }
 }
 
+/* Zoom/pan lento e contínuo na foto da fachada (pedido do usuário,
+   2026-07-30: "algum jeito interessante... com um efeito"). */
+@keyframes loginKenBurns {
+  0%   { transform: scale(1.06) translate(0, 0); }
+  100% { transform: scale(1.16) translate(-1.5%, -1%); }
+}
+
+/* Feixe de luz diagonal que varre a imagem de tempos em tempos. */
+@keyframes loginShine {
+  0%, 92%, 100% { transform: translateX(-120%) rotate(20deg); }
+  45%           { transform: translateX(120%) rotate(20deg); }
+}
+
+@keyframes loginVisualCaptionIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 .login-screen {
   position: fixed;
   inset: 0;
@@ -51,19 +69,116 @@
   z-index: 0;
 }
 
+/* Moldura única que abriga o painel visual (fachada) + o card de login lado
+   a lado — pedido do usuário (2026-07-30). Em telas estreitas colapsa pro
+   card sozinho (ver media query abaixo). */
+.login-layout {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  max-width: 940px;
+  min-height: 560px;
+  border-radius: 26px;
+  overflow: hidden;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
+  animation: loginEnter 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  background: var(--panel, rgba(16, 23, 34, 0.96));
+}
+
+/* ─── Painel visual (fachada 3D da loja) ──────────────────────────────── */
+.login-visual {
+  position: relative;
+  flex: 1 1 50%;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-end;
+  background: linear-gradient(160deg, #0c1e3d 0%, #0a1428 100%);
+}
+
+/* Duas camadas separadas de propósito: esta (externa) recebe só a
+   paralaxe do mouse (JS, via --login-parallax-x/-y em 02-auth.js); o
+   ::before (interna) recebe só o zoom/pan lento do Ken Burns — assim os
+   dois efeitos não brigam pela mesma propriedade transform. */
+.login-visual-image {
+  position: absolute;
+  inset: -16px;
+  transform: translate3d(var(--login-parallax-x, 0px), var(--login-parallax-y, 0px), 0);
+  transition: transform 0.3s ease-out;
+}
+
+.login-visual-image::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("/loja-3d.png");
+  background-repeat: no-repeat;
+  background-position: center center;
+  background-size: cover;
+  transform: scale(1.06);
+  animation: loginKenBurns 18s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+/* Degradê pra dar contraste ao rodapé (legenda) e um toque de cor de marca. */
+.login-visual-overlay {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(0deg, rgba(6, 10, 20, 0.88) 0%, rgba(6, 10, 20, 0.15) 46%, rgba(6, 10, 20, 0.05) 70%),
+    linear-gradient(135deg, rgba(37, 99, 235, 0.32), transparent 55%);
+  pointer-events: none;
+}
+
+/* Feixe de luz que varre a cena de tempos em tempos. */
+.login-visual-shine {
+  position: absolute;
+  top: -40%;
+  left: 0;
+  width: 45%;
+  height: 180%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.16), transparent);
+  animation: loginShine 9s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.login-visual-caption {
+  position: relative;
+  z-index: 1;
+  padding: 26px 30px;
+  color: #fff;
+  animation: loginVisualCaptionIn 0.6s 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.login-visual-caption strong {
+  display: block;
+  font-size: 1.3rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+}
+
+.login-visual-caption span {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.78);
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+}
+
 .login-card {
   position: relative;
   z-index: 1;
-  width: 100%;
-  max-width: 400px;
-  background: var(--panel, rgba(16, 23, 34, 0.96));
-  border: 1px solid var(--border, rgba(148, 163, 184, 0.12));
-  border-radius: 24px;
+  flex: 1 1 50%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  background: transparent;
   padding: 42px 34px 30px;
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.04);
   text-align: center;
-  animation: loginEnter 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
-  backdrop-filter: blur(8px);
+  animation: loginEnter 0.45s 0.1s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /* faixa de gradiente no topo do card */
@@ -83,7 +198,11 @@
   width: 96px;
   height: 96px;
   object-fit: contain;
-  margin-bottom: 16px;
+  margin: 0 auto 16px;
+  /* .login-card agora é flex column (ver acima) — item com largura fixa
+     não estica pro centro sozinho, precisa de align-self explícito.
+     Pedido do usuário (2026-07-30): "centralize o icon da rildon". */
+  align-self: center;
   filter: drop-shadow(0 6px 18px rgba(37, 99, 235, 0.35));
 }
 
@@ -200,7 +319,26 @@
 }
 #login-error:not(:empty) { animation: loginErrorShake 0.4s ease; }
 
-/* responsivo */
+/* responsivo — abaixo de ~860px o painel visual (fachada) some e o card
+   volta a ser um cartão único e centralizado, como era antes. */
+@media (max-width: 860px) {
+  .login-visual { display: none; }
+  .login-layout {
+    max-width: 400px;
+    min-height: 0;
+    box-shadow: none;
+    background: transparent;
+  }
+  .login-card {
+    max-width: 400px;
+    background: var(--panel, rgba(16, 23, 34, 0.96));
+    border: 1px solid var(--border, rgba(148, 163, 184, 0.12));
+    border-radius: 24px;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    backdrop-filter: blur(8px);
+  }
+}
+
 @media (max-width: 480px) {
   .login-card { padding: 34px 22px 26px; border-radius: 20px; }
   .logo-img { width: 80px; height: 80px; }
@@ -208,8 +346,13 @@
 }
 
 /* tema claro */
-body.light-theme .login-card {
-  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+body.light-theme .login-layout {
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.14);
+}
+@media (max-width: 860px) {
+  body.light-theme .login-card {
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  }
 }
 body.light-theme .login-card h2 { color: #0f172a; }
 body.light-theme .login-card input { background: #f8fafc; }
@@ -217,8 +360,12 @@ body.light-theme .login-card input:focus { background: #fff; }
 
 /* respeita quem prefere menos movimento */
 @media (prefers-reduced-motion: reduce) {
+  .login-layout,
   .login-card,
   .login-screen::before,
+  .login-visual-image::before,
+  .login-visual-shine,
+  .login-visual-caption,
   #login-error:not(:empty) { animation: none; }
 }
 

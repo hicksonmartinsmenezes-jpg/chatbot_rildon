@@ -31,6 +31,9 @@ function switchTab(tab, event) {
     // Foco direto no campo Marca ao abrir a aba — atendente já começa digitando.
     setTimeout(() => document.getElementById("catalogo-marca")?.focus(), 50);
   }
+  if (tab === "settings") {
+    if (typeof atualizarStatusNotificacaoNavegador === "function") atualizarStatusNotificacaoNavegador();
+  }
 
   currentTab = tab;
 

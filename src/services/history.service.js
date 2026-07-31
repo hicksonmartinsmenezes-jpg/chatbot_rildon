@@ -36,20 +36,22 @@ async function saveHistory({
   });
 }
 
-async function listHistory({ userId, limit, offset, q, from, to } = {}) {
+async function listHistory({ userId, limit, offset, q, from, to, horaInicio, horaFim } = {}) {
   return historyRepository.findAll({
     userId,
     limit: limit || 50,
     offset: offset || 0,
     q,
     from,
-    to
+    to,
+    horaInicio,
+    horaFim
   });
 }
 
-async function listHistoryGrouped({ q, from, to, limit, offset } = {}) {
+async function listHistoryGrouped({ q, from, to, horaInicio, horaFim, limit, offset } = {}) {
   return historyRepository.findGroupedByUser({
-    q, from, to,
+    q, from, to, horaInicio, horaFim,
     limit: limit || 500,
     offset: offset || 0
   });

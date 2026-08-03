@@ -5,13 +5,17 @@ const { emitEvent } = require("./socket.service");
 // Tags de cliente/estágio — controladas pelo próprio sistema, não aparecem
 // como checkbox no editar contato do painel (pedido do usuário, 2026-07-24):
 // todo contato criado via autoRegisterContact (1ª mensagem no WhatsApp,
-// ver src/whatsapp/contacts.js) nasce como "Clientes Novos"; quando ele gera
+// ver src/whatsapp/contacts.js) nasce como "Leads"; quando ele gera
 // o 1º ticket de verdade (createTicket, ticket.service.js), marcarComoCliente()
-// abaixo promove pra "Clientes" — a etiqueta de "novo" sai, "cliente" fica.
+// abaixo promove pra "Clientes" — a etiqueta de "lead" sai, "cliente" fica.
+// Renomeado de "Clientes Novos" pra "Leads" (pedido do usuário, 2026-07-31):
+// o nome antigo dava a entender "cliente recém-chegado", mas na real é
+// "contato que só passou pelo bot e nunca gerou atendimento" — "Leads" é o
+// termo que já descreve isso sem ambiguidade.
 const TAG_CLIENTE      = "Clientes";
-const TAG_CLIENTE_NOVO = "Clientes Novos";
+const TAG_CLIENTE_NOVO = "Leads";
 
-// Promove um contato de "Clientes Novos" para "Clientes" quando ele gera um
+// Promove um contato de "Leads" para "Clientes" quando ele gera um
 // ticket — chamado por ticket.service.js/createTicket. Idempotente (não faz
 // nada se o contato já tiver a tag "Clientes" ou não existir ainda).
 async function marcarComoCliente(userIdOuTelefone) {

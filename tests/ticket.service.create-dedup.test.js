@@ -36,7 +36,7 @@ jest.mock("../src/services/settings.service", () => ({
   getSettings: jest.fn().mockResolvedValue({}),
 }));
 // Pedido do usuário (2026-07-24): createTicket agora chama marcarComoCliente
-// (contacts.service.js) pra promover "Clientes Novos" → "Clientes". Sem
+// (contacts.service.js) pra promover "Leads" → "Clientes". Sem
 // mock, esse dependeria de um banco real (contacts.service usa pool.query
 // direto) — mockado aqui pra manter o teste isolado/rápido.
 jest.mock("../src/services/contacts.service", () => ({

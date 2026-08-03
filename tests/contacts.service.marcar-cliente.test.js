@@ -3,7 +3,7 @@
  *
  * Feature pedida pelo usuário (2026-07-24): "só cadastre Clientes quando
  * gerarem tickets. Clientes Novos os que não chegarem a criar tickets."
- * Todo contato nasce com a tag "Clientes Novos" (ver autoRegisterContact,
+ * Todo contato nasce com a tag "Leads" (ver autoRegisterContact,
  * src/whatsapp/contacts.js) — quando gera um ticket (createTicket,
  * ticket.service.js chama marcarComoCliente), a tag vira "Clientes".
  */
@@ -17,9 +17,9 @@ const { marcarComoCliente } = require("../src/services/contacts.service");
 describe("marcarComoCliente", () => {
   beforeEach(() => jest.clearAllMocks());
 
-  test("contato com 'Clientes Novos' → vira 'Clientes' (tag antiga sai, nova entra)", async () => {
+  test("contato com 'Leads' → vira 'Clientes' (tag antiga sai, nova entra)", async () => {
     pool.query
-      .mockResolvedValueOnce({ rows: [{ id: "c1", tags: ["Clientes Novos"] }] }) // SELECT
+      .mockResolvedValueOnce({ rows: [{ id: "c1", tags: ["Leads"] }] }) // SELECT
       .mockResolvedValueOnce({ rows: [] }); // UPDATE
 
     await marcarComoCliente("5511999998888@s.whatsapp.net");
@@ -37,7 +37,7 @@ describe("marcarComoCliente", () => {
 
   test("preserva outras tags manuais já existentes (ex: Fabricante) ao promover", async () => {
     pool.query
-      .mockResolvedValueOnce({ rows: [{ id: "c2", tags: ["Clientes Novos", "Fabricante"] }] })
+      .mockResolvedValueOnce({ rows: [{ id: "c2", tags: ["Leads", "Fabricante"] }] })
       .mockResolvedValueOnce({ rows: [] });
 
     await marcarComoCliente("5511977776666@s.whatsapp.net");

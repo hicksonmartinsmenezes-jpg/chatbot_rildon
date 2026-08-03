@@ -204,7 +204,21 @@ async function processMessage({ userId, contactName, message, messageId, mediaPa
   }
 
   // Reabre ticket fechado para que o cliente apareça em Pendentes novamente
-  try { await reopenTicketIfClosed(userId); } catch (e) { logger.warn(`Erro ao reabrir ticket: ${e.message}`); }
+  //
+  // BUG CORRIGIDO (pedido do usuário, 2026-07-31): esta chamada rodava
+  // incondicionalmente, ANTES do gate de isFuncionario mais abaixo — então
+  // um contato com a tag "Funcionário" (número de teste interno, ver
+  // contatoTemTagFuncionario/resolverBotOffEfetivo) que tivesse um ticket
+  // antigo fechado tinha esse ticket REABERTO (virava "aberto", aparecia em
+  // Pendentes de novo) só por mandar qualquer mensagem — mesmo com o bot
+  // bloqueado pra ele. O bloqueio de tag "Funcionário" (2026-07-24) só
+  // cobria resposta automática/saudação/pesquisa; reabertura de ticket
+  // escapava por rodar cedo demais nesta função. Isso é, na prática, o bot
+  // recriando/reativando atendimento pra número de teste — o mesmo problema
+  // que o usuário pediu pra evitar.
+  if (!isFuncionario) {
+    try { await reopenTicketIfClosed(userId); } catch (e) { logger.warn(`Erro ao reabrir ticket: ${e.message}`); }
+  }
 
   // Emite imediatamente para o frontend saber que o cliente mandou mensagem.
   // messageId (id real da mensagem no WhatsApp) é incluído para o painel

@@ -1,0 +1,24 @@
+-- Migration 022: tickets.assumed_at — tempo até a 1ª resposta humana
+-- Aplicar com: psql -U <user> -d <db> -f migrations/022_ticket_assumed_at.sql
+--
+-- Pedido do usuário (2026-07-31): painel de Métricas não tinha nenhuma
+-- métrica de TEMPO (só quantidade — quantos tickets, quantos resolvidos
+-- etc.). "Tempo médio até a 1ª resposta" precisa saber quando um atendente
+-- de carne e osso pegou o ticket pela 1ª vez — updated_at não serve porque
+-- é sobrescrito toda vez que o ticket muda (fechar, reabrir, transferir),
+-- perdendo esse instante específico.
+--
+-- assumed_at é gravado só na 1ª vez que o ticket é assumido (ver
+-- ticket.repository.js/assign — usa COALESCE(assumed_at, NOW()), nunca
+-- sobrescreve um valor já existente) e é limpo de novo só quando o ticket é
+-- reaberto MANUALMENTE (mesma condição de zerarSatisfacao em updateStatus —
+-- reabertura automática dentro da janela de poucos minutos continua sendo
+-- "a mesma conversa", não reseta). Tickets já existentes no banco ficam com
+-- assumed_at NULL — não há como reconstruir esse instante retroativamente;
+-- a métrica de tempo médio só passa a ter dado real a partir de tickets
+-- assumidos DEPOIS desta migration.
+--
+-- Seguro de aplicar: só adiciona coluna nova, nullable, sem tocar em
+-- nenhuma linha existente.
+
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS assumed_at TIMESTAMPTZ;

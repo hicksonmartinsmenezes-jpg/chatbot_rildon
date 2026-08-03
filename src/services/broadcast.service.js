@@ -313,14 +313,17 @@ async function getBroadcastAudience(type, { tag = "", tags = [], atendenteId = "
   const uniqueTags = [...new Set(tagList)];
 
   if (type === "all_clients") {
+    // Pedido do usuário (2026-08-03): "Todos os clientes" só pegava quem já
+    // tinha mensagem em `history` — mas boa parte dos contatos importados
+    // via bulk-tag-contacts.js (listas por vendedor) são clientes reais da
+    // loja que nunca mandaram mensagem pro bot, então ficavam de fora.
+    // Passou a usar `contacts` direto (mesma fonte de "Contatos", sem
+    // filtro) — bate com o que a loja entende por "todos os clientes".
     query = `
-SELECT
-  user_id,
-  MAX(contact_name) AS contact_name
-  FROM history
-  WHERE user_id IS NOT NULL
-  GROUP BY user_id
-  ORDER BY MAX(contact_name) NULLS LAST, user_id
+      SELECT whatsapp AS user_id, nome AS contact_name
+      FROM contacts
+      WHERE whatsapp IS NOT NULL
+      ORDER BY lower(nome)
     `;
   }
 
@@ -350,7 +353,15 @@ SELECT
   }
 
   if (type === "contacts") {
-    const where = ["status = 'ativo'", "whatsapp IS NOT NULL"];
+    // Pedido do usuário (2026-08-03): campanha por etiqueta de vendedor
+    // ("Contatos Rafael" etc.) voltava 0 destinatários mesmo com a tag
+    // existindo em dezenas de contatos — a exigência de status='ativo'
+    // aqui era hardcoded, mas contatos.service.js/listContacts (usado na
+    // tela normal de Contatos) só filtra por status quando o usuário pede
+    // — muitos contatos importados/marcados via bulk-tag-contacts.js têm
+    // status diferente de 'ativo' (herdado de quando já existiam no banco).
+    // Removido o filtro forçado; status agora só entra se vier explícito.
+    const where = ["whatsapp IS NOT NULL"];
     if (uniqueTags.length > 0) {
       // Overlap (&&): contato entra se tiver QUALQUER UMA das etiquetas
       // selecionadas (lógica OU) — usa o índice GIN existente em tags.

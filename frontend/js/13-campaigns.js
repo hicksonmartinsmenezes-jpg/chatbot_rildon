@@ -632,56 +632,80 @@ function removeCampContact(phone) {
 
 async function loadCampaignContactsFilters() {
   try {
-    const [tagsRes, usersRes] = await Promise.all([
-      apiFetch("/api/contacts/tags"),
-      apiFetch("/api/users")
-    ]);
-    if (tagsRes.ok) {
-      const tags = await tagsRes.json();
-      const box  = document.getElementById("camp-filter-tags");
-      if (box) {
-        // Pedido do usuário: campanha pra "Funcionário(a)" + "Diretor Geral"
-        // ao mesmo tempo exigia gambiarra via fetch manual, porque o filtro
-        // só aceitava UMA etiqueta por vez. Preserva marcação já feita ao
-        // recarregar (ex: depois de trocar de aba e voltar).
-        const marcadas = new Set(
-          [...box.querySelectorAll("input:checked")].map(el => el.value)
-        );
-        box.innerHTML = tags.map(t => `
-          <label class="camp-tag-pill${marcadas.has(t) ? " active" : ""}">
-            <input type="checkbox" value="${escapeAttr(t)}" ${marcadas.has(t) ? "checked" : ""} data-change-action="updateCampaignAudienceCount">
-            <span>${safe(t)}</span>
-          </label>`).join("");
-      }
-    }
+    const usersRes = await apiFetch("/api/users");
     if (usersRes?.ok) {
-      const users = await usersRes.json();
+      const allUsers = await usersRes.json();
       const sel   = document.getElementById("camp-filter-atendente");
       if (sel) {
+        // Pedido do usuário (2026-08-03): não usar mais um bloco separado de
+        // botões "Contatos por vendedor" — os 10 vendedores (Rafael, Dudu
+        // etc.) entram como opções DENTRO do próprio select "Todos os
+        // atendentes", junto com os atendentes reais do painel. Como esses
+        // 10 nomes não são necessariamente contas de usuário (são só listas
+        // de contato exportadas do celular), cada opção de vendedor usa um
+        // value prefixado "tag:" pra sinalizar que o filtro deve ser por
+        // ETIQUETA ("Contatos <Nome>"), não por atendente_id — ver
+        // _getContactsFilters() logo abaixo, que faz essa distinção.
+        // Administrador/supervisor continuam de fora (não atendem cliente
+        // diretamente).
+        const vendedores = (allUsers.rows || allUsers)
+          .filter(u => u.perfil !== "admin" && u.perfil !== "supervisor");
         const cur = sel.value;
+        const opcoesVendedoresLista = VENDOR_TAGS.map(tag => {
+          const label = tag.replace(/^Contatos\s+/i, "");
+          const value = `tag:${tag}`;
+          return `<option value="${escapeAttr(value)}" ${value === cur ? "selected" : ""}>${safe(label)}</option>`;
+        }).join("");
+        const opcoesAtendentesPainel = vendedores.map(u =>
+          `<option value="${escapeAttr(u.id)}" ${u.id === cur ? "selected" : ""}>${safe(u.nome)}</option>`
+        ).join("");
         sel.innerHTML = `<option value="">Todos os atendentes</option>` +
-          (users.rows || users).map(u =>
-            `<option value="${escapeAttr(u.id)}" ${u.id === cur ? "selected" : ""}>${safe(u.nome)}</option>`
-          ).join("");
+          `<optgroup label="Vendedores (lista de contatos)">${opcoesVendedoresLista}</optgroup>` +
+          `<optgroup label="Atendentes do painel">${opcoesAtendentesPainel}</optgroup>`;
       }
     }
   } catch (_) {}
 }
 
-// Pedido do usuário: permitir combinar mais de uma etiqueta (ex:
-// "Funcionário(a)" + "Diretor Geral") no público de uma campanha — antes só
-// dava pra escolher uma por vez, e combinar exigia gambiarra manual.
+// As mesmas 10 etiquetas "Contatos <Nome>" criadas via
+// scripts/bulk-tag-contacts.js — usadas pra popular o select de atendente
+// (ver loadCampaignContactsFilters) e reconhecidas em _getContactsFilters.
+const VENDOR_TAGS = [
+  "Contatos Rafael",
+  "Contatos Dudu",
+  "Contatos Luana",
+  "Contatos Anthony",
+  "Contatos Nete",
+  "Contatos Halison",
+  "Contatos Gislei",
+  "Contatos Gustavo",
+  "Contatos Claudiston",
+  "Contatos Carol Recepcionista"
+];
+
+// Select "Todos os atendentes" é a única forma de filtrar em Contatos agora
+// (pedido do usuário, 2026-08-03: removido o checklist de etiquetas visível
+// — ficava poluído com "Clientes", "Diretor Geral" etc. misturado aos 10
+// vendedores). Se o value começar com "tag:", é um dos 10 vendedores
+// (filtra por etiqueta "Contatos <Nome>"); senão é um atendente_id de
+// verdade (usuário real do painel).
 function _getContactsFilters() {
-  const tags = [...document.querySelectorAll("#camp-filter-tags input:checked")].map(el => el.value);
-  return {
-    tags,
-    atendenteId: document.getElementById("camp-filter-atendente")?.value || ""
-  };
+  const atendenteSelValue = document.getElementById("camp-filter-atendente")?.value || "";
+  let atendenteId = "";
+  let tags = [];
+  if (atendenteSelValue.startsWith("tag:")) {
+    tags = [atendenteSelValue.slice(4)];
+  } else {
+    atendenteId = atendenteSelValue;
+  }
+  return { tags, atendenteId };
 }
 
-// Alterna o destaque visual (.active) do pill ao (des)marcar a etiqueta —
-// a lógica de recalcular o público continua no listener delegado central
-// (data-change-action="updateCampaignAudienceCount" em 17-ui-events.js).
+// Alterna o destaque visual (.active) do pill ao (des)marcar o checkbox —
+// genérico, usado hoje só pelo checklist de tags manuais do modal Editar
+// Contato (#contact-tags-checklist em index.html; ver 16-contacts.js).
+// Campanhas não usa mais pills de etiqueta (removido em 2026-08-03), mas o
+// listener continua aqui por já existir globalmente no bundle.
 document.addEventListener("change", (event) => {
   const checkbox = event.target.closest(".camp-tag-pill input[type=checkbox]");
   if (!checkbox) return;
@@ -690,7 +714,8 @@ document.addEventListener("change", (event) => {
 
 async function updateCampaignAudienceCount() {
   if (!getCurrentUser()) return;
-  const countBox = document.getElementById("campaign-audience-count");
+  const countBox   = document.getElementById("campaign-audience-count");
+  const previewBox = document.getElementById("camp-contacts-preview");
   if (!countBox) return;
 
   const audienceType =
@@ -701,10 +726,12 @@ async function updateCampaignAudienceCount() {
     countBox.innerHTML = n > 0
       ? `${n} contato(s) selecionado(s).`
       : `Nenhum contato selecionado.`;
+    if (previewBox) previewBox.innerHTML = "";
     return;
   }
 
   countBox.innerHTML = "Calculando destinatários...";
+  if (previewBox) previewBox.innerHTML = "";
   try {
     const params = new URLSearchParams();
     if (audienceType === "contacts") {
@@ -717,6 +744,21 @@ async function updateCampaignAudienceCount() {
     if (!res.ok) { countBox.innerHTML = "Não foi possível calcular o público."; return; }
     const data = await res.json();
     countBox.innerHTML = `${data.length} destinatário(s) encontrado(s).`;
+
+    // Pedido do usuário: mostrar a lista de contatos referentes ao filtro
+    // escolhido, não só a contagem — substitui o checklist de etiquetas que
+    // ficava nesse mesmo espaço.
+    if (previewBox) {
+      if (!data.length) {
+        previewBox.innerHTML = `<div class="camp-contacts-preview-empty">Nenhum contato encontrado pra esse filtro.</div>`;
+      } else {
+        previewBox.innerHTML = data.map(item => `
+          <div class="camp-contacts-preview-item">
+            <span class="ccp-nome">${safe(item.contactName || "(sem nome)")}</span>
+            <span class="ccp-fone">${safe(formatContactPhone(item.userId))}</span>
+          </div>`).join("");
+      }
+    }
   } catch {
     countBox.innerHTML = "Erro ao calcular destinatários.";
   }

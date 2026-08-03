@@ -676,7 +676,9 @@
   min-width: 140px;
 }
 
-/* ─── Etiquetas: múltipla escolha (checkboxes em formato de pill) ── */
+/* ─── Etiquetas: checklist de tags manuais (modal Editar Contato) ──
+   Ainda usado por #contact-tags-checklist em index.html — não remover
+   mesmo que Campanhas não use mais pills de etiqueta. */
 .camp-tag-checklist {
   flex: 2;
   min-width: 200px;
@@ -713,6 +715,49 @@
   background: var(--primary, #1d6cf5);
   border-color: var(--primary, #1d6cf5);
   color: #fff;
+}
+
+/* ─── Lista de contatos referentes ao filtro escolhido (Campanhas) ──
+   Pedido do usuário (2026-08-03): substituiu o checklist de etiquetas —
+   em vez de marcar pills, o select "Todos os atendentes" já filtra, e aqui
+   embaixo mostra quem exatamente entrou no público. */
+.camp-contacts-preview {
+  margin-top: 10px;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.camp-contacts-preview:empty { display: none; }
+
+.camp-contacts-preview-empty {
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.camp-contacts-preview-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 12px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+}
+
+.camp-contacts-preview-item:last-child { border-bottom: none; }
+
+.camp-contacts-preview-item .ccp-nome {
+  color: var(--text, #e2e8f0);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.camp-contacts-preview-item .ccp-fone {
+  color: var(--muted);
+  white-space: nowrap;
 }
 
 /* ─── Preview de contatos no modal de confirmação ── */

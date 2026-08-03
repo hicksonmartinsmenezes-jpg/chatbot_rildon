@@ -84,12 +84,13 @@ async function autoRegisterContact(userId, contactName = "") {
     }
 
     // Pedido do usuário (2026-07-24): todo contato novo nasce marcado como
-    // "Clientes Novos" — vira "Clientes" automaticamente quando gerar o 1º
-    // ticket de verdade (ver marcarComoCliente em contacts.service.js,
+    // "Leads" (renomeado de "Clientes Novos" em 2026-07-31 — ver
+    // contacts.service.js) — vira "Clientes" automaticamente quando gerar o
+    // 1º ticket de verdade (ver marcarComoCliente em contacts.service.js,
     // chamado por ticket.service.js/createTicket).
     const inserted = await pool.query(
       `INSERT INTO contacts (nome, whatsapp, status, tags)
-       VALUES ($1::text, $2::varchar, 'ativo', ARRAY['Clientes Novos']::text[])
+       VALUES ($1::text, $2::varchar, 'ativo', ARRAY['Leads']::text[])
        RETURNING id`,
       [safeName, phone]
     );

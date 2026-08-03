@@ -611,6 +611,20 @@ function buscarProdutosPainel({ marca = "", modelo = "", ano = null, categoria =
     return { total, produtos };
   }
 
+  // Pedido do usuário (2026-07-31, investigado a fundo): busca por "Ford" +
+  // "Uno" (combinação que não existe — Uno é Fiat) retornou 883 peças,
+  // porque só o Modelo é obrigatório aqui; Marca só entra depois pra
+  // ranquear (ver marcaCompativel abaixo), nunca pra excluir. Perguntei se
+  // fazia sentido exigir os dois batendo juntos — a resposta é NÃO, e tem
+  // prova concreta: o produto 109592 ("ROTOR ALT. ESCORT,UNO,DUNA,MWM,
+  // UNIVERSAL") serve de verdade num Fiat Uno, mas o texto de aplicação
+  // dele (copiado cru do ERP da X2, sem estrutura fixa) é só "Escort, Uno,
+  // Duna, MWM, Universal, Ford, Jonh Deere, MB" — a palavra "Fiat" NUNCA
+  // aparece ali. Exigir Marca+Modelo juntos resolveria o caso Ford+Uno mas
+  // cortaria peça de verdade como essa em qualquer busca "Fiat"+"Uno".
+  // Decisão do usuário: manter só Modelo obrigatório (like estava) — o
+  // ganho de não perder peça de verdade pesa mais que o ruído ocasional de
+  // uma combinação marca+modelo inexistente trazer resultado demais.
   const tokensObrigatorios = modeloTokens.length ? modeloTokens : marcaTokens;
   const minMatches = tokensObrigatorios.length >= 2 ? 2 : 1;
 

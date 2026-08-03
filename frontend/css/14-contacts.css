@@ -295,6 +295,15 @@
 .ct-status-inativo  { background: rgba(148,163,184,.08); color: #94a3b8; border-color: rgba(148,163,184,.2); }
 .ct-status-bloqueado{ background: rgba(239,68,68,.10);  color: #f87171; border-color: rgba(239,68,68,.25); }
 
+/* Estado inferido pelo DDD (contato sem "estado" salvo manualmente) —
+   estilo tracejado + itálico pra diferenciar de um valor confirmado. */
+.ct-estado-auto {
+  color: var(--muted);
+  font-style: italic;
+  border-bottom: 1px dashed var(--muted);
+  cursor: help;
+}
+
 /* Tags */
 .ct-tags {
   display: flex;
@@ -490,7 +499,7 @@
 }
 
 /* Chip removível — pedido do usuário (2026-07-30): tags automáticas
-   ("Clientes Novos" etc.) grudavam no contato pra sempre, sem jeito de
+   ("Leads" etc.) grudavam no contato pra sempre, sem jeito de
    tirar pelo modal (ver renderContactAutoTagsUI, 16-contacts.js). */
 .contact-tags-auto-chip {
   display: inline-flex;

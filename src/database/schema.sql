@@ -77,6 +77,13 @@ CREATE TABLE IF NOT EXISTS tickets (
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
+  -- Migration 022: instante da 1ª vez que um atendente assumiu o ticket —
+  -- usado pra métrica "tempo médio até 1ª resposta" no painel de Métricas.
+  -- NULL até alguém assumir; nunca sobrescrito por reatribuição/transferência
+  -- (ver ticket.repository.js/assign, usa COALESCE) — só zera de novo numa
+  -- reabertura MANUAL (mesma regra da pesquisa de satisfação).
+  assumed_at        TIMESTAMPTZ,
+
   -- Pesquisa de satisfação (migration 015): enviada automaticamente quando
   -- o ticket é fechado (resolvido). satisfaction_asked_at marca "pesquisa
   -- pendente" até o cliente responder um número de 1 a 5 (ou expirar).

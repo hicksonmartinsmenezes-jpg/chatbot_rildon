@@ -20,10 +20,10 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css">
   <!-- CSS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <link rel="stylesheet" href="dist/bundle.9fff789bc9.css">
+  <link rel="stylesheet" href="dist/bundle.9726c346ff.css">
   <!-- CSS_BUNDLE_END -->
 <style>
     /* Centraliza colunas da tabela de histórico */
@@ -357,7 +357,7 @@
 
           <article class="executive-card info">
             <div class="executive-card-icon">
-              <i class="fa-solid fa-headset"></i>
+              <i class="fa-solid fa-hourglass-half"></i>
             </div>
             <strong id="stat-andamento">0</strong>
             <div class="executive-card-label">
@@ -654,7 +654,7 @@
           <div class="contacts-table-wrap">
             <table class="contacts-table">
               <colgroup>
-                <col><col><col><col><col><col><col><col><col>
+                <col><col><col><col><col><col><col><col>
               </colgroup>
               <thead>
                 <tr>
@@ -664,13 +664,12 @@
                   <th width="90">Estado</th>
                   <th width="110">Status</th>
                   <th width="180">Tags</th>
-                  <th width="210">Atendente vinculado</th>
                   <th width="180">Departamento</th>
                   <th width="120">Ações</th>
                 </tr>
               </thead>
               <tbody id="contacts-tbody">
-                <tr><td colspan="9"><div class="contacts-empty"><i class="fa-solid fa-users-slash"></i>Nenhum contato.</div></td></tr>
+                <tr><td colspan="8"><div class="contacts-empty"><i class="fa-solid fa-users-slash"></i>Nenhum contato.</div></td></tr>
               </tbody>
             </table>
           </div>
@@ -740,7 +739,7 @@
               <div class="full">
                 <label>Tags</label>
                 <!-- Pedido do usuário (2026-07-24): tags fixas, só por seleção
-                     (nada de texto livre). "Clientes"/"Clientes Novos" NÃO
+                     (nada de texto livre). "Clientes"/"Leads" NÃO
                      aparecem aqui — são automáticas (ver contact-tags-auto
                      abaixo), controladas pelo sistema quando o contato gera
                      um ticket (marcarComoCliente, contacts.service.js). -->
@@ -959,16 +958,6 @@
                 <span>Todos os clientes</span>
               </label>
               <label class="campaign-radio">
-                <input type="radio" name="campaign-audience" value="with_tickets" data-change-action="toggleCustomRecipients">
-                <i class="fa-solid fa-ticket"></i>
-                <span>Com ticket</span>
-              </label>
-              <label class="campaign-radio">
-                <input type="radio" name="campaign-audience" value="last_30_days" data-change-action="toggleCustomRecipients">
-                <i class="fa-solid fa-calendar-days"></i>
-                <span>Últimos 30 dias</span>
-              </label>
-              <label class="campaign-radio">
                 <input type="radio" name="campaign-audience" value="contacts" data-change-action="toggleCustomRecipients">
                 <i class="fa-solid fa-address-book"></i>
                 <span>Contatos</span>
@@ -984,12 +973,12 @@
           <div id="contacts-filters-box" class="hidden camp-field contacts-filters-box">
             <label>Filtrar contatos</label>
             <div class="contacts-filters-row">
-              <div id="camp-filter-tags" class="camp-tag-checklist" title="Nenhuma marcada = todas as etiquetas">
-                <!-- checkboxes de etiqueta preenchidos via loadCampaignContactsFilters() -->
-              </div>
               <select id="camp-filter-atendente" class="contacts-filter-select" data-change-action="updateCampaignAudienceCount">
                 <option value="">Todos os atendentes</option>
               </select>
+            </div>
+            <div id="camp-contacts-preview" class="camp-contacts-preview">
+              <!-- lista de contatos do público filtrado, preenchida via updateCampaignAudienceCount() -->
             </div>
           </div>
 
@@ -1648,10 +1637,16 @@ Como podemos ajudar você hoje?
       <p>Resumo analítico dos atendimentos, setores e desempenho.</p>
     </div>
 
-    <button type="button" class="metrics-refresh-btn" data-action="loadMetricsCharts" aria-label="Atualizar métricas">
-      <i class="fa-solid fa-arrows-rotate"></i>
-      <span>Atualizar</span>
-    </button>
+    <div class="metrics-actions">
+      <button type="button" class="metrics-export-btn" onclick="exportarMetricasPDF(this)">
+        <i class="fa-solid fa-file-pdf"></i>
+        <span>Exportar PDF</span>
+      </button>
+      <button type="button" class="metrics-refresh-btn" data-action="loadMetricsCharts" aria-label="Atualizar métricas">
+        <i class="fa-solid fa-arrows-rotate"></i>
+        <span>Atualizar</span>
+      </button>
+    </div>
   </header>
 
   <section class="metrics-cards">
@@ -1659,6 +1654,7 @@ Como podemos ajudar você hoje?
     <article class="metric-card" data-accent="blue">
       <span class="metric-card-icon"><i class="fa-solid fa-headset"></i></span>
       <strong id="metric-total">0</strong>
+      <span id="metric-total-trend"></span>
       <span class="metric-card-label">Total de Atendimentos Mensal <i class="fa-solid fa-circle-info metric-card-info" title="Total de tickets registrados no mês corrente"></i></span>
     </article>
 
@@ -1710,6 +1706,20 @@ Como podemos ajudar você hoje?
       <span class="metric-card-label">Satisfação média <i class="fa-solid fa-circle-info metric-card-info" title="Média das notas de 1 a 5 respondidas pelos clientes ao fechar o atendimento"></i></span>
     </article>
 
+    <article class="metric-card" data-accent="indigo">
+      <span class="metric-card-icon"><i class="fa-solid fa-stopwatch"></i></span>
+      <strong id="metric-tempo-resolucao">—</strong>
+      <span id="metric-tempo-resolucao-trend"></span>
+      <span class="metric-card-label">Tempo médio de resolução <i class="fa-solid fa-circle-info metric-card-info" title="Tempo médio entre a abertura e o fechamento (resolvido/cancelado) dos tickets do mês corrente"></i></span>
+    </article>
+
+    <article class="metric-card" data-accent="lime">
+      <span class="metric-card-icon"><i class="fa-solid fa-bolt"></i></span>
+      <strong id="metric-tempo-resposta">—</strong>
+      <span id="metric-tempo-resposta-trend"></span>
+      <span class="metric-card-label">Tempo médio até 1ª resposta <i class="fa-solid fa-circle-info metric-card-info" title="Tempo médio entre a abertura do ticket e o momento em que um atendente o assumiu pela 1ª vez (só conta tickets assumidos após 31/07/2026)"></i></span>
+    </article>
+
   </section>
 
   <section class="metrics-charts">
@@ -1717,12 +1727,18 @@ Como podemos ajudar você hoje?
     <article class="chart-card chart-wide">
       <header class="chart-card-head">
         <span class="chart-card-icon"><i class="fa-solid fa-users"></i></span>
-        <h3>Atendentes <i class="fa-solid fa-circle-info metric-card-info" title="Quem está online agora, quem tem atendimento em andamento e o total já atendido por cada um (histórico)"></i></h3>
+        <h3>Atendentes <i class="fa-solid fa-circle-info metric-card-info" title="Quem está online agora, quem tem atendimento em andamento e quanto cada um atendeu no período escolhido"></i></h3>
+        <div class="metric-periodo-seletor" id="metric-atendentes-periodo">
+          <button type="button" class="metric-periodo-btn" data-periodo="hoje" onclick="setMetricsAtendentesPeriodo('hoje')">Hoje</button>
+          <button type="button" class="metric-periodo-btn" data-periodo="semana" onclick="setMetricsAtendentesPeriodo('semana')">7 dias</button>
+          <button type="button" class="metric-periodo-btn" data-periodo="mes" onclick="setMetricsAtendentesPeriodo('mes')">Mês</button>
+          <button type="button" class="metric-periodo-btn is-active" data-periodo="total" onclick="setMetricsAtendentesPeriodo('total')">Total</button>
+        </div>
       </header>
       <div class="metric-satisfaction-table-wrap">
         <table class="metric-satisfaction-table">
           <thead>
-            <tr><th>Atendente</th><th>Status</th><th>Em atendimento</th><th>Total atendido</th></tr>
+            <tr><th>Atendente</th><th>Status</th><th>Em atendimento</th><th id="metric-atendentes-count-header">Total atendido</th></tr>
           </thead>
           <tbody id="metric-atendentes-body">
             <tr><td colspan="4" class="metric-satisfaction-empty">Nenhum atendente cadastrado.</td></tr>
@@ -1762,6 +1778,14 @@ Como podemos ajudar você hoje?
           </tbody>
         </table>
       </div>
+    </article>
+
+    <article class="chart-card chart-wide">
+      <header class="chart-card-head">
+        <span class="chart-card-icon"><i class="fa-solid fa-chart-simple"></i></span>
+        <h3>Distribuição de notas de satisfação</h3>
+      </header>
+      <div class="chart-canvas-wrap"><canvas id="metric-chart-notas"></canvas></div>
     </article>
 
     <article class="chart-card chart-wide">
@@ -1889,7 +1913,7 @@ Como podemos ajudar você hoje?
       </div>
     </form>
 
-    <p class="catalogo-hint" id="catalogo-hint-veiculo"><i class="fa-solid fa-circle-info"></i> Modelo já é suficiente pra buscar por veículo — ou selecione só uma Seção/Linha/Fabricante pra navegar por todo o catálogo daquela categoria (sem precisar de marca/modelo).</p>
+    <p class="catalogo-hint" id="catalogo-hint-veiculo"><i class="fa-solid fa-circle-info"></i> Modelo é obrigatório pra buscar por veículo (Marca sozinha traz resultado amplo demais) — ou selecione só uma Seção/Linha/Fabricante pra navegar por todo o catálogo daquela categoria (sem precisar de marca/modelo).</p>
     <p class="catalogo-hint hidden" id="catalogo-hint-codigo"><i class="fa-solid fa-circle-info"></i> Aceita o código de fabricante (ex: gravado na peça antiga), a referência própria do produto ou o código interno da loja.</p>
   </div>
 
@@ -2025,7 +2049,7 @@ Como podemos ajudar você hoje?
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1"></script>
 
   <!-- JS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <script src="dist/bundle.a89bcfd53b.js"></script>
+  <script src="dist/bundle.4a8ff56c06.js"></script>
   <!-- JS_BUNDLE_END -->
 
 

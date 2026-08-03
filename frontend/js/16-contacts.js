@@ -17,6 +17,65 @@ const ESTADOS_BR = [
   "PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"
 ];
 
+// Pedido do usuário (2026-07-31): "em estado, consegue captar pelo ddd do
+// contato o estado?" — tabela oficial de DDDs da Anatel (cada DDD pertence
+// a um único estado, sem ambiguidade). Usado só quando o contato NÃO tem
+// "estado" preenchido manualmente — é uma inferência de exibição, não
+// grava nada sozinho no banco (edição manual sempre tem prioridade).
+const DDD_PARA_UF = {
+  11:"SP",12:"SP",13:"SP",14:"SP",15:"SP",16:"SP",17:"SP",18:"SP",19:"SP",
+  21:"RJ",22:"RJ",24:"RJ",
+  27:"ES",28:"ES",
+  31:"MG",32:"MG",33:"MG",34:"MG",35:"MG",37:"MG",38:"MG",
+  41:"PR",42:"PR",43:"PR",44:"PR",45:"PR",46:"PR",
+  47:"SC",48:"SC",49:"SC",
+  51:"RS",53:"RS",54:"RS",55:"RS",
+  61:"DF",
+  62:"GO",64:"GO",
+  63:"TO",
+  65:"MT",66:"MT",
+  67:"MS",
+  68:"AC",
+  69:"RO",
+  71:"BA",73:"BA",74:"BA",75:"BA",77:"BA",
+  79:"SE",
+  81:"PE",87:"PE",
+  82:"AL",
+  83:"PB",
+  84:"RN",
+  85:"CE",88:"CE",
+  86:"PI",89:"PI",
+  91:"PA",93:"PA",94:"PA",
+  92:"AM",97:"AM",
+  95:"RR",
+  96:"AP",
+  98:"MA",99:"MA",
+};
+
+function contactEstadoPorDDD(whatsapp) {
+  const digitos = String(whatsapp || "").replace(/\D/g, "");
+  if (!digitos) return null;
+  // Remove o código do país (55) quando presente na frente — só quando
+  // sobra DDD+número no tamanho nacional esperado (10 ou 11 dígitos),
+  // senão um DDD real que também é "55" (RS) seria cortado por engano.
+  const nacional = digitos.startsWith("55") && digitos.length > 11
+    ? digitos.slice(2)
+    : digitos;
+  if (nacional.length < 10) return null;
+  const ddd = parseInt(nacional.slice(0, 2), 10);
+  return DDD_PARA_UF[ddd] || null;
+}
+
+// Estado salvo manualmente sempre ganha. Sem estado salvo, tenta inferir
+// pelo DDD e mostra com estilo diferenciado (ver .ct-estado-auto no CSS)
+// + tooltip deixando claro que é uma dedução, não um dado confirmado.
+function contactEstadoCellHTML(c) {
+  if (c.estado) return safe(c.estado);
+  const detectado = contactEstadoPorDDD(c.whatsapp);
+  if (!detectado) return "—";
+  return `<span class="ct-estado-auto" title="Detectado pelo DDD do WhatsApp — não confirmado manualmente">${safe(detectado)}</span>`;
+}
+
 // ── Load & Render ─────────────────────────────────────────────────────────────
 
 async function loadContacts(silent = false) {
@@ -25,7 +84,7 @@ async function loadContacts(silent = false) {
   if (!tbody) return;
   bindContactActionDelegation();
 
-  if (!silent) tbody.innerHTML = `<tr><td colspan="9" class="contacts-empty"><i class="fa-solid fa-spinner fa-spin"></i><br>Carregando...</td></tr>`;
+  if (!silent) tbody.innerHTML = `<tr><td colspan="8" class="contacts-empty"><i class="fa-solid fa-spinner fa-spin"></i><br>Carregando...</td></tr>`;
 
   try {
     const params = new URLSearchParams({
@@ -50,7 +109,7 @@ async function loadContacts(silent = false) {
   } catch (e) {
     if (requestId !== _contactsRequestSeq) return;
     if (tbody) tbody.innerHTML = `
-      <tr><td colspan="9" class="contacts-empty">
+      <tr><td colspan="8" class="contacts-empty">
         <i class="fa-solid fa-triangle-exclamation"></i><br>
         Não foi possível carregar os contatos.<br>
         <small>Verifique a conexão e tente novamente.</small><br>
@@ -64,7 +123,7 @@ function renderContactsTable(rows) {
   if (!tbody) return;
 
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="9"><div class="contacts-empty"><i class="fa-solid fa-users-slash"></i>Nenhum contato encontrado.</div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8"><div class="contacts-empty"><i class="fa-solid fa-users-slash"></i>Nenhum contato encontrado.</div></td></tr>`;
     return;
   }
 
@@ -96,10 +155,9 @@ function renderContactsTable(rows) {
         </div>
       </td>
       <td style="white-space:nowrap;">${safe(formatContactPhone(c.whatsapp))}</td>
-      <td>${safe(c.estado || "—")}</td>
+      <td>${contactEstadoCellHTML(c)}</td>
       <td><span class="ct-status ${contactStatusClass(c.status)}">${safe(contactStatusLabel(c.status))}</span></td>
       <td><div class="ct-tags">${tags || '<span style="color:var(--muted);font-size:12px;">—</span>'}</div></td>
-      <td>${safe(c.atendente_nome || "—")}</td>
       <td>${safe(c.departamento || "—")}</td>
       <td>
         <div class="ct-actions">
@@ -267,12 +325,12 @@ async function loadContactsTags() {
 // ── Add/Edit Modal ────────────────────────────────────────────────────────────
 
 // Tags manuais fixas (selecionáveis no editar contato) — pedido do usuário,
-// 2026-07-24. "Clientes"/"Clientes Novos" ficam de fora de propósito: são
+// 2026-07-24. "Clientes"/"Leads" ficam de fora de propósito: são
 // automáticas (ver _contactsAutoTags abaixo + marcarComoCliente no backend).
 const CONTACT_MANUAL_TAGS = ["Funcionário", "Fabricante", "Funcionário Pessoal"];
 
 // Tags do contato que NÃO vieram do checklist manual (ex: "Clientes",
-// "Clientes Novos", ou qualquer etiqueta legada) — preservadas ao salvar,
+// "Leads", ou qualquer etiqueta legada) — preservadas ao salvar,
 // mesmo sem aparecer como checkbox, pra editar contato nunca apagar sozinho
 // uma classificação automática do sistema.
 let _contactsAutoTags = [];
@@ -312,10 +370,10 @@ async function openContactModal(id = null) {
       });
 
       // Qualquer tag que não é uma das 3 manuais é "automática" — o sistema
-      // que põe sozinho (ex: "Clientes", "Clientes Novos" quando o contato
+      // que põe sozinho (ex: "Clientes", "Leads" quando o contato
       // gera um ticket). BUG CORRIGIDO (pedido do usuário 2026-07-30: "toda
       // vez que eu edito um contato adiciona mais uma tag", ex: contato do
-      // Crediário ficou com "Clientes Novos" grudado mesmo marcando
+      // Crediário ficou com "Leads" grudado mesmo marcando
       // Funcionário): antes essas tags só apareciam como texto informativo,
       // sem jeito de tirar — agora viram chips com X pra remover quando não
       // fizerem sentido pro contato (ver renderContactAutoTagsUI abaixo).
@@ -338,10 +396,10 @@ function closeContactModal() {
   _contactsEditingId = null;
 }
 
-// Renderiza as tags automáticas (Clientes, Clientes Novos etc.) como chips
+// Renderiza as tags automáticas (Clientes, Leads etc.) como chips
 // com um X pra remover — antes eram só texto informativo e ficavam presas
 // no contato pra sempre, mesmo quando não faziam mais sentido (ex: contato
-// interno do Crediário marcado como "Clientes Novos" por engano).
+// interno do Crediário marcado como "Leads" por engano).
 function renderContactAutoTagsUI() {
   const box = document.getElementById("contact-tags-auto");
   if (!box) return;
@@ -387,7 +445,7 @@ async function saveContact() {
   const departamento= document.getElementById("contact-departamento").value.trim();
   const atendenteId = document.getElementById("contact-atendente").value;
   // Tags manuais marcadas no checklist + tags automáticas preservadas do
-  // contato original (ex: "Clientes"/"Clientes Novos" — nunca editadas por
+  // contato original (ex: "Clientes"/"Leads" — nunca editadas por
   // aqui, ver openContactModal/_contactsAutoTags).
   const tagsManuais = [...document.querySelectorAll("#contact-tags-checklist input:checked")].map(el => el.value);
   const tags        = [...tagsManuais, ..._contactsAutoTags];

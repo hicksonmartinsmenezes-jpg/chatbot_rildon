@@ -52,7 +52,12 @@ body {
 }
 
 body {
-  font-family: 'Nunito', sans-serif;
+  /* Padronizado para Inter em todo o painel (2026-07-31) — os demais
+     elementos (input/select/textarea etc.) usam font-family: inherit,
+     então herdam daqui automaticamente. Exceção deliberada: a prévia de
+     mensagem do WhatsApp em 11-campaigns.css (#camp-wa-text) mantém a
+     fonte do sistema de propósito, pra simular como fica no app real. */
+  font-family: 'Inter', sans-serif;
   background: var(--bg);
   color: var(--text);
   display: flex;

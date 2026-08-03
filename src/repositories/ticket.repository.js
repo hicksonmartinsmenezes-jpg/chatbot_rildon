@@ -198,13 +198,18 @@ async function updateStatus(id, status, { resetSatisfaction = true } = {}) {
   const reabrindo = status === "aberto";
   const zerarSatisfacao = reabrindo && resetSatisfaction;
 
+  // Migration 022: assumed_at (tempo até 1ª resposta) segue a MESMA regra
+  // de zerarSatisfacao — reabertura manual é "atendimento novo de verdade"
+  // (zera pra próxima assumida contar como uma nova 1ª resposta), reabertura
+  // automática (mesma conversa continuando, dentro da janela de poucos
+  // minutos) preserva o instante original.
   const result = await pool.query(
     `
     UPDATE tickets
     SET status = $1,
         updated_at = NOW()
         ${reabrindo ? ", assigned_to = NULL, assigned_to_name = NULL" : ""}
-        ${zerarSatisfacao ? ", satisfaction_rating = NULL, satisfaction_asked_at = NULL, satisfaction_rated_at = NULL" : ""}
+        ${zerarSatisfacao ? ", satisfaction_rating = NULL, satisfaction_asked_at = NULL, satisfaction_rated_at = NULL, assumed_at = NULL" : ""}
     WHERE ${idOrProtocolWhere(idStr, 2)}
     RETURNING *
     `,
@@ -230,13 +235,20 @@ async function assign(id, user) {
     return { alreadyAssigned: true, assignedToName: exists.rows[0].assigned_to_name || null };
   }
 
+  // Migration 022: assumed_at grava a 1ª vez que ESTE atendimento foi
+  // assumido (tempo até 1ª resposta humana, ver metrics.routes.js). Usa
+  // COALESCE em vez de sobrescrever direto porque esse UPDATE também roda
+  // de novo depois de um transferTicket() que devolveu o ticket pro "pool"
+  // (assigned_to = NULL) — nesse caso o ticket JÁ teve uma 1ª resposta antes
+  // da transferência, então não conta uma nova.
   const result = await pool.query(
     `
    UPDATE tickets
     SET assigned_to = $1,
         assigned_to_name = $2,
         status = 'em_andamento',
-        updated_at = NOW()
+        updated_at = NOW(),
+        assumed_at = COALESCE(assumed_at, NOW())
     WHERE
     ${idOrProtocolWhere(idStr, 3)}
     AND assigned_to IS NULL
@@ -267,6 +279,11 @@ async function transfer(id, sector, targetUser = null) {
   const assignedToName = targetUser ? (targetUser.nome || targetUser.usuario) : null;
   const newStatus      = targetUser ? "em_andamento" : "aberto";
 
+  // Migration 022: transferência direta pra um atendente específico também
+  // conta como "assumido" pra fins de assumed_at, caso normalmente sempre
+  // já preenchido antes por assign() — COALESCE aqui é só defensivo, pro
+  // caso raro de um ticket ir direto de "aberto" pra transferido sem passar
+  // pelo fluxo normal de Assumir.
   const result = await pool.query(
     `
     UPDATE tickets
@@ -275,6 +292,7 @@ async function transfer(id, sector, targetUser = null) {
         assigned_to_name = $3,
         status           = $4,
         updated_at       = NOW()
+        ${targetUser ? ", assumed_at = COALESCE(assumed_at, NOW())" : ""}
     WHERE ${idOrProtocolWhere(idStr, 5)}
     RETURNING *
     `,
@@ -328,6 +346,8 @@ function mapTicket(row) {
     assignedToName: row.assigned_to_name,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    // Migration 022: instante da 1ª resposta humana (ver assign/updateStatus).
+    assumedAt: row.assumed_at ?? null,
     // Pesquisa de satisfação (migration 015) — ver askSatisfaction/rateSatisfaction.
     satisfactionRating: row.satisfaction_rating ?? null,
     satisfactionAskedAt: row.satisfaction_asked_at ?? null,

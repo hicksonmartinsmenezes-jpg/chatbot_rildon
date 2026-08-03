@@ -122,6 +122,50 @@
   to { transform: rotate(360deg); }
 }
 
+/* Botão "Exportar PDF" — pedido do usuário (2026-07-31), mesma ideia do
+   catalogo-export-btn (catálogo já tinha exportação em PDF aprovada) —
+   fica ao lado do Atualizar, no header do painel. */
+.metrics-actions {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.metrics-export-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 20px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: #e2e8f0;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.metrics-export-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.metrics-export-btn:active:not(:disabled) { transform: translateY(0); }
+
+.metrics-export-btn:disabled { opacity: 0.7; cursor: progress; }
+
+body.light-theme .metrics-export-btn {
+  background: #f1f5f9;
+  border-color: #dbe3ee;
+  color: #0f172a;
+}
+body.light-theme .metrics-export-btn:hover:not(:disabled) { background: #e6ebf2; }
+
 
 /* ─── Cards KPI ────────────────────────────────────────────────── */
 #tab-metrics .metrics-cards {
@@ -229,6 +273,30 @@
 #tab-metrics .metric-card[data-accent="purple"] { --accent: #8b5cf6; }
 #tab-metrics .metric-card[data-accent="teal"]   { --accent: #14b8a6; }
 #tab-metrics .metric-card[data-accent="pink"]   { --accent: #ec4899; }
+#tab-metrics .metric-card[data-accent="indigo"] { --accent: #6366f1; }
+#tab-metrics .metric-card[data-accent="lime"]   { --accent: #84cc16; }
+
+/* Indicador de tendência (variação vs mês anterior) — pedido do usuário
+   (2026-07-31): números sozinhos não dizem se "187 atendimentos" é bom ou
+   ruim sem saber quanto foi mês passado. Verde/vermelho depende do sentido
+   "bom" da métrica (ex: tempo de resolução SUBIR é ruim, então usa
+   .is-good/.is-bad já invertido no JS, não é sempre "sobe=verde"). */
+.metric-card-trend {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.metric-card-trend.is-good { color: #4ade80; }
+.metric-card-trend.is-bad  { color: #f87171; }
+.metric-card-trend.is-neutral { color: #93a4bd; }
+
+body.light-theme .metric-card-trend.is-good { color: #16a34a; }
+body.light-theme .metric-card-trend.is-bad  { color: #dc2626; }
+body.light-theme .metric-card-trend.is-neutral { color: #64748b; }
 
 /* ─── Gráficos ─────────────────────────────────────────────────── */
 .metrics-charts {
@@ -293,6 +361,50 @@
 #tab-metrics .chart-card.chart-wide .chart-canvas-wrap { height: 320px; }
 
 .chart-canvas-wrap canvas { max-height: 100%; }
+
+/* Cabeçalho do card "Atendentes" ganhou o seletor de período — permite
+   quebrar linha em telas estreitas em vez de espremer/estourar o card. */
+#metric-atendentes-periodo {
+  margin-left: auto;
+}
+
+#tab-metrics .chart-card:has(#metric-atendentes-periodo) .chart-card-head {
+  flex-wrap: wrap;
+  row-gap: 10px;
+}
+
+/* ─── Seletor de período (ranking de Atendentes) ──────────────────── */
+.metric-periodo-seletor {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+}
+
+.metric-periodo-btn {
+  padding: 6px 14px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: #93a4bd;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.metric-periodo-btn:hover { color: #e2e8f0; }
+
+.metric-periodo-btn.is-active {
+  background: var(--primary);
+  color: #fff;
+}
+
+body.light-theme .metric-periodo-seletor { background: #f1f5f9; border-color: #dbe3ee; }
+body.light-theme .metric-periodo-btn { color: #64748b; }
+body.light-theme .metric-periodo-btn:hover { color: #0f172a; }
 
 /* ─── Tabela de satisfação por atendente ──────────────────────────── */
 .metric-satisfaction-table-wrap {

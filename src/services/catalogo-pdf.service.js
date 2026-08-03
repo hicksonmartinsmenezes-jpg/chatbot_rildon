@@ -163,7 +163,15 @@ const RODAPE_NUM_X_FRACAO = 1062 / 1372;
 const RODAPE_NUM_Y_FRACAO = 108 / 156;
 
 const PAGE_MARGIN = 24;
-const COLS = 4;
+// Pedido do usuário (2026-07-31): "caiba o máximo de itens possíveis" — era
+// 4 colunas. Foto/fontes/respiros foram encolhidos (ver ROWS_POR_PAGINA,
+// PAD_CARD, CODIGO_FONTE/CODIGO_ALTURA, NOME_FONTE/NOME_ALTURA,
+// GAP_DIVISORIA_TEXTO/GAP_FOTO_DIVISORIA abaixo) pra caber 5×6 = 30
+// produtos por página (era 4×4 = 16) sem descaracterizar o card (ainda tem
+// foto + código + nome, cabeçalho/rodapé da marca do mesmo tamanho de
+// sempre) — usuário escolheu "deixa comigo" entre um meio-termo (~30/pág)
+// e um modo mais agressivo (lista sem foto).
+const COLS = 5;
 const GAP = 10;
 // Altura REAL/undistorcida da imagem do cabeçalho — calculada a partir da
 // proporção verdadeira do arquivo, largura sempre = página inteira
@@ -203,9 +211,14 @@ const TITULO_GAP_CARDS = GAP;
 // em branco embaixo (pedido do usuário: "preencher mais o espaço em branco
 // que ficou aumentando as caixas das fotos") nem faltar espaço se o
 // tamanho da fonte do código/nome mudar de novo no futuro.
-const ROWS_POR_PAGINA = 4;
+// 2026-07-31: subiu pra 6 linhas (junto com COLS=5 acima) pra caber o
+// máximo de produtos possível por página — ver comentário no COLS.
+const ROWS_POR_PAGINA = 6;
 
-const PAD_CARD = 8;       // respiro interno do card (o "desajustado" da v1 era falta disso)
+// 2026-07-31: encolhido de 8 pra 5 (junto com o resto do bloco de texto
+// abaixo) pra sobrar mais altura de linha útil pras ROWS_POR_PAGINA extras
+// (ver comentário no COLS/ROWS_POR_PAGINA acima).
+const PAD_CARD = 5;       // respiro interno do card (o "desajustado" da v1 era falta disso)
 // Pedido do usuário (2026-07-29): referência mandada (site com cards de
 // "Sensor de Estacionamento") tem cantos QUADRADOS, não arredondados —
 // RAIO_CARD virou 0 (era 6). Ver também BORDA_CARD/BORDA_CARD_ESPESSURA
@@ -218,19 +231,33 @@ const RAIO_CARD = 0;
 // abaixo da foto (voltando a ter uma faixa de texto própria) — por isso
 // CODIGO_ALTURA volta a existir aqui (tinha sido removida quando o código
 // virou caixa/badge).
-const CODIGO_FONTE = 11;
-const CODIGO_ALTURA = 15;
-const NOME_FONTE = 8;
-const NOME_ALTURA = 24;  // ~2 linhas no tamanho novo
+// 2026-07-31: todo esse bloco de texto (código+nome+respiros) encolhido de
+// novo — pedido do usuário "caiba o máximo de itens possíveis" (ver COLS/
+// ROWS_POR_PAGINA acima). Prioridade foi manter a PROPORÇÃO fonte↔altura de
+// linha de antes (CODIGO_ALTURA/CODIGO_FONTE e NOME_ALTURA/NOME_FONTE
+// seguem a mesma razão ~1.36-1.37x), só em escala menor — o texto continua
+// legível, só ocupa menos espaço fixo, sobrando mais altura pra foto em
+// cada uma das 6 linhas.
+const CODIGO_FONTE = 8;
+const CODIGO_ALTURA = 11;
+const NOME_FONTE = 6;
+const NOME_ALTURA = 16;  // ~2 linhas no tamanho novo
 // Espaço entre a linha divisória e o bloco de texto (código+nome) — pedido
 // do usuário 2026-07-30 "desça um pouco mais" (era GAP_DIVISORIA_NOME=10,
 // usado quando só o nome ficava aqui; depois 12; "desça mais a descrição
 // se possível" — mais uma rodada, agora 16). Nomeado como constante porque
 // entra também no cálculo de alturaFixaTexto lá embaixo — evita os dois
 // lugares dessincronizarem.
-const GAP_DIVISORIA_TEXTO = 16;
+// 2026-07-31: reduzido de 16 pra 6 — junto com o resto do bloco de texto
+// (ver comentário acima em CODIGO_FONTE), pra caber mais linhas de card.
+const GAP_DIVISORIA_TEXTO = 6;
 // Respiro entre o código e o nome, dentro do mesmo bloco de texto.
-const GAP_CODIGO_NOME = 3;
+const GAP_CODIGO_NOME = 2; // era 3 — reduzido em 2026-07-31, mesmo motivo acima
+// Respiro entre o fim da foto e a linha divisória — era um "5" hardcoded
+// direto no cálculo (gerarPdfCatalogo) e em alturaFixaTexto; virou
+// constante nomeada em 2026-07-31 (reduzida pra 3) pra não desencontrar os
+// dois lugares, mesmo motivo do resto deste bloco.
+const GAP_FOTO_DIVISORIA = 3;
 
 // Cor do texto do código — pedido do usuário (2026-07-30): "azul oceano/
 // petróleo", rgb(0, 96, 151), mais sóbrio que o azul do painel usado antes.
@@ -495,9 +522,9 @@ function gerarPdfCatalogo(produtos, tituloBusca, destino) {
   // usada mais aqui) — CODIGO_ALTURA volta a entrar nessa conta.
   const alturaDisponivel = areaFimY - areaTopoY;
   const cardHeightMax = (alturaDisponivel - (ROWS_POR_PAGINA - 1) * GAP) / ROWS_POR_PAGINA;
-  // 5 = respiro antes da linha divisória; GAP_DIVISORIA_TEXTO = respiro dela
-  // até o código; GAP_CODIGO_NOME = respiro entre código e nome.
-  const alturaFixaTexto = PAD_CARD + 5 + GAP_DIVISORIA_TEXTO + CODIGO_ALTURA + GAP_CODIGO_NOME + NOME_ALTURA + PAD_CARD;
+  // GAP_FOTO_DIVISORIA = respiro antes da linha divisória; GAP_DIVISORIA_TEXTO
+  // = respiro dela até o código; GAP_CODIGO_NOME = respiro entre código e nome.
+  const alturaFixaTexto = PAD_CARD + GAP_FOTO_DIVISORIA + GAP_DIVISORIA_TEXTO + CODIGO_ALTURA + GAP_CODIGO_NOME + NOME_ALTURA + PAD_CARD;
   const photoBoxHeight = cardHeightMax - alturaFixaTexto;
   const cardHeight = cardHeightMax;
 
@@ -546,7 +573,7 @@ function gerarPdfCatalogo(produtos, tituloBusca, destino) {
 
     // Linha divisória sutil separando foto de texto (pedido do usuário:
     // deixar as informações mais organizadas).
-    const yDivisoria = yFoto + photoBoxHeight + 5;
+    const yDivisoria = yFoto + photoBoxHeight + GAP_FOTO_DIVISORIA;
     doc.moveTo(x + PAD_CARD, yDivisoria).lineTo(x + cardWidth - PAD_CARD, yDivisoria)
       .lineWidth(0.6).strokeColor(LINHA_DIVISORIA, 0.8).stroke();
 

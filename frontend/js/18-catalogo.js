@@ -547,6 +547,19 @@ async function buscarCatalogo(event) {
     return;
   }
 
+  // Pedido do usuário (2026-07-31): Modelo é o único campo que o backend usa
+  // pra FILTRAR de verdade uma busca por veículo (Marca só ranqueia depois —
+  // ver comentário em buscarProdutosPainel, catalogo-x2.service.js). Buscar
+  // só por Marca (ex: "Ford", sem Modelo) faz a mesma busca ampla contra
+  // TODO o texto de aplicação, só que sem nem o Modelo pra restringir —
+  // ainda mais resultado solto. Por isso, sempre que Marca e/ou Ano forem
+  // usados (ou seja, é uma busca por veículo, não navegação por Seção/
+  // Fabricante), exige Modelo preenchido também.
+  if ((marca || ano) && !modelo) {
+    wrap.innerHTML = _catalogoEmptyState("fa-triangle-exclamation", "Informe o Modelo pra buscar por veículo — só Marca/Ano sozinhos trazem resultado amplo demais.", "catalogo-warn-state");
+    return;
+  }
+
   const modoNavegacao = !marca && !modelo; // só categoria/fabricante — não é busca por veículo
   wrap.innerHTML = _catalogoEmptyState("fa-spinner fa-spin", "Buscando...", "catalogo-loading-state");
 

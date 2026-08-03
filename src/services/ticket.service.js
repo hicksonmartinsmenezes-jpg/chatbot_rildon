@@ -161,7 +161,7 @@ async function createTicket({
   // Pedido do usuário (2026-07-24): todo cliente que gera um ticket (novo
   // ou reaproveitado, ver bloco "ativo" logo abaixo — as duas situações
   // significam "esse cliente gerou um atendimento de verdade") deixa de ser
-  // "Clientes Novos" e passa a ser "Clientes" no cadastro de contatos.
+  // "Leads" e passa a ser "Clientes" no cadastro de contatos.
   // Roda de forma best-effort — nunca deve impedir a criação/reaproveitamento
   // do ticket em si (marcarComoCliente já trata os próprios erros por dentro,
   // nunca rejeita).

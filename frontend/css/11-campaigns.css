@@ -569,6 +569,138 @@
   justify-content: flex-end;
 }
 
+/* ─── Modal de detalhes da campanha ─────── */
+.camp-details-modal {
+  max-width: 620px;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.camp-details-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.camp-details-meta i { margin-right: 5px; color: #64748b; }
+
+.camp-details-media img {
+  max-width: 100%;
+  border-radius: 10px;
+  display: block;
+}
+
+.camp-details-media-pdf,
+.camp-details-media-audio {
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.07);
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #e2e8f0;
+  font-size: 13px;
+}
+
+.camp-details-media-audio audio { width: 100%; }
+
+.camp-details-message {
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.07);
+  border-radius: 12px;
+  padding: 13px;
+  color: #cbd5e1;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.camp-details-stats {
+  display: flex;
+  gap: 18px;
+  font-size: 13px;
+  color: #94a3b8;
+}
+
+.camp-details-stats strong { color: #f1f5f9; font-size: 15px; }
+
+.camp-details-recipients-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.camp-details-recipients-header label {
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  color: #64748b;
+}
+
+.camp-details-search-input {
+  flex: 1;
+  max-width: 220px;
+  padding: 7px 11px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+}
+
+.camp-details-search-input::placeholder { color: var(--muted); }
+
+.camp-details-recipients {
+  min-height: 60px;
+  max-height: 280px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid rgba(255,255,255,.06);
+  border-radius: 12px;
+  padding: 8px;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.camp-details-recipient-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255,255,255,.03);
+  flex: 0 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.cdr-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 auto; overflow: hidden; }
+
+.camp-details-recipient-item .campaign-status-badge { flex: 0 0 auto; white-space: nowrap; }
+
+.cdr-info strong {
+  font-size: 13px;
+  color: #e2e8f0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cdr-info small { font-size: 11px; color: #94a3b8; }
+.cdr-info small.cdr-error { color: #f87171; }
+
 /* ─── Botão de perigo ───────────────────── */
 .btn-outline-danger {
   display: flex;
@@ -1050,11 +1182,13 @@
   opacity: .85;
 }
 
+/* Pedido do usuário (2026-08-05): "mesmo estilo do topbar de configurações"
+   — 24px, sem peso 900 explícito (herda o bold padrão do h2, igual
+   .settings-home-header h2), pra bater com os outros painéis. */
 .camp-page-title h2 {
-  font-size: 20px;
-  font-weight: 900;
+  font-size: 24px;
   color: var(--text);
-  margin: 0 0 2px;
+  margin: 0 0 4px;
 }
 
 .camp-page-title p {
@@ -1107,6 +1241,9 @@
 
 /* ─── Tabela de campanhas ────────────────── */
 .camp-table-card { padding: 0; overflow: hidden; }
+
+/* ─── Campanhas agendadas (única futura ou recorrente) ────────────────── */
+.camp-schedules-card { margin-top: 20px; padding: 16px; }
 
 .camp-table-wrap {
   overflow-x: auto;

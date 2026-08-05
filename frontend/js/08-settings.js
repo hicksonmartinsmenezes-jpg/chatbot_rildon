@@ -44,6 +44,21 @@ function openSettingsPanel(panelName) {
   }
 }
 
+// Pedido do usuário (2026-08-05): abas na Central de Configurações (mesmo
+// padrão visual usado em Métricas) agrupando as 7 categorias que já
+// existiam — Atendimento/WhatsApp/Notificações, Usuários/Empresa,
+// Aparência/Histórico. Usa data-settings-home-tab (não data-settings-panel,
+// que já é o atributo dos formulários de detalhe abertos por
+// openSettingsPanel — nomes diferentes de propósito pra não colidir).
+function switchSettingsTab(tab) {
+  document.querySelectorAll(".settings-tab-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.settingsTab === tab);
+  });
+  document.querySelectorAll("[data-settings-home-tab]").forEach(panel => {
+    panel.classList.toggle("hidden", panel.dataset.settingsHomeTab !== tab);
+  });
+}
+
 function backToSettingsHome() {
   const home = document.getElementById("settings-home");
   const grid = document.getElementById("settings-detail-grid");

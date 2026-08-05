@@ -22,6 +22,7 @@ async function _loadCampaignsCore() {
   bindCampaignActionDelegation();
 
   loadCampaignStats();
+  loadCampaignSchedules();
   list.innerHTML = `<tr><td colspan="9" class="camp-empty"><i class="fa-solid fa-spinner fa-spin"></i> Carregando campanhas...</td></tr>`;
 
   try {
@@ -86,6 +87,15 @@ function filterCampaigns() {
 // ─── Criar campanha ───────────────────────────────────────────────────────────
 
 async function createCampaign() {
+  const sendMode =
+    document.querySelector("input[name='campaign-send-mode']:checked")?.value || "now";
+
+  // Pedido do usuário (2026-08-05): "repetir campanha ou agendar" — opção de
+  // agendar pra data/hora futura (única ou recorrente) segue um fluxo
+  // separado (_createCampaignSchedule), já que não resolve/envia destinatários
+  // agora, só guarda o filtro pra reavaliar no momento do disparo.
+  if (sendMode === "schedule") return _createCampaignSchedule();
+
   const titleInput     = document.getElementById("campaign-title");
   const messageInput   = document.getElementById("campaign-message");
   const recipientsInput = document.getElementById("campaign-recipients");
@@ -151,29 +161,7 @@ async function _doCreateCampaign(title, message, recipients) {
   setLoading(true);
 
   try {
-    let imageUrl  = null;
-    let mediaType = null;
-    const mediaInput = document.getElementById("campaign-media-file");
-
-    if (_campMediaType !== "none" && mediaInput?.files?.length) {
-      const formData = new FormData();
-      formData.append("media", mediaInput.files[0]);
-
-      const uploadRes  = await fetch("/api/broadcasts/upload", {
-        method: "POST",
-        credentials: "include",
-        body: formData
-      });
-      const uploadData = await uploadRes.json();
-
-      if (!uploadRes.ok) {
-        showToast(uploadData.error || "Erro ao enviar arquivo.");
-        return;
-      }
-
-      imageUrl  = uploadData.url;
-      mediaType = uploadData.mediaType || _campMediaType;
-    }
+    const { imageUrl, mediaType } = await _resolveCampaignMedia();
 
     const res  = await apiFetch("/api/broadcasts", {
       method: "POST",
@@ -205,7 +193,132 @@ async function _doCreateCampaign(title, message, recipients) {
 
   } catch (err) {
     console.error("Erro ao criar campanha:", err);
-    showToast("Erro ao criar campanha.");
+    showToast(err.message || "Erro ao criar campanha.");
+  } finally {
+    setLoading(false);
+  }
+}
+
+// Upload de mídia nova (se um arquivo foi escolhido) ou reaproveitamento da
+// mídia de uma campanha original (ver repeatCampaign) — usado tanto no envio
+// imediato quanto no agendamento, pra não duplicar a lógica de upload.
+async function _resolveCampaignMedia() {
+  const mediaInput = document.getElementById("campaign-media-file");
+
+  if (_campMediaType !== "none" && mediaInput?.files?.length) {
+    const formData = new FormData();
+    formData.append("media", mediaInput.files[0]);
+
+    const uploadRes  = await fetch("/api/broadcasts/upload", {
+      method: "POST",
+      credentials: "include",
+      body: formData
+    });
+    const uploadData = await uploadRes.json();
+
+    if (!uploadRes.ok) {
+      throw new Error(uploadData.error || "Erro ao enviar arquivo.");
+    }
+
+    return { imageUrl: uploadData.url, mediaType: uploadData.mediaType || _campMediaType };
+  }
+
+  if (_campMediaType !== "none" && _campReuseMediaUrl) {
+    return { imageUrl: _campReuseMediaUrl, mediaType: _campReuseMediaType };
+  }
+
+  return { imageUrl: null, mediaType: null };
+}
+
+// ─── Agendar campanha (única futura ou recorrente) ────────────────────────────
+
+async function _createCampaignSchedule() {
+  const titleInput       = document.getElementById("campaign-title");
+  const messageInput     = document.getElementById("campaign-message");
+  const scheduledAtInput = document.getElementById("campaign-schedule-at");
+  const recurrenceInput  = document.getElementById("campaign-schedule-recurrence");
+
+  const title     = titleInput?.value.trim();
+  const message   = messageInput?.value.trim();
+  const scheduledAtLocal = scheduledAtInput?.value || "";
+  const recurrence = recurrenceInput?.value || "";
+
+  const audienceType =
+    document.querySelector("input[name='campaign-audience']:checked")?.value || "custom";
+
+  if (!title || !message) { showToast("Preencha título e mensagem."); return; }
+  if (!scheduledAtLocal) { showToast("Escolha a data e hora do agendamento."); return; }
+
+  const scheduledDate = new Date(scheduledAtLocal);
+  if (Number.isNaN(scheduledDate.getTime())) { showToast("Data/hora de agendamento inválida."); return; }
+  if (scheduledDate.getTime() <= Date.now()) { showToast("Escolha uma data/hora no futuro."); return; }
+
+  let audienceTags = [];
+  let audienceAtendenteId = "";
+  let customRecipients = null;
+
+  if (audienceType === "custom") {
+    if (_campSelected.size === 0) { showToast("Selecione pelo menos um contato."); return; }
+    customRecipients = [..._campSelected.values()];
+  } else if (audienceType === "contacts") {
+    const filters = _getContactsFilters();
+    audienceTags = filters.tags;
+    audienceAtendenteId = filters.atendenteId;
+  }
+
+  // Checagem rápida: alerta se o público já está vazio HOJE (a audiência real
+  // é recalculada de novo no momento do disparo, então isso é só um aviso
+  // preventivo, não trava o agendamento se a checagem falhar por outro motivo).
+  if (audienceType !== "custom") {
+    try {
+      const params = new URLSearchParams();
+      audienceTags.forEach(t => params.append("tags", t));
+      if (audienceAtendenteId) params.set("atendenteId", audienceAtendenteId);
+      const qs = params.toString() ? `?${params}` : "";
+      const audienceRes = await apiFetch(`/api/broadcasts/audience/${audienceType}${qs}`);
+      if (audienceRes?.ok) {
+        const preview = await audienceRes.json();
+        if (!preview.length) {
+          showToast("Nenhum destinatário encontrado para esse público agora — ajuste o filtro antes de agendar.");
+          return;
+        }
+      }
+    } catch (_) { /* não bloqueia o agendamento se a pré-checagem falhar */ }
+  }
+
+  const submitBtn = document.getElementById("campaign-submit-btn");
+  const setLoading = on => {
+    if (!submitBtn) return;
+    submitBtn.disabled = on;
+    submitBtn.innerHTML = on
+      ? `<i class="fa-solid fa-circle-notch fa-spin"></i> Agendando...`
+      : `<i class="fa-solid fa-clock"></i> Agendar campanha`;
+  };
+  setLoading(true);
+
+  try {
+    const { imageUrl, mediaType } = await _resolveCampaignMedia();
+
+    const res = await apiFetch("/api/campaign-schedules", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title, message, imageUrl, mediaType,
+        audienceType, audienceTags, audienceAtendenteId, customRecipients,
+        scheduledAt: scheduledDate.toISOString(),
+        recurrence: recurrence || null
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) { showToast(data.error || "Erro ao agendar campanha."); return; }
+
+    showToast(recurrence ? "Campanha recorrente agendada." : "Campanha agendada.");
+    closeCampaignModal();
+    loadCampaignSchedules();
+
+  } catch (err) {
+    console.error("Erro ao agendar campanha:", err);
+    showToast(err.message || "Erro ao agendar campanha.");
   } finally {
     setLoading(false);
   }
@@ -317,28 +430,77 @@ function deleteCampaign(id) {
   });
 }
 
-// ─── Clonar campanha ──────────────────────────────────────────────────────────
+// ─── Repetir campanha (reenvio editável) ──────────────────────────────────────
 
-function cloneCampaign(id) {
+// Pedido do usuário (2026-08-05): "Repetir campanha" = reabrir o modal Nova
+// Campanha pré-preenchido com título, mensagem e mídia da campanha já
+// enviada, com chance de editar antes de reenviar — não é um reenvio
+// silencioso/exato. Substitui o antigo "Clonar" (mesma ideia, agora também
+// reaproveita a mídia em vez de só título+mensagem).
+function repeatCampaign(id) {
   const c = _campaigns.find(c => String(c.id) === String(id));
   if (!c) { showToast("Campanha não encontrada."); return; }
 
   const titleEl   = document.getElementById("campaign-title");
   const messageEl = document.getElementById("campaign-message");
-  if (titleEl)   titleEl.value   = `${c.title} (cópia)`;
+  if (titleEl)   titleEl.value   = c.title || "";
   if (messageEl) messageEl.value = c.message || "";
 
-  // Reset audiência para padrão antes de abrir
+  // Reset audiência e modo de envio para padrão antes de abrir — o usuário
+  // escolhe de novo (a lista de destinatários pode ter mudado desde então).
   const defaultRadio = document.querySelector("input[name='campaign-audience'][value='all_clients']");
   if (defaultRadio) defaultRadio.checked = true;
+  const nowRadio = document.querySelector("input[name='campaign-send-mode'][value='now']");
+  if (nowRadio) nowRadio.checked = true;
 
-  openCampaignModal(); // já chama updateCampaignPreview() e updateMsgCounter()
-  showToast("Formulário preenchido com os dados da campanha.");
+  openCampaignModal(); // já chama updateCampaignPreview(), updateMsgCounter() e reseta mídia
+
+  if (c.image_url) {
+    const type = c.media_type === "pdf" ? "pdf" : c.media_type === "audio" ? "audio" : "image";
+    const tabBtn = document.querySelector(`.camp-media-tab[data-value="${type}"]`);
+    setCampaignMediaType(type, tabBtn);
+    _campReuseMediaUrl  = c.image_url;
+    _campReuseMediaType = c.media_type || type;
+    _showReusedMediaPreview(c.image_url, _campReuseMediaType);
+  }
+
+  updateMsgCounter();
+  updateCampaignPreview();
+  showToast("Formulário preenchido com os dados da campanha — revise e envie (ou agende).");
+}
+
+// Mostra a mídia de uma campanha original no preview, sem exigir reupload —
+// só quando o usuário anexa um arquivo novo (previewCampaignMedia) ou remove
+// a mídia (removeCampaignMedia) é que a reutilização é descartada.
+function _showReusedMediaPreview(url, type) {
+  if (type === "image") {
+    const img = document.getElementById("campaign-preview-img");
+    if (img) img.src = url;
+    document.getElementById("campaign-image-preview")?.classList.remove("hidden");
+    const fileName = document.getElementById("camp-file-name");
+    if (fileName) fileName.textContent = "(mídia da campanha original — anexe outra pra trocar)";
+  } else if (type === "pdf") {
+    const nameEl = document.getElementById("campaign-pdf-name");
+    if (nameEl) nameEl.textContent = "(PDF da campanha original)";
+    const box = document.getElementById("campaign-pdf-preview");
+    if (box) { box.classList.remove("hidden"); box.style.display = "flex"; }
+  } else if (type === "audio") {
+    const audio = document.getElementById("campaign-preview-audio");
+    if (audio) audio.src = url;
+    document.getElementById("campaign-audio-preview")?.classList.remove("hidden");
+  }
+  updateCampaignPreview();
 }
 
 // ─── Seletor de tipo de mídia ─────────────────────────────────────────────────
 
 let _campMediaType = "none"; // "none" | "image" | "pdf" | "audio"
+
+// Mídia reaproveitada de uma campanha original ao "Repetir" (ver
+// repeatCampaign) — evita reupload quando o usuário não anexa um arquivo
+// novo. Zerado assim que um arquivo novo é escolhido ou a mídia é removida.
+let _campReuseMediaUrl  = null;
+let _campReuseMediaType = null;
 
 function setCampaignMediaType(type, btn) {
   _campMediaType = type;
@@ -380,6 +542,11 @@ function previewCampaignMedia(event) {
   const file = event.target.files[0];
   if (!file) return;
 
+  // Usuário escolheu um arquivo novo — descarta a mídia reaproveitada de uma
+  // campanha original (ver repeatCampaign/_campReuseMediaUrl).
+  _campReuseMediaUrl  = null;
+  _campReuseMediaType = null;
+
   const fileName = document.getElementById("camp-file-name");
   if (fileName) fileName.textContent = file.name;
 
@@ -414,6 +581,9 @@ function previewCampaignMedia(event) {
 }
 
 function removeCampaignMedia() {
+  _campReuseMediaUrl  = null;
+  _campReuseMediaType = null;
+
   const fileInput = document.getElementById("campaign-media-file");
   const img       = document.getElementById("campaign-preview-img");
   const audio     = document.getElementById("campaign-preview-audio");
@@ -764,6 +934,128 @@ async function updateCampaignAudienceCount() {
   }
 }
 
+// ─── Campanhas agendadas (única futura ou recorrente) ─────────────────────────
+
+let _campaignSchedules = [];
+
+async function loadCampaignSchedules() {
+  const tbody = document.getElementById("campaign-schedule-list");
+  if (!tbody) return;
+  bindCampaignScheduleActionDelegation();
+
+  try {
+    const res = await apiFetch("/api/campaign-schedules");
+    if (!res.ok) { tbody.innerHTML = `<tr><td colspan="5" class="camp-empty">Erro ao carregar agendamentos.</td></tr>`; return; }
+    _campaignSchedules = await res.json();
+    _renderCampaignScheduleList();
+  } catch (err) {
+    console.error("Erro agendamentos:", err);
+    tbody.innerHTML = `<tr><td colspan="5" class="camp-empty">Erro ao carregar agendamentos.</td></tr>`;
+  }
+}
+
+function _renderCampaignScheduleList() {
+  const tbody = document.getElementById("campaign-schedule-list");
+  if (!tbody) return;
+
+  if (!_campaignSchedules.length) {
+    tbody.innerHTML = `<tr><td colspan="5" class="camp-empty">
+      <i class="fa-solid fa-clock"></i><p>Nenhuma campanha agendada.</p>
+    </td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = _campaignSchedules.map(s => renderCampaignScheduleItem(s)).join("");
+}
+
+function pauseCampaignSchedule(id) {
+  _showActionModal({
+    icon: "fa-pause",
+    title: "Pausar agendamento",
+    body: "Os disparos futuros dessa campanha ficam pausados até você retomar. Continuar?",
+    confirmLabel: '<i class="fa-solid fa-pause"></i> Pausar',
+    onConfirm: async () => {
+      try {
+        const res = await apiFetch(`/api/campaign-schedules/${id}/pause`, { method: "POST" });
+        const data = await res.json();
+        if (!res.ok) { showToast(data.error || "Erro ao pausar."); return; }
+        showToast("Agendamento pausado.");
+        loadCampaignSchedules();
+      } catch (err) {
+        console.error(err);
+        showToast("Erro ao pausar agendamento.");
+      }
+    }
+  });
+}
+
+function resumeCampaignSchedule(id) {
+  _showActionModal({
+    icon: "fa-play",
+    title: "Retomar agendamento",
+    body: "Retomar os disparos automáticos dessa campanha?",
+    confirmLabel: '<i class="fa-solid fa-play"></i> Retomar',
+    onConfirm: async () => {
+      try {
+        const res = await apiFetch(`/api/campaign-schedules/${id}/resume`, { method: "POST" });
+        const data = await res.json();
+        if (!res.ok) { showToast(data.error || "Erro ao retomar."); return; }
+        showToast("Agendamento retomado.");
+        loadCampaignSchedules();
+      } catch (err) {
+        console.error(err);
+        showToast("Erro ao retomar agendamento.");
+      }
+    }
+  });
+}
+
+function cancelCampaignSchedule(id) {
+  _showActionModal({
+    icon: "fa-ban",
+    iconClass: "text-warning",
+    title: "Cancelar agendamento",
+    body: "Essa campanha agendada não será mais disparada. Deseja continuar?",
+    confirmLabel: '<i class="fa-solid fa-ban"></i> Cancelar agendamento',
+    confirmClass: "btn-outline-danger",
+    onConfirm: async () => {
+      try {
+        const res = await apiFetch(`/api/campaign-schedules/${id}/cancel`, { method: "POST" });
+        const data = await res.json();
+        if (!res.ok) { showToast(data.error || "Erro ao cancelar."); return; }
+        showToast("Agendamento cancelado.");
+        loadCampaignSchedules();
+      } catch (err) {
+        console.error(err);
+        showToast("Erro ao cancelar agendamento.");
+      }
+    }
+  });
+}
+
+function deleteCampaignSchedule(id) {
+  _showActionModal({
+    icon: "fa-trash-can",
+    iconClass: "text-danger",
+    title: "Excluir agendamento",
+    body: "Esta ação é <strong>irreversível</strong>.",
+    confirmLabel: '<i class="fa-regular fa-trash-can"></i> Excluir',
+    confirmClass: "btn-outline-danger",
+    onConfirm: async () => {
+      try {
+        const res = await apiFetch(`/api/campaign-schedules/${id}`, { method: "DELETE" });
+        const data = await res.json();
+        if (!res.ok) { showToast(data.error || "Erro ao excluir."); return; }
+        showToast("Agendamento excluído.");
+        loadCampaignSchedules();
+      } catch (err) {
+        console.error(err);
+        showToast("Erro ao excluir agendamento.");
+      }
+    }
+  });
+}
+
 // ─── Estatísticas ─────────────────────────────────────────────────────────────
 
 async function loadCampaignStats() {
@@ -789,6 +1081,7 @@ function openCampaignModal() {
   document.getElementById("camp-modal-overlay")?.classList.remove("hidden");
   // toggleCustomRecipients já dispara searchCampContacts e updateCampaignAudienceCount internamente
   toggleCustomRecipients();
+  toggleCampaignSendMode();
   updateCampaignPreview();
   updateMsgCounter();
 }
@@ -809,12 +1102,39 @@ function closeCampaignModal() {
   document.getElementById("custom-recipients-box")?.classList.add("hidden");
   document.getElementById("contacts-filters-box")?.classList.add("hidden");
 
+  // Reset agendamento (Enviar agora / Agendar) — cada abertura começa do zero
+  const nowRadio = document.querySelector("input[name='campaign-send-mode'][value='now']");
+  if (nowRadio) nowRadio.checked = true;
+  const scheduledAtInput = document.getElementById("campaign-schedule-at");
+  if (scheduledAtInput) scheduledAtInput.value = "";
+  const recurrenceInput = document.getElementById("campaign-schedule-recurrence");
+  if (recurrenceInput) recurrenceInput.value = "";
+  toggleCampaignSendMode();
+
   // Limpa seleção personalizada
   _campSelected.clear();
   _renderCampChips();
 
+  _campReuseMediaUrl  = null;
+  _campReuseMediaType = null;
+
   updateMsgCounter();
   updateCampaignPreview();
+}
+
+// Alterna entre "Enviar agora" e "Agendar" — mostra/esconde os campos de
+// data/recorrência e atualiza o texto do botão de submit do modal.
+function toggleCampaignSendMode() {
+  const mode = document.querySelector("input[name='campaign-send-mode']:checked")?.value || "now";
+  const box = document.getElementById("campaign-schedule-box");
+  if (box) box.classList.toggle("hidden", mode !== "schedule");
+
+  const submitBtn = document.getElementById("campaign-submit-btn");
+  if (submitBtn) {
+    submitBtn.innerHTML = mode === "schedule"
+      ? `<i class="fa-solid fa-clock"></i> Agendar campanha`
+      : `<i class="fa-solid fa-paper-plane"></i> Criar campanha`;
+  }
 }
 
 function switchCampaignPanel(panel, event) {
@@ -948,4 +1268,162 @@ function showCampaignConfirm(recipients, message, onConfirm) {
     overlay.remove();
     onConfirm();
   });
+}
+
+// ─── Detalhes da campanha ──────────────────────────────────────────────────────
+
+// Pedido do usuário (2026-08-05): poder ver os detalhes de uma campanha —
+// mensagem completa, mídia, e a lista de destinatários com status individual
+// (enviado/falhou/aguardando), não só os números agregados da tabela.
+// Reaproveita GET /api/broadcasts/:id/recipients, que já existia (usado só
+// internamente antes) e devolve status por destinatário.
+
+const RECIPIENT_STATUS_LABEL = {
+  pending: "Aguardando",
+  sent:    "Enviado",
+  failed:  "Falhou"
+};
+
+const RECIPIENT_STATUS_CLASS = {
+  pending: "cs-pending",
+  sent:    "cs-finished",
+  failed:  "cs-cancelled"
+};
+
+let _campDetailsRecipients = [];
+
+async function showCampaignDetails(id) {
+  const c = _campaigns.find(c => String(c.id) === String(id));
+  if (!c) { showToast("Campanha não encontrada."); return; }
+
+  document.getElementById("_campaign-details-overlay")?.remove();
+
+  const total  = Number(c.total_recipients || 0);
+  const sent   = Number(c.sent_count || 0);
+  const failed = Number(c.failed_count || 0);
+  const label  = STATUS_LABEL[c.status] || c.status;
+  const cls    = STATUS_CLASS[c.status] || "";
+
+  const mediaHtml = !c.image_url ? "" : `
+    <div class="camp-details-media">
+      ${c.media_type === "pdf"
+        ? `<div class="camp-details-media-pdf"><i class="fa-solid fa-file-pdf"></i> Anexo em PDF</div>`
+        : c.media_type === "audio"
+          ? `<div class="camp-details-media-audio"><audio controls src="${escapeAttr(safeUrl(c.image_url))}"></audio></div>`
+          : `<img src="${escapeAttr(safeUrl(c.image_url))}" alt="">`
+      }
+    </div>`;
+
+  const overlay = document.createElement("div");
+  overlay.id = "_campaign-details-overlay";
+  overlay.className = "campaign-confirm-overlay";
+  overlay.innerHTML = `
+    <div class="campaign-confirm-modal panel camp-details-modal">
+      <div class="campaign-confirm-header">
+        <i class="fa-solid fa-bullhorn"></i>
+        <h3>${safe(c.title)}</h3>
+        <span class="campaign-status-badge ${cls}" style="margin-left:auto;">${safe(label)}</span>
+      </div>
+
+      <div class="camp-details-meta">
+        <span><i class="fa-solid fa-calendar"></i> Criada em ${_fmtDate(c.created_at)}</span>
+        ${c.started_at  ? `<span><i class="fa-solid fa-play"></i> Iniciada em ${_fmtDate(c.started_at)}</span>` : ""}
+        ${c.finished_at ? `<span><i class="fa-solid fa-flag-checkered"></i> Finalizada em ${_fmtDate(c.finished_at)}</span>` : ""}
+      </div>
+
+      ${mediaHtml}
+
+      <div class="camp-details-message">${safe(c.message)}</div>
+
+      <div class="camp-details-stats">
+        <span><strong>${total}</strong> total</span>
+        <span class="camp-td-sent"><strong>${sent}</strong> enviados</span>
+        <span class="${failed > 0 ? "camp-td-failed" : ""}"><strong>${failed}</strong> falhas</span>
+      </div>
+
+      <div class="camp-details-recipients-header">
+        <label>Destinatários (${total})</label>
+        <input type="text" id="camp-details-search" class="camp-details-search-input" placeholder="Buscar por nome ou número...">
+      </div>
+      <div id="camp-details-recipients" class="camp-details-recipients">
+        <div class="camp-picker-hint"><i class="fa-solid fa-spinner fa-spin"></i> Carregando...</div>
+      </div>
+
+      <div class="campaign-confirm-actions">
+        <button type="button" class="history-clear-btn" id="_cdet-close-btn">Fechar</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+  overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
+  overlay.querySelector("#_cdet-close-btn")?.addEventListener("click", () => overlay.remove());
+
+  const searchInput = overlay.querySelector("#camp-details-search");
+  searchInput?.addEventListener("input", () => {
+    const q = searchInput.value.trim().toLowerCase();
+    const filtered = !q ? _campDetailsRecipients : _campDetailsRecipients.filter(r =>
+      (r.contact_name || "").toLowerCase().includes(q) || String(r.user_id || "").toLowerCase().includes(q)
+    );
+    _renderCampaignDetailsRecipients(filtered);
+  });
+
+  let fetchError = false;
+  try {
+    const res = await apiFetch(`/api/broadcasts/${id}/recipients`);
+    if (res?.ok) {
+      const data = await res.json();
+      _campDetailsRecipients = Array.isArray(data) ? data : [];
+    } else {
+      fetchError = true;
+      _campDetailsRecipients = [];
+    }
+  } catch (err) {
+    console.error("Erro ao buscar destinatários:", err);
+    fetchError = true;
+    _campDetailsRecipients = [];
+  }
+
+  // O modal pode já ter sido fechado enquanto a lista carregava
+  const recipientsBox = document.getElementById("camp-details-recipients");
+  if (!recipientsBox) return;
+
+  if (fetchError) {
+    recipientsBox.innerHTML = `<div class="camp-picker-hint">Erro ao carregar destinatários.</div>`;
+    return;
+  }
+
+  _renderCampaignDetailsRecipients(_campDetailsRecipients);
+}
+
+function _renderCampaignDetailsRecipients(recipients) {
+  const el = document.getElementById("camp-details-recipients");
+  if (!el) return;
+
+  if (!Array.isArray(recipients) || recipients.length === 0) {
+    el.innerHTML = `<div class="camp-picker-hint">Nenhum destinatário encontrado.</div>`;
+    return;
+  }
+
+  try {
+    el.innerHTML = recipients.map(r => {
+      const label = RECIPIENT_STATUS_LABEL[r.status] || r.status || "—";
+      const cls   = RECIPIENT_STATUS_CLASS[r.status] || "";
+      const phone = typeof formatContactPhone === "function"
+        ? formatContactPhone(r.user_id)
+        : (r.user_id || "");
+      return `
+        <div class="camp-details-recipient-item">
+          <div class="cdr-info">
+            <strong>${safe(r.contact_name || "(sem nome)")}</strong>
+            <small>${safe(phone)}</small>
+            ${r.error ? `<small class="cdr-error"><i class="fa-solid fa-triangle-exclamation"></i> ${safe(r.error)}</small>` : ""}
+          </div>
+          <span class="campaign-status-badge ${cls}">${safe(label)}</span>
+        </div>`;
+    }).join("");
+  } catch (err) {
+    console.error("Erro ao renderizar destinatários:", err);
+    el.innerHTML = `<div class="camp-picker-hint">Erro ao exibir destinatários.</div>`;
+  }
 }

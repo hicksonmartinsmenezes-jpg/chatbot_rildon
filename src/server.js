@@ -20,6 +20,7 @@ const {
 } = require("./database/postgres");
 
 const { startAutoBackup }      = require("./services/backup.service");
+const { startScheduler: startCampaignScheduler } = require("./services/campaign-schedule.service");
 const { carregar: carregarHumanMode } = require("./services/humanMode.service");
 const { connectWhatsApp, sendMessage } = require("./config/whatsapp");
 const { processMessage }       = require("./services/message.service");
@@ -57,6 +58,9 @@ initSocket(server);
 
     // 4. Iniciar backup automático
     startAutoBackup();
+
+    // 4b. Agendador de campanhas (agendamento único/recorrente do Campanhas)
+    startCampaignScheduler();
 
     // 5. Subir servidor HTTP
     await new Promise((resolve) => {

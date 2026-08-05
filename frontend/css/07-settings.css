@@ -376,39 +376,78 @@
   color: #94a3b8;
 }
 
+/* ─── Abas (Atendimento / Cadastro / Avançado) ────────────────────── */
+/* Pedido do usuário (2026-08-05): "ux igual" a uma referência externa com
+   abas + cards mais enxutos — mesmo padrão já usado em Métricas
+   (.metrics-tabs-bar), reaproveitando var(--primary) do painel. */
+.settings-tabs-bar {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 18px;
+  overflow-x: auto;
+}
+
+.settings-tab-btn {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 10px 2px 12px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  color: #93a4bd;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color .15s, border-color .15s;
+}
+
+.settings-tab-btn:hover { color: #e2e8f0; }
+
+.settings-tab-btn.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+body.light-theme .settings-tab-btn { color: #64748b; }
+body.light-theme .settings-tab-btn:hover { color: #0f172a; }
+body.light-theme .settings-tab-btn.active { color: var(--primary); }
+
+.settings-tab-panel.hidden { display: none; }
+
 .settings-home-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(255px, 1fr));
-  gap: 18px;
+  gap: 14px;
 }
 
+/* Card mais enxuto (pedido do usuário: parecido com a referência) — menos
+   sombra/gradiente, borda mais fina, ícone menor. Mesmas cores de sempre
+   (.bg-purple/.bg-blue/... já usadas em vários lugares do painel). */
 .settings-home-card {
-  min-height: 110px;
+  min-height: 88px;
   width: 100%;
-  background: linear-gradient(180deg, rgba(17, 24, 39, 0.98), rgba(15, 23, 42, 0.98));
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 20px;
-  padding: 20px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
   color: #e5e7eb;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
   text-align: left;
   font-family: inherit;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+  box-shadow: none;
   transition:
-    transform var(--transition-normal),
     border-color var(--transition-normal),
-    box-shadow var(--transition-normal),
     background var(--transition-normal);
 }
 
 .settings-home-card:hover {
-  transform: translateY(-4px);
-  border-color: rgba(29, 108, 245, 0.75);
-  box-shadow: 0 18px 45px rgba(29, 108, 245, 0.16);
-  background: linear-gradient(180deg, rgba(21, 31, 52, 0.98), rgba(15, 23, 42, 0.98));
+  border-color: var(--primary);
+  background: var(--panel-2);
 }
 
 .settings-home-card > span:nth-child(2) {
@@ -436,16 +475,16 @@
 }
 
 .settings-home-icon {
-  width: 58px;
-  height: 58px;
-  border-radius: 16px;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #fff;
-  font-size: 22px;
+  font-size: 16px;
   flex-shrink: 0;
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.24);
+  box-shadow: none;
 }
 
 /* ─── Toolbar do painel ────────────────── */

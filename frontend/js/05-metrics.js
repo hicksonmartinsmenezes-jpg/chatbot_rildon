@@ -85,18 +85,19 @@ async function loadMetricsCharts() {
     const data = await res.json();
 
     // ── KPIs (com animação de contagem) ───────────────────────────────────────
+    // Pedido do usuário (2026-08-05): "apenas metricas importantes gerais
+    // apenas do mês" — os 4 cards da Visão Geral agora usam só campos com
+    // escopo do MÊS corrente (data.mensal já era mensal; os outros 3 vêm de
+    // data.tendencia, que já calcula mes_atual_resolvidos/cancelados/taxa).
+    const t = data.tendencia || {};
     animateMetric(document.getElementById("metric-total"),      data.mensal);
-    animateMetric(document.getElementById("metric-andamento"),  data.andamento);
-    animateMetric(document.getElementById("metric-resolvidos"), data.resolvidos);
-    animateMetric(document.getElementById("metric-cancelados"), data.cancelados);
-    animateMetric(document.getElementById("metric-hoje"),       data.hoje);
-    animateMetric(document.getElementById("metric-pendentes"),  data.pendentes);
-    animateMetric(document.getElementById("metric-taxa-resolucao"), data.taxaResolucao, "%");
+    animateMetric(document.getElementById("metric-resolvidos"), t.mesAtualResolvidos);
+    animateMetric(document.getElementById("metric-cancelados"), t.mesAtualCancelados);
+    animateMetric(document.getElementById("metric-taxa-resolucao"), t.taxaResolucaoAtual, "%");
 
     // Pedido do usuário (2026-07-31): comparação com o mês anterior — trend
     // no card de total, e dois cards novos de tempo (resolução / 1ª resposta)
     // com sua própria seta (invertida: tempo MENOR é o resultado bom).
-    const t = data.tendencia || {};
     const totalTrendEl = document.getElementById("metric-total-trend");
     if (totalTrendEl) totalTrendEl.innerHTML = metricTrendHtml(t.totalVariacaoPct);
 
@@ -110,14 +111,21 @@ async function loadMetricsCharts() {
     const tempoRespostaTrendEl = document.getElementById("metric-tempo-resposta-trend");
     if (tempoRespostaTrendEl) tempoRespostaTrendEl.innerHTML = metricTrendHtml(t.tempoRespostaVariacaoPct, true);
 
-    // PEDIDO DO USUÁRIO (2026-07-27): "horário de pico" no lugar do antigo
-    // "setor destaque" (removido) — ajuda a decidir reforço de escala.
-    const horarioPicoEl = document.getElementById("metric-horario-pico");
-    if (horarioPicoEl) {
-      horarioPicoEl.textContent = data.horarioPico
-        ? `${String(data.horarioPico.hora).padStart(2, "0")}h (${data.horarioPico.total})`
-        : "—";
-    }
+    // Pedido do usuário (2026-08-05): "Total Atendimentos" nessa aba usava
+    // data.total (desde sempre) — número diferente do "Total de Atendimentos"
+    // da Visão Geral (data.mensal, só o mês), mesmo rótulo com valores
+    // diferentes em abas diferentes. Trocado pra data.mensal nos dois
+    // (Total/Demanda Receptiva) pra ficar consistente. Pendentes continua
+    // como "foto de agora" (não tem uma versão "do mês" que faça sentido) e
+    // Leads em Aberto continua acumulado (ver tooltip no HTML — filtrar por
+    // data reintroduziria a poluição de import em massa que fez a gente
+    // escolher a tag 'Leads' no lugar de created_at). Demanda Ativa fica
+    // sempre 0 (não existe fluxo de ticket iniciado pelo atendente ainda).
+    animateMetric(document.getElementById("metric-tempos-total"),      data.mensal);
+    animateMetric(document.getElementById("metric-tempos-receptiva"),  data.mensal);
+    animateMetric(document.getElementById("metric-tempos-ativa"),      0);
+    animateMetric(document.getElementById("metric-tempos-pendentes"),  data.pendentes);
+    animateMetric(document.getElementById("metric-tempos-novos-contatos"), data.novosContatosLeads);
 
     // Pedido do usuário: pesquisa de satisfação ao fechar atendimento —
     // média geral (card) + quebra por atendente (tabela), pra supervisor
@@ -179,11 +187,22 @@ async function loadMetricsCharts() {
 
     // ── Gráfico por horário (bar) — pedido do usuário, no lugar do antigo
     // gráfico "por setor" (removido) ──────────────────────────────────────────
+    //
+    // Pedido do usuário (2026-08-05): "deixe apenas as horas que a loja está
+    // aberta ou horário caso o atendente esteja fazendo hora extra e aceite"
+    // — o backend zero-preenche as 24h (pra não ter buraco no eixo do
+    // gráfico), mas isso também mostrava madrugada/hora fechada com "0" na
+    // tabela. Em vez de fixar um horário comercial (a loja pode mudar isso),
+    // simplesmente escondemos as horas com 0 atendimentos: se teve pelo
+    // menos 1 ticket na hora, é porque a loja tava aberta OU alguém aceitou
+    // um ticket fora do horário (hora extra) — os dois casos devem aparecer.
+    const porHoraAtivo = Object.entries(data.porHora || {}).filter(([, total]) => total > 0);
+
     upsertChart("metric-chart-hora", "bar", {
-      labels:   Object.keys(data.porHora || {}).map(h => `${String(h).padStart(2, "0")}h`),
+      labels:   porHoraAtivo.map(([hora]) => `${String(hora).padStart(2, "0")}h`),
       datasets: [{
         label:           "Atendimentos",
-        data:            Object.values(data.porHora || {}),
+        data:            porHoraAtivo.map(([, total]) => total),
         backgroundColor: (c) => metricsAreaGradient(c.chart.ctx, c.chart.chartArea, "#3b82f6"),
         borderColor:     "#3b82f6",
         borderWidth:     1.5,
@@ -193,6 +212,12 @@ async function loadMetricsCharts() {
     }, {
       plugins: { legend: { display: false } }
     });
+
+    // Tabela paginada embaixo do gráfico de horários de pico, mesma fonte
+    // já filtrada (porHoraAtivo) — igual foi feito na aba Evolução.
+    window._metricsPicoData = porHoraAtivo.map(([hora, total]) => ({ hora, total }));
+    window._metricsPicoPage = 1;
+    renderMetricsPicoTable();
 
     // ── Gráfico por dia (line) ────────────────────────────────────────────────
     const metricDay = upsertChart("metric-chart-day", "line", {
@@ -216,6 +241,12 @@ async function loadMetricsCharts() {
 
     // Mantém referência global para compatibilidade com código que usa metricDayChart
     if (typeof AppState !== "undefined") AppState.metricDayChart = metricDay;
+
+    // Pedido do usuário (2026-08-05): tabela paginada com os mesmos dados do
+    // gráfico "por dia" — mesma fonte (data.porDia), só outro jeito de ver.
+    window._metricsEvolucaoData = Object.entries(data.porDia || {}).map(([dia, total]) => ({ dia, total }));
+    window._metricsEvolucaoPage = 1;
+    renderMetricsEvolucaoTable();
 
     // ── Distribuição de notas de satisfação (bar) — pedido do usuário
     // (2026-07-31): média sozinha ("4.2⭐") esconde se veio de notas
@@ -259,8 +290,17 @@ function renderMetricsAtendentesTable(periodo) {
   if (!atendentesBody) return;
 
   const config = METRICS_PERIODO_CAMPOS[periodo] || METRICS_PERIODO_CAMPOS.total;
-  const atendentes = [...(window._metricsAtendentes || [])]
+  const search = window._metricsAtendentesSearch || "";
+
+  let atendentes = [...(window._metricsAtendentes || [])]
     .sort((a, b) => (b[config.campo] || 0) - (a[config.campo] || 0));
+
+  // Pedido do usuário (2026-08-05): busca por atendente na aba "Por Usuário"
+  // (mesma ideia da barra de busca da referência que ele mandou) — filtro
+  // 100% client-side, os dados já vieram todos juntos em /api/metrics.
+  if (search) {
+    atendentes = atendentes.filter(a => (a.nome || "").toLowerCase().includes(search));
+  }
 
   const headerEl = document.getElementById("metric-atendentes-count-header");
   if (headerEl) headerEl.textContent = config.rotulo;
@@ -268,16 +308,24 @@ function renderMetricsAtendentesTable(periodo) {
   atendentesBody.innerHTML = atendentes.length
     ? atendentes.map((a) => {
         const online = window.onlineUsers?.some(u => u.id === a.id && u.online);
+        const initials = typeof contactInitials === "function"
+          ? contactInitials(a.nome)
+          : String(a.nome || "?").slice(0, 2).toUpperCase();
         return `
           <tr>
-            <td>${safe(a.nome)}</td>
+            <td>
+              <div class="metrics-atendente-cell">
+                <span class="metrics-atendente-avatar">${safe(initials)}</span>
+                <span>${safe(a.nome)}</span>
+              </div>
+            </td>
             <td>${online ? "🟢 Online" : "⚫ Offline"}</td>
-            <td>${a.emAtendimento ? "🟠 Sim" : "—"}</td>
+            <td>${a.emAtendimento ?? 0}</td>
             <td>${a[config.campo] ?? 0}</td>
           </tr>
         `;
       }).join("")
-    : `<tr><td colspan="4" class="metric-satisfaction-empty">Nenhum atendente cadastrado.</td></tr>`;
+    : `<tr><td colspan="4" class="metric-satisfaction-empty">${search ? "Nenhum atendente encontrado." : "Nenhum atendente cadastrado."}</td></tr>`;
 }
 
 function setMetricsAtendentesPeriodo(periodo) {
@@ -289,6 +337,163 @@ function setMetricsAtendentesPeriodo(periodo) {
   });
 
   renderMetricsAtendentesTable(periodo);
+}
+
+function metricsAtendentesSearch(query) {
+  window._metricsAtendentesSearch = String(query || "").trim().toLowerCase();
+  renderMetricsAtendentesTable(window._metricsAtendentesPeriodo || "total");
+}
+
+// ─── Tabela paginada da aba Evolução ────────────────────────────────────────
+
+window._metricsEvolucaoPageSize = window._metricsEvolucaoPageSize || 10;
+
+function renderMetricsEvolucaoTable() {
+  const body = document.getElementById("metric-evolucao-body");
+  if (!body) return;
+
+  const data     = window._metricsEvolucaoData || [];
+  const pageSize = window._metricsEvolucaoPageSize || 10;
+  const total    = data.length;
+  const pages    = Math.max(1, Math.ceil(total / pageSize));
+  let page       = window._metricsEvolucaoPage || 1;
+  if (page > pages) page = pages;
+  if (page < 1) page = 1;
+  window._metricsEvolucaoPage = page;
+
+  const start = (page - 1) * pageSize;
+  const slice = data.slice(start, start + pageSize);
+
+  body.innerHTML = slice.length
+    ? slice.map(row => `
+        <tr>
+          <td>${safe(row.dia)}</td>
+          <td>${row.total}</td>
+        </tr>
+      `).join("")
+    : `<tr><td colspan="2" class="metric-satisfaction-empty">Sem dados no período.</td></tr>`;
+
+  const showingEl = document.getElementById("metric-evolucao-showing");
+  if (showingEl) {
+    showingEl.textContent = total > 0
+      ? `${start + 1}-${Math.min(start + pageSize, total)} de ${total}`
+      : "0 registros";
+  }
+
+  const pageInfoEl = document.getElementById("metric-evolucao-page-info");
+  if (pageInfoEl) pageInfoEl.textContent = `${page} / ${pages}`;
+
+  const prevBtn = document.getElementById("metric-evolucao-prev");
+  if (prevBtn) prevBtn.disabled = page <= 1;
+
+  const nextBtn = document.getElementById("metric-evolucao-next");
+  if (nextBtn) nextBtn.disabled = page >= pages;
+}
+
+function metricsEvolucaoPagePrev() {
+  window._metricsEvolucaoPage = Math.max(1, (window._metricsEvolucaoPage || 1) - 1);
+  renderMetricsEvolucaoTable();
+}
+
+function metricsEvolucaoPageNext() {
+  window._metricsEvolucaoPage = (window._metricsEvolucaoPage || 1) + 1;
+  renderMetricsEvolucaoTable();
+}
+
+function metricsEvolucaoPageSize(value) {
+  window._metricsEvolucaoPageSize = Number(value) || 10;
+  window._metricsEvolucaoPage = 1;
+  renderMetricsEvolucaoTable();
+}
+
+// ─── Tabela paginada da aba Horários de Pico ────────────────────────────────
+
+window._metricsPicoPageSize = window._metricsPicoPageSize || 10;
+
+function renderMetricsPicoTable() {
+  const body = document.getElementById("metric-pico-body");
+  if (!body) return;
+
+  const data     = window._metricsPicoData || [];
+  const pageSize = window._metricsPicoPageSize || 10;
+  const total    = data.length;
+  const pages    = Math.max(1, Math.ceil(total / pageSize));
+  let page       = window._metricsPicoPage || 1;
+  if (page > pages) page = pages;
+  if (page < 1) page = 1;
+  window._metricsPicoPage = page;
+
+  const start = (page - 1) * pageSize;
+  const slice = data.slice(start, start + pageSize);
+
+  body.innerHTML = slice.length
+    ? slice.map(row => `
+        <tr>
+          <td>${String(row.hora).padStart(2, "0")}h</td>
+          <td>${row.total}</td>
+        </tr>
+      `).join("")
+    : `<tr><td colspan="2" class="metric-satisfaction-empty">Sem dados no período.</td></tr>`;
+
+  const showingEl = document.getElementById("metric-pico-showing");
+  if (showingEl) {
+    showingEl.textContent = total > 0
+      ? `${start + 1}-${Math.min(start + pageSize, total)} de ${total}`
+      : "0 registros";
+  }
+
+  const pageInfoEl = document.getElementById("metric-pico-page-info");
+  if (pageInfoEl) pageInfoEl.textContent = `${page} / ${pages}`;
+
+  const prevBtn = document.getElementById("metric-pico-prev");
+  if (prevBtn) prevBtn.disabled = page <= 1;
+
+  const nextBtn = document.getElementById("metric-pico-next");
+  if (nextBtn) nextBtn.disabled = page >= pages;
+}
+
+function metricsPicoPagePrev() {
+  window._metricsPicoPage = Math.max(1, (window._metricsPicoPage || 1) - 1);
+  renderMetricsPicoTable();
+}
+
+function metricsPicoPageNext() {
+  window._metricsPicoPage = (window._metricsPicoPage || 1) + 1;
+  renderMetricsPicoTable();
+}
+
+function metricsPicoPageSize(value) {
+  window._metricsPicoPageSize = Number(value) || 10;
+  window._metricsPicoPage = 1;
+  renderMetricsPicoTable();
+}
+
+// ─── Abas do painel de Relatórios/Métricas ─────────────────────────────────────
+
+// Pedido do usuário (2026-08-05): "ux igual" a uma referência externa com
+// abas (Por Usuário / Tempos / Evolução / Horários de Pico / Pesquisa de
+// Satisfação) — reorganiza o que já existia, sem inventar aba nova sem dado
+// por trás (SLA, Detalhes do Atendimento e Mensagens Agendadas ficaram de
+// fora, combinado com o usuário).
+function switchMetricsTab(tab) {
+  document.querySelectorAll(".metrics-tab-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.metricsTab === tab);
+  });
+  document.querySelectorAll(".metrics-tab-panel").forEach(panel => {
+    panel.classList.toggle("hidden", panel.dataset.metricsPanel !== tab);
+  });
+
+  // Chart.js cria o canvas com tamanho 0 quando o pai está com display:none
+  // (as outras abas começam escondidas) — força um resize assim que a aba
+  // vira visível, senão o gráfico fica cortado/em branco até redimensionar
+  // a janela manualmente.
+  requestAnimationFrame(() => {
+    const panel = document.querySelector(`.metrics-tab-panel[data-metrics-panel="${tab}"]`);
+    if (!panel || typeof Chart === "undefined") return;
+    panel.querySelectorAll("canvas").forEach(canvas => {
+      Chart.getChart(canvas)?.resize();
+    });
+  });
 }
 
 // Pedido do usuário (2026-07-31): exportar o mesmo resumo do painel de

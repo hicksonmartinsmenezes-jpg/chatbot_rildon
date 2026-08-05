@@ -29,7 +29,8 @@ async function buscarMetricas() {
     feedbacksNegativosRes,
     tendenciaRes,
     notasRes,
-    setorRes
+    setorRes,
+    leadsRes
   ] = await Promise.all([
     // Totais por status + total geral + criados hoje + criados no mês corrente
     pool.query(`
@@ -84,6 +85,13 @@ async function buscarMetricas() {
     // está há mais tempo de casa, não quem foi mais produtivo agora — soma
     // colunas de hoje/últimos 7 dias/mês corrente pro frontend deixar
     // escolher o período do ranking, sem perder o total histórico de antes.
+    //
+    // BUG CORRIGIDO (relatado pelo usuário, 2026-08-05: "por que aparece
+    // supervisores e administradores?"): WHERE só filtrava u.ativo = true,
+    // sem excluir perfil — admin/supervisor/api não atendem ticket
+    // diretamente (mesma lista de perfis "privilegiados" de isPrivileged()
+    // em access-control.js), então não deveriam entrar no ranking "Por
+    // Usuário".
     pool.query(`
       SELECT
         u.id,
@@ -101,6 +109,7 @@ async function buscarMetricas() {
       FROM users u
       LEFT JOIN tickets t ON t.assigned_to = u.id
       WHERE u.ativo = true
+        AND LOWER(u.perfil) NOT IN ('admin', 'supervisor', 'api')
       GROUP BY u.id, u.nome
       ORDER BY total_atendidos DESC, u.nome ASC
     `, [TZ]),
@@ -166,6 +175,13 @@ async function buscarMetricas() {
           WHERE DATE_TRUNC('month', created_at AT TIME ZONE $1) = DATE_TRUNC('month', NOW() AT TIME ZONE $1)
             AND status = 'resolvido'
         )::int AS mes_atual_resolvidos,
+        -- Pedido do usuário (2026-08-05): "Visão Geral" só com métricas do
+        -- mês — precisa de cancelados do mês atual (antes só tinha
+        -- total/resolvidos mês a mês, ver mes_atual_total acima).
+        COUNT(*) FILTER (
+          WHERE DATE_TRUNC('month', created_at AT TIME ZONE $1) = DATE_TRUNC('month', NOW() AT TIME ZONE $1)
+            AND status = 'cancelado'
+        )::int AS mes_atual_cancelados,
         COUNT(*) FILTER (
           WHERE DATE_TRUNC('month', created_at AT TIME ZONE $1) = DATE_TRUNC('month', NOW() AT TIME ZONE $1) - INTERVAL '1 month'
         )::int AS mes_anterior_total,
@@ -212,6 +228,21 @@ async function buscarMetricas() {
       WHERE created_at >= NOW() - INTERVAL '30 days'
       GROUP BY sector
       ORDER BY total DESC
+    `),
+
+    // Pedido do usuário (2026-08-05): card "Novos Contatos" na aba Tempos —
+    // contagem por created_at deste mês ficaria poluída pelos imports em
+    // massa de listas de vendedor (bulk-tag-contacts.js, ver memória do
+    // projeto), que criam/reescrevem linhas com created_at do dia do import,
+    // não do cadastro real do cliente. A tag "Leads" (ver
+    // src/whatsapp/contacts.js) já é posta automaticamente em todo contato
+    // NOVO de verdade (que mandou mensagem pro bot pela 1ª vez) e some
+    // quando ele vira "Clientes" no 1º ticket — contagem mais confiável do
+    // que "novo" realmente significa aqui.
+    pool.query(`
+      SELECT COUNT(*)::int AS total
+      FROM contacts
+      WHERE 'Leads' = ANY(tags)
     `)
   ]);
 
@@ -250,7 +281,11 @@ async function buscarMetricas() {
     id:             row.id,
     nome:           row.nome,
     totalAtendidos: row.total_atendidos,
-    emAtendimento:  row.em_atendimento > 0,
+    // Pedido do usuário (2026-08-05): mostrar QUANTOS tickets em_andamento
+    // cada atendente tem agora (igual referência externa), não só um Sim/Não
+    // — a contagem já vinha certa da query (COUNT ... FILTER), só estava
+    // sendo jogada fora aqui, virando booleano antes de chegar no frontend.
+    emAtendimento: row.em_atendimento,
     atendidosHoje:   row.atendidos_hoje,
     atendidosSemana: row.atendidos_semana,
     atendidosMes:    row.atendidos_mes
@@ -295,6 +330,12 @@ async function buscarMetricas() {
   const tendencia = {
     totalMesAnterior:      t.mes_anterior_total,
     resolvidosMesAnterior: t.mes_anterior_resolvidos,
+    // Pedido do usuário (2026-08-05): cards de "Visão Geral" só com números
+    // DO MÊS (não acumulado desde sempre) — mesAtualResolvidos já existia
+    // internamente (só usado pra calcular taxaResolucaoAtual), agora também
+    // exposto direto pro card.
+    mesAtualResolvidos:  t.mes_atual_resolvidos,
+    mesAtualCancelados:  t.mes_atual_cancelados,
     taxaResolucaoAtual,
     taxaResolucaoMesAnterior,
     taxaResolucaoVariacaoPontos: (t.mes_atual_total > 0 && t.mes_anterior_total > 0)
@@ -338,7 +379,8 @@ async function buscarMetricas() {
     satisfacaoPorAtendente,
     distribuicaoNotas,
     feedbacksNegativos: feedbacksNegativosRes.rows,
-    tendencia
+    tendencia,
+    novosContatosLeads: leadsRes.rows[0]?.total || 0
   };
 }
 

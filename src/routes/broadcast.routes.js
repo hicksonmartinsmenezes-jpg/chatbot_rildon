@@ -18,6 +18,15 @@ const {
   getBroadcastStats
 } = require("../services/broadcast.service");
 
+const {
+  createSchedule,
+  listSchedules,
+  pauseSchedule,
+  resumeSchedule,
+  cancelSchedule,
+  deleteSchedule
+} = require("../services/campaign-schedule.service");
+
 const router = express.Router();
 
 router.get("/broadcasts", async (req, res) => {
@@ -231,6 +240,100 @@ router.delete("/broadcasts/:id", criticalActionLimiter, async (req, res) => {
     const result = await deleteBroadcast(req.params.id);
     await auditLog({ user: req.user, action: "BROADCAST_DELETE", target: `broadcast:${req.params.id}`, details: result });
     emitEvent("broadcasts_updated", { action: "deleted", id: req.params.id, result, by: req.user?.id || req.user?.usuario || null });
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// ── Agendamento de campanhas (única futura ou recorrente) ───────────────────
+
+router.get("/campaign-schedules", async (req, res) => {
+  try {
+    const schedules = await listSchedules();
+    res.json(schedules);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/campaign-schedules", criticalActionLimiter, async (req, res) => {
+  try {
+    const {
+      title, message, imageUrl, mediaType,
+      audienceType, audienceTags, audienceAtendenteId, customRecipients,
+      scheduledAt, recurrence
+    } = req.body;
+
+    const schedule = await createSchedule({
+      title,
+      message,
+      imageUrl,
+      mediaType: mediaType || (imageUrl ? "image" : null),
+      audienceType,
+      audienceTags,
+      audienceAtendenteId,
+      customRecipients,
+      scheduledAt,
+      recurrence,
+      createdBy: req.user?.nome || req.user?.usuario || null
+    });
+
+    await auditLog({ user: req.user, action: "CAMPAIGN_SCHEDULE_CREATE", target: `campaign_schedule:${schedule.id}`, details: { title, scheduledAt, recurrence } });
+    emitEvent("campaign_schedules_updated", { action: "created", schedule, by: req.user?.id || req.user?.usuario || null });
+    res.status(201).json(schedule);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// BUG CORRIGIDO (relatado pelo usuário, 2026-08-05: "erro de muitas
+// requisições após enviar a campanha"): pausar/retomar/cancelar/excluir um
+// agendamento só troca um status no banco, não envia nenhuma mensagem — mas
+// estava dividindo o MESMO balde apertado (criticalActionLimiter, 10/min)
+// usado por criar/iniciar campanha de verdade. Testar a feature (criar,
+// iniciar, agendar, pausar, retomar, cancelar) em sequência estourava esse
+// limite rapidinho. Só POST /campaign-schedules continua com
+// criticalActionLimiter (ele SIM vai gerar envios reais no futuro, mesma
+// categoria de POST /broadcasts).
+router.post("/campaign-schedules/:id/pause", async (req, res) => {
+  try {
+    const result = await pauseSchedule(req.params.id);
+    await auditLog({ user: req.user, action: "CAMPAIGN_SCHEDULE_PAUSE", target: `campaign_schedule:${req.params.id}`, details: result });
+    emitEvent("campaign_schedules_updated", { action: "paused", id: req.params.id, by: req.user?.id || req.user?.usuario || null });
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post("/campaign-schedules/:id/resume", async (req, res) => {
+  try {
+    const result = await resumeSchedule(req.params.id);
+    await auditLog({ user: req.user, action: "CAMPAIGN_SCHEDULE_RESUME", target: `campaign_schedule:${req.params.id}`, details: result });
+    emitEvent("campaign_schedules_updated", { action: "resumed", id: req.params.id, by: req.user?.id || req.user?.usuario || null });
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post("/campaign-schedules/:id/cancel", async (req, res) => {
+  try {
+    const result = await cancelSchedule(req.params.id);
+    await auditLog({ user: req.user, action: "CAMPAIGN_SCHEDULE_CANCEL", target: `campaign_schedule:${req.params.id}`, details: result });
+    emitEvent("campaign_schedules_updated", { action: "cancelled", id: req.params.id, by: req.user?.id || req.user?.usuario || null });
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.delete("/campaign-schedules/:id", async (req, res) => {
+  try {
+    const result = await deleteSchedule(req.params.id);
+    await auditLog({ user: req.user, action: "CAMPAIGN_SCHEDULE_DELETE", target: `campaign_schedule:${req.params.id}`, details: result });
+    emitEvent("campaign_schedules_updated", { action: "deleted", id: req.params.id, by: req.user?.id || req.user?.usuario || null });
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });

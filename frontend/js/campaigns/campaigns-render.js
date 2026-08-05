@@ -86,8 +86,11 @@ function renderCampaignItem(campaign, index) {
             <button type="button" class="ci-btn ci-btn-retry" data-campaign-action="retry" data-campaign-id="${id}" title="Reenviar falhas (${failed})">
               <i class="fa-solid fa-rotate"></i>
             </button>` : ""}
-          <button type="button" class="ci-btn ci-btn-icon ci-btn-clone" data-campaign-action="clone" data-campaign-id="${id}" title="Clonar">
-            <i class="fa-regular fa-copy"></i>
+          <button type="button" class="ci-btn ci-btn-icon" data-campaign-action="details" data-campaign-id="${id}" title="Ver detalhes">
+            <i class="fa-solid fa-eye"></i>
+          </button>
+          <button type="button" class="ci-btn ci-btn-icon ci-btn-clone" data-campaign-action="repeat" data-campaign-id="${id}" title="Repetir campanha">
+            <i class="fa-solid fa-rotate-right"></i>
           </button>
           ${canDelete ? `
             <button type="button" class="ci-btn ci-btn-icon ci-btn-delete" data-campaign-action="delete" data-campaign-id="${id}" title="Excluir">
@@ -114,8 +117,88 @@ function bindCampaignActionDelegation() {
       case "start": return startCampaign(id);
       case "cancel": return cancelCampaign(id);
       case "retry": return retryCampaign(id);
-      case "clone": return cloneCampaign(id);
+      case "repeat": return repeatCampaign(id);
+      case "details": return showCampaignDetails(id);
       case "delete": return deleteCampaign(id);
+    }
+  });
+}
+
+// ─── Campanhas agendadas (agendamento único ou recorrente) ────────────────────
+
+const SCHEDULE_STATUS_LABEL = {
+  active: "Ativo",
+  paused: "Pausado",
+  cancelled: "Cancelado",
+  completed: "Concluído"
+};
+
+const SCHEDULE_RECURRENCE_LABEL = {
+  daily: "Diária",
+  weekly: "Semanal",
+  monthly: "Mensal"
+};
+
+function renderCampaignScheduleItem(s) {
+  const id = escapeAttr(String(s.id));
+  const nextRun = s.status === "active" || s.status === "paused" ? _fmtDate(s.next_run_at) : "—";
+  const recurrenceLabel = s.recurrence ? (SCHEDULE_RECURRENCE_LABEL[s.recurrence] || s.recurrence) : "Única";
+  const statusLabel = SCHEDULE_STATUS_LABEL[s.status] || s.status;
+  const preview = (s.message || "").slice(0, 50) + (s.message?.length > 50 ? "…" : "");
+
+  return `
+    <tr id="csi-${id}">
+      <td class="camp-td-title">
+        <div class="camp-title-cell">
+          ${s.image_url ? `<img src="${escapeAttr(safeUrl(s.image_url))}" class="camp-thumb-sm" alt="">` : ""}
+          <div>
+            <strong>${safe(s.title)}</strong>
+            <small>${safe(preview)}</small>
+          </div>
+        </div>
+      </td>
+      <td class="camp-td-date">${nextRun}</td>
+      <td>${safe(recurrenceLabel)}</td>
+      <td><span class="campaign-status-badge">${safe(statusLabel)}</span></td>
+      <td class="camp-td-actions">
+        <div class="camp-td-actions-inner">
+          ${s.status === "active" ? `
+            <button type="button" class="ci-btn ci-btn-icon" data-schedule-action="pause" data-schedule-id="${id}" title="Pausar">
+              <i class="fa-solid fa-pause"></i>
+            </button>` : ""}
+          ${s.status === "paused" ? `
+            <button type="button" class="ci-btn ci-btn-start" data-schedule-action="resume" data-schedule-id="${id}" title="Retomar">
+              <i class="fa-solid fa-play"></i>
+            </button>` : ""}
+          ${(s.status === "active" || s.status === "paused") ? `
+            <button type="button" class="ci-btn ci-btn-cancel" data-schedule-action="cancel" data-schedule-id="${id}" title="Cancelar agendamento">
+              <i class="fa-solid fa-ban"></i>
+            </button>` : ""}
+          <button type="button" class="ci-btn ci-btn-icon ci-btn-delete" data-schedule-action="delete" data-schedule-id="${id}" title="Excluir">
+            <i class="fa-regular fa-trash-can"></i>
+          </button>
+        </div>
+      </td>
+    </tr>`;
+}
+
+function bindCampaignScheduleActionDelegation() {
+  const list = document.getElementById("campaign-schedule-list");
+  if (!list || list.dataset.delegated === "true") return;
+  list.dataset.delegated = "true";
+
+  list.addEventListener("click", (event) => {
+    const btn = event.target.closest("[data-schedule-action]");
+    if (!btn || !list.contains(btn)) return;
+
+    const id = btn.dataset.scheduleId;
+    if (!id) return;
+
+    switch (btn.dataset.scheduleAction) {
+      case "pause": return pauseCampaignSchedule(id);
+      case "resume": return resumeCampaignSchedule(id);
+      case "cancel": return cancelCampaignSchedule(id);
+      case "delete": return deleteCampaignSchedule(id);
     }
   });
 }

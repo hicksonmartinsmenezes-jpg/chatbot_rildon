@@ -46,6 +46,21 @@
 
 .metrics-hero-text { position: relative; z-index: 2; }
 
+/* Pedido do usuário (2026-08-05): "mesmo estilo do topbar de configurações"
+   — antes dependia do h2/p padrão do navegador (sem regra própria aqui),
+   agora explícito igual .settings-home-header (24px branco + subtítulo
+   var(--muted)), pra ficar visualmente igual aos outros painéis. */
+.metrics-hero-text h2 {
+  font-size: 24px;
+  color: #fff;
+  margin: 0 0 4px;
+}
+
+.metrics-hero-text p {
+  color: var(--muted);
+  margin: 0;
+}
+
 .metrics-kicker {
   display: inline-flex;
   align-items: center;
@@ -405,6 +420,154 @@ body.light-theme .metric-card-trend.is-neutral { color: #64748b; }
 body.light-theme .metric-periodo-seletor { background: #f1f5f9; border-color: #dbe3ee; }
 body.light-theme .metric-periodo-btn { color: #64748b; }
 body.light-theme .metric-periodo-btn:hover { color: #0f172a; }
+
+/* ─── Abas do painel (Por Usuário / Tempos / Evolução / ...) ───────── */
+/* Pedido do usuário (2026-08-05): "deixe estilo igual se possível" à
+   referência externa que ele mandou (aba ativa e avatar em verde) — só
+   nessa seção (#tab-metrics), sem tocar var(--primary) usado no resto do
+   painel. */
+#tab-metrics { --metrics-accent: #22c55e; }
+
+.metrics-tabs-bar {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 18px;
+  overflow-x: auto;
+}
+
+.metrics-tab-btn {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 10px 2px 12px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  color: #93a4bd;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color .15s, border-color .15s;
+}
+
+.metrics-tab-btn:hover { color: #e2e8f0; }
+
+.metrics-tab-btn.active {
+  color: var(--metrics-accent);
+  border-bottom-color: var(--metrics-accent);
+}
+
+body.light-theme .metrics-tab-btn { color: #64748b; }
+body.light-theme .metrics-tab-btn:hover { color: #0f172a; }
+body.light-theme .metrics-tab-btn.active { color: var(--metrics-accent); }
+
+/* Botão "Exportar PDF" — pedido do usuário (2026-08-05): saiu do header e
+   foi pra dentro da barra de abas, alinhado à direita (igual ao lugar do
+   date range na referência), no lugar do antigo botão "Atualizar"
+   (removido — a aba já recarrega os dados sozinha ao ser aberta). */
+.metrics-tabs-bar .metrics-export-btn {
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 8px 14px;
+  font-size: 12px;
+  border-radius: 10px;
+}
+
+.metrics-tab-panel.hidden { display: none; }
+
+/* Mini-grid de cards dentro de uma aba (Tempos / Horários de Pico /
+   Pesquisa de Satisfação) — mesmo componente .metric-card, só um grid
+   menor já que são 1-2 cards, não os 7 do resumo fixo. */
+.metrics-cards-sub {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 16px;
+}
+
+.metrics-tab-panel .metrics-cards-sub:has(> :only-child) {
+  grid-template-columns: minmax(0, 320px);
+}
+
+/* Busca dentro da aba "Por Usuário" — mesmo padrão visual da busca de
+   Contatos/Campanhas (ícone + input), sem inventar componente novo. */
+.metrics-tab-search-wrap {
+  position: relative;
+  max-width: 320px;
+}
+
+.metrics-tab-search-wrap i {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.metrics-tab-search-wrap input {
+  width: 100%;
+  height: 36px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  padding: 0 12px 0 32px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color .15s, box-shadow .15s;
+}
+
+.metrics-tab-search-wrap input:focus {
+  border-color: var(--metrics-accent);
+  box-shadow: 0 0 0 3px rgba(34,197,94,.15);
+}
+
+/* Seletor "Linhas por página" da tabela paginada da aba Evolução. */
+.metrics-evolucao-pagesize {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.metrics-evolucao-pagesize select {
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+/* Avatar com iniciais na tabela "Por Usuário" — mesmo padrão visual da
+   referência (círculo colorido + nome), sem precisar de foto cadastrada. */
+.metrics-atendente-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.metrics-atendente-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--metrics-accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
 
 /* ─── Tabela de satisfação por atendente ──────────────────────────── */
 .metric-satisfaction-table-wrap {

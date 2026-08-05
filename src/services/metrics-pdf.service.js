@@ -254,7 +254,7 @@ function gerarPdfMetricas(data, destino) {
     ["Atendente", "Hoje", "7 dias", "Mês", "Total histórico", "Em atendimento"],
     [0.30, 0.12, 0.12, 0.12, 0.19, 0.15],
     (data.atendentes || []).map(a => [
-      a.nome, a.atendidosHoje, a.atendidosSemana, a.atendidosMes, a.totalAtendidos, a.emAtendimento ? "Sim" : "—"
+      a.nome, a.atendidosHoje, a.atendidosSemana, a.atendidosMes, a.totalAtendidos, a.emAtendimento ?? 0
     ])
   );
 

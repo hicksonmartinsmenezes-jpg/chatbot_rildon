@@ -449,8 +449,12 @@ body.light-theme .brand-logo-light { display: block; }
   margin-bottom: 18px;
 }
 
+/* Pedido do usuário (2026-08-05): "deixe meus outros topbar com esse mesmo
+   estilo do topbar de configurações" — 24px branco (padrão .settings-home-header
+   h2) no lugar do 1.25rem daqui, pra Atendimentos/Chatbot (que usam esta
+   classe genérica) ficarem visualmente iguais ao cabeçalho de Configurações. */
 .section-title h2 {
-  font-size: 1.25rem;
+  font-size: 24px;
   color: #fff;
 }
 

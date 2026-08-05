@@ -80,7 +80,13 @@
     "cancelMediaSelection",
     "cancelReplyTo",
     // Toggle liga/desliga do bot, liberado para todos (2026-07-24)
-    "toggleBotStatus"
+    "toggleBotStatus",
+    // Tabela paginada "Evolução" em Métricas (2026-08-05)
+    "metricsEvolucaoPagePrev",
+    "metricsEvolucaoPageNext",
+    // Tabela paginada "Horários de Pico" em Métricas (2026-08-05)
+    "metricsPicoPagePrev",
+    "metricsPicoPageNext"
   ]);
 
   document.addEventListener("submit", (event) => {
@@ -131,6 +137,18 @@
     if (action === "setCampaignMediaType") {
       event.preventDefault();
       call("setCampaignMediaType", trigger.dataset.value, trigger);
+      return;
+    }
+
+    if (action === "switchMetricsTab") {
+      event.preventDefault();
+      call("switchMetricsTab", trigger.dataset.value, trigger);
+      return;
+    }
+
+    if (action === "switchSettingsTab") {
+      event.preventDefault();
+      call("switchSettingsTab", trigger.dataset.value, trigger);
       return;
     }
 
@@ -195,6 +213,9 @@
       case "toggleCustomRecipients":
         call("toggleCustomRecipients");
         break;
+      case "toggleCampaignSendMode":
+        call("toggleCampaignSendMode");
+        break;
       case "updateCampaignAudienceCount":
         call("updateCampaignAudienceCount");
         break;
@@ -237,6 +258,15 @@
         break;
       case "searchCampContacts":
         call("searchCampContacts", el.value);
+        break;
+      case "metricsAtendentesSearch":
+        call("metricsAtendentesSearch", el.value);
+        break;
+      case "metricsEvolucaoPageSize":
+        call("metricsEvolucaoPageSize", el.value);
+        break;
+      case "metricsPicoPageSize":
+        call("metricsPicoPageSize", el.value);
         break;
     }
   });

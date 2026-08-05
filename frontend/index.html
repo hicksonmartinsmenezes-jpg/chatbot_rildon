@@ -23,7 +23,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css">
   <!-- CSS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <link rel="stylesheet" href="dist/bundle.9726c346ff.css">
+  <link rel="stylesheet" href="dist/bundle.783e7f008e.css">
   <!-- CSS_BUNDLE_END -->
 <style>
     /* Centraliza colunas da tabela de histórico */
@@ -617,9 +617,22 @@
         <div class="panel">
           <!-- Header -->
           <div class="contacts-header">
-            <div class="contacts-title">
-              <h2><i class="fa-solid fa-address-book" style="color:var(--primary);margin-right:8px;"></i>Contatos</h2>
-              <span class="contacts-count-badge" id="contacts-count-badge">0</span>
+            <div class="contacts-title-row">
+              <div class="contacts-title">
+                <h2><i class="fa-solid fa-address-book" style="color:var(--primary);margin-right:8px;"></i>Contatos</h2>
+                <span class="contacts-count-badge" id="contacts-count-badge">0</span>
+              </div>
+              <div class="contacts-actions">
+                <button type="button" class="ct-btn-secondary" data-action="exportContactsCSV">
+                  <i class="fa-solid fa-file-export"></i> Exportar
+                </button>
+                <button type="button" class="ct-btn-secondary" data-action="importContactsCSV">
+                  <i class="fa-solid fa-file-import"></i> Importar
+                </button>
+                <button type="button" class="ct-btn-add" data-action="openContactModal">
+                  <i class="fa-solid fa-plus"></i> Adicionar
+                </button>
+              </div>
             </div>
             <div class="contacts-toolbar">
               <div class="contacts-search-wrap">
@@ -637,16 +650,6 @@
                 <option value="inativo">Inativo</option>
                 <option value="bloqueado">Bloqueado</option>
               </select>
-              <span class="ct-toolbar-sep"></span>
-              <button type="button" class="ct-btn-add" data-action="openContactModal">
-                <i class="fa-solid fa-plus"></i> Adicionar
-              </button>
-              <button type="button" class="ct-btn-secondary" data-action="importContactsCSV">
-                <i class="fa-solid fa-file-import"></i> Importar
-              </button>
-              <button type="button" class="ct-btn-secondary" data-action="exportContactsCSV">
-                <i class="fa-solid fa-file-export"></i> Exportar
-              </button>
             </div>
           </div>
 
@@ -865,6 +868,36 @@
     </div>
   </div>
 
+  <!-- CAMPANHAS AGENDADAS -->
+  <div class="panel camp-table-card camp-schedules-card">
+    <div class="camp-page-title" style="margin-bottom:10px;">
+      <i class="fa-solid fa-clock"></i>
+      <div>
+        <h2 style="font-size:16px;">Campanhas agendadas</h2>
+        <p>Envios únicos futuros ou recorrentes (diário/semanal/mensal).</p>
+      </div>
+    </div>
+    <div class="camp-table-wrap">
+      <table class="camp-table">
+        <thead>
+          <tr>
+            <th>Campanha</th>
+            <th>Próximo envio</th>
+            <th>Repetição</th>
+            <th>Status</th>
+            <th class="camp-th-actions">Ações</th>
+          </tr>
+        </thead>
+        <tbody id="campaign-schedule-list">
+          <tr><td colspan="5" class="camp-empty">
+            <i class="fa-solid fa-clock"></i>
+            <p>Nenhuma campanha agendada.</p>
+          </td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- MODAL: NOVA CAMPANHA -->
   <div id="camp-modal-overlay" class="camp-modal-overlay hidden" data-backdrop-action="closeCampaignModal">
     <div class="camp-modal panel">
@@ -1011,6 +1044,35 @@
                 <div class="camp-picker-hint"><i class="fa-solid fa-spinner fa-spin"></i> Carregando...</div>
               </div>
             </div>
+          </div>
+
+          <div class="camp-field">
+            <label>Quando enviar</label>
+            <div class="campaign-audience-options camp-audience-grid">
+              <label class="campaign-radio">
+                <input type="radio" name="campaign-send-mode" value="now" checked data-change-action="toggleCampaignSendMode">
+                <i class="fa-solid fa-paper-plane"></i>
+                <span>Enviar agora</span>
+              </label>
+              <label class="campaign-radio">
+                <input type="radio" name="campaign-send-mode" value="schedule" data-change-action="toggleCampaignSendMode">
+                <i class="fa-solid fa-clock"></i>
+                <span>Agendar</span>
+              </label>
+            </div>
+          </div>
+
+          <div id="campaign-schedule-box" class="hidden camp-field">
+            <label>Data e hora do envio</label>
+            <input type="datetime-local" id="campaign-schedule-at" class="contacts-filter-select">
+
+            <label style="margin-top:10px;display:block;">Repetição</label>
+            <select id="campaign-schedule-recurrence" class="contacts-filter-select">
+              <option value="">Não repetir (uma única vez)</option>
+              <option value="daily">Repetir diariamente</option>
+              <option value="weekly">Repetir semanalmente</option>
+              <option value="monthly">Repetir mensalmente</option>
+            </select>
           </div>
 
         </div>
@@ -1271,70 +1333,93 @@ Como podemos ajudar você hoje?
             </div>
           </div>
 
-          <div class="settings-home-grid">
-            <button type="button" class="settings-home-card" data-action="openSettingsPanel" data-value="usuarios">
-              <span class="settings-home-icon bg-purple"><i class="fa-solid fa-users-gear"></i></span>
-              <span>
-                <strong>Usuários</strong>
-                <small>Atendentes, perfis e permissões.</small>
-              </span>
-              <i class="fa-solid fa-chevron-right"></i>
-            </button>
+          <!-- Pedido do usuário (2026-08-05): "ux igual" a uma referência
+               externa com abas (Atendimento/Cadastro/Avançado) + cards mais
+               enxutos — reorganiza as 7 categorias que já existiam, sem
+               inventar nenhuma nova. -->
+          <div class="settings-tabs-bar" role="tablist">
+            <button type="button" class="settings-tab-btn active" data-settings-tab="atendimento" data-action="switchSettingsTab" data-value="atendimento">Atendimento</button>
+            <button type="button" class="settings-tab-btn" data-settings-tab="cadastro" data-action="switchSettingsTab" data-value="cadastro">Cadastro</button>
+            <button type="button" class="settings-tab-btn" data-settings-tab="avancado" data-action="switchSettingsTab" data-value="avancado">Avançado</button>
+          </div>
 
-            <button type="button" class="settings-home-card" data-action="openSettingsPanel" data-value="empresa">
-              <span class="settings-home-icon bg-blue"><i class="fa-solid fa-building"></i></span>
-              <span>
-                <strong>Empresa</strong>
-                <small>Nome, telefone, logo e boas-vindas.</small>
-              </span>
-              <i class="fa-solid fa-chevron-right"></i>
-            </button>
+          <!-- Aba: Atendimento — categorias do dia a dia do atendimento -->
+          <div class="settings-tab-panel" data-settings-home-tab="atendimento">
+            <div class="settings-home-grid">
+              <button type="button" class="settings-home-card" data-action="openSettingsPanel" data-value="atendimento">
+                <span class="settings-home-icon bg-green"><i class="fa-solid fa-headset"></i></span>
+                <span>
+                  <strong>Atendimento</strong>
+                  <small>Setores, tickets e transferência.</small>
+                </span>
+                <i class="fa-solid fa-chevron-right"></i>
+              </button>
 
-            <button type="button" class="settings-home-card" data-action="openSettingsPanel" data-value="atendimento">
-              <span class="settings-home-icon bg-green"><i class="fa-solid fa-headset"></i></span>
-              <span>
-                <strong>Atendimento</strong>
-                <small>Setores, tickets e transferência.</small>
-              </span>
-              <i class="fa-solid fa-chevron-right"></i>
-            </button>
+              <button type="button" class="settings-home-card" data-action="openSettingsPanel" data-value="whatsapp">
+                <span class="settings-home-icon bg-green"><i class="fa-brands fa-whatsapp"></i></span>
+                <span>
+                  <strong>WhatsApp</strong>
+                  <small>Status da conexão e QR Code.</small>
+                </span>
+                <span id="wa-home-badge" class="badge badge-off" style="margin-left:auto;margin-right:8px">●</span>
+                <i class="fa-solid fa-chevron-right"></i>
+              </button>
 
-            <button type="button" class="settings-home-card" data-action="openSettingsPanel" data-value="aparencia">
-              <span class="settings-home-icon bg-indigo"><i class="fa-solid fa-palette"></i></span>
-              <span>
-                <strong>Aparência</strong>
-                <small>Cores, tema e nome do painel.</small>
-              </span>
-              <i class="fa-solid fa-chevron-right"></i>
-            </button>
+              <button type="button" class="settings-home-card" data-action="openSettingsPanel" data-value="notificacoes">
+                <span class="settings-home-icon bg-orange"><i class="fa-solid fa-bell"></i></span>
+                <span>
+                  <strong>Notificações</strong>
+                  <small>Som, alertas e texto do aviso.</small>
+                </span>
+                <i class="fa-solid fa-chevron-right"></i>
+              </button>
+            </div>
+          </div>
 
-            <button type="button" class="settings-home-card" data-action="openSettingsPanel" data-value="notificacoes">
-              <span class="settings-home-icon bg-orange"><i class="fa-solid fa-bell"></i></span>
-              <span>
-                <strong>Notificações</strong>
-                <small>Som, alertas e texto do aviso.</small>
-              </span>
-              <i class="fa-solid fa-chevron-right"></i>
-            </button>
+          <!-- Aba: Cadastro — dados de identidade/cadastro -->
+          <div class="settings-tab-panel hidden" data-settings-home-tab="cadastro">
+            <div class="settings-home-grid">
+              <button type="button" class="settings-home-card" data-action="openSettingsPanel" data-value="usuarios">
+                <span class="settings-home-icon bg-purple"><i class="fa-solid fa-users-gear"></i></span>
+                <span>
+                  <strong>Usuários</strong>
+                  <small>Atendentes, perfis e permissões.</small>
+                </span>
+                <i class="fa-solid fa-chevron-right"></i>
+              </button>
 
-            <button type="button" class="settings-home-card" data-action="openSettingsPanel" data-value="historico">
-              <span class="settings-home-icon bg-red"><i class="fa-solid fa-clock-rotate-left"></i></span>
-              <span>
-                <strong>Histórico</strong>
-                <small>Retenção, limite e exportação.</small>
-              </span>
-              <i class="fa-solid fa-chevron-right"></i>
-            </button>
+              <button type="button" class="settings-home-card" data-action="openSettingsPanel" data-value="empresa">
+                <span class="settings-home-icon bg-blue"><i class="fa-solid fa-building"></i></span>
+                <span>
+                  <strong>Empresa</strong>
+                  <small>Nome, telefone, logo e boas-vindas.</small>
+                </span>
+                <i class="fa-solid fa-chevron-right"></i>
+              </button>
+            </div>
+          </div>
 
-            <button type="button" class="settings-home-card" data-action="openSettingsPanel" data-value="whatsapp">
-              <span class="settings-home-icon bg-green"><i class="fa-brands fa-whatsapp"></i></span>
-              <span>
-                <strong>WhatsApp</strong>
-                <small>Status da conexão e QR Code.</small>
-              </span>
-              <span id="wa-home-badge" class="badge badge-off" style="margin-left:auto;margin-right:8px">●</span>
-              <i class="fa-solid fa-chevron-right"></i>
-            </button>
+          <!-- Aba: Avançado — aparência e retenção de dados -->
+          <div class="settings-tab-panel hidden" data-settings-home-tab="avancado">
+            <div class="settings-home-grid">
+              <button type="button" class="settings-home-card" data-action="openSettingsPanel" data-value="aparencia">
+                <span class="settings-home-icon bg-indigo"><i class="fa-solid fa-palette"></i></span>
+                <span>
+                  <strong>Aparência</strong>
+                  <small>Cores, tema e nome do painel.</small>
+                </span>
+                <i class="fa-solid fa-chevron-right"></i>
+              </button>
+
+              <button type="button" class="settings-home-card" data-action="openSettingsPanel" data-value="historico">
+                <span class="settings-home-icon bg-red"><i class="fa-solid fa-clock-rotate-left"></i></span>
+                <span>
+                  <strong>Histórico</strong>
+                  <small>Retenção, limite e exportação.</small>
+                </span>
+                <i class="fa-solid fa-chevron-right"></i>
+              </button>
+            </div>
           </div>
         </section>
 
@@ -1636,175 +1721,303 @@ Como podemos ajudar você hoje?
       <h2>Métricas do Sistema</h2>
       <p>Resumo analítico dos atendimentos, setores e desempenho.</p>
     </div>
-
-    <div class="metrics-actions">
-      <button type="button" class="metrics-export-btn" onclick="exportarMetricasPDF(this)">
-        <i class="fa-solid fa-file-pdf"></i>
-        <span>Exportar PDF</span>
-      </button>
-      <button type="button" class="metrics-refresh-btn" data-action="loadMetricsCharts" aria-label="Atualizar métricas">
-        <i class="fa-solid fa-arrows-rotate"></i>
-        <span>Atualizar</span>
-      </button>
-    </div>
   </header>
 
-  <section class="metrics-cards">
+  <!-- Pedido do usuário (2026-08-05): "ux igual" a uma referência de painel
+       de Relatórios com abas (Por Usuário, Tempos, Evolução, Horários de
+       Pico, Pesquisa de Satisfação) — reorganiza o que já existia (só isso,
+       sem cor nova nem filtro de data no backend). Os 7 cards de volume que
+       antes ficavam fixos acima das abas agora são a própria aba "Visão
+       Geral" (pedido do usuário, 2026-08-05: "separe isso em uma aba
+       também"). -->
+  <div class="metrics-tabs-bar" role="tablist">
+    <button type="button" class="metrics-tab-btn active" data-metrics-tab="geral" data-action="switchMetricsTab" data-value="geral">Visão Geral</button>
+    <button type="button" class="metrics-tab-btn" data-metrics-tab="usuario" data-action="switchMetricsTab" data-value="usuario">Por Usuário</button>
+    <button type="button" class="metrics-tab-btn" data-metrics-tab="tempos" data-action="switchMetricsTab" data-value="tempos">Tempos</button>
+    <button type="button" class="metrics-tab-btn" data-metrics-tab="evolucao" data-action="switchMetricsTab" data-value="evolucao">Evolução</button>
+    <button type="button" class="metrics-tab-btn" data-metrics-tab="pico" data-action="switchMetricsTab" data-value="pico">Horários de Pico</button>
+    <button type="button" class="metrics-tab-btn" data-metrics-tab="satisfacao" data-action="switchMetricsTab" data-value="satisfacao">Pesquisa de Satisfação</button>
+    <button type="button" class="metrics-export-btn" onclick="exportarMetricasPDF(this)">
+      <i class="fa-solid fa-file-pdf"></i>
+      <span>Exportar PDF</span>
+    </button>
+  </div>
 
-    <article class="metric-card" data-accent="blue">
-      <span class="metric-card-icon"><i class="fa-solid fa-headset"></i></span>
-      <strong id="metric-total">0</strong>
-      <span id="metric-total-trend"></span>
-      <span class="metric-card-label">Total de Atendimentos Mensal <i class="fa-solid fa-circle-info metric-card-info" title="Total de tickets registrados no mês corrente"></i></span>
-    </article>
+  <!-- Aba: Visão Geral -->
+  <!-- Pedido do usuário (2026-08-05): "preciso apenas de metricas importantes
+       gerais apenas do mês" — reduzido de 7 cards (misturava mês/hoje/acumulado
+       desde sempre) para 4 cards, todos com escopo do MÊS corrente. -->
+  <section class="metrics-tab-panel" data-metrics-panel="geral">
+    <section class="metrics-cards">
 
-    <article class="metric-card" data-accent="amber">
-      <span class="metric-card-icon"><i class="fa-solid fa-hourglass-half"></i></span>
-      <strong id="metric-andamento">0</strong>
-      <span class="metric-card-label">Em andamento <i class="fa-solid fa-circle-info metric-card-info" title="Tickets em atendimento neste momento"></i></span>
-    </article>
+      <article class="metric-card" data-accent="blue">
+        <span class="metric-card-icon"><i class="fa-solid fa-headset"></i></span>
+        <strong id="metric-total">0</strong>
+        <span id="metric-total-trend"></span>
+        <span class="metric-card-label">Total de Atendimentos <i class="fa-solid fa-circle-info metric-card-info" title="Total de tickets registrados no mês corrente"></i></span>
+      </article>
 
-    <article class="metric-card" data-accent="green">
-      <span class="metric-card-icon"><i class="fa-solid fa-circle-check"></i></span>
-      <strong id="metric-resolvidos">0</strong>
-      <span class="metric-card-label">Resolvidos <i class="fa-solid fa-circle-info metric-card-info" title="Tickets concluídos com sucesso"></i></span>
-    </article>
+      <article class="metric-card" data-accent="green">
+        <span class="metric-card-icon"><i class="fa-solid fa-circle-check"></i></span>
+        <strong id="metric-resolvidos">0</strong>
+        <span class="metric-card-label">Resolvidos <i class="fa-solid fa-circle-info metric-card-info" title="Tickets concluídos com sucesso no mês corrente"></i></span>
+      </article>
 
-    <article class="metric-card" data-accent="red">
-      <span class="metric-card-icon"><i class="fa-solid fa-circle-xmark"></i></span>
-      <strong id="metric-cancelados">0</strong>
-      <span class="metric-card-label">Cancelados <i class="fa-solid fa-circle-info metric-card-info" title="Tickets cancelados"></i></span>
-    </article>
+      <article class="metric-card" data-accent="red">
+        <span class="metric-card-icon"><i class="fa-solid fa-circle-xmark"></i></span>
+        <strong id="metric-cancelados">0</strong>
+        <span class="metric-card-label">Cancelados <i class="fa-solid fa-circle-info metric-card-info" title="Tickets cancelados no mês corrente"></i></span>
+      </article>
 
-    <article class="metric-card" data-accent="cyan">
-      <span class="metric-card-icon"><i class="fa-solid fa-calendar-day"></i></span>
-      <strong id="metric-hoje">0</strong>
-      <span class="metric-card-label">Tickets hoje <i class="fa-solid fa-circle-info metric-card-info" title="Tickets abertos hoje"></i></span>
-    </article>
+      <article class="metric-card" data-accent="purple">
+        <span class="metric-card-icon"><i class="fa-solid fa-gauge-high"></i></span>
+        <strong id="metric-taxa-resolucao">0%</strong>
+        <span class="metric-card-label">Taxa de resolução <i class="fa-solid fa-circle-info metric-card-info" title="Percentual de tickets resolvidos sobre o total no mês corrente"></i></span>
+      </article>
 
-    <article class="metric-card" data-accent="orange">
-      <span class="metric-card-icon"><i class="fa-solid fa-clock"></i></span>
-      <strong id="metric-pendentes">0</strong>
-      <span class="metric-card-label">Pendentes <i class="fa-solid fa-circle-info metric-card-info" title="Tickets aguardando atendimento"></i></span>
-    </article>
-
-    <article class="metric-card" data-accent="purple">
-      <span class="metric-card-icon"><i class="fa-solid fa-gauge-high"></i></span>
-      <strong id="metric-taxa-resolucao">0%</strong>
-      <span class="metric-card-label">Taxa de resolução <i class="fa-solid fa-circle-info metric-card-info" title="Percentual de tickets resolvidos sobre o total"></i></span>
-    </article>
-
-    <article class="metric-card" data-accent="teal">
-      <span class="metric-card-icon"><i class="fa-solid fa-clock"></i></span>
-      <strong id="metric-horario-pico">—</strong>
-      <span class="metric-card-label">Horário de pico <i class="fa-solid fa-circle-info metric-card-info" title="Hora do dia com maior volume de atendimentos (últimos 30 dias)"></i></span>
-    </article>
-
-    <article class="metric-card" data-accent="pink">
-      <span class="metric-card-icon"><i class="fa-solid fa-star"></i></span>
-      <strong id="metric-satisfacao">—</strong>
-      <span class="metric-card-label">Satisfação média <i class="fa-solid fa-circle-info metric-card-info" title="Média das notas de 1 a 5 respondidas pelos clientes ao fechar o atendimento"></i></span>
-    </article>
-
-    <article class="metric-card" data-accent="indigo">
-      <span class="metric-card-icon"><i class="fa-solid fa-stopwatch"></i></span>
-      <strong id="metric-tempo-resolucao">—</strong>
-      <span id="metric-tempo-resolucao-trend"></span>
-      <span class="metric-card-label">Tempo médio de resolução <i class="fa-solid fa-circle-info metric-card-info" title="Tempo médio entre a abertura e o fechamento (resolvido/cancelado) dos tickets do mês corrente"></i></span>
-    </article>
-
-    <article class="metric-card" data-accent="lime">
-      <span class="metric-card-icon"><i class="fa-solid fa-bolt"></i></span>
-      <strong id="metric-tempo-resposta">—</strong>
-      <span id="metric-tempo-resposta-trend"></span>
-      <span class="metric-card-label">Tempo médio até 1ª resposta <i class="fa-solid fa-circle-info metric-card-info" title="Tempo médio entre a abertura do ticket e o momento em que um atendente o assumiu pela 1ª vez (só conta tickets assumidos após 31/07/2026)"></i></span>
-    </article>
-
+    </section>
   </section>
 
-  <section class="metrics-charts">
-
-    <article class="chart-card chart-wide">
-      <header class="chart-card-head">
-        <span class="chart-card-icon"><i class="fa-solid fa-users"></i></span>
-        <h3>Atendentes <i class="fa-solid fa-circle-info metric-card-info" title="Quem está online agora, quem tem atendimento em andamento e quanto cada um atendeu no período escolhido"></i></h3>
-        <div class="metric-periodo-seletor" id="metric-atendentes-periodo">
-          <button type="button" class="metric-periodo-btn" data-periodo="hoje" onclick="setMetricsAtendentesPeriodo('hoje')">Hoje</button>
-          <button type="button" class="metric-periodo-btn" data-periodo="semana" onclick="setMetricsAtendentesPeriodo('semana')">7 dias</button>
-          <button type="button" class="metric-periodo-btn" data-periodo="mes" onclick="setMetricsAtendentesPeriodo('mes')">Mês</button>
-          <button type="button" class="metric-periodo-btn is-active" data-periodo="total" onclick="setMetricsAtendentesPeriodo('total')">Total</button>
+  <!-- Aba: Por Usuário -->
+  <section class="metrics-tab-panel hidden" data-metrics-panel="usuario">
+    <section class="metrics-charts">
+      <article class="chart-card chart-wide">
+        <header class="chart-card-head">
+          <span class="chart-card-icon"><i class="fa-solid fa-users"></i></span>
+          <h3>Atendentes <i class="fa-solid fa-circle-info metric-card-info" title="Quem está online agora, quem tem atendimento em andamento e quanto cada um atendeu no período escolhido"></i></h3>
+          <div class="metric-periodo-seletor" id="metric-atendentes-periodo">
+            <button type="button" class="metric-periodo-btn" data-periodo="hoje" onclick="setMetricsAtendentesPeriodo('hoje')">Hoje</button>
+            <button type="button" class="metric-periodo-btn" data-periodo="semana" onclick="setMetricsAtendentesPeriodo('semana')">7 dias</button>
+            <button type="button" class="metric-periodo-btn" data-periodo="mes" onclick="setMetricsAtendentesPeriodo('mes')">Mês</button>
+            <button type="button" class="metric-periodo-btn is-active" data-periodo="total" onclick="setMetricsAtendentesPeriodo('total')">Total</button>
+          </div>
+        </header>
+        <div class="metrics-tab-search-wrap">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <input type="text" id="metric-atendentes-search" placeholder="Buscar atendente..." data-input-action="metricsAtendentesSearch">
         </div>
-      </header>
-      <div class="metric-satisfaction-table-wrap">
-        <table class="metric-satisfaction-table">
-          <thead>
-            <tr><th>Atendente</th><th>Status</th><th>Em atendimento</th><th id="metric-atendentes-count-header">Total atendido</th></tr>
-          </thead>
-          <tbody id="metric-atendentes-body">
-            <tr><td colspan="4" class="metric-satisfaction-empty">Nenhum atendente cadastrado.</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </article>
+        <div class="metric-satisfaction-table-wrap">
+          <table class="metric-satisfaction-table">
+            <thead>
+              <tr><th>Atendente</th><th>Status</th><th>Em atendimento</th><th id="metric-atendentes-count-header">Total atendido</th></tr>
+            </thead>
+            <tbody id="metric-atendentes-body">
+              <tr><td colspan="4" class="metric-satisfaction-empty">Nenhum atendente cadastrado.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+  </section>
 
-    <article class="chart-card chart-wide">
-      <header class="chart-card-head">
-        <span class="chart-card-icon"><i class="fa-solid fa-chart-line"></i></span>
-        <h3>Atendimentos por dia</h3>
-      </header>
-      <div class="chart-canvas-wrap"><canvas id="metric-chart-day"></canvas></div>
-    </article>
+  <!-- Aba: Tempos -->
+  <!-- Pedido do usuário (2026-08-05): 7 cards igual referência externa
+       (TMA/TME/Total/Demanda Receptiva/Demanda Ativa/Pendentes/Novos
+       Contatos). TMA/TME já existiam. Total/Pendentes reaproveitam
+       data.total/data.pendentes (calculados no backend, sem uso no
+       frontend até então). "Demanda Ativa" fica em 0 porque o sistema hoje
+       não tem fluxo de ticket iniciado pelo atendente/campanha — todo
+       atendimento nasce de mensagem do cliente (ver tooltip do card). -->
+  <section class="metrics-tab-panel hidden" data-metrics-panel="tempos">
+    <section class="metrics-cards">
+      <article class="metric-card" data-accent="indigo">
+        <span class="metric-card-icon"><i class="fa-solid fa-stopwatch"></i></span>
+        <strong id="metric-tempo-resolucao">—</strong>
+        <span id="metric-tempo-resolucao-trend"></span>
+        <span class="metric-card-label">TMA (Tempo Médio de Atendimento) <i class="fa-solid fa-circle-info metric-card-info" title="Tempo médio entre a abertura e o fechamento (resolvido/cancelado) dos tickets do mês corrente"></i></span>
+      </article>
 
-    <article class="chart-card chart-wide">
-      <header class="chart-card-head">
-        <span class="chart-card-icon"><i class="fa-solid fa-chart-column"></i></span>
-        <h3>Atendimentos por horário <i class="fa-solid fa-circle-info metric-card-info" title="Distribuição por hora do dia (últimos 30 dias) — ajuda a decidir escala/reforço de atendente"></i></h3>
-      </header>
-      <div class="chart-canvas-wrap"><canvas id="metric-chart-hora"></canvas></div>
-    </article>
+      <article class="metric-card" data-accent="lime">
+        <span class="metric-card-icon"><i class="fa-solid fa-bolt"></i></span>
+        <strong id="metric-tempo-resposta">—</strong>
+        <span id="metric-tempo-resposta-trend"></span>
+        <span class="metric-card-label">TME (Tempo Médio até 1ª Resposta) <i class="fa-solid fa-circle-info metric-card-info" title="Tempo médio entre a abertura do ticket e o momento em que um atendente o assumiu pela 1ª vez (só conta tickets assumidos após 31/07/2026)"></i></span>
+      </article>
 
-    <article class="chart-card chart-wide">
-      <header class="chart-card-head">
-        <span class="chart-card-icon"><i class="fa-solid fa-star-half-stroke"></i></span>
-        <h3>Satisfação por atendente</h3>
-      </header>
-      <div class="metric-satisfaction-table-wrap">
-        <table class="metric-satisfaction-table">
-          <thead>
-            <tr><th>Atendente</th><th>Média</th><th>Avaliações</th></tr>
-          </thead>
-          <tbody id="metric-satisfacao-atendente-body">
-            <tr><td colspan="3" class="metric-satisfaction-empty">Nenhuma avaliação ainda.</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </article>
+      <article class="metric-card" data-accent="green">
+        <span class="metric-card-icon"><i class="fa-solid fa-circle-check"></i></span>
+        <strong id="metric-tempos-total">0</strong>
+        <span class="metric-card-label">Total Atendimentos <i class="fa-solid fa-circle-info metric-card-info" title="Tickets registrados no mês corrente"></i></span>
+      </article>
 
-    <article class="chart-card chart-wide">
-      <header class="chart-card-head">
-        <span class="chart-card-icon"><i class="fa-solid fa-chart-simple"></i></span>
-        <h3>Distribuição de notas de satisfação</h3>
-      </header>
-      <div class="chart-canvas-wrap"><canvas id="metric-chart-notas"></canvas></div>
-    </article>
+      <article class="metric-card" data-accent="orange">
+        <span class="metric-card-icon"><i class="fa-solid fa-inbox"></i></span>
+        <strong id="metric-tempos-receptiva">0</strong>
+        <span class="metric-card-label">Demanda Receptiva <i class="fa-solid fa-circle-info metric-card-info" title="Atendimentos iniciados pelo cliente no mês corrente — hoje é 100% dos tickets, já que o bot só responde quem manda mensagem primeiro"></i></span>
+      </article>
 
-    <article class="chart-card chart-wide">
-      <header class="chart-card-head">
-        <span class="chart-card-icon"><i class="fa-solid fa-comment-dots"></i></span>
-        <h3>O que os clientes disseram <i class="fa-solid fa-circle-info metric-card-info" title="Comentário livre pedido automaticamente quando o cliente dá nota 1 ou 2 na pesquisa de satisfação"></i></h3>
-      </header>
-      <div class="metric-satisfaction-table-wrap">
-        <table class="metric-satisfaction-table">
-          <thead>
-            <tr><th>Protocolo</th><th>Cliente</th><th>Nota</th><th>Comentário</th><th>Data</th></tr>
-          </thead>
-          <tbody id="metric-feedbacks-negativos-body">
-            <tr><td colspan="5" class="metric-satisfaction-empty">Nenhum comentário registrado ainda.</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </article>
+      <article class="metric-card" data-accent="purple">
+        <span class="metric-card-icon"><i class="fa-solid fa-paper-plane"></i></span>
+        <strong id="metric-tempos-ativa">0</strong>
+        <span class="metric-card-label">Demanda Ativa <i class="fa-solid fa-circle-info metric-card-info" title="Atendimentos iniciados pelo atendente/campanha (ex: campanha vira ticket) — o painel ainda não tem esse fluxo, por isso fica zerado"></i></span>
+      </article>
 
+      <article class="metric-card" data-accent="cyan">
+        <span class="metric-card-icon"><i class="fa-solid fa-clock"></i></span>
+        <strong id="metric-tempos-pendentes">0</strong>
+        <span class="metric-card-label">Pendentes <i class="fa-solid fa-circle-info metric-card-info" title="Tickets aguardando atendimento (sem atendente ainda)"></i></span>
+      </article>
+
+      <article class="metric-card" data-accent="teal">
+        <span class="metric-card-icon"><i class="fa-solid fa-user-plus"></i></span>
+        <strong id="metric-tempos-novos-contatos">0</strong>
+        <span class="metric-card-label">Leads em Aberto <i class="fa-solid fa-circle-info metric-card-info" title="Total acumulado (não é só o mês): contatos que já mandaram mensagem mas ainda não geraram nenhum ticket (tag automática 'Leads')"></i></span>
+      </article>
+    </section>
+  </section>
+
+  <!-- Aba: Evolução -->
+  <!-- Pedido do usuário (2026-08-05): tabela paginada com os mesmos dados do
+       gráfico (data.porDia, já vinha do backend) embaixo do gráfico, igual
+       referência externa — sem query nova, só um jeito diferente de olhar
+       pro mesmo dado. -->
+  <section class="metrics-tab-panel hidden" data-metrics-panel="evolucao">
+    <section class="metrics-charts">
+      <article class="chart-card chart-wide">
+        <header class="chart-card-head">
+          <span class="chart-card-icon"><i class="fa-solid fa-chart-line"></i></span>
+          <h3>Evolução de Atendimentos</h3>
+        </header>
+        <div class="chart-canvas-wrap"><canvas id="metric-chart-day"></canvas></div>
+      </article>
+
+      <article class="chart-card chart-wide">
+        <div class="metric-satisfaction-table-wrap">
+          <table class="metric-satisfaction-table">
+            <thead>
+              <tr><th>Data</th><th>Atendimentos</th></tr>
+            </thead>
+            <tbody id="metric-evolucao-body">
+              <tr><td colspan="2" class="metric-satisfaction-empty">Sem dados no período.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="contacts-footer">
+          <div class="metrics-evolucao-pagesize">
+            <label for="metric-evolucao-pagesize">Linhas por página:</label>
+            <select id="metric-evolucao-pagesize" data-change-action="metricsEvolucaoPageSize">
+              <option value="10">10</option>
+              <option value="25">25</option>
+              <option value="50">50</option>
+            </select>
+          </div>
+          <span class="contacts-showing" id="metric-evolucao-showing">0 registros</span>
+          <div class="contacts-pagination">
+            <button type="button" class="ct-page-btn" id="metric-evolucao-prev" data-action="metricsEvolucaoPagePrev" disabled>
+              <i class="fa-solid fa-chevron-left"></i>
+            </button>
+            <span class="ct-page-info" id="metric-evolucao-page-info">1 / 1</span>
+            <button type="button" class="ct-page-btn" id="metric-evolucao-next" data-action="metricsEvolucaoPageNext" disabled>
+              <i class="fa-solid fa-chevron-right"></i>
+            </button>
+          </div>
+        </div>
+      </article>
+    </section>
+  </section>
+
+  <!-- Aba: Horários de Pico -->
+  <section class="metrics-tab-panel hidden" data-metrics-panel="pico">
+    <section class="metrics-charts">
+      <article class="chart-card chart-wide">
+        <header class="chart-card-head">
+          <span class="chart-card-icon"><i class="fa-solid fa-chart-column"></i></span>
+          <h3>Atendimentos por horário <i class="fa-solid fa-circle-info metric-card-info" title="Distribuição por hora do dia (últimos 30 dias) — ajuda a decidir escala/reforço de atendente"></i></h3>
+        </header>
+        <div class="chart-canvas-wrap"><canvas id="metric-chart-hora"></canvas></div>
+      </article>
+
+      <!-- Pedido do usuário (2026-08-05): tabela paginada embaixo do gráfico,
+           igual referência enviada — mesma fonte de dados (data.porHora). -->
+      <article class="chart-card chart-wide">
+        <div class="metric-satisfaction-table-wrap">
+          <table class="metric-satisfaction-table">
+            <thead>
+              <tr><th>Hora</th><th>Quantidade</th></tr>
+            </thead>
+            <tbody id="metric-pico-body">
+              <tr><td colspan="2" class="metric-satisfaction-empty">Sem dados no período.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="contacts-footer">
+          <div class="metrics-evolucao-pagesize">
+            <label for="metric-pico-pagesize">Linhas por página:</label>
+            <select id="metric-pico-pagesize" data-change-action="metricsPicoPageSize">
+              <option value="10">10</option>
+              <option value="25">25</option>
+              <option value="50">50</option>
+            </select>
+          </div>
+          <span class="contacts-showing" id="metric-pico-showing">0 registros</span>
+          <div class="contacts-pagination">
+            <button type="button" class="ct-page-btn" id="metric-pico-prev" data-action="metricsPicoPagePrev" disabled>
+              <i class="fa-solid fa-chevron-left"></i>
+            </button>
+            <span class="ct-page-info" id="metric-pico-page-info">1 / 1</span>
+            <button type="button" class="ct-page-btn" id="metric-pico-next" data-action="metricsPicoPageNext" disabled>
+              <i class="fa-solid fa-chevron-right"></i>
+            </button>
+          </div>
+        </div>
+      </article>
+    </section>
+  </section>
+
+  <!-- Aba: Pesquisa de Satisfação -->
+  <section class="metrics-tab-panel hidden" data-metrics-panel="satisfacao">
+    <section class="metrics-cards metrics-cards-sub">
+      <article class="metric-card" data-accent="pink">
+        <span class="metric-card-icon"><i class="fa-solid fa-star"></i></span>
+        <strong id="metric-satisfacao">—</strong>
+        <span class="metric-card-label">Satisfação média <i class="fa-solid fa-circle-info metric-card-info" title="Média das notas de 1 a 5 respondidas pelos clientes ao fechar o atendimento"></i></span>
+      </article>
+    </section>
+    <section class="metrics-charts">
+
+      <article class="chart-card chart-wide">
+        <header class="chart-card-head">
+          <span class="chart-card-icon"><i class="fa-solid fa-star-half-stroke"></i></span>
+          <h3>Satisfação por atendente</h3>
+        </header>
+        <div class="metric-satisfaction-table-wrap">
+          <table class="metric-satisfaction-table">
+            <thead>
+              <tr><th>Atendente</th><th>Média</th><th>Avaliações</th></tr>
+            </thead>
+            <tbody id="metric-satisfacao-atendente-body">
+              <tr><td colspan="3" class="metric-satisfaction-empty">Nenhuma avaliação ainda.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="chart-card chart-wide">
+        <header class="chart-card-head">
+          <span class="chart-card-icon"><i class="fa-solid fa-chart-simple"></i></span>
+          <h3>Distribuição de notas de satisfação</h3>
+        </header>
+        <div class="chart-canvas-wrap"><canvas id="metric-chart-notas"></canvas></div>
+      </article>
+
+      <article class="chart-card chart-wide">
+        <header class="chart-card-head">
+          <span class="chart-card-icon"><i class="fa-solid fa-comment-dots"></i></span>
+          <h3>O que os clientes disseram <i class="fa-solid fa-circle-info metric-card-info" title="Comentário livre pedido automaticamente quando o cliente dá nota 1 ou 2 na pesquisa de satisfação"></i></h3>
+        </header>
+        <div class="metric-satisfaction-table-wrap">
+          <table class="metric-satisfaction-table">
+            <thead>
+              <tr><th>Protocolo</th><th>Cliente</th><th>Nota</th><th>Comentário</th><th>Data</th></tr>
+            </thead>
+            <tbody id="metric-feedbacks-negativos-body">
+              <tr><td colspan="5" class="metric-satisfaction-empty">Nenhum comentário registrado ainda.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+
+    </section>
   </section>
 
 </section>
@@ -2049,7 +2262,7 @@ Como podemos ajudar você hoje?
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1"></script>
 
   <!-- JS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <script src="dist/bundle.4a8ff56c06.js"></script>
+  <script src="dist/bundle.f0e5840bc5.js"></script>
   <!-- JS_BUNDLE_END -->
 
 

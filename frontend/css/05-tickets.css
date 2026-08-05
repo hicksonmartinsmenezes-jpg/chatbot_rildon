@@ -21,18 +21,9 @@
   margin-bottom: 20px;
 }
 
-#tab-tickets .section-title h2 {
-  font-size: 1.35rem;
-  font-weight: 900;
-  color: #fff;
-  letter-spacing: -0.02em;
-}
-
-#tab-tickets .section-title p {
-  color: #64748b;
-  font-size: 13.5px;
-  margin-top: 3px;
-}
+/* Pedido do usuário (2026-08-05): "mesmo estilo do topbar de configurações"
+   — removido o override daqui (1.35rem/900/cor própria) pra herdar o
+   .section-title h2/p genérico (02-layout.css), já padronizado em 24px. */
 
 #tab-tickets .toolbar {
   gap: 14px;

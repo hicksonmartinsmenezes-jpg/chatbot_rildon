@@ -9,6 +9,7 @@
     --bg: #0f0f10;
     --panel: #17181a;
     --panel-2: #1d1e21;
+    --panel-3: #232427;
     --border: #2a2b2f;
     --text: #f1f2f4;
     --muted: #98a6b8;
@@ -16,7 +17,6 @@
     --green: #22c55e;
     --amber: #f59e0b;
     --red: #ef4444;
-    --purple: #a855f7;
     --radius: 12px;
   }
   * { box-sizing: border-box; }
@@ -25,41 +25,96 @@
     font-family: 'Segoe UI', Inter, sans-serif;
     background: var(--bg);
     color: var(--text);
-    padding: 28px;
+    padding: 26px 28px 40px;
   }
-  h1 { font-size: 22px; margin: 0 0 4px; }
-  .subtitle { color: var(--muted); margin: 0 0 24px; font-size: 13.5px; }
+  h1 { font-size: 21px; margin: 0 0 3px; }
+  .subtitle { color: var(--muted); margin: 0 0 22px; font-size: 13px; }
 
+  /* ─── Cards base ──────────────────────────────────────────────── */
   .card {
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 18px 20px;
-    margin-bottom: 18px;
   }
-  .card h2 { font-size: 15px; margin: 0 0 12px; color: var(--text); }
+  .card h2 { font-size: 14.5px; margin: 0 0 14px; color: var(--text); display: flex; align-items: center; gap: 8px; }
+  .card h2 .contador { font-size: 11.5px; font-weight: 700; color: var(--muted); background: var(--panel-2); padding: 2px 8px; border-radius: 999px; }
 
-  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  /* ─── Faixa de resumo (KPIs) ──────────────────────────────────── */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .stat-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 13px 15px;
+  }
+  .stat-card .valor { font-size: 21px; font-weight: 800; line-height: 1.1; }
+  .stat-card .rotulo { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-top: 4px; }
+  .stat-card.alerta .valor { color: var(--amber); }
+  .stat-card.risco .valor { color: var(--red); }
+
+  /* ─── Layout principal: Seções (esq.) + Ação (dir.) ──────────── */
+  .layout { display: grid; grid-template-columns: 1.65fr 1fr; gap: 18px; align-items: start; margin-bottom: 18px; }
+  @media (max-width: 980px) { .layout { grid-template-columns: 1fr; } }
+
+  /* ─── Busca + chips de filtro ─────────────────────────────────── */
+  .search-input {
+    width: 100%;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 9px 12px;
+    font-size: 13px;
+    margin-bottom: 10px;
+  }
+  .search-input:focus { outline: none; border-color: var(--blue); }
+  .filtro-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+  .chip {
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 700;
+    border: 1px solid var(--border);
+    background: var(--panel-2);
+    color: var(--muted);
+    cursor: pointer;
+    user-select: none;
+  }
+  .chip:hover { filter: brightness(1.15); }
+  .chip.active { background: rgba(37,99,235,.18); border-color: var(--blue); color: #bfdbfe; }
+
+  .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  .toolbar-sep { flex: 1; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th { text-align: left; color: var(--muted); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--panel); }
-  td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  td { padding: 7px 10px; border-bottom: 1px solid var(--border); }
   tr:hover td { background: var(--panel-2); }
-  .table-wrap { max-height: 420px; overflow-y: auto; }
+  .table-wrap { max-height: 460px; overflow-y: auto; }
+  .table-empty { padding: 30px 10px; text-align: center; color: var(--muted); font-size: 13px; }
 
   .badge {
     display: inline-block;
     padding: 2px 8px;
     border-radius: 999px;
-    font-size: 11.5px;
+    font-size: 11px;
     font-weight: 700;
+    white-space: nowrap;
   }
   .badge-green { background: rgba(34,197,94,.15); color: var(--green); }
   .badge-amber { background: rgba(245,158,11,.15); color: var(--amber); }
   .badge-red { background: rgba(239,68,68,.15); color: var(--red); }
   .badge-muted { background: rgba(152,166,184,.12); color: var(--muted); }
 
-  .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
-  .toolbar-sep { flex: 1; }
+  .cell-slug { color: var(--muted); font-size: 10.5px; }
 
+  /* ─── Botões ──────────────────────────────────────────────────── */
   button {
     font-family: inherit;
     cursor: pointer;
@@ -72,42 +127,75 @@
     font-weight: 600;
     transition: filter .12s;
   }
-  button:hover { filter: brightness(1.15); }
-  button:disabled { opacity: .45; cursor: not-allowed; }
+  button:hover { filter: brightness(1.18); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
   button.primary { background: var(--blue); border-color: var(--blue); }
   button.primary-green { background: #14532d; border-color: var(--green); color: #dcfce7; }
   button.small { padding: 5px 10px; font-size: 12px; }
   button.ghost { background: transparent; }
+  button.full { width: 100%; margin-top: 4px; }
 
-  .acoes-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
-  .acao-box { border: 1px solid var(--border); border-radius: 10px; padding: 14px; background: var(--panel-2); }
-  .acao-box h3 { margin: 0 0 8px; font-size: 13.5px; }
-  .acao-box label { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); margin-bottom: 6px; cursor: pointer; }
-  .acao-box input[type="number"] { width: 70px; background: var(--panel); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 4px 8px; }
+  /* ─── Painel de Ação (abas) ───────────────────────────────────── */
+  .selecao-resumo {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 12.5px;
+    color: var(--muted);
+    margin-bottom: 14px;
+  }
+  .selecao-resumo strong { color: var(--text); }
+
+  .acao-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
+  .acao-tab {
+    padding: 8px 10px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+  }
+  .acao-tab:hover { color: var(--text); }
+  .acao-tab.active { color: var(--text); border-color: var(--blue); }
+
+  .acao-painel { display: none; }
+  .acao-painel.active { display: block; }
+  .acao-painel p.descricao { color: var(--muted); font-size: 12px; margin: 0 0 10px; line-height: 1.5; }
+  .acao-painel label { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); margin-bottom: 8px; cursor: pointer; }
+  .acao-painel input[type="number"] { width: 90px; background: var(--panel-2); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 4px 8px; margin-left: auto; }
+
+  /* ─── Execução (status + confirmação + log), unificado ────────── */
+  .status-line { font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+  .status-line.rodando { color: var(--green); }
+  .status-line.rodando .status-dot { background: var(--green); box-shadow: 0 0 0 3px rgba(34,197,94,.2); }
+  .status-line.erro { color: var(--red); }
+  .status-line.erro .status-dot { background: var(--red); }
 
   .aguardando-banner {
     display: none;
     background: rgba(245,158,11,.12);
     border: 1px solid var(--amber);
     border-radius: 10px;
-    padding: 14px 16px;
-    margin-bottom: 18px;
+    padding: 12px 14px;
+    margin: 12px 0;
     align-items: center;
     gap: 14px;
   }
   .aguardando-banner.show { display: flex; }
-  .aguardando-banner span { flex: 1; font-size: 13.5px; }
-
-  .status-line { font-size: 12.5px; color: var(--muted); margin-bottom: 10px; }
-  .status-line.rodando { color: var(--green); }
-  .status-line.erro { color: var(--red); }
+  .aguardando-banner span { flex: 1; font-size: 13px; }
 
   pre#log {
     background: #0a0a0b;
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 14px;
-    height: 320px;
+    height: 280px;
     overflow-y: auto;
     font-family: 'Cascadia Code', Consolas, monospace;
     font-size: 12.5px;
@@ -115,9 +203,8 @@
     white-space: pre-wrap;
     word-break: break-word;
     color: #d4d7dc;
+    margin-top: 12px;
   }
-
-  .cell-slug { color: var(--muted); font-size: 11px; }
 </style>
 </head>
 <body>
@@ -125,74 +212,99 @@
   <h1>Painel Fotos X2</h1>
   <p class="subtitle">Baixar fotos, sincronizar produtos novos e montar os pacotes finais — mesmos dados do Catálogo do painel do bot, sempre em sincronia.</p>
 
-  <div class="aguardando-banner" id="banner-aguardando">
-    <span id="banner-texto"></span>
-    <button class="primary" id="btn-confirmar">Já cliquei, continuar</button>
-  </div>
+  <div class="stats-row" id="stats-row"></div>
 
-  <div class="card">
-    <h2>Seções</h2>
-    <div class="toolbar">
-      <button class="small" data-action="selecionar-todas">Selecionar todas</button>
-      <button class="small ghost" data-action="limpar-selecao">Limpar seleção</button>
-      <div class="toolbar-sep"></div>
-      <span class="status-line" id="resumo-selecao">0 seções selecionadas</span>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th style="width:28px"></th>
-            <th>Seção</th>
-            <th>Produtos</th>
-            <th>Baixados</th>
-            <th>Publicados (Catálogo do painel)</th>
-            <th>Fotos pequenas</th>
-          </tr>
-        </thead>
-        <tbody id="tabela-secoes"></tbody>
-      </table>
-    </div>
-  </div>
+  <div class="layout">
 
-  <div class="card">
-    <h2>Ações</h2>
-    <div class="acoes-grid">
+    <!-- ── Coluna esquerda: Seções ── -->
+    <div class="card">
+      <h2>Seções <span class="contador" id="contador-secoes">0</span></h2>
 
-      <div class="acao-box">
-        <h3>Baixar fotos</h3>
-        <label><input type="checkbox" id="opt-retry-sem-foto"> Tentar de novo os "sem foto"/placeholder</label>
-        <label><input type="checkbox" id="opt-reiniciar"> Reiniciar do zero (apaga progresso salvo)</label>
-        <label>Limite por seção: <input type="number" id="opt-limit" min="1" placeholder="sem limite"></label>
-        <button class="primary" data-action="baixar" style="margin-top:8px;width:100%">Baixar fotos das selecionadas</button>
+      <input type="text" class="search-input" id="busca-secao" placeholder="Buscar seção por nome...">
+
+      <div class="filtro-chips" id="filtro-chips">
+        <span class="chip active" data-filtro="todas">Todas</span>
+        <span class="chip" data-filtro="incompletas">Incompletas</span>
+        <span class="chip" data-filtro="precisa-zip">Precisam de zip</span>
+        <span class="chip" data-filtro="suspeitas">Fotos suspeitas</span>
       </div>
 
-      <div class="acao-box">
-        <h3>Procurar produtos novos (sync)</h3>
+      <div class="toolbar">
+        <button class="small" data-action="selecionar-visiveis">Selecionar visíveis</button>
+        <button class="small ghost" data-action="limpar-selecao">Limpar seleção</button>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:26px"></th>
+              <th>Seção</th>
+              <th>Produtos</th>
+              <th>Baixados</th>
+              <th>Publicados</th>
+              <th>Fotos pequenas</th>
+            </tr>
+          </thead>
+          <tbody id="tabela-secoes"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── Coluna direita: Ação ── -->
+    <div class="card">
+      <h2>Ação</h2>
+
+      <div class="selecao-resumo">
+        <span><strong id="resumo-selecao-n">0</strong> seção(ões) selecionada(s)</span>
+      </div>
+
+      <div class="acao-tabs" id="acao-tabs">
+        <span class="acao-tab active" data-tab="baixar">Baixar fotos</span>
+        <span class="acao-tab" data-tab="sync">Sync</span>
+        <span class="acao-tab" data-tab="zip">Montar zip</span>
+        <span class="acao-tab" data-tab="exportar">Exportar</span>
+      </div>
+
+      <div class="acao-painel active" data-painel="baixar">
+        <p class="descricao">Baixa as fotos das seções selecionadas direto do X2.</p>
+        <label><input type="checkbox" id="opt-retry-sem-foto"> Tentar de novo os "sem foto"/placeholder</label>
+        <label><input type="checkbox" id="opt-reiniciar"> Reiniciar do zero (apaga progresso salvo)</label>
+        <label>Limite por seção <input type="number" id="opt-limit" min="1" placeholder="sem limite"></label>
+        <button class="primary full" data-action="baixar">Baixar fotos das selecionadas</button>
+      </div>
+
+      <div class="acao-painel" data-painel="sync">
+        <p class="descricao">Procura produtos novos (e desativados) no X2 pras seções selecionadas.</p>
         <label><input type="checkbox" id="opt-dry-run" checked> Só mostrar (--dry-run, não grava nada)</label>
         <label><input type="checkbox" id="opt-remover-desativados" checked> Remover códigos não encontrados mais</label>
         <label><input type="checkbox" id="opt-forcar-remocao"> Forçar remoção mesmo se for muita coisa de uma vez</label>
-        <button class="primary" data-action="sync" style="margin-top:8px;width:100%">Procurar produtos novos</button>
+        <button class="primary full" data-action="sync">Procurar produtos novos</button>
       </div>
 
-      <div class="acao-box">
-        <h3>Montar .zip final</h3>
-        <p style="color:var(--muted);font-size:12px;margin:0 0 8px">Só funciona em seções 100% baixadas. Publica no Catálogo do painel do bot.</p>
-        <button class="primary-green" data-action="zip" style="width:100%">Montar zip das selecionadas</button>
+      <div class="acao-painel" data-painel="zip">
+        <p class="descricao">Monta o .zip final — só funciona em seções 100% baixadas. É isso que fica visível na busca do Catálogo do painel do bot.</p>
+        <button class="primary-green full" data-action="zip">Montar zip das selecionadas</button>
       </div>
 
-      <div class="acao-box">
-        <h3>Exportar fotos soltas</h3>
-        <p style="color:var(--muted);font-size:12px;margin:0 0 8px">Copia as fotos sem compactar (sem zip), pra revisão manual.</p>
-        <button data-action="exportar" style="width:100%">Exportar das selecionadas</button>
+      <div class="acao-painel" data-painel="exportar">
+        <p class="descricao">Copia as fotos soltas (sem compactar), pra revisão manual fora do painel.</p>
+        <button class="full" data-action="exportar">Exportar das selecionadas</button>
       </div>
-
     </div>
+
   </div>
 
+  <!-- ── Execução: status + confirmação + log, tudo junto ── -->
   <div class="card">
-    <h2>Saída ao vivo</h2>
-    <div class="status-line" id="status-execucao">Nada rodando agora.</div>
+    <h2>Execução</h2>
+    <div class="status-line" id="status-execucao"><span class="status-dot"></span> Nada rodando agora.</div>
+
+    <div class="aguardando-banner" id="banner-aguardando">
+      <span id="banner-texto"></span>
+      <button class="primary" id="btn-confirmar">Já cliquei, continuar</button>
+    </div>
+
     <pre id="log">(sem execução ainda)</pre>
   </div>
 
@@ -203,12 +315,66 @@
   let secoes = [];
   const selecionadas = new Set();
   let rodando = false;
+  let filtroTexto = '';
+  let filtroRapido = 'todas';
+  let acaoAtiva = 'baixar';
 
   function el(id) { return document.getElementById(id); }
 
+  // ─── Resumo (KPIs) ────────────────────────────────────────────────
+  function renderStats() {
+    const totalProdutos = secoes.reduce((a, s) => a + s.produtos, 0);
+    const totalBaixados = secoes.reduce((a, s) => a + s.comFotoReal, 0);
+    const totalPublicados = secoes.reduce((a, s) => a + s.publicados, 0);
+    const precisamZip = secoes.filter((s) => s.precisaZip).length;
+    const comSuspeitas = secoes.reduce((a, s) => a + s.pequenas, 0);
+
+    el('stats-row').innerHTML = `
+      <div class="stat-card">
+        <div class="valor">${secoes.length}</div>
+        <div class="rotulo">Seções</div>
+      </div>
+      <div class="stat-card">
+        <div class="valor">${totalProdutos.toLocaleString('pt-BR')}</div>
+        <div class="rotulo">Produtos no catálogo</div>
+      </div>
+      <div class="stat-card">
+        <div class="valor">${totalBaixados.toLocaleString('pt-BR')}</div>
+        <div class="rotulo">Com foto baixada</div>
+      </div>
+      <div class="stat-card ${precisamZip ? 'alerta' : ''}">
+        <div class="valor">${precisamZip}</div>
+        <div class="rotulo">Precisam de zip</div>
+      </div>
+      <div class="stat-card ${comSuspeitas ? 'risco' : ''}">
+        <div class="valor">${comSuspeitas}</div>
+        <div class="rotulo">Fotos suspeitas</div>
+      </div>
+    `;
+  }
+
+  // ─── Filtro + tabela de seções ────────────────────────────────────
+  function secoesVisiveis() {
+    return secoes.filter((s) => {
+      if (filtroTexto && !s.label.toLowerCase().includes(filtroTexto) && !s.slug.includes(filtroTexto)) return false;
+      if (filtroRapido === 'incompletas') return s.produtos > 0 && s.comFotoReal < s.produtos;
+      if (filtroRapido === 'precisa-zip') return s.precisaZip;
+      if (filtroRapido === 'suspeitas') return s.pequenas > 0;
+      return true;
+    });
+  }
+
   function renderTabela() {
+    const visiveis = secoesVisiveis();
+    el('contador-secoes').textContent = `${visiveis.length}/${secoes.length}`;
     const tbody = el('tabela-secoes');
-    tbody.innerHTML = secoes.map((s) => {
+
+    if (!visiveis.length) {
+      tbody.innerHTML = `<tr><td colspan="6" class="table-empty">Nenhuma seção bate com esse filtro.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = visiveis.map((s) => {
       const publicadoOk = s.publicados >= s.comFotoReal && s.comFotoReal > 0;
       const badgePublicado = s.produtos === 0
         ? '<span class="badge badge-muted">sem dados</span>'
@@ -240,17 +406,26 @@
   }
 
   function atualizarResumoSelecao() {
-    el('resumo-selecao').textContent = `${selecionadas.size} seção(ões) selecionada(s)`;
+    el('resumo-selecao-n').textContent = selecionadas.size;
   }
 
   async function carregarStatus() {
     const res = await fetch('/api/status');
     const data = await res.json();
     secoes = data.secoes;
+    renderStats();
     renderTabela();
     atualizarResumoSelecao();
   }
 
+  // ─── Abas de ação ─────────────────────────────────────────────────
+  function trocarAba(tab) {
+    acaoAtiva = tab;
+    document.querySelectorAll('.acao-tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === tab));
+    document.querySelectorAll('.acao-painel').forEach((p) => p.classList.toggle('active', p.dataset.painel === tab));
+  }
+
+  // ─── Estado de execução (via SSE) ──────────────────────────────────
   function aplicarBotoesDesabilitados() {
     document.querySelectorAll('[data-action]').forEach((b) => {
       if (['baixar', 'sync', 'zip', 'exportar'].includes(b.dataset.action)) b.disabled = rodando;
@@ -263,15 +438,15 @@
 
     const statusEl = el('status-execucao');
     if (payload.erro) {
-      statusEl.textContent = `Erro: ${payload.erro}`;
+      statusEl.innerHTML = `<span class="status-dot"></span> Erro: ${payload.erro}`;
       statusEl.className = 'status-line erro';
     } else if (rodando) {
-      statusEl.textContent = `Rodando: ${payload.tipo}...`;
+      statusEl.innerHTML = `<span class="status-dot"></span> Rodando: ${payload.tipo}...`;
       statusEl.className = 'status-line rodando';
     } else {
-      statusEl.textContent = 'Nada rodando agora.';
+      statusEl.innerHTML = `<span class="status-dot"></span> Nada rodando agora.`;
       statusEl.className = 'status-line';
-      carregarStatus(); // ação terminou — atualiza os números da tabela
+      carregarStatus(); // ação terminou — atualiza os números da tabela/resumo
     }
 
     const banner = el('banner-aguardando');
@@ -311,12 +486,31 @@
     }
   }
 
+  // ─── Eventos ────────────────────────────────────────────────────
+  el('busca-secao').addEventListener('input', (ev) => {
+    filtroTexto = ev.target.value.trim().toLowerCase();
+    renderTabela();
+  });
+
+  el('filtro-chips').addEventListener('click', (ev) => {
+    const chip = ev.target.closest('.chip');
+    if (!chip) return;
+    filtroRapido = chip.dataset.filtro;
+    document.querySelectorAll('.chip').forEach((c) => c.classList.toggle('active', c === chip));
+    renderTabela();
+  });
+
+  el('acao-tabs').addEventListener('click', (ev) => {
+    const tab = ev.target.closest('.acao-tab');
+    if (tab) trocarAba(tab.dataset.tab);
+  });
+
   document.addEventListener('click', (ev) => {
     const btn = ev.target.closest('[data-action]');
     if (!btn) return;
 
-    if (btn.dataset.action === 'selecionar-todas') {
-      secoes.forEach((s) => selecionadas.add(s.slug));
+    if (btn.dataset.action === 'selecionar-visiveis') {
+      secoesVisiveis().forEach((s) => selecionadas.add(s.slug));
       renderTabela(); atualizarResumoSelecao();
       return;
     }

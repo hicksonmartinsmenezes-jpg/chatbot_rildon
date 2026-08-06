@@ -37,6 +37,9 @@
  *   node scripts/x2-catalogo-sync.js --secao=componentes-eletricos
  *   node scripts/x2-catalogo-sync.js --secao=componentes-eletricos --dry-run       (só mostra o que encontraria/removeria, não grava nada)
  *   node scripts/x2-catalogo-sync.js --secao=componentes-eletricos --sem-remover   (só acrescenta novos, nunca remove nada — mais conservador)
+ *   node scripts/x2-catalogo-sync.js --secao=componentes-eletricos --forcar-remocao (PEDIDO DO USUÁRIO 2026-08-05: confirma remoção em massa — normalmente
+ *                                                                                    travada quando >30% dos produtos "somem" de uma vez, provável falha
+ *                                                                                    na busca em vez de descontinuação real)
  *   node scripts/x2-catalogo-sync.js --todas                                      (todas as 26 seções, 1 login só)
  *
  * ─── Produtos desativados (PEDIDO DO USUÁRIO, 2026-07-28) ─────────────────
@@ -155,7 +158,12 @@ async function telaTemFormulario(page) {
 // X2 (SPA — a URL da aba não muda ao trocar de menu), não é uma janela
 // separada. Por isso a detecção é "o formulário certo está visível dentro
 // do iframe principal", não "existe uma aba com essa URL".
-async function garantirTelaCatalogoAberta(context) {
+// Pedido do usuário (2026-08-05): mesmo parâmetro opcional `confirmar` do
+// x2-fotos-scraper.js — o painel visual passa uma função que só resolve
+// quando o usuário clica "Já cliquei, continuar" na página, em vez de travar
+// num readline de terminal. Sem esse parâmetro, comportamento idêntico a
+// antes (CLI/menu continuam com o Enter no terminal).
+async function garantirTelaCatalogoAberta(context, { confirmar } = {}) {
   for (const page of context.pages()) {
     if (await telaTemFormulario(page)) return page;
   }
@@ -171,7 +179,11 @@ async function garantirTelaCatalogoAberta(context) {
   console.log('(botão de primeiro nível, ao lado de "Gestão de Produtos" e "Curva ABC").');
   console.log('==============================================================\n');
 
-  await ask('Pressione Enter DEPOIS que a tela "Catálogo de Produtos" (com o campo Seção) estiver visível... ');
+  if (confirmar) {
+    await confirmar('Abra a tela "Compras > Catálogo de Produtos" no X2 e clique em "Já cliquei, continuar" abaixo.');
+  } else {
+    await ask('Pressione Enter DEPOIS que a tela "Catálogo de Produtos" (com o campo Seção) estiver visível... ');
+  }
 
   if (!(await telaTemFormulario(page))) {
     throw new Error('Não encontrei a tela "Catálogo de Produtos" (Compras) aberta. Confirme e rode de novo.');
@@ -261,7 +273,17 @@ function calcularDiferenca(existentes, encontrados) {
   };
 }
 
-async function sincronizarSecao(page, secaoSlug, { dryRun, semRemover } = {}) {
+// Pedido do usuário (2026-08-05): "garanta que todos os produtos estão sendo
+// capturados precisamente" — se a busca falhar por qualquer motivo (sessão
+// caiu, X2 mudou o texto/formato da tela, timeout parcial), o comportamento
+// padrão de "não encontrado = desativado, remove" apagaria a seção inteira
+// do catálogo por engano. Essa trava só deixa a remoção automática seguir
+// quando a fração de "não encontrados" é pequena o bastante pra ser
+// descontinuação normal — acima disso, avisa e NÃO remove, mesmo sem
+// --sem-remover (precisa confirmar de propósito com --forcar-remocao).
+const LIMITE_REMOCAO_SUSPEITA = 0.3; // 30% do catálogo da seção
+
+async function sincronizarSecao(page, secaoSlug, { dryRun, semRemover, forcarRemocao } = {}) {
   const labelSecao = SECOES[secaoSlug];
   if (!labelSecao) {
     throw new Error(`Seção desconhecida: "${secaoSlug}". Opções: ${Object.keys(SECOES).join(', ')}`);
@@ -275,11 +297,26 @@ async function sincronizarSecao(page, secaoSlug, { dryRun, semRemover } = {}) {
 
   await buscarSecao(page, labelSecao);
   const texto = await extrairTextoResultado(page);
+
+  // Detecta extração quebrada ANTES de calcular novos/removidos — sem isso,
+  // um cabeçalho não encontrado vira silenciosamente "0 produtos", e a lista
+  // inteira de existentes cairia em "removidos".
+  if (!texto.includes(CABECALHO_RESULTADO)) {
+    console.log(`⚠ ATENÇÃO: não encontrei o cabeçalho "${CABECALHO_RESULTADO}" na tela de resultado — a busca pode ter falhado ou o X2 mudou o formato da tela. Pulando "${secaoSlug}" SEM alterar o catálogo (nada foi removido nem adicionado).`);
+    return { secaoSlug, novos: 0, removidos: 0, total: produtosExistentes.length, erro: 'cabecalho_nao_encontrado' };
+  }
+
   const encontrados = parsearProdutos(texto);
 
   const { novos, removidos } = calcularDiferenca(produtosExistentes, encontrados);
   console.log(`${encontrados.length} produtos encontrados no X2 (após deduplicar por código).`);
   console.log(`${novos.length} são NOVOS. ${removidos.length} não foram encontrados mais (prováveis desativados no X2).`);
+
+  const fracaoRemovida = produtosExistentes.length > 0 ? removidos.length / produtosExistentes.length : 0;
+  const remocaoSuspeita = !semRemover && !forcarRemocao && removidos.length > 3 && fracaoRemovida > LIMITE_REMOCAO_SUSPEITA;
+  if (remocaoSuspeita) {
+    console.log(`⚠ ATENÇÃO: ${removidos.length} de ${produtosExistentes.length} produtos (${Math.round(fracaoRemovida * 100)}%) não foram encontrados — é demais pra ser descontinuação normal, pode ser falha na busca. NÃO removendo automaticamente. Revise a lista abaixo; se estiver correta mesmo, rode de novo com --forcar-remocao.`);
+  }
 
   if (!novos.length && !removidos.length) {
     return { secaoSlug, novos: 0, removidos: 0, total: produtosExistentes.length };
@@ -305,8 +342,8 @@ async function sincronizarSecao(page, secaoSlug, { dryRun, semRemover } = {}) {
 
   let removidosAplicados = 0;
   if (removidos.length) {
-    if (semRemover) {
-      console.log(`(--sem-remover: mantendo os ${removidos.length} código(s) abaixo mesmo não achando mais no X2 — revise manualmente se quiser)`);
+    if (semRemover || remocaoSuspeita) {
+      if (semRemover) console.log(`(--sem-remover: mantendo os ${removidos.length} código(s) abaixo mesmo não achando mais no X2 — revise manualmente se quiser)`);
       for (const r of removidos) console.log(`  ? ${r.codigo} — ${r.nome} (não encontrado no X2)`);
     } else {
       const codigosRemover = new Set(removidos.map((r) => r.codigo));
@@ -317,7 +354,7 @@ async function sincronizarSecao(page, secaoSlug, { dryRun, semRemover } = {}) {
   }
 
   if (dryRun) {
-    console.log(`(--dry-run: nada foi gravado. +${novos.length} novo(s), -${semRemover ? 0 : removidos.length} removido(s) seriam aplicados a ${secaoSlug}.json)`);
+    console.log(`(--dry-run: nada foi gravado. +${novos.length} novo(s), -${(semRemover || remocaoSuspeita) ? 0 : removidos.length} removido(s) seriam aplicados a ${secaoSlug}.json)`);
   } else {
     // Backup do JSON antigo antes de sobrescrever — mesmo cuidado já usado
     // pros zips de foto. Nunca sobrescreve sem cópia de segurança.
@@ -332,14 +369,14 @@ async function sincronizarSecao(page, secaoSlug, { dryRun, semRemover } = {}) {
   return { secaoSlug, novos: novos.length, removidos: dryRun ? removidos.length : removidosAplicados, total: listaFinal.length };
 }
 
-async function rodar(slugs, { channel, dryRun, semRemover }) {
+async function rodar(slugs, { channel, dryRun, semRemover, forcarRemocao, confirmar }) {
   const context = await abrirNavegador(channel);
   const resumo = [];
   try {
-    const page = await garantirTelaCatalogoAberta(context);
+    const page = await garantirTelaCatalogoAberta(context, { confirmar });
     for (const secaoSlug of slugs) {
       try {
-        resumo.push(await sincronizarSecao(page, secaoSlug, { dryRun, semRemover }));
+        resumo.push(await sincronizarSecao(page, secaoSlug, { dryRun, semRemover, forcarRemocao }));
       } catch (e) {
         console.error(`\nErro na seção ${secaoSlug}: ${e.message} — pulando pra próxima.`);
         resumo.push({ secaoSlug, erro: e.message });
@@ -372,6 +409,7 @@ async function main() {
   const channelArg = args.find((a) => a.startsWith('--channel='));
   const dryRun = args.includes('--dry-run');
   const semRemover = args.includes('--sem-remover');
+  const forcarRemocao = args.includes('--forcar-remocao');
 
   const channel = channelArg ? channelArg.split('=')[1] : 'chrome';
 
@@ -383,6 +421,9 @@ async function main() {
     console.log('\nPor padrão, código que já está no JSON mas não é mais encontrado no X2 é REMOVIDO');
     console.log('(provável produto desativado) — com backup automático do JSON antigo. Use');
     console.log('--sem-remover pra só acrescentar produtos novos, sem nunca remover nada.');
+    console.log(`\nSe mais de ${Math.round(LIMITE_REMOCAO_SUSPEITA * 100)}% dos produtos de uma seção "sumirem" de uma vez, o script`);
+    console.log('trava a remoção automática por segurança (provável falha na busca, não descontinuação');
+    console.log('de verdade) e só lista os códigos — use --forcar-remocao pra confirmar que é intencional.');
     console.log('\nSeções disponíveis:');
     console.log(Object.keys(SECOES).map((s) => `  ${s}`).join('\n'));
     process.exit(1);
@@ -398,7 +439,7 @@ async function main() {
     throw new Error(`Seção(ões) desconhecida(s): ${desconhecidos.join(', ')}. Opções: ${Object.keys(SECOES).join(', ')}`);
   }
 
-  await rodar(slugs, { channel, dryRun, semRemover });
+  await rodar(slugs, { channel, dryRun, semRemover, forcarRemocao });
 }
 
 if (require.main === module) {
@@ -408,4 +449,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { parsearProdutos, calcularDiferenca, CABECALHO_RESULTADO, rodar };
+module.exports = { parsearProdutos, calcularDiferenca, CABECALHO_RESULTADO, rodar, LIMITE_REMOCAO_SUSPEITA };

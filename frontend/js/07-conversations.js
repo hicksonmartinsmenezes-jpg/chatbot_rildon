@@ -705,6 +705,8 @@ async function aceitarTicketConv(id) {
 async function reabrirTicketConv(userId) {
   try {
     const ticket = ticketsByUser[userId];
+    let mensagemSucesso = "✅ Atendimento reaberto!";
+
     if (ticket) {
       // Reabre ticket existente
       const res = await apiFetch(`${BASE}/api/tickets/${ticket.id}`, {
@@ -735,8 +737,31 @@ async function reabrirTicketConv(userId) {
         body:    JSON.stringify({ userId, type: "geral", sector: "geral" })
       });
       if (!res?.ok) throw new Error("Erro ao criar atendimento.");
+
+      // Pedido do usuário (2026-08-05): "quem clicar em iniciar atendimento,
+      // automaticamente já aceita e vai para ativos" — antes o botão só
+      // criava o ticket em "aberto" (Pendentes), exigindo um 2º clique em
+      // "Aceitar" pra virar Ativos. Reaproveita o MESMO endpoint que o botão
+      // Aceitar usa (PATCH .../assign), pra ganhar os mesmos efeitos
+      // colaterais dele (saudação do atendente pro cliente, assumed_at pra
+      // métrica de TME, socket) em vez de duplicar essa lógica aqui.
+      const data = await res.json().catch(() => ({}));
+      const novoTicketId = data?.ticket?.id;
+      if (novoTicketId) {
+        const assignRes = await apiFetch(`${BASE}/api/tickets/${novoTicketId}/assign`, { method: "PATCH" });
+        if (!assignRes?.ok) {
+          // Não é erro fatal — o ticket já existe, só ficou em Pendentes
+          // esperando um "Aceitar" manual em vez de ir direto pra Ativos.
+          showToast("⚠️ Atendimento criado, mas não foi possível aceitar automaticamente.");
+          await loadConversations();
+          openConversation(userId);
+          return;
+        }
+      }
+      mensagemSucesso = "✅ Atendimento iniciado!";
     }
-    showToast("✅ Atendimento reaberto!");
+
+    showToast(mensagemSucesso);
     await loadConversations();
     openConversation(userId);
   } catch (err) {

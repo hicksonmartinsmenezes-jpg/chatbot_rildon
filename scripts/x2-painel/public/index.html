@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Painel Fotos X2</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0f0f10;
+    --panel: #17181a;
+    --panel-2: #1d1e21;
+    --border: #2a2b2f;
+    --text: #f1f2f4;
+    --muted: #98a6b8;
+    --blue: #2563eb;
+    --green: #22c55e;
+    --amber: #f59e0b;
+    --red: #ef4444;
+    --purple: #a855f7;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: 'Segoe UI', Inter, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 28px;
+  }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .subtitle { color: var(--muted); margin: 0 0 24px; font-size: 13.5px; }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    margin-bottom: 18px;
+  }
+  .card h2 { font-size: 15px; margin: 0 0 12px; color: var(--text); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th { text-align: left; color: var(--muted); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--panel); }
+  td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  tr:hover td { background: var(--panel-2); }
+  .table-wrap { max-height: 420px; overflow-y: auto; }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 700;
+  }
+  .badge-green { background: rgba(34,197,94,.15); color: var(--green); }
+  .badge-amber { background: rgba(245,158,11,.15); color: var(--amber); }
+  .badge-red { background: rgba(239,68,68,.15); color: var(--red); }
+  .badge-muted { background: rgba(152,166,184,.12); color: var(--muted); }
+
+  .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  .toolbar-sep { flex: 1; }
+
+  button {
+    font-family: inherit;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--panel-2);
+    color: var(--text);
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    transition: filter .12s;
+  }
+  button:hover { filter: brightness(1.15); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.primary { background: var(--blue); border-color: var(--blue); }
+  button.primary-green { background: #14532d; border-color: var(--green); color: #dcfce7; }
+  button.small { padding: 5px 10px; font-size: 12px; }
+  button.ghost { background: transparent; }
+
+  .acoes-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+  .acao-box { border: 1px solid var(--border); border-radius: 10px; padding: 14px; background: var(--panel-2); }
+  .acao-box h3 { margin: 0 0 8px; font-size: 13.5px; }
+  .acao-box label { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); margin-bottom: 6px; cursor: pointer; }
+  .acao-box input[type="number"] { width: 70px; background: var(--panel); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 4px 8px; }
+
+  .aguardando-banner {
+    display: none;
+    background: rgba(245,158,11,.12);
+    border: 1px solid var(--amber);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 18px;
+    align-items: center;
+    gap: 14px;
+  }
+  .aguardando-banner.show { display: flex; }
+  .aguardando-banner span { flex: 1; font-size: 13.5px; }
+
+  .status-line { font-size: 12.5px; color: var(--muted); margin-bottom: 10px; }
+  .status-line.rodando { color: var(--green); }
+  .status-line.erro { color: var(--red); }
+
+  pre#log {
+    background: #0a0a0b;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    height: 320px;
+    overflow-y: auto;
+    font-family: 'Cascadia Code', Consolas, monospace;
+    font-size: 12.5px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: #d4d7dc;
+  }
+
+  .cell-slug { color: var(--muted); font-size: 11px; }
+</style>
+</head>
+<body>
+
+  <h1>Painel Fotos X2</h1>
+  <p class="subtitle">Baixar fotos, sincronizar produtos novos e montar os pacotes finais — mesmos dados do Catálogo do painel do bot, sempre em sincronia.</p>
+
+  <div class="aguardando-banner" id="banner-aguardando">
+    <span id="banner-texto"></span>
+    <button class="primary" id="btn-confirmar">Já cliquei, continuar</button>
+  </div>
+
+  <div class="card">
+    <h2>Seções</h2>
+    <div class="toolbar">
+      <button class="small" data-action="selecionar-todas">Selecionar todas</button>
+      <button class="small ghost" data-action="limpar-selecao">Limpar seleção</button>
+      <div class="toolbar-sep"></div>
+      <span class="status-line" id="resumo-selecao">0 seções selecionadas</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:28px"></th>
+            <th>Seção</th>
+            <th>Produtos</th>
+            <th>Baixados</th>
+            <th>Publicados (Catálogo do painel)</th>
+            <th>Fotos pequenas</th>
+          </tr>
+        </thead>
+        <tbody id="tabela-secoes"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Ações</h2>
+    <div class="acoes-grid">
+
+      <div class="acao-box">
+        <h3>Baixar fotos</h3>
+        <label><input type="checkbox" id="opt-retry-sem-foto"> Tentar de novo os "sem foto"/placeholder</label>
+        <label><input type="checkbox" id="opt-reiniciar"> Reiniciar do zero (apaga progresso salvo)</label>
+        <label>Limite por seção: <input type="number" id="opt-limit" min="1" placeholder="sem limite"></label>
+        <button class="primary" data-action="baixar" style="margin-top:8px;width:100%">Baixar fotos das selecionadas</button>
+      </div>
+
+      <div class="acao-box">
+        <h3>Procurar produtos novos (sync)</h3>
+        <label><input type="checkbox" id="opt-dry-run" checked> Só mostrar (--dry-run, não grava nada)</label>
+        <label><input type="checkbox" id="opt-remover-desativados" checked> Remover códigos não encontrados mais</label>
+        <label><input type="checkbox" id="opt-forcar-remocao"> Forçar remoção mesmo se for muita coisa de uma vez</label>
+        <button class="primary" data-action="sync" style="margin-top:8px;width:100%">Procurar produtos novos</button>
+      </div>
+
+      <div class="acao-box">
+        <h3>Montar .zip final</h3>
+        <p style="color:var(--muted);font-size:12px;margin:0 0 8px">Só funciona em seções 100% baixadas. Publica no Catálogo do painel do bot.</p>
+        <button class="primary-green" data-action="zip" style="width:100%">Montar zip das selecionadas</button>
+      </div>
+
+      <div class="acao-box">
+        <h3>Exportar fotos soltas</h3>
+        <p style="color:var(--muted);font-size:12px;margin:0 0 8px">Copia as fotos sem compactar (sem zip), pra revisão manual.</p>
+        <button data-action="exportar" style="width:100%">Exportar das selecionadas</button>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Saída ao vivo</h2>
+    <div class="status-line" id="status-execucao">Nada rodando agora.</div>
+    <pre id="log">(sem execução ainda)</pre>
+  </div>
+
+<script>
+(function () {
+  'use strict';
+
+  let secoes = [];
+  const selecionadas = new Set();
+  let rodando = false;
+
+  function el(id) { return document.getElementById(id); }
+
+  function renderTabela() {
+    const tbody = el('tabela-secoes');
+    tbody.innerHTML = secoes.map((s) => {
+      const publicadoOk = s.publicados >= s.comFotoReal && s.comFotoReal > 0;
+      const badgePublicado = s.produtos === 0
+        ? '<span class="badge badge-muted">sem dados</span>'
+        : s.precisaZip
+          ? `<span class="badge badge-amber">${s.publicados} — precisa build-zip</span>`
+          : `<span class="badge ${publicadoOk ? 'badge-green' : 'badge-muted'}">${s.publicados}</span>`;
+      const badgePequenas = s.pequenas > 0
+        ? `<span class="badge badge-red">${s.pequenas} suspeita(s)</span>`
+        : '<span class="badge badge-muted">0</span>';
+      return `
+        <tr>
+          <td><input type="checkbox" data-slug="${s.slug}" ${selecionadas.has(s.slug) ? 'checked' : ''}></td>
+          <td>${s.label}<div class="cell-slug">${s.slug}</div></td>
+          <td>${s.produtos}</td>
+          <td>${s.baixados}/${s.produtos}</td>
+          <td>${badgePublicado}</td>
+          <td>${badgePequenas}</td>
+        </tr>
+      `;
+    }).join('');
+
+    tbody.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+      cb.addEventListener('change', () => {
+        if (cb.checked) selecionadas.add(cb.dataset.slug);
+        else selecionadas.delete(cb.dataset.slug);
+        atualizarResumoSelecao();
+      });
+    });
+  }
+
+  function atualizarResumoSelecao() {
+    el('resumo-selecao').textContent = `${selecionadas.size} seção(ões) selecionada(s)`;
+  }
+
+  async function carregarStatus() {
+    const res = await fetch('/api/status');
+    const data = await res.json();
+    secoes = data.secoes;
+    renderTabela();
+    atualizarResumoSelecao();
+  }
+
+  function aplicarBotoesDesabilitados() {
+    document.querySelectorAll('[data-action]').forEach((b) => {
+      if (['baixar', 'sync', 'zip', 'exportar'].includes(b.dataset.action)) b.disabled = rodando;
+    });
+  }
+
+  function aplicarEstadoExecucao(payload) {
+    rodando = !!payload.rodando;
+    aplicarBotoesDesabilitados();
+
+    const statusEl = el('status-execucao');
+    if (payload.erro) {
+      statusEl.textContent = `Erro: ${payload.erro}`;
+      statusEl.className = 'status-line erro';
+    } else if (rodando) {
+      statusEl.textContent = `Rodando: ${payload.tipo}...`;
+      statusEl.className = 'status-line rodando';
+    } else {
+      statusEl.textContent = 'Nada rodando agora.';
+      statusEl.className = 'status-line';
+      carregarStatus(); // ação terminou — atualiza os números da tabela
+    }
+
+    const banner = el('banner-aguardando');
+    if (payload.aguardando) {
+      el('banner-texto').textContent = payload.aguardando;
+      banner.classList.add('show');
+    } else {
+      banner.classList.remove('show');
+    }
+
+    if (payload.texto) {
+      const logEl = el('log');
+      logEl.textContent = payload.texto;
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+  }
+
+  function conectarSSE() {
+    const es = new EventSource('/api/log-stream');
+    es.onmessage = (ev) => aplicarEstadoExecucao(JSON.parse(ev.data));
+    es.onerror = () => { /* reconecta sozinho, comportamento padrão do EventSource */ };
+  }
+
+  async function dispararAcao(tipo, opcoes) {
+    if (!selecionadas.size) {
+      alert('Selecione ao menos uma seção.');
+      return;
+    }
+    const res = await fetch('/api/acao', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tipo, secoes: Array.from(selecionadas), opcoes }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || 'Erro ao iniciar ação.');
+    }
+  }
+
+  document.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('[data-action]');
+    if (!btn) return;
+
+    if (btn.dataset.action === 'selecionar-todas') {
+      secoes.forEach((s) => selecionadas.add(s.slug));
+      renderTabela(); atualizarResumoSelecao();
+      return;
+    }
+    if (btn.dataset.action === 'limpar-selecao') {
+      selecionadas.clear();
+      renderTabela(); atualizarResumoSelecao();
+      return;
+    }
+    if (btn.dataset.action === 'baixar') {
+      dispararAcao('baixar', {
+        retrySemFoto: el('opt-retry-sem-foto').checked,
+        reiniciar: el('opt-reiniciar').checked,
+        limit: el('opt-limit').value ? Number(el('opt-limit').value) : null,
+      });
+      return;
+    }
+    if (btn.dataset.action === 'sync') {
+      dispararAcao('sync', {
+        dryRun: el('opt-dry-run').checked,
+        semRemover: !el('opt-remover-desativados').checked,
+        forcarRemocao: el('opt-forcar-remocao').checked,
+      });
+      return;
+    }
+    if (btn.dataset.action === 'zip') { dispararAcao('zip', {}); return; }
+    if (btn.dataset.action === 'exportar') { dispararAcao('exportar', {}); return; }
+  });
+
+  el('btn-confirmar').addEventListener('click', async () => {
+    await fetch('/api/confirmar', { method: 'POST' });
+  });
+
+  carregarStatus();
+  conectarSSE();
+})();
+</script>
+</body>
+</html>

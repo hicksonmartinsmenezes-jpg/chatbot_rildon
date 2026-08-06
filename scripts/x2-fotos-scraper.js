@@ -183,7 +183,14 @@ async function abrirNavegador(channel) {
 // Acha o popup já aberto, ou pausa pedindo pro usuário logar/clicar. Só
 // precisa disso 1x por execução do script — depois de achar, guarda a
 // referência e reusa pra todos os produtos da seção.
-async function garantirPopupAberto(context) {
+//
+// Pedido do usuário (2026-08-05): o painel visual (scripts/x2-painel/) roda
+// esse MESMO fluxo só que sem terminal pra digitar Enter — em vez de travar
+// num readline, ele passa `confirmar` (uma função que só resolve quando o
+// usuário clica "Já cliquei, continuar" na página). Parâmetro opcional: se
+// não vier nada, cai no comportamento de sempre (readline no terminal),
+// então o menu/CLI continuam idênticos a antes.
+async function garantirPopupAberto(context, { confirmar } = {}) {
   let popup = context.pages().find((p) => p.url().includes(POPUP_URL_MARK));
   if (popup) return popup;
 
@@ -199,7 +206,11 @@ async function garantirPopupAberto(context) {
   console.log('Esse clique precisa ser seu de verdade — o X2 bloqueia clique automatizado nesse botão específico.');
   console.log('==============================================================\n');
 
-  await ask('Pressione Enter DEPOIS que o popup "Catálogo de Produtos" estiver aberto e a tela de busca visível... ');
+  if (confirmar) {
+    await confirmar('Abra o popup "Catálogo de Produtos" no X2 (Vendas 3.0 > Produção de Vendas) e clique em "Já cliquei, continuar" abaixo.');
+  } else {
+    await ask('Pressione Enter DEPOIS que o popup "Catálogo de Produtos" estiver aberto e a tela de busca visível... ');
+  }
 
   popup = context.pages().find((p) => p.url().includes(POPUP_URL_MARK));
   if (!popup) {
@@ -274,6 +285,24 @@ async function esperarFrameFoto(popup, codigo) {
   }
 }
 
+// Pedido do usuário (2026-08-05): "garanta que o programa não está deixando
+// as fotos com baixa qualidade baixando em png" — o fetch abaixo SEMPRE
+// salva os bytes EXATOS que o X2 devolveu pra aquele <img src>, sem passar
+// por canvas nem reencode nenhum (readAsDataURL só serializa o blob já
+// baixado) — então esse script nunca comprime nada por conta própria. O
+// risco real que não dá pra descartar sem ver a tela ao vivo é outro: o X2
+// poder estar servindo ali uma miniatura em vez da foto original. Como não
+// tem como confirmar isso só lendo código, a saída é tornar o risco visível:
+// grava a dimensão real e o tamanho em bytes de cada foto baixada, e avisa
+// (sem bloquear) quando alguma vier menor que este limiar — não é corte
+// automático porque uma buzina pode legitimamente ter uma foto menor que um
+// farol, então cabe revisão manual dos códigos listados no aviso.
+const LARGURA_MINIMA_AVISO = 400;
+
+function fotosSuspeitas(detalhes) {
+  return (detalhes || []).filter((d) => d.largura && d.largura < LARGURA_MINIMA_AVISO);
+}
+
 async function checarEBaixarFotos(popup, codigo, destDir) {
   const info = await popup.evaluate(() => {
     const ffd = window.frames['frame_foto'].document;
@@ -291,6 +320,7 @@ async function checarEBaixarFotos(popup, codigo, destDir) {
   }
 
   const arquivos = [];
+  const detalhes = [];
   for (let idx = 0; idx < info.dims.length; idx++) {
     const dataUrl = await popup.evaluate(async (i) => {
       const ffw = window.frames['frame_foto'];
@@ -314,8 +344,10 @@ async function checarEBaixarFotos(popup, codigo, destDir) {
     fs.mkdirSync(destDir, { recursive: true });
     fs.writeFileSync(path.join(destDir, nomeArquivo), buffer);
     arquivos.push(nomeArquivo);
+    const [largura, altura] = info.dims[idx] || [];
+    detalhes.push({ arquivo: nomeArquivo, largura: largura || null, altura: altura || null, bytes: buffer.length });
   }
-  return { status: arquivos.length ? 'ok' : 'sem_foto', arquivos };
+  return { status: arquivos.length ? 'ok' : 'sem_foto', arquivos, detalhes };
 }
 
 async function processarUmProduto(popup, codigo, secaoSlug) {
@@ -382,7 +414,8 @@ async function processarSecaoComPopup(popup, secaoSlug, { limit, retrySemFoto } 
   await buscarSecaoInteira(popup, labelSecao);
   console.log('Busca feita. Processando produto por produto...\n');
 
-  let ok = 0, placeholder = 0, semFoto = 0, erro = 0;
+  let ok = 0, placeholder = 0, semFoto = 0, erro = 0, pequenas = 0;
+  const codigosComFotoPequena = [];
   for (const codigo of fila) {
     let resultado;
     try {
@@ -393,17 +426,31 @@ async function processarSecaoComPopup(popup, secaoSlug, { limit, retrySemFoto } 
     progresso[codigo] = { ...resultado, ts: new Date().toISOString() };
     salvarProgresso(secaoSlug, progresso); // salva a CADA item — seguro contra Ctrl+C
 
-    if (resultado.status === 'ok') ok++;
+    if (resultado.status === 'ok') {
+      ok++;
+      if (fotosSuspeitas(resultado.detalhes).length) {
+        pequenas++;
+        codigosComFotoPequena.push(codigo);
+      }
+    }
     else if (resultado.status === 'placeholder') placeholder++;
     else if (resultado.status === 'sem_foto') semFoto++;
     else erro++;
 
     const feito = ok + placeholder + semFoto + erro;
     process.stdout.write(
-      `\r[${feito}/${fila.length}] ${codigo} -> ${resultado.status.padEnd(22)} | ok:${ok} placeholder:${placeholder} sem_foto:${semFoto} erro:${erro}    `
+      `\r[${feito}/${fila.length}] ${codigo} -> ${resultado.status.padEnd(22)} | ok:${ok} placeholder:${placeholder} sem_foto:${semFoto} erro:${erro} pequena:${pequenas}    `
     );
   }
   console.log('\n\nLote concluído.');
+
+  // Pedido do usuário (2026-08-05): lista explícita dos códigos com foto
+  // abaixo do limiar — pra conferência manual pontual em vez de confiar cego
+  // no processo (ver LARGURA_MINIMA_AVISO acima).
+  if (codigosComFotoPequena.length) {
+    console.log(`\n⚠ ${codigosComFotoPequena.length} produto(s) com foto abaixo de ${LARGURA_MINIMA_AVISO}px de largura (pode ser miniatura em vez da foto original — vale conferir no X2):`);
+    console.log(codigosComFotoPequena.map((c) => `  - ${c}`).join('\n'));
+  }
 
   const totalFeitos = Object.keys(progresso).length;
   console.log(`Progresso total da seção: ${totalFeitos}/${codigos.length}.`);
@@ -415,14 +462,14 @@ async function processarSecaoComPopup(popup, secaoSlug, { limit, retrySemFoto } 
   return { secaoSlug, totalFeitos, total: codigos.length, pulada: false };
 }
 
-async function rodarSecao(secaoSlug, { limit, channel, retrySemFoto, reiniciar }) {
+async function rodarSecao(secaoSlug, { limit, channel, retrySemFoto, reiniciar, confirmar }) {
   if (reiniciar) {
     console.log(`Reiniciando "${secaoSlug}" do zero (apagando progresso e staging salvos)...`);
     reiniciarSecao(secaoSlug);
   }
   const context = await abrirNavegador(channel);
   try {
-    const popup = await garantirPopupAberto(context);
+    const popup = await garantirPopupAberto(context, { confirmar });
     await processarSecaoComPopup(popup, secaoSlug, { limit, retrySemFoto });
   } finally {
     await context.close().catch(() => {});
@@ -432,7 +479,7 @@ async function rodarSecao(secaoSlug, { limit, channel, retrySemFoto, reiniciar }
 // Roda várias seções em UMA ÚNICA sessão de navegador — só pausa 1x pro
 // usuário logar/abrir o popup, depois processa seção por seção sozinho.
 // `limit`, se passado, se aplica a CADA seção (não ao total).
-async function rodarMuitasSecoes(slugs, { limit, channel, retrySemFoto, reiniciar }) {
+async function rodarMuitasSecoes(slugs, { limit, channel, retrySemFoto, reiniciar, confirmar }) {
   if (reiniciar) {
     console.log(`Reiniciando ${slugs.length} seção(ões) do zero (apagando progresso e staging salvos)...`);
     for (const s of slugs) reiniciarSecao(s);
@@ -440,7 +487,7 @@ async function rodarMuitasSecoes(slugs, { limit, channel, retrySemFoto, reinicia
   const context = await abrirNavegador(channel);
   const resumo = [];
   try {
-    const popup = await garantirPopupAberto(context);
+    const popup = await garantirPopupAberto(context, { confirmar });
     for (const secaoSlug of slugs) {
       try {
         const r = await processarSecaoComPopup(popup, secaoSlug, { limit, retrySemFoto });
@@ -488,12 +535,14 @@ async function montarZipFinal(secaoSlug) {
   const stagingDir = stagingSecaoDir(secaoSlug);
   const entradas = [];
   let semFotoCount = 0, placeholderCount = 0, erroCount = 0;
+  const pequenasCodigos = [];
 
   for (const codigo of codigos) {
     const st = progresso[codigo];
     if (st.status === 'sem_foto') { semFotoCount++; continue; }
     if (st.status === 'placeholder') { placeholderCount++; continue; }
     if (st.status !== 'ok') { erroCount++; continue; }
+    if (fotosSuspeitas(st.detalhes).length) pequenasCodigos.push(codigo);
     const dir = path.join(stagingDir, codigo);
     const arquivos = (st.arquivos && st.arquivos.length) ? st.arquivos : (fs.existsSync(dir) ? fs.readdirSync(dir) : []);
     for (const nome of arquivos) {
@@ -515,6 +564,7 @@ async function montarZipFinal(secaoSlug) {
   console.log(`\nZip final gerado: ${destino}`);
   console.log(`${entradas.length} fotos, de ${codigos.length - semFotoCount - placeholderCount - erroCount} produtos com foto real.`);
   console.log(`${semFotoCount} sem foto cadastrada no X2, ${placeholderCount} só com o placeholder "imagem não disponível", ${erroCount} com erro (revise manualmente).`);
+  console.log(`${pequenasCodigos.length} produto(s) com foto abaixo de ${LARGURA_MINIMA_AVISO}px — revisar: ${pequenasCodigos.join(', ') || '(nenhum)'}`);
   console.log(`\nFalta atualizar a linha "${labelSecao}" na tabela de src/config/catalogo-x2/README.md com a nova contagem/data.`);
 }
 
@@ -547,12 +597,14 @@ async function exportarFotosSoltas(secaoSlug) {
   const stagingDir = stagingSecaoDir(secaoSlug);
   const destDir = path.join(FOTOS_DIR, secaoSlug);
   let copiadas = 0, semFotoCount = 0, placeholderCount = 0, erroCount = 0;
+  const pequenasCodigos = [];
 
   for (const codigo of codigos) {
     const st = progresso[codigo];
     if (st.status === 'sem_foto') { semFotoCount++; continue; }
     if (st.status === 'placeholder') { placeholderCount++; continue; }
     if (st.status !== 'ok') { erroCount++; continue; }
+    if (fotosSuspeitas(st.detalhes).length) pequenasCodigos.push(codigo);
     const dirOrigem = path.join(stagingDir, codigo);
     const arquivos = (st.arquivos && st.arquivos.length) ? st.arquivos : (fs.existsSync(dirOrigem) ? fs.readdirSync(dirOrigem) : []);
     if (!arquivos.length) continue;
@@ -567,6 +619,7 @@ async function exportarFotosSoltas(secaoSlug) {
   console.log(`\nFotos exportadas para: ${destDir}`);
   console.log(`${copiadas} fotos, de ${codigos.length - semFotoCount - placeholderCount - erroCount} produtos com foto real.`);
   console.log(`${semFotoCount} sem foto cadastrada no X2, ${placeholderCount} só com o placeholder "imagem não disponível", ${erroCount} com erro (revise manualmente).`);
+  console.log(`${pequenasCodigos.length} produto(s) com foto abaixo de ${LARGURA_MINIMA_AVISO}px — revisar: ${pequenasCodigos.join(', ') || '(nenhum)'}`);
 }
 
 // Conta arquivos DE VERDADE em disco (não só o que o checkpoint de progresso
@@ -704,4 +757,6 @@ module.exports = {
   rodarSecao,
   rodarMuitasSecoes,
   montarZipFinal,
+  LARGURA_MINIMA_AVISO,
+  fotosSuspeitas,
 };

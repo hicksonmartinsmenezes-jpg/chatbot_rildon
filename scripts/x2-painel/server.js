@@ -53,6 +53,7 @@ const express = require('express');
 const scraper = require('../x2-fotos-scraper');
 const sync = require('../x2-catalogo-sync');
 const estoqueExport = require('../x2-estoque-export');
+const painelProdutosSnapshot = require('../x2-painel-produtos-snapshot');
 const { listarEntradas } = require('../../src/utils/zip-reader');
 const rotinasStore = require('./rotinas');
 
@@ -187,6 +188,12 @@ async function rodarAcao(tipo, opcoes, { origemRotina } = {}) {
         confirmar: modoAutomatico ? undefined : confirmarFactory(),
         modoAutomatico,
       });
+    } else if (tipo === 'painel-produtos') {
+      await painelProdutosSnapshot.rodar({
+        channel: 'chrome',
+        confirmar: modoAutomatico ? undefined : confirmarFactory(),
+        modoAutomatico,
+      });
     } else {
       throw new Error(`Ação desconhecida: ${tipo}`);
     }
@@ -276,6 +283,12 @@ app.get('/api/estoque/exports', (req, res) => {
 });
 app.use('/estoque-files', express.static(estoqueExport.ESTOQUE_DIR));
 
+// ─── Painel de Produtos (snapshot) — mesma lógica de "só guardar por
+// enquanto" do Estoque, ver x2-painel-produtos-snapshot.js.
+app.get('/api/painel-produtos/historico', (req, res) => {
+  res.json({ historico: painelProdutosSnapshot.carregarHistorico() });
+});
+
 app.get('/api/log-stream', (req, res) => {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -289,13 +302,14 @@ app.get('/api/log-stream', (req, res) => {
 
 app.post('/api/acao', (req, res) => {
   const { tipo, secoes, opcoes } = req.body || {};
-  // "estoque" não usa secoes (Relatório de Estoque sempre exporta tudo de
-  // uma vez, Seção=Todos — ver x2-estoque-export.js) — as outras ações
-  // continuam exigindo pelo menos 1 seção selecionada.
+  // "estoque"/"painel-produtos" não usam secoes (capturam/exportam tudo de
+  // uma vez — ver x2-estoque-export.js / x2-painel-produtos-snapshot.js) —
+  // as outras ações continuam exigindo pelo menos 1 seção selecionada.
+  const TIPOS_SEM_SECOES = ['estoque', 'painel-produtos'];
   if (!tipo) {
     return res.status(400).json({ error: 'tipo é obrigatório.' });
   }
-  if (tipo !== 'estoque' && (!Array.isArray(secoes) || !secoes.length)) {
+  if (!TIPOS_SEM_SECOES.includes(tipo) && (!Array.isArray(secoes) || !secoes.length)) {
     return res.status(400).json({ error: 'secoes (array não vazio) é obrigatório pra essa ação.' });
   }
   const desconhecidas = (secoes || []).filter((s) => !SECOES[s]);

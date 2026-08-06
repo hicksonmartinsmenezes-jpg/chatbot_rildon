@@ -57,14 +57,15 @@ function salvarRotinas(lista) {
   fs.writeFileSync(ROTINAS_PATH, JSON.stringify(lista, null, 2));
 }
 
-// "estoque" (2026-08-06) não usa `secoes` — o Relatório de Estoque é
-// exportado sempre com Seção=Todos de uma vez só (decisão do usuário), não
-// seção por seção como baixar/sync.
+// "estoque" e "painel-produtos" (2026-08-06) não usam `secoes` — exportam/
+// capturam tudo de uma vez, não seção por seção como baixar/sync.
+const TIPOS_SEM_SECOES = ['estoque', 'painel-produtos'];
+
 function validarRotina(dados) {
   const erros = [];
   if (!dados.nome || !String(dados.nome).trim()) erros.push('nome é obrigatório.');
-  if (!['baixar', 'sync', 'estoque'].includes(dados.tipo)) erros.push('tipo precisa ser "baixar", "sync" ou "estoque".');
-  if (dados.tipo !== 'estoque' && (!Array.isArray(dados.secoes) || !dados.secoes.length)) erros.push('secoes precisa ser uma lista não vazia.');
+  if (!['baixar', 'sync', 'estoque', 'painel-produtos'].includes(dados.tipo)) erros.push('tipo precisa ser "baixar", "sync", "estoque" ou "painel-produtos".');
+  if (!TIPOS_SEM_SECOES.includes(dados.tipo) && (!Array.isArray(dados.secoes) || !dados.secoes.length)) erros.push('secoes precisa ser uma lista não vazia.');
   if (!['diaria', 'semanal'].includes(dados.frequencia)) erros.push('frequencia precisa ser "diaria" ou "semanal".');
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(dados.horario || '')) erros.push('horario precisa estar no formato HH:MM (24h).');
   if (dados.frequencia === 'semanal' && (dados.diaSemana === undefined || dados.diaSemana === null || Number(dados.diaSemana) < 0 || Number(dados.diaSemana) > 6)) {

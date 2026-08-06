@@ -414,6 +414,7 @@
             <option value="baixar">Baixar fotos</option>
             <option value="sync">Sync (produtos novos)</option>
             <option value="estoque">Exportar estoque (CSV)</option>
+            <option value="painel-produtos">Snapshot Painel de Produtos</option>
           </select>
         </label>
         <label class="form-field" id="rotina-secoes-wrap">Seções (Ctrl/Cmd+clique pra selecionar várias)
@@ -817,8 +818,8 @@
             </label>
           </td>
           <td>${r.nome}</td>
-          <td>${r.tipo === 'baixar' ? 'Baixar fotos' : r.tipo === 'sync' ? 'Sync' : 'Exportar estoque'}</td>
-          <td title="${labelsSecoes.join(', ')}">${r.tipo === 'estoque' ? (r.opcoes && r.opcoes.estoqueOpcao || 'Com e sem estoque') : (secoesTexto || '—')}</td>
+          <td>${{ baixar: 'Baixar fotos', sync: 'Sync', estoque: 'Exportar estoque', 'painel-produtos': 'Snapshot Painel' }[r.tipo] || r.tipo}</td>
+          <td title="${labelsSecoes.join(', ')}">${r.tipo === 'estoque' ? (r.opcoes && r.opcoes.estoqueOpcao || 'Com e sem estoque') : r.tipo === 'painel-produtos' ? 'Divergências/Situação' : (secoesTexto || '—')}</td>
           <td>${quando}</td>
           <td>${r.ativa ? formatarDataHora(r.proximaExecucao) : '—'}</td>
           <td>${resultadoBadge} <span class="cell-slug">${formatarDataHora(r.ultimaExecucao)}</span></td>
@@ -845,8 +846,10 @@
   });
 
   el('rotina-tipo').addEventListener('change', () => {
-    const ehEstoque = el('rotina-tipo').value === 'estoque';
-    el('rotina-secoes-wrap').style.display = ehEstoque ? 'none' : 'block';
+    const tipo = el('rotina-tipo').value;
+    const ehEstoque = tipo === 'estoque';
+    const semSecoes = tipo === 'estoque' || tipo === 'painel-produtos';
+    el('rotina-secoes-wrap').style.display = semSecoes ? 'none' : 'block';
     el('rotina-estoque-opcao-wrap').style.display = ehEstoque ? 'block' : 'none';
   });
 
@@ -855,12 +858,13 @@
       const nome = el('rotina-nome').value.trim();
       const tipo = el('rotina-tipo').value;
       const ehEstoque = tipo === 'estoque';
-      const secoesEscolhidas = ehEstoque ? [] : Array.from(el('rotina-secoes').selectedOptions).map((o) => o.value);
+      const semSecoes = tipo === 'estoque' || tipo === 'painel-produtos';
+      const secoesEscolhidas = semSecoes ? [] : Array.from(el('rotina-secoes').selectedOptions).map((o) => o.value);
       const frequencia = el('rotina-frequencia').value;
       const diaSemana = Number(el('rotina-dia-semana').value);
       const horario = el('rotina-horario').value;
-      if (!nome || (!ehEstoque && !secoesEscolhidas.length) || !horario) {
-        alert(ehEstoque ? 'Preencha nome e horário.' : 'Preencha nome, ao menos uma seção e horário.');
+      if (!nome || (!semSecoes && !secoesEscolhidas.length) || !horario) {
+        alert(semSecoes ? 'Preencha nome e horário.' : 'Preencha nome, ao menos uma seção e horário.');
         return;
       }
       const opcoes = ehEstoque ? { estoqueOpcao: el('rotina-estoque-opcao').value } : {};

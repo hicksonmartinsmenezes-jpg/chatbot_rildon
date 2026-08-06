@@ -180,6 +180,54 @@ async function abrirNavegador(channel) {
   });
 }
 
+// PEDIDO DO USUÁRIO (2026-08-06, feature "Rotinas"): pra uma rotina rodar
+// sozinha de madrugada sem ninguém na frente, o próprio usuário revelou uma
+// trava adicional: o X2 tem timeout de sessão de login, então uma janela
+// deixada aberta simplesmente cai sozinha entre uma execução e outra — não
+// basta manter o navegador aberto, o script precisa logar de novo sozinho a
+// cada rotina.
+//
+// ⚠️ NÃO VALIDADO AO VIVO — diferente do resto deste arquivo (que foi todo
+// confirmado clicando de verdade no X2), o formulário de login nunca foi
+// inspecionado numa sessão real. A heurística abaixo usa o primeiro
+// input[type=text|email] visível como campo de usuário e o input[type=password]
+// como senha, em vez de um seletor fixo (mais chance de acertar sem saber o
+// name= exato) — mas a primeira rotina configurada precisa ser observada uma
+// vez (rodar manualmente e olhar o navegador abrir) pra confirmar que loga
+// mesmo. Se não achar os campos, falha com erro claro em vez de travar
+// esperando um Enter que numa rotina automática nunca vem.
+async function tentarLoginAutomatico(page) {
+  const usuario = process.env.X2_USUARIO;
+  const senha = process.env.X2_SENHA;
+  if (!usuario || !senha) {
+    throw new Error('Modo automático (rotina) precisa de X2_USUARIO e X2_SENHA configurados no .env — sem isso não dá pra logar sozinho no X2.');
+  }
+  if (!page.url().includes('xprocess.com.br')) {
+    await page.goto(LOGIN_URL).catch(() => {});
+  }
+  const preenchido = await page.evaluate(({ usuario, senha }) => {
+    const campoUsuario = document.querySelector('input[type="text"], input[type="email"]');
+    const campoSenha = document.querySelector('input[type="password"]');
+    if (!campoUsuario || !campoSenha) return false;
+    campoUsuario.value = usuario;
+    campoUsuario.dispatchEvent(new Event('input', { bubbles: true }));
+    campoSenha.value = senha;
+    campoSenha.dispatchEvent(new Event('input', { bubbles: true }));
+    const form = campoSenha.closest('form');
+    if (form) {
+      if (form.requestSubmit) form.requestSubmit();
+      else form.submit();
+      return true;
+    }
+    return false;
+  }, { usuario, senha });
+  if (!preenchido) {
+    throw new Error('Login automático: não encontrei os campos de usuário/senha na tela do X2 — os seletores usados são um chute (nunca confirmado ao vivo), precisa ajustar olhando a tela real.');
+  }
+  await page.waitForLoadState('domcontentloaded').catch(() => {});
+  await page.waitForTimeout(1500);
+}
+
 // Acha o popup já aberto, ou pausa pedindo pro usuário logar/clicar. Só
 // precisa disso 1x por execução do script — depois de achar, guarda a
 // referência e reusa pra todos os produtos da seção.
@@ -190,13 +238,39 @@ async function abrirNavegador(channel) {
 // usuário clica "Já cliquei, continuar" na página). Parâmetro opcional: se
 // não vier nada, cai no comportamento de sempre (readline no terminal),
 // então o menu/CLI continuam idênticos a antes.
-async function garantirPopupAberto(context, { confirmar } = {}) {
+//
+// `modoAutomatico` (2026-08-06, feature "Rotinas"): pula QUALQUER pausa
+// humana — tenta logar sozinho (se a tela de login aparecer) e depois tenta
+// abrir o popup navegando DIRETO pra URL dele, em vez de esperar o clique
+// manual que o resto deste arquivo documenta como obrigatório. ⚠️ Essa
+// navegação direta também não foi confirmada ao vivo — é uma aposta razoável
+// baseada na URL já conhecida (POPUP_URL_MARK), mas o X2 pode exigir estado
+// de sessão que só o clique real cria. Se falhar, lança erro claro (não
+// trava) pra rotina registrar "erro" em vez de ficar pendurada a noite toda.
+async function garantirPopupAberto(context, { confirmar, modoAutomatico } = {}) {
   let popup = context.pages().find((p) => p.url().includes(POPUP_URL_MARK));
   if (popup) return popup;
 
   const page = context.pages()[0] || (await context.newPage());
   if (!page.url().includes('xprocess.com.br')) {
     await page.goto(LOGIN_URL).catch(() => {});
+  }
+
+  if (modoAutomatico) {
+    const pareceLogin = /login/i.test(page.url()) || (await page.locator('input[type="password"]').count().catch(() => 0)) > 0;
+    if (pareceLogin) {
+      await tentarLoginAutomatico(page);
+    }
+    const tentativa = await context.newPage();
+    await tentativa.goto(`https://sistemas7.xprocess.com.br/${POPUP_URL_MARK}`).catch(() => {});
+    await tentativa.waitForSelector('iframe[name="frame_pesquisa"]', { timeout: 15000 }).catch(() => {});
+    popup = context.pages().find((p) => p.url().includes(POPUP_URL_MARK));
+    if (!popup) {
+      throw new Error('Modo automático: não consegui abrir o popup "Catálogo de Produtos" sozinho (navegação direta pra URL não funcionou) — essa parte precisa de uma sessão supervisionada pra confirmar/ajustar.');
+    }
+    await popup.waitForLoadState('domcontentloaded');
+    await popup.waitForSelector('iframe[name="frame_pesquisa"]', { timeout: 15000 });
+    return popup;
   }
 
   console.log('\n==============================================================');
@@ -462,14 +536,14 @@ async function processarSecaoComPopup(popup, secaoSlug, { limit, retrySemFoto } 
   return { secaoSlug, totalFeitos, total: codigos.length, pulada: false };
 }
 
-async function rodarSecao(secaoSlug, { limit, channel, retrySemFoto, reiniciar, confirmar }) {
+async function rodarSecao(secaoSlug, { limit, channel, retrySemFoto, reiniciar, confirmar, modoAutomatico }) {
   if (reiniciar) {
     console.log(`Reiniciando "${secaoSlug}" do zero (apagando progresso e staging salvos)...`);
     reiniciarSecao(secaoSlug);
   }
   const context = await abrirNavegador(channel);
   try {
-    const popup = await garantirPopupAberto(context, { confirmar });
+    const popup = await garantirPopupAberto(context, { confirmar, modoAutomatico });
     await processarSecaoComPopup(popup, secaoSlug, { limit, retrySemFoto });
   } finally {
     await context.close().catch(() => {});
@@ -479,7 +553,7 @@ async function rodarSecao(secaoSlug, { limit, channel, retrySemFoto, reiniciar, 
 // Roda várias seções em UMA ÚNICA sessão de navegador — só pausa 1x pro
 // usuário logar/abrir o popup, depois processa seção por seção sozinho.
 // `limit`, se passado, se aplica a CADA seção (não ao total).
-async function rodarMuitasSecoes(slugs, { limit, channel, retrySemFoto, reiniciar, confirmar }) {
+async function rodarMuitasSecoes(slugs, { limit, channel, retrySemFoto, reiniciar, confirmar, modoAutomatico }) {
   if (reiniciar) {
     console.log(`Reiniciando ${slugs.length} seção(ões) do zero (apagando progresso e staging salvos)...`);
     for (const s of slugs) reiniciarSecao(s);
@@ -487,7 +561,7 @@ async function rodarMuitasSecoes(slugs, { limit, channel, retrySemFoto, reinicia
   const context = await abrirNavegador(channel);
   const resumo = [];
   try {
-    const popup = await garantirPopupAberto(context, { confirmar });
+    const popup = await garantirPopupAberto(context, { confirmar, modoAutomatico });
     for (const secaoSlug of slugs) {
       try {
         const r = await processarSecaoComPopup(popup, secaoSlug, { limit, retrySemFoto });
@@ -759,4 +833,5 @@ module.exports = {
   montarZipFinal,
   LARGURA_MINIMA_AVISO,
   fotosSuspeitas,
+  tentarLoginAutomatico,
 };

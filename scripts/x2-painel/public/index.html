@@ -201,6 +201,44 @@
   .aguardando-banner.show { display: flex; }
   .aguardando-banner span { flex: 1; font-size: 13px; }
 
+  /* ─── Abas de topo (Fotos / Rotinas / Estoque) — 2026-08-06 ────── */
+  .top-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+  .top-tab {
+    padding: 9px 16px;
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+  }
+  .top-tab:hover { color: var(--text); }
+  .top-tab.active { color: var(--text); border-color: var(--blue); }
+  .top-painel { display: none; }
+  .top-painel.active { display: block; }
+
+  .aviso-banner {
+    background: rgba(245,158,11,.12);
+    border: 1px solid var(--amber);
+    border-radius: 10px;
+    padding: 11px 14px;
+    margin-bottom: 16px;
+    font-size: 12.5px;
+    color: #fde8c9;
+    line-height: 1.5;
+  }
+
+  .form-field { display: block; font-size: 12.5px; color: var(--muted); margin-bottom: 12px; }
+  .form-field > *:not(:first-child) { margin-top: 5px; }
+  select.search-input { cursor: pointer; }
+  select.search-input[multiple] { padding: 6px; }
+
+  .rotina-toggle { position: relative; display: inline-block; width: 34px; height: 19px; vertical-align: middle; }
+  .rotina-toggle input { opacity: 0; width: 0; height: 0; }
+  .rotina-toggle .slider { position: absolute; inset: 0; background: var(--panel-3); border: 1px solid var(--border); border-radius: 999px; cursor: pointer; transition: background .15s; }
+  .rotina-toggle .slider::before { content: ''; position: absolute; width: 13px; height: 13px; left: 2px; top: 2px; background: var(--muted); border-radius: 50%; transition: transform .15s; }
+  .rotina-toggle input:checked + .slider { background: rgba(34,197,94,.25); border-color: var(--green); }
+  .rotina-toggle input:checked + .slider::before { transform: translateX(15px); background: var(--green); }
+
   pre#log {
     background: #0a0a0b;
     border: 1px solid var(--border);
@@ -221,7 +259,15 @@
 <body>
 
   <h1>Painel Fotos X2</h1>
-  <p class="subtitle">Baixar fotos, sincronizar produtos novos e montar os pacotes finais — mesmos dados do Catálogo do painel do bot, sempre em sincronia.</p>
+  <p class="subtitle">Baixar fotos, sincronizar produtos novos, agendar rotinas e (em breve) estoque — mesmos dados do Catálogo do painel do bot, sempre em sincronia.</p>
+
+  <div class="top-tabs" id="top-tabs">
+    <span class="top-tab active" data-top-tab="fotos">Fotos</span>
+    <span class="top-tab" data-top-tab="rotinas">Rotinas</span>
+    <span class="top-tab" data-top-tab="estoque">Estoque</span>
+  </div>
+
+  <div class="top-painel active" data-top-painel="fotos">
 
   <div class="stats-row" id="stats-row"><div class="skeleton">Carregando resumo...</div></div>
 
@@ -323,6 +369,89 @@
 
     <pre id="log">(sem execução ainda)</pre>
   </div>
+
+  </div><!-- /top-painel fotos -->
+
+  <div class="top-painel" data-top-painel="rotinas">
+
+    <div class="aviso-banner" id="rotinas-aviso-credenciais" style="display:none;">
+      ⚠️ X2_USUARIO/X2_SENHA não configurados no arquivo .env — rotinas agendadas vão falhar no login automático até isso ser preenchido (ver .env.example). Sem essas credenciais, o botão "Testar agora" também vai falhar.
+    </div>
+
+    <div class="aviso-banner">
+      ⚠️ Rotina roda de madrugada sem ninguém na frente do computador — o login automático no X2 (e abrir a tela certa sozinho) ainda não foi confirmado numa sessão real. Use <strong>"Testar agora"</strong> numa rotina recém-criada pra confirmar que funciona antes de contar com o agendamento. Este servidor também precisa continuar aberto (pode minimizar) — rotinas não rodam com o painel fechado.
+    </div>
+
+    <div class="layout">
+      <div class="card">
+        <h2>Rotinas configuradas <span class="contador" id="contador-rotinas">0</span></h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Ativa</th>
+                <th>Nome</th>
+                <th>Ação</th>
+                <th>Seções</th>
+                <th>Quando</th>
+                <th>Próxima</th>
+                <th>Última execução</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="tabela-rotinas"><tr><td colspan="8" class="skeleton">Carregando rotinas...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Nova rotina</h2>
+        <label class="form-field">Nome
+          <input type="text" class="search-input" id="rotina-nome" placeholder="Ex: Baixar fotos - seções pendentes">
+        </label>
+        <label class="form-field">Ação
+          <select class="search-input" id="rotina-tipo">
+            <option value="baixar">Baixar fotos</option>
+            <option value="sync">Sync (produtos novos)</option>
+          </select>
+        </label>
+        <label class="form-field">Seções (Ctrl/Cmd+clique pra selecionar várias)
+          <select class="search-input" id="rotina-secoes" multiple size="6"></select>
+        </label>
+        <label class="form-field">Frequência
+          <select class="search-input" id="rotina-frequencia">
+            <option value="diaria">Diária</option>
+            <option value="semanal">Semanal</option>
+          </select>
+        </label>
+        <label class="form-field" id="rotina-dia-semana-wrap" style="display:none;">Dia da semana
+          <select class="search-input" id="rotina-dia-semana">
+            <option value="0">Domingo</option>
+            <option value="1">Segunda</option>
+            <option value="2">Terça</option>
+            <option value="3">Quarta</option>
+            <option value="4">Quinta</option>
+            <option value="5">Sexta</option>
+            <option value="6">Sábado</option>
+          </select>
+        </label>
+        <label class="form-field">Horário
+          <input type="time" class="search-input" id="rotina-horario" value="22:00">
+        </label>
+        <button class="primary full" data-action="criar-rotina">Criar rotina</button>
+      </div>
+    </div>
+
+  </div><!-- /top-painel rotinas -->
+
+  <div class="top-painel" data-top-painel="estoque">
+    <div class="card">
+      <h2>Estoque</h2>
+      <p class="descricao" style="color:var(--muted); font-size:13px; line-height:1.6;">
+        Ainda não construído. Pedido do usuário (2026-08-06): capturar a quantidade de estoque de cada produto no X2, pra um projeto futuro (não integrado ao bot ainda). Falta descobrir, numa sessão ao vivo, em qual tela do X2 fica essa informação e quais campos/seletores usar — nenhuma tela de estoque foi confirmada até agora, diferente das telas de fotos e catálogo (essas sim já validadas ao vivo).
+      </p>
+    </div>
+  </div><!-- /top-painel estoque -->
 
 <script>
 (function () {
@@ -597,6 +726,159 @@
   el('btn-confirmar').addEventListener('click', async () => {
     await fetch('/api/confirmar', { method: 'POST' });
   });
+
+  // ─── Abas de topo (Fotos / Rotinas / Estoque) ─────────────────────
+  el('top-tabs').addEventListener('click', (ev) => {
+    const tab = ev.target.closest('.top-tab');
+    if (!tab) return;
+    document.querySelectorAll('.top-tab').forEach((t) => t.classList.toggle('active', t === tab));
+    document.querySelectorAll('.top-painel').forEach((p) => p.classList.toggle('active', p.dataset.topPainel === tab.dataset.topTab));
+    if (tab.dataset.topTab === 'rotinas') carregarRotinas();
+  });
+
+  // ─── Rotinas (2026-08-06) ──────────────────────────────────────────
+  let rotinas = [];
+  let secoesSelectPreenchido = false;
+
+  function preencherSelectSecoes() {
+    // Só preenche 1x quando `secoes` já carregou (vem do /api/status da aba
+    // Fotos) — se o usuário for direto pra Rotinas antes disso, tenta de
+    // novo a cada carregarRotinas() até secoes existir.
+    if (secoesSelectPreenchido || !secoes.length) return;
+    el('rotina-secoes').innerHTML = secoes.map((s) => `<option value="${s.slug}">${s.label}</option>`).join('');
+    secoesSelectPreenchido = true;
+  }
+
+  function formatarDataHora(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  }
+
+  function renderTabelaRotinas() {
+    el('contador-rotinas').textContent = rotinas.length;
+    const tbody = el('tabela-rotinas');
+    if (!rotinas.length) {
+      tbody.innerHTML = '<tr><td colspan="8" class="table-empty">Nenhuma rotina criada ainda.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rotinas.map((r) => {
+      const labelsSecoes = r.secoes.map((slug) => {
+        const s = secoes.find((x) => x.slug === slug);
+        return s ? s.label : slug;
+      });
+      const secoesTexto = labelsSecoes.length > 2
+        ? `${labelsSecoes.slice(0, 2).join(', ')} +${labelsSecoes.length - 2}`
+        : labelsSecoes.join(', ');
+      const quando = r.frequencia === 'semanal'
+        ? `${['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'][r.diaSemana]} às ${r.horario}`
+        : `Diária às ${r.horario}`;
+      let resultadoBadge = '<span class="badge badge-muted">nunca rodou</span>';
+      if (r.ultimoResultado === 'sucesso') resultadoBadge = `<span class="badge badge-green" title="${formatarDataHora(r.ultimaExecucao)}">ok</span>`;
+      else if (r.ultimoResultado === 'erro') resultadoBadge = `<span class="badge badge-red" title="${(r.ultimoErro || '').replace(/"/g, '&quot;')}">erro</span>`;
+      return `
+        <tr>
+          <td>
+            <label class="rotina-toggle">
+              <input type="checkbox" data-rotina-toggle="${r.id}" ${r.ativa ? 'checked' : ''}>
+              <span class="slider"></span>
+            </label>
+          </td>
+          <td>${r.nome}</td>
+          <td>${r.tipo === 'baixar' ? 'Baixar fotos' : 'Sync'}</td>
+          <td title="${labelsSecoes.join(', ')}">${secoesTexto || '—'}</td>
+          <td>${quando}</td>
+          <td>${r.ativa ? formatarDataHora(r.proximaExecucao) : '—'}</td>
+          <td>${resultadoBadge} <span class="cell-slug">${formatarDataHora(r.ultimaExecucao)}</span></td>
+          <td style="white-space:nowrap;">
+            <button class="small" data-rotina-rodar="${r.id}">Testar agora</button>
+            <button class="small ghost" data-rotina-excluir="${r.id}">Excluir</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  async function carregarRotinas() {
+    preencherSelectSecoes();
+    const res = await fetch('/api/rotinas');
+    const data = await res.json();
+    rotinas = data.rotinas;
+    el('rotinas-aviso-credenciais').style.display = data.temCredenciais ? 'none' : 'block';
+    renderTabelaRotinas();
+  }
+
+  el('rotina-frequencia').addEventListener('change', () => {
+    el('rotina-dia-semana-wrap').style.display = el('rotina-frequencia').value === 'semanal' ? 'block' : 'none';
+  });
+
+  document.addEventListener('click', async (ev) => {
+    if (ev.target.closest('[data-action="criar-rotina"]')) {
+      const nome = el('rotina-nome').value.trim();
+      const tipo = el('rotina-tipo').value;
+      const secoesEscolhidas = Array.from(el('rotina-secoes').selectedOptions).map((o) => o.value);
+      const frequencia = el('rotina-frequencia').value;
+      const diaSemana = Number(el('rotina-dia-semana').value);
+      const horario = el('rotina-horario').value;
+      if (!nome || !secoesEscolhidas.length || !horario) {
+        alert('Preencha nome, ao menos uma seção e horário.');
+        return;
+      }
+      const res = await fetch('/api/rotinas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nome, tipo, secoes: secoesEscolhidas, frequencia, diaSemana, horario }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || 'Erro ao criar rotina.');
+        return;
+      }
+      el('rotina-nome').value = '';
+      await carregarRotinas();
+      return;
+    }
+
+    const btnRodar = ev.target.closest('[data-rotina-rodar]');
+    if (btnRodar) {
+      const res = await fetch(`/api/rotinas/${btnRodar.dataset.rotinaRodar}/rodar-agora`, { method: 'POST' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || 'Erro ao rodar rotina.');
+        return;
+      }
+      // troca pra aba Fotos pra acompanhar o log/progresso ao vivo, já que
+      // é o mesmo mecanismo de execução das ações manuais
+      el('top-tabs').querySelector('[data-top-tab="fotos"]').click();
+      return;
+    }
+
+    const btnExcluir = ev.target.closest('[data-rotina-excluir]');
+    if (btnExcluir) {
+      if (!confirm('Excluir esta rotina?')) return;
+      await fetch(`/api/rotinas/${btnExcluir.dataset.rotinaExcluir}`, { method: 'DELETE' });
+      await carregarRotinas();
+      return;
+    }
+  });
+
+  document.addEventListener('change', async (ev) => {
+    const toggle = ev.target.closest('[data-rotina-toggle]');
+    if (!toggle) return;
+    await fetch(`/api/rotinas/${toggle.dataset.rotinaToggle}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ativa: toggle.checked }),
+    });
+    await carregarRotinas();
+  });
+
+  // Atualiza a lista de rotinas periodicamente (mostra "última execução"
+  // depois que o agendador dispara sozinho de madrugada, sem precisar
+  // recarregar a página manualmente).
+  setInterval(() => {
+    if (document.querySelector('.top-tab[data-top-tab="rotinas"]').classList.contains('active')) carregarRotinas();
+  }, 30000);
 
   carregarStatus();
   conectarSSE();

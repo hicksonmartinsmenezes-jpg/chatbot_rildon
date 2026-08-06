@@ -163,7 +163,17 @@ async function telaTemFormulario(page) {
 // quando o usuário clica "Já cliquei, continuar" na página, em vez de travar
 // num readline de terminal. Sem esse parâmetro, comportamento idêntico a
 // antes (CLI/menu continuam com o Enter no terminal).
-async function garantirTelaCatalogoAberta(context, { confirmar } = {}) {
+//
+// `modoAutomatico` (2026-08-06, feature "Rotinas"): tenta logar sozinho, MAS
+// — diferente do x2-fotos-scraper.js — esta tela ("Compras > Catálogo de
+// Produtos") nunca teve uma URL própria confirmada ao vivo pra tentar
+// navegação direta (ela é acessada só por menu dentro da janela principal).
+// Então o modo automático aqui SÓ cobre o login; se a tela não aparecer
+// sozinha depois de logar, ele desiste com um erro claro em vez de adivinhar
+// uma URL — essa parte ainda precisa de uma sessão ao vivo pra descobrir se
+// dá pra navegar direto (ou se o clique do menu também é bloqueado, como o
+// popup de fotos é).
+async function garantirTelaCatalogoAberta(context, { confirmar, modoAutomatico } = {}) {
   for (const page of context.pages()) {
     if (await telaTemFormulario(page)) return page;
   }
@@ -171,6 +181,19 @@ async function garantirTelaCatalogoAberta(context, { confirmar } = {}) {
   const page = context.pages()[0] || (await context.newPage());
   if (!page.url().includes('xprocess.com.br')) {
     await page.goto(LOGIN_URL).catch(() => {});
+  }
+
+  if (modoAutomatico) {
+    const pareceLogin = /login/i.test(page.url()) || (await page.locator('input[type="password"]').count().catch(() => 0)) > 0;
+    if (pareceLogin) {
+      const { tentarLoginAutomatico } = require('./x2-fotos-scraper');
+      await tentarLoginAutomatico(page);
+    }
+    await page.waitForTimeout(1000);
+    for (const p of context.pages()) {
+      if (await telaTemFormulario(p)) return p;
+    }
+    throw new Error('Modo automático: logado, mas a tela "Compras > Catálogo de Produtos" não abriu sozinha — diferente do popup de fotos, essa tela não tem URL direta confirmada ainda. Precisa de uma sessão supervisionada pra descobrir isso.');
   }
 
   console.log('\n==============================================================');
@@ -369,11 +392,11 @@ async function sincronizarSecao(page, secaoSlug, { dryRun, semRemover, forcarRem
   return { secaoSlug, novos: novos.length, removidos: dryRun ? removidos.length : removidosAplicados, total: listaFinal.length };
 }
 
-async function rodar(slugs, { channel, dryRun, semRemover, forcarRemocao, confirmar }) {
+async function rodar(slugs, { channel, dryRun, semRemover, forcarRemocao, confirmar, modoAutomatico }) {
   const context = await abrirNavegador(channel);
   const resumo = [];
   try {
-    const page = await garantirTelaCatalogoAberta(context, { confirmar });
+    const page = await garantirTelaCatalogoAberta(context, { confirmar, modoAutomatico });
     for (const secaoSlug of slugs) {
       try {
         resumo.push(await sincronizarSecao(page, secaoSlug, { dryRun, semRemover, forcarRemocao }));

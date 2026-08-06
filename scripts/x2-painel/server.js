@@ -53,6 +53,13 @@ const express = require('express');
 const scraper = require('../x2-fotos-scraper');
 const sync = require('../x2-catalogo-sync');
 const { listarEntradas } = require('../../src/utils/zip-reader');
+const rotinasStore = require('./rotinas');
+
+// dotenv — mesmo padrão do src/server.js — pra X2_USUARIO/X2_SENHA (usados
+// só pelo login automático das rotinas, ver x2-fotos-scraper.js) ficarem
+// disponíveis via .env local, gitignored, sem precisar exportar variável de
+// ambiente manualmente toda vez que abrir o painel.
+require('dotenv').config({ path: path.join(__dirname, '../../.env') });
 
 const {
   SECOES,
@@ -120,11 +127,16 @@ function confirmarFactory() {
   });
 }
 
-async function rodarAcao(tipo, opcoes) {
+// `origemRotina` (id da rotina), quando presente, marca que essa execução
+// foi disparada pelo agendador (não por um clique na aba Fotos) — usado só
+// pra registrar o resultado de volta na rotina (ver checarRotinas) e pra
+// deixar isso visível no `execucao` transmitido por SSE.
+async function rodarAcao(tipo, opcoes, { origemRotina } = {}) {
   if (execucao && execucao.rodando) {
     throw Object.assign(new Error('Já tem uma ação rodando.'), { status: 409 });
   }
-  execucao = { tipo, terminal: new TerminalVirtual(), rodando: true, aguardando: null, erro: null };
+  const modoAutomatico = !!origemRotina;
+  execucao = { tipo, terminal: new TerminalVirtual(), rodando: true, aguardando: null, erro: null, origemRotina: origemRotina || null };
   transmitir();
 
   // Redireciona console.log/console.error/process.stdout.write pro terminal
@@ -140,6 +152,10 @@ async function rodarAcao(tipo, opcoes) {
   process.stdout.write = capturar;
   process.stderr.write = capturar;
 
+  if (modoAutomatico) {
+    execucao.terminal.escrever('▶ Rotina automática — sem clique humano: tentando login automático + abrir a tela sozinho (ver comentários em x2-fotos-scraper.js/x2-catalogo-sync.js, essa parte ainda não foi validada ao vivo).\n');
+  }
+
   try {
     if (tipo === 'baixar') {
       await rodarMuitasSecoes(opcoes.secoes, {
@@ -147,7 +163,8 @@ async function rodarAcao(tipo, opcoes) {
         channel: 'chrome',
         retrySemFoto: !!opcoes.retrySemFoto,
         reiniciar: !!opcoes.reiniciar,
-        confirmar: confirmarFactory(),
+        confirmar: modoAutomatico ? undefined : confirmarFactory(),
+        modoAutomatico,
       });
     } else if (tipo === 'sync') {
       await sync.rodar(opcoes.secoes, {
@@ -155,7 +172,8 @@ async function rodarAcao(tipo, opcoes) {
         dryRun: !!opcoes.dryRun,
         semRemover: !!opcoes.semRemover,
         forcarRemocao: !!opcoes.forcarRemocao,
-        confirmar: confirmarFactory(),
+        confirmar: modoAutomatico ? undefined : confirmarFactory(),
+        modoAutomatico,
       });
     } else if (tipo === 'zip') {
       for (const slug of opcoes.secoes) await montarZipFinal(slug);
@@ -164,9 +182,11 @@ async function rodarAcao(tipo, opcoes) {
     } else {
       throw new Error(`Ação desconhecida: ${tipo}`);
     }
+    if (origemRotina) rotinasStore.registrarExecucao(origemRotina, { resultado: 'sucesso' });
   } catch (e) {
     execucao.erro = e.message;
     execucao.terminal.escrever(`\n❌ Erro: ${e.message}\n`);
+    if (origemRotina) rotinasStore.registrarExecucao(origemRotina, { resultado: 'erro', erro: e.message });
   } finally {
     process.stdout.write = origWrite;
     process.stderr.write = origErrorWrite;
@@ -288,6 +308,78 @@ app.post('/api/confirmar', (req, res) => {
   res.json({ ok: true });
 });
 
+// ─── Rotinas (2026-08-06) ──────────────────────────────────────────────
+// CRUD fino em cima de scripts/x2-painel/rotinas.js (armazenamento puro) +
+// o agendador de verdade (checarRotinas, chamado a cada minuto lá embaixo).
+
+app.get('/api/rotinas', (req, res) => {
+  const agora = new Date();
+  const lista = rotinasStore.carregarRotinas().map((r) => ({
+    ...r,
+    proximaExecucao: r.ativa ? rotinasStore.proximaExecucao(r, agora).toISOString() : null,
+  }));
+  res.json({ rotinas: lista, temCredenciais: !!(process.env.X2_USUARIO && process.env.X2_SENHA) });
+});
+
+app.post('/api/rotinas', (req, res) => {
+  try {
+    const criada = rotinasStore.criarRotina(req.body || {});
+    res.status(201).json(criada);
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+app.patch('/api/rotinas/:id', (req, res) => {
+  try {
+    const atualizada = rotinasStore.atualizarRotina(req.params.id, req.body || {});
+    res.json(atualizada);
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/rotinas/:id', (req, res) => {
+  try {
+    rotinasStore.removerRotina(req.params.id);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+// Dispara a rotina AGORA, fora do horário agendado — pensado pra testar uma
+// rotina nova (ver se o login automático/navegação direta funcionam mesmo)
+// sem precisar esperar até de madrugada pra descobrir que não funcionou.
+app.post('/api/rotinas/:id/rodar-agora', (req, res) => {
+  const lista = rotinasStore.carregarRotinas();
+  const rotina = lista.find((r) => r.id === req.params.id);
+  if (!rotina) return res.status(404).json({ error: 'Rotina não encontrada.' });
+  if (execucao && execucao.rodando) {
+    return res.status(409).json({ error: 'Já tem uma ação rodando.' });
+  }
+  rodarAcao(rotina.tipo, { ...rotina.opcoes, secoes: rotina.secoes }, { origemRotina: rotina.id }).catch((e) => {
+    console.error(`[x2-painel] erro não tratado na rotina ${rotina.nome}:`, e.message);
+  });
+  res.status(202).json({ ok: true });
+});
+
+// Checagem do agendador — roda a cada minuto (ver setInterval abaixo). Só
+// dispara 1 rotina por vez (reusa o mesmo lock de `execucao` das ações
+// manuais — ferramenta de uso solo, não faz sentido rodar 2 coisas juntas);
+// se mais de uma rotina "vencer" no mesmo minuto, as outras esperam a
+// próxima checagem (1 min depois, inofensivo pra esse tipo de tarefa).
+function checarRotinas() {
+  if (execucao && execucao.rodando) return;
+  const agora = new Date();
+  const pendente = rotinasStore.carregarRotinas().find((r) => rotinasStore.deveRodarAgora(r, agora));
+  if (!pendente) return;
+  console.log(`[x2-painel] rotina "${pendente.nome}" venceu (${pendente.horario}) — disparando automaticamente...`);
+  rodarAcao(pendente.tipo, { ...pendente.opcoes, secoes: pendente.secoes }, { origemRotina: pendente.id }).catch((e) => {
+    console.error(`[x2-painel] erro não tratado na rotina ${pendente.nome}:`, e.message);
+  });
+}
+
 const server = http.createServer(app);
 server.listen(PORT, '127.0.0.1', () => {
   const url = `http://localhost:${PORT}`;
@@ -300,4 +392,13 @@ server.listen(PORT, '127.0.0.1', () => {
   if (process.platform === 'win32') {
     require('child_process').exec(`start "" "${url}"`, () => {});
   }
+
+  // Agendador de Rotinas (2026-08-06) — checa a cada minuto se alguma rotina
+  // "venceu". SÓ funciona enquanto este servidor estiver aberto (ligar o
+  // painel de manhã e fechar à noite não roda rotina nenhuma durante a
+  // madrugada) — isso é uma limitação real, não escondida: pra rotina
+  // noturna valer a pena, o processo precisa continuar rodando (deixar a
+  // janela minimizada, por exemplo), não só ser aberto uma vez.
+  setInterval(checarRotinas, 60 * 1000);
+  checarRotinas();
 });

@@ -52,6 +52,7 @@ const express = require('express');
 // aqui, cedo e claro, em vez de estourar só quando alguém clicar "Baixar".
 const scraper = require('../x2-fotos-scraper');
 const sync = require('../x2-catalogo-sync');
+const estoqueExport = require('../x2-estoque-export');
 const { listarEntradas } = require('../../src/utils/zip-reader');
 const rotinasStore = require('./rotinas');
 
@@ -179,6 +180,13 @@ async function rodarAcao(tipo, opcoes, { origemRotina } = {}) {
       for (const slug of opcoes.secoes) await montarZipFinal(slug);
     } else if (tipo === 'exportar') {
       for (const slug of opcoes.secoes) await exportarFotosSoltas(slug);
+    } else if (tipo === 'estoque') {
+      await estoqueExport.rodar({
+        channel: 'chrome',
+        estoqueOpcao: opcoes.estoqueOpcao || 'Com e sem estoque',
+        confirmar: modoAutomatico ? undefined : confirmarFactory(),
+        modoAutomatico,
+      });
     } else {
       throw new Error(`Ação desconhecida: ${tipo}`);
     }
@@ -260,6 +268,14 @@ app.get('/api/status', (req, res) => {
   });
 });
 
+// ─── Estoque (2026-08-06) — só lista/serve os CSVs já baixados por
+// x2-estoque-export.js; nenhum parsing/estrutura ainda (decisão do
+// usuário: "só baixar e guardar o arquivo por enquanto").
+app.get('/api/estoque/exports', (req, res) => {
+  res.json({ exports: estoqueExport.carregarExports() });
+});
+app.use('/estoque-files', express.static(estoqueExport.ESTOQUE_DIR));
+
 app.get('/api/log-stream', (req, res) => {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -273,10 +289,16 @@ app.get('/api/log-stream', (req, res) => {
 
 app.post('/api/acao', (req, res) => {
   const { tipo, secoes, opcoes } = req.body || {};
-  if (!tipo || !Array.isArray(secoes) || !secoes.length) {
-    return res.status(400).json({ error: 'tipo e secoes (array não vazio) são obrigatórios.' });
+  // "estoque" não usa secoes (Relatório de Estoque sempre exporta tudo de
+  // uma vez, Seção=Todos — ver x2-estoque-export.js) — as outras ações
+  // continuam exigindo pelo menos 1 seção selecionada.
+  if (!tipo) {
+    return res.status(400).json({ error: 'tipo é obrigatório.' });
   }
-  const desconhecidas = secoes.filter((s) => !SECOES[s]);
+  if (tipo !== 'estoque' && (!Array.isArray(secoes) || !secoes.length)) {
+    return res.status(400).json({ error: 'secoes (array não vazio) é obrigatório pra essa ação.' });
+  }
+  const desconhecidas = (secoes || []).filter((s) => !SECOES[s]);
   if (desconhecidas.length) {
     return res.status(400).json({ error: `Seção(ões) desconhecida(s): ${desconhecidas.join(', ')}` });
   }

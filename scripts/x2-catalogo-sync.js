@@ -164,15 +164,19 @@ async function telaTemFormulario(page) {
 // num readline de terminal. Sem esse parâmetro, comportamento idêntico a
 // antes (CLI/menu continuam com o Enter no terminal).
 //
-// `modoAutomatico` (2026-08-06, feature "Rotinas"): tenta logar sozinho, MAS
-// — diferente do x2-fotos-scraper.js — esta tela ("Compras > Catálogo de
-// Produtos") nunca teve uma URL própria confirmada ao vivo pra tentar
-// navegação direta (ela é acessada só por menu dentro da janela principal).
-// Então o modo automático aqui SÓ cobre o login; se a tela não aparecer
-// sozinha depois de logar, ele desiste com um erro claro em vez de adivinhar
-// uma URL — essa parte ainda precisa de uma sessão ao vivo pra descobrir se
-// dá pra navegar direto (ou se o clique do menu também é bloqueado, como o
-// popup de fotos é).
+// `modoAutomatico` (2026-08-06, feature "Rotinas"): tenta logar sozinho e
+// depois chega em "Compras > Catálogo de Produtos" clicando pelo MENU de
+// verdade (☰ > tile "Compras" > link "Catálogo de Produtos").
+//
+// ⚠️ Atualizado em 2026-08-06 (sessão de descoberta ao vivo, ver
+// scripts/x2-estoque-export.js pro relato completo): a versão anterior
+// desta função desistia aqui porque "não tinha URL direta confirmada" —
+// hoje SEI a URL real (`../compra/catalogo_produto/catalogo_pesquisa.jsp`,
+// vista no DOM do menu), mas também confirmei que navegação DIRETA por URL
+// é bloqueada pelo servidor em qualquer tela profunda do X2 ("Você não
+// está autorizado a continuar"). Ou seja, a URL nunca teria funcionado de
+// qualquer forma — o caminho certo é sempre clicar pelo menu, que É
+// automatizável (confirmado ao vivo pros cliques de ☰/tile/link).
 async function garantirTelaCatalogoAberta(context, { confirmar, modoAutomatico } = {}) {
   for (const page of context.pages()) {
     if (await telaTemFormulario(page)) return page;
@@ -189,11 +193,20 @@ async function garantirTelaCatalogoAberta(context, { confirmar, modoAutomatico }
       const { tentarLoginAutomatico } = require('./x2-fotos-scraper');
       await tentarLoginAutomatico(page);
     }
+
+    await page.goto('https://sistemas7.xprocess.com.br/x2rildon/www/index_main4.jsp').catch(() => {});
     await page.waitForTimeout(1000);
+    await page.locator('a').first().click({ timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(500);
+    await page.locator('a:has-text("Compras")').first().click({ timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(500);
+    await page.locator('a[href*="catalogo_produto/catalogo_pesquisa.jsp"]').first().click({ timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(1200);
+
     for (const p of context.pages()) {
       if (await telaTemFormulario(p)) return p;
     }
-    throw new Error('Modo automático: logado, mas a tela "Compras > Catálogo de Produtos" não abriu sozinha — diferente do popup de fotos, essa tela não tem URL direta confirmada ainda. Precisa de uma sessão supervisionada pra descobrir isso.');
+    throw new Error('Modo automático: cliquei pelo menu (☰ > Compras > Catálogo de Produtos) mas o formulário não apareceu — precisa de uma sessão supervisionada pra confirmar/ajustar os seletores usados na navegação.');
   }
 
   console.log('\n==============================================================');

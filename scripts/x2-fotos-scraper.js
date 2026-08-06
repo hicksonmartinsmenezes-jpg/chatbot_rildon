@@ -241,12 +241,24 @@ async function tentarLoginAutomatico(page) {
 //
 // `modoAutomatico` (2026-08-06, feature "Rotinas"): pula QUALQUER pausa
 // humana — tenta logar sozinho (se a tela de login aparecer) e depois tenta
-// abrir o popup navegando DIRETO pra URL dele, em vez de esperar o clique
-// manual que o resto deste arquivo documenta como obrigatório. ⚠️ Essa
-// navegação direta também não foi confirmada ao vivo — é uma aposta razoável
-// baseada na URL já conhecida (POPUP_URL_MARK), mas o X2 pode exigir estado
-// de sessão que só o clique real cria. Se falhar, lança erro claro (não
-// trava) pra rotina registrar "erro" em vez de ficar pendurada a noite toda.
+// chegar até "Vendas 3.0 > Produção de Vendas" clicando pelo MENU de
+// verdade (☰ > tile > link), não mais por navegação direta de URL.
+//
+// ⚠️ Atualizado em 2026-08-06 (sessão de descoberta ao vivo, ver
+// scripts/x2-estoque-export.js pro relato completo): confirmado que o X2
+// BLOQUEIA no servidor qualquer navegação direta por URL pra tela profunda
+// ("Você não está autorizado a continuar. Acesso direto não permitido") —
+// a versão anterior desta função que tentava `goto()` direto na
+// POPUP_URL_MARK sempre ia falhar por causa disso, nunca era um problema
+// de "aposta errada de URL". Cliques de MENU (☰, tiles, links de submenu)
+// NÃO têm esse bloqueio — confirmados funcionando com clique automatizado
+// na mesma sessão de descoberta. O que continua bloqueado — esse sim
+// confirmado desde antes, é um mecanismo diferente (nível de JS da
+// página) — é o clique ESPECÍFICO no botão "Catálogo de Produtos" dentro
+// da tela de Produção de Vendas, que abre o popup em si. Então esta função
+// agora chega pelo caminho certo (menu), mas o último clique (abrir o
+// popup) ainda pode falhar como sempre falhou — o erro abaixo deixa claro
+// qual é qual.
 async function garantirPopupAberto(context, { confirmar, modoAutomatico } = {}) {
   let popup = context.pages().find((p) => p.url().includes(POPUP_URL_MARK));
   if (popup) return popup;
@@ -261,12 +273,35 @@ async function garantirPopupAberto(context, { confirmar, modoAutomatico } = {}) 
     if (pareceLogin) {
       await tentarLoginAutomatico(page);
     }
-    const tentativa = await context.newPage();
-    await tentativa.goto(`https://sistemas7.xprocess.com.br/${POPUP_URL_MARK}`).catch(() => {});
-    await tentativa.waitForSelector('iframe[name="frame_pesquisa"]', { timeout: 15000 }).catch(() => {});
+
+    await page.goto('https://sistemas7.xprocess.com.br/x2rildon/www/index_main4.jsp').catch(() => {});
+    await page.waitForTimeout(1000);
+    // ☰ — primeiro link da página, confirmado ao vivo ser o ícone de menu
+    // (ver x2-estoque-export.js pro mesmo padrão e a ressalva de fragilidade).
+    await page.locator('a').first().click({ timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(500);
+    await page.locator('a:has-text("Vendas 3.0")').first().click({ timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(500);
+    await page.locator('a:has-text("Produção de Vendas")').first().click({ timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(1500);
+
+    // A partir daqui é o clique JÁ documentado como bloqueado — tenta mesmo
+    // assim (pode ter mudado, ou pode ser mais permissivo que o esperado),
+    // mas sem surpresa se falhar.
+    await page.evaluate(() => {
+      const norm = (s) => String(s || '').normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '').toUpperCase().trim();
+      const alvo = norm('Catálogo de Produtos');
+      const frame = document.querySelector('iframe[name="principal"]');
+      const doc = frame && frame.contentDocument ? frame.contentDocument : document;
+      const els = Array.from(doc.querySelectorAll('button, a, input[type="button"]'));
+      const el = els.find((e) => norm(e.textContent || e.value) === alvo);
+      if (el) el.click();
+    }).catch(() => {});
+    await page.waitForTimeout(1500);
+
     popup = context.pages().find((p) => p.url().includes(POPUP_URL_MARK));
     if (!popup) {
-      throw new Error('Modo automático: não consegui abrir o popup "Catálogo de Produtos" sozinho (navegação direta pra URL não funcionou) — essa parte precisa de uma sessão supervisionada pra confirmar/ajustar.');
+      throw new Error('Modo automático: cheguei em "Vendas 3.0 > Produção de Vendas" pelo menu, mas o popup "Catálogo de Produtos" não abriu — esse clique específico é conhecido por bloquear automação (ver cabeçalho do arquivo), diferente de um problema de navegação. Precisa de confirmação humana pra essa ação específica.');
     }
     await popup.waitForLoadState('domcontentloaded');
     await popup.waitForSelector('iframe[name="frame_pesquisa"]', { timeout: 15000 });

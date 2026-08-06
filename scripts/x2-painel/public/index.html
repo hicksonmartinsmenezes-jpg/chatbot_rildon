@@ -413,10 +413,18 @@
           <select class="search-input" id="rotina-tipo">
             <option value="baixar">Baixar fotos</option>
             <option value="sync">Sync (produtos novos)</option>
+            <option value="estoque">Exportar estoque (CSV)</option>
           </select>
         </label>
-        <label class="form-field">Seções (Ctrl/Cmd+clique pra selecionar várias)
+        <label class="form-field" id="rotina-secoes-wrap">Seções (Ctrl/Cmd+clique pra selecionar várias)
           <select class="search-input" id="rotina-secoes" multiple size="6"></select>
+        </label>
+        <label class="form-field" id="rotina-estoque-opcao-wrap" style="display:none;">Opção de estoque
+          <select class="search-input" id="rotina-estoque-opcao">
+            <option value="Com e sem estoque">Com e sem estoque</option>
+            <option value="Apenas com estoque">Apenas com estoque</option>
+            <option value="Apenas sem estoque">Apenas sem estoque</option>
+          </select>
         </label>
         <label class="form-field">Frequência
           <select class="search-input" id="rotina-frequencia">
@@ -445,11 +453,34 @@
   </div><!-- /top-painel rotinas -->
 
   <div class="top-painel" data-top-painel="estoque">
-    <div class="card">
-      <h2>Estoque</h2>
-      <p class="descricao" style="color:var(--muted); font-size:13px; line-height:1.6;">
-        Ainda não construído. Pedido do usuário (2026-08-06): capturar a quantidade de estoque de cada produto no X2, pra um projeto futuro (não integrado ao bot ainda). Falta descobrir, numa sessão ao vivo, em qual tela do X2 fica essa informação e quais campos/seletores usar — nenhuma tela de estoque foi confirmada até agora, diferente das telas de fotos e catálogo (essas sim já validadas ao vivo).
-      </p>
+    <div class="aviso-banner">
+      ⚠️ Coleta pura por enquanto — baixa e guarda o CSV do Relatório de Estoque (Logística), sem processar/estruturar nada ainda (o projeto de estoque em si é futuro). Navegação e opções do filtro foram confirmadas ao vivo em 2026-08-06; o clique final em "Exportar em CSV" ainda não foi testado de forma automatizada.
+    </div>
+
+    <div class="layout">
+      <div class="card">
+        <h2>Exportar agora</h2>
+        <label class="form-field">Opção de estoque
+          <select class="search-input" id="estoque-opcao">
+            <option value="Com e sem estoque">Com e sem estoque</option>
+            <option value="Apenas com estoque">Apenas com estoque</option>
+            <option value="Apenas sem estoque">Apenas sem estoque</option>
+          </select>
+        </label>
+        <button class="primary full" data-action="estoque-baixar-agora">Baixar CSV agora</button>
+      </div>
+
+      <div class="card">
+        <h2>Exports anteriores <span class="contador" id="contador-estoque-exports">0</span></h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Arquivo</th><th>Tamanho</th><th>Quando</th><th></th></tr>
+            </thead>
+            <tbody id="tabela-estoque-exports"><tr><td colspan="4" class="skeleton">Carregando...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </div><!-- /top-painel estoque -->
 
@@ -734,6 +765,7 @@
     document.querySelectorAll('.top-tab').forEach((t) => t.classList.toggle('active', t === tab));
     document.querySelectorAll('.top-painel').forEach((p) => p.classList.toggle('active', p.dataset.topPainel === tab.dataset.topTab));
     if (tab.dataset.topTab === 'rotinas') carregarRotinas();
+    if (tab.dataset.topTab === 'estoque') carregarEstoqueExports();
   });
 
   // ─── Rotinas (2026-08-06) ──────────────────────────────────────────
@@ -785,8 +817,8 @@
             </label>
           </td>
           <td>${r.nome}</td>
-          <td>${r.tipo === 'baixar' ? 'Baixar fotos' : 'Sync'}</td>
-          <td title="${labelsSecoes.join(', ')}">${secoesTexto || '—'}</td>
+          <td>${r.tipo === 'baixar' ? 'Baixar fotos' : r.tipo === 'sync' ? 'Sync' : 'Exportar estoque'}</td>
+          <td title="${labelsSecoes.join(', ')}">${r.tipo === 'estoque' ? (r.opcoes && r.opcoes.estoqueOpcao || 'Com e sem estoque') : (secoesTexto || '—')}</td>
           <td>${quando}</td>
           <td>${r.ativa ? formatarDataHora(r.proximaExecucao) : '—'}</td>
           <td>${resultadoBadge} <span class="cell-slug">${formatarDataHora(r.ultimaExecucao)}</span></td>
@@ -812,22 +844,30 @@
     el('rotina-dia-semana-wrap').style.display = el('rotina-frequencia').value === 'semanal' ? 'block' : 'none';
   });
 
+  el('rotina-tipo').addEventListener('change', () => {
+    const ehEstoque = el('rotina-tipo').value === 'estoque';
+    el('rotina-secoes-wrap').style.display = ehEstoque ? 'none' : 'block';
+    el('rotina-estoque-opcao-wrap').style.display = ehEstoque ? 'block' : 'none';
+  });
+
   document.addEventListener('click', async (ev) => {
     if (ev.target.closest('[data-action="criar-rotina"]')) {
       const nome = el('rotina-nome').value.trim();
       const tipo = el('rotina-tipo').value;
-      const secoesEscolhidas = Array.from(el('rotina-secoes').selectedOptions).map((o) => o.value);
+      const ehEstoque = tipo === 'estoque';
+      const secoesEscolhidas = ehEstoque ? [] : Array.from(el('rotina-secoes').selectedOptions).map((o) => o.value);
       const frequencia = el('rotina-frequencia').value;
       const diaSemana = Number(el('rotina-dia-semana').value);
       const horario = el('rotina-horario').value;
-      if (!nome || !secoesEscolhidas.length || !horario) {
-        alert('Preencha nome, ao menos uma seção e horário.');
+      if (!nome || (!ehEstoque && !secoesEscolhidas.length) || !horario) {
+        alert(ehEstoque ? 'Preencha nome e horário.' : 'Preencha nome, ao menos uma seção e horário.');
         return;
       }
+      const opcoes = ehEstoque ? { estoqueOpcao: el('rotina-estoque-opcao').value } : {};
       const res = await fetch('/api/rotinas', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nome, tipo, secoes: secoesEscolhidas, frequencia, diaSemana, horario }),
+        body: JSON.stringify({ nome, tipo, secoes: secoesEscolhidas, opcoes, frequencia, diaSemana, horario }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -879,6 +919,50 @@
   setInterval(() => {
     if (document.querySelector('.top-tab[data-top-tab="rotinas"]').classList.contains('active')) carregarRotinas();
   }, 30000);
+
+  // ─── Estoque (2026-08-06) ───────────────────────────────────────────
+  function formatarBytes(bytes) {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  async function carregarEstoqueExports() {
+    const res = await fetch('/api/estoque/exports');
+    const data = await res.json();
+    const exports = data.exports || [];
+    el('contador-estoque-exports').textContent = exports.length;
+    const tbody = el('tabela-estoque-exports');
+    if (!exports.length) {
+      tbody.innerHTML = '<tr><td colspan="4" class="table-empty">Nenhum export ainda.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = exports.map((e) => `
+      <tr>
+        <td>${e.nome}</td>
+        <td>${formatarBytes(e.bytes)}</td>
+        <td>${formatarDataHora(e.modificadoEm)}</td>
+        <td><a href="/estoque-files/${encodeURIComponent(e.nome)}" download>Baixar</a></td>
+      </tr>
+    `).join('');
+  }
+
+  document.addEventListener('click', async (ev) => {
+    if (!ev.target.closest('[data-action="estoque-baixar-agora"]')) return;
+    const estoqueOpcao = el('estoque-opcao').value;
+    const res = await fetch('/api/acao', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tipo: 'estoque', secoes: [], opcoes: { estoqueOpcao } }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || 'Erro ao iniciar exportação.');
+      return;
+    }
+    // acompanha o progresso na mesma "Execução" da aba Fotos (mesmo mecanismo de SSE)
+    el('top-tabs').querySelector('[data-top-tab="fotos"]').click();
+  });
 
   carregarStatus();
   conectarSSE();

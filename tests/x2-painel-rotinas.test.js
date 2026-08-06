@@ -37,11 +37,15 @@ describe('rotinas: validação', () => {
   });
 
   test('tipo inválido é rejeitado', () => {
-    expect(rotinas.validarRotina({ ...rotinaBase, tipo: 'zip' })).toContain('tipo precisa ser "baixar" ou "sync".');
+    expect(rotinas.validarRotina({ ...rotinaBase, tipo: 'zip' })).toContain('tipo precisa ser "baixar", "sync" ou "estoque".');
   });
 
-  test('secoes vazia é rejeitada', () => {
+  test('secoes vazia é rejeitada (tipo baixar/sync)', () => {
     expect(rotinas.validarRotina({ ...rotinaBase, secoes: [] }).length).toBeGreaterThan(0);
+  });
+
+  test('tipo estoque não exige secoes', () => {
+    expect(rotinas.validarRotina({ ...rotinaBase, tipo: 'estoque', secoes: undefined })).toEqual([]);
   });
 
   test('horario fora do formato HH:MM é rejeitado', () => {

@@ -57,11 +57,14 @@ function salvarRotinas(lista) {
   fs.writeFileSync(ROTINAS_PATH, JSON.stringify(lista, null, 2));
 }
 
+// "estoque" (2026-08-06) não usa `secoes` — o Relatório de Estoque é
+// exportado sempre com Seção=Todos de uma vez só (decisão do usuário), não
+// seção por seção como baixar/sync.
 function validarRotina(dados) {
   const erros = [];
   if (!dados.nome || !String(dados.nome).trim()) erros.push('nome é obrigatório.');
-  if (!['baixar', 'sync'].includes(dados.tipo)) erros.push('tipo precisa ser "baixar" ou "sync".');
-  if (!Array.isArray(dados.secoes) || !dados.secoes.length) erros.push('secoes precisa ser uma lista não vazia.');
+  if (!['baixar', 'sync', 'estoque'].includes(dados.tipo)) erros.push('tipo precisa ser "baixar", "sync" ou "estoque".');
+  if (dados.tipo !== 'estoque' && (!Array.isArray(dados.secoes) || !dados.secoes.length)) erros.push('secoes precisa ser uma lista não vazia.');
   if (!['diaria', 'semanal'].includes(dados.frequencia)) erros.push('frequencia precisa ser "diaria" ou "semanal".');
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(dados.horario || '')) erros.push('horario precisa estar no formato HH:MM (24h).');
   if (dados.frequencia === 'semanal' && (dados.diaSemana === undefined || dados.diaSemana === null || Number(dados.diaSemana) < 0 || Number(dados.diaSemana) > 6)) {
@@ -78,7 +81,7 @@ function criarRotina(dados) {
     id: crypto.randomUUID(),
     nome: String(dados.nome).trim(),
     tipo: dados.tipo,
-    secoes: dados.secoes,
+    secoes: dados.secoes || [],
     opcoes: dados.opcoes || {},
     frequencia: dados.frequencia,
     horario: dados.horario,

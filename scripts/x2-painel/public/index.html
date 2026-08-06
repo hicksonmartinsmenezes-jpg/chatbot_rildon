@@ -93,11 +93,14 @@
   .toolbar-sep { flex: 1; }
 
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th { text-align: left; color: var(--muted); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--panel); }
+  th { text-align: left; color: var(--muted); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--panel); cursor: help; }
   td { padding: 7px 10px; border-bottom: 1px solid var(--border); }
   tr:hover td { background: var(--panel-2); }
+  tr.selecionada td { background: rgba(37,99,235,.10); }
+  tr.selecionada:hover td { background: rgba(37,99,235,.16); }
   .table-wrap { max-height: 460px; overflow-y: auto; }
   .table-empty { padding: 30px 10px; text-align: center; color: var(--muted); font-size: 13px; }
+  .skeleton { color: var(--muted); font-size: 12.5px; padding: 10px 4px; }
 
   .badge {
     display: inline-block;
@@ -176,6 +179,14 @@
   .status-line.rodando .status-dot { background: var(--green); box-shadow: 0 0 0 3px rgba(34,197,94,.2); }
   .status-line.erro { color: var(--red); }
   .status-line.erro .status-dot { background: var(--red); }
+  .status-line.concluido { color: var(--green); }
+  .status-line.concluido .status-dot { background: var(--green); }
+
+  .progresso-wrap { display: none; margin-top: 12px; }
+  .progresso-wrap.show { display: block; }
+  .progresso-bar-track { background: var(--panel-2); border: 1px solid var(--border); border-radius: 999px; height: 10px; overflow: hidden; }
+  .progresso-bar-fill { height: 100%; background: linear-gradient(90deg, var(--blue), #60a5fa); border-radius: 999px; transition: width .25s ease; width: 0%; }
+  .progresso-label { font-size: 11.5px; color: var(--muted); margin-top: 5px; }
 
   .aguardando-banner {
     display: none;
@@ -212,7 +223,7 @@
   <h1>Painel Fotos X2</h1>
   <p class="subtitle">Baixar fotos, sincronizar produtos novos e montar os pacotes finais — mesmos dados do Catálogo do painel do bot, sempre em sincronia.</p>
 
-  <div class="stats-row" id="stats-row"></div>
+  <div class="stats-row" id="stats-row"><div class="skeleton">Carregando resumo...</div></div>
 
   <div class="layout">
 
@@ -240,13 +251,13 @@
             <tr>
               <th style="width:26px"></th>
               <th>Seção</th>
-              <th>Produtos</th>
-              <th>Baixados</th>
-              <th>Publicados</th>
-              <th>Fotos pequenas</th>
+              <th title="Total de produtos dessa seção cadastrados no catálogo (arquivo JSON).">Produtos</th>
+              <th title="Já processados pelo scraper nesta máquina (com foto real, mesmo que ainda não publicado).">Baixados</th>
+              <th title="Visível AGORA na busca do Catálogo do painel do bot — só bate com 'Baixados' depois de rodar 'Montar zip'.">Publicados</th>
+              <th title="Fotos baixadas abaixo de 400px de largura — pode ser miniatura em vez da foto original.">Fotos pequenas</th>
             </tr>
           </thead>
-          <tbody id="tabela-secoes"></tbody>
+          <tbody id="tabela-secoes"><tr><td colspan="6" class="skeleton">Carregando seções...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -303,6 +314,11 @@
     <div class="aguardando-banner" id="banner-aguardando">
       <span id="banner-texto"></span>
       <button class="primary" id="btn-confirmar">Já cliquei, continuar</button>
+    </div>
+
+    <div class="progresso-wrap" id="progresso-wrap">
+      <div class="progresso-bar-track"><div class="progresso-bar-fill" id="progresso-bar-fill"></div></div>
+      <div class="progresso-label" id="progresso-label"></div>
     </div>
 
     <pre id="log">(sem execução ainda)</pre>
@@ -384,9 +400,10 @@
       const badgePequenas = s.pequenas > 0
         ? `<span class="badge badge-red">${s.pequenas} suspeita(s)</span>`
         : '<span class="badge badge-muted">0</span>';
+      const selecionada = selecionadas.has(s.slug);
       return `
-        <tr>
-          <td><input type="checkbox" data-slug="${s.slug}" ${selecionadas.has(s.slug) ? 'checked' : ''}></td>
+        <tr class="${selecionada ? 'selecionada' : ''}">
+          <td><input type="checkbox" data-slug="${s.slug}" ${selecionada ? 'checked' : ''}></td>
           <td>${s.label}<div class="cell-slug">${s.slug}</div></td>
           <td>${s.produtos}</td>
           <td>${s.baixados}/${s.produtos}</td>
@@ -400,6 +417,7 @@
       cb.addEventListener('change', () => {
         if (cb.checked) selecionadas.add(cb.dataset.slug);
         else selecionadas.delete(cb.dataset.slug);
+        cb.closest('tr').classList.toggle('selecionada', cb.checked);
         atualizarResumoSelecao();
       });
     });
@@ -432,22 +450,37 @@
     });
   }
 
+  let statusTimeoutId = null;
+  let rodandoAnterior = false;
+
   function aplicarEstadoExecucao(payload) {
     rodando = !!payload.rodando;
     aplicarBotoesDesabilitados();
 
     const statusEl = el('status-execucao');
+    clearTimeout(statusTimeoutId);
+
     if (payload.erro) {
       statusEl.innerHTML = `<span class="status-dot"></span> Erro: ${payload.erro}`;
       statusEl.className = 'status-line erro';
     } else if (rodando) {
       statusEl.innerHTML = `<span class="status-dot"></span> Rodando: ${payload.tipo}...`;
       statusEl.className = 'status-line rodando';
+    } else if (rodandoAnterior) {
+      // Pedido do usuário (2026-08-06): dar um retorno visual claro quando
+      // uma ação termina, em vez de só voltar pro texto neutro em silêncio.
+      statusEl.innerHTML = `<span class="status-dot"></span> Concluído — números atualizados.`;
+      statusEl.className = 'status-line concluido';
+      statusTimeoutId = setTimeout(() => {
+        statusEl.innerHTML = `<span class="status-dot"></span> Nada rodando agora.`;
+        statusEl.className = 'status-line';
+      }, 6000);
+      carregarStatus(); // ação terminou — atualiza os números da tabela/resumo
     } else {
       statusEl.innerHTML = `<span class="status-dot"></span> Nada rodando agora.`;
       statusEl.className = 'status-line';
-      carregarStatus(); // ação terminou — atualiza os números da tabela/resumo
     }
+    rodandoAnterior = rodando;
 
     const banner = el('banner-aguardando');
     if (payload.aguardando) {
@@ -455,6 +488,22 @@
       banner.classList.add('show');
     } else {
       banner.classList.remove('show');
+    }
+
+    // Pedido original do usuário: barra de progresso ao vivo, não só texto
+    // — lê a última linha "[N/M]" que o scraper já escreve (ver
+    // x2-fotos-scraper.js), sem precisar de nenhum dado novo do backend.
+    const progressoWrap = el('progresso-wrap');
+    const match = rodando && payload.texto ? [...payload.texto.matchAll(/\[(\d+)\/(\d+)\]/g)].pop() : null;
+    if (match) {
+      const feito = Number(match[1]);
+      const total = Number(match[2]);
+      const pct = total > 0 ? Math.min(100, Math.round((feito / total) * 100)) : 0;
+      el('progresso-bar-fill').style.width = `${pct}%`;
+      el('progresso-label').textContent = `${feito}/${total} (${pct}%)`;
+      progressoWrap.classList.add('show');
+    } else if (!rodando) {
+      progressoWrap.classList.remove('show');
     }
 
     if (payload.texto) {
@@ -520,18 +569,24 @@
       return;
     }
     if (btn.dataset.action === 'baixar') {
+      const reiniciar = el('opt-reiniciar').checked;
+      // Pedido do usuário: opção destrutiva (apaga progresso já baixado)
+      // pede confirmação extra em vez de disparar direto no clique.
+      if (reiniciar && !confirm(`Isso apaga o progresso já salvo das ${selecionadas.size} seção(ões) selecionada(s) e baixa tudo de novo do zero. Confirma?`)) return;
       dispararAcao('baixar', {
         retrySemFoto: el('opt-retry-sem-foto').checked,
-        reiniciar: el('opt-reiniciar').checked,
+        reiniciar,
         limit: el('opt-limit').value ? Number(el('opt-limit').value) : null,
       });
       return;
     }
     if (btn.dataset.action === 'sync') {
+      const forcarRemocao = el('opt-forcar-remocao').checked;
+      if (forcarRemocao && !confirm('Isso força a remoção em massa mesmo se for muita coisa de uma vez (trava de segurança normalmente bloquearia). Confirma?')) return;
       dispararAcao('sync', {
         dryRun: el('opt-dry-run').checked,
         semRemover: !el('opt-remover-desativados').checked,
-        forcarRemocao: el('opt-forcar-remocao').checked,
+        forcarRemocao,
       });
       return;
     }

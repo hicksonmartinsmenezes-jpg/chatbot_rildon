@@ -52,6 +52,11 @@ const os = require('os');
 const readline = require('readline');
 const { chromium } = require('playwright');
 
+// Sem isso, X2_USUARIO/X2_SENHA só carregavam quando este script rodava
+// DENTRO do server.js — rodando direto pelo terminal, process.env ficava
+// vazio. Confirmado ao vivo 2026-08-06 (ver x2-estoque-export.js).
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
+
 const WORK_DIR = path.join(os.homedir(), '.x2-rildon-scraper');
 const PROFILE_DIR = path.join(WORK_DIR, 'chrome-profile');
 const PAINEL_PRODUTOS_DIR = path.join(WORK_DIR, 'painel-produtos');
@@ -88,12 +93,17 @@ async function tentarLoginAutomaticoSeNecessario(page) {
 // verdade (nunca por URL direta — confirmado bloqueado pelo servidor, ver
 // x2-estoque-export.js pro relato completo dessa descoberta).
 async function abrirPainelProdutos(page, { modoAutomatico } = {}) {
-  await page.goto(HOME_URL).catch(() => {});
-  await page.waitForTimeout(1000);
-
   if (modoAutomatico) {
+    // ⚠️ Confirmado ao vivo 2026-08-06 (testando x2-estoque-export.js, mesmo
+    // padrão): goto() direto pra HOME_URL dispara a trava de "acesso direto
+    // não permitido" mesmo já logado ("Gerenciamento de Acesso / Acesso
+    // Negado!"). LOGIN_URL sempre carrega direto sem bloqueio. Por isso
+    // entra sempre por ali — se já tiver sessão válida, o X2 redireciona
+    // sozinho pra fora da tela de login.
+    await page.goto(LOGIN_URL).catch(() => {});
+    await page.waitForTimeout(1000);
     await tentarLoginAutomaticoSeNecessario(page);
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1000);
   }
 
   await page.locator('a').first().click({ timeout: 10000 });

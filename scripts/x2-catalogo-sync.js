@@ -77,6 +77,11 @@ const readline = require('readline');
 const { chromium } = require('playwright');
 const { SECOES } = require('./x2-fotos-scraper');
 
+// Sem isso, X2_USUARIO/X2_SENHA só carregavam quando este script rodava
+// DENTRO do server.js — rodando direto pelo terminal, process.env ficava
+// vazio. Confirmado ao vivo 2026-08-06 (ver x2-estoque-export.js).
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
+
 const PROJECT_ROOT = path.join(__dirname, '..');
 const CATALOGO_DIR = path.join(PROJECT_ROOT, 'src', 'config', 'catalogo-x2');
 
@@ -194,8 +199,13 @@ async function garantirTelaCatalogoAberta(context, { confirmar, modoAutomatico }
       await tentarLoginAutomatico(page);
     }
 
-    await page.goto('https://sistemas7.xprocess.com.br/x2rildon/www/index_main4.jsp').catch(() => {});
-    await page.waitForTimeout(1000);
+    // ⚠️ Corrigido 2026-08-06: NÃO dar goto() direto pro index_main4.jsp
+    // depois do login — mesma trava de "acesso direto não permitido" que já
+    // bloqueava telas profundas também bloqueia essa URL como navegação
+    // "fria" (confirmado ao vivo testando x2-estoque-export.js, apareceu
+    // "Gerenciamento de Acesso / Acesso Negado!"). Clica o menu direto de
+    // onde o login deixou a página (o X2 já redireciona pra home sozinho).
+    await page.waitForTimeout(500);
     await page.locator('a').first().click({ timeout: 10000 }).catch(() => {});
     await page.waitForTimeout(500);
     await page.locator('a:has-text("Compras")').first().click({ timeout: 10000 }).catch(() => {});
@@ -475,7 +485,13 @@ async function main() {
     throw new Error(`Seção(ões) desconhecida(s): ${desconhecidos.join(', ')}. Opções: ${Object.keys(SECOES).join(', ')}`);
   }
 
-  await rodar(slugs, { channel, dryRun, semRemover, forcarRemocao });
+  // PEDIDO DO USUÁRIO (2026-08-06): mesma correção validada ao vivo no
+  // x2-estoque-export.js — rodar via terminal deve logar sozinho
+  // (X2_USUARIO/X2_SENHA no .env), sem pausar esperando Enter. Diferente do
+  // x2-fotos-scraper.js, esta tela (Compras > Catálogo de Produtos) NÃO tem
+  // o bloqueio de clique conhecido do popup de fotos — por isso aqui dá pra
+  // automatizar 100%, do login até o cadastro dos produtos novos.
+  await rodar(slugs, { channel, dryRun, semRemover, forcarRemocao, modoAutomatico: true });
 }
 
 if (require.main === module) {

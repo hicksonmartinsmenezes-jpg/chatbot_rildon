@@ -74,6 +74,12 @@ const readline = require('readline');
 const { chromium } = require('playwright');
 const { criarZip } = require('../src/utils/zip-writer');
 
+// Sem isso, X2_USUARIO/X2_SENHA só carregavam quando este script rodava
+// DENTRO do server.js (que já dá o require de dotenv) — rodando direto
+// pelo terminal, process.env ficava vazio. Confirmado ao vivo 2026-08-06
+// (ver x2-estoque-export.js pro relato completo).
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
+
 const PROJECT_ROOT = path.join(__dirname, '..');
 const CATALOGO_DIR = path.join(PROJECT_ROOT, 'src', 'config', 'catalogo-x2');
 const FOTOS_DIR = path.join(CATALOGO_DIR, 'fotos');
@@ -205,27 +211,73 @@ async function tentarLoginAutomatico(page) {
   if (!page.url().includes('xprocess.com.br')) {
     await page.goto(LOGIN_URL).catch(() => {});
   }
+  // Confirmado ao vivo 2026-08-06 (inspeção do DOM real da tela de login via
+  // extensão do Chrome, depois de 2 tentativas "Acesso negado" seguidas):
+  // além de ter DOIS pares usuário/senha (o de mudar senha, escondido,
+  // name="matricula2"/"senha2"; e o de login de verdade, visível,
+  // name="matricula"/"senha"), a página tem IDs DUPLICADOS de verdade —
+  // id="email" aparece 2x, id="pwd" aparece 4x (bug da própria tela do X2).
+  // Se o onclick="verificarSenha()" usa getElementById('email'/'pwd') por
+  // dentro, ele sempre pega o PRIMEIRO da página (o campo escondido, vazio)
+  // não importa qual eu preencha por name= — foi exatamente por isso que
+  // preencher só o campo certo por name= (tentativa anterior) ainda deu
+  // "Acesso negado". Por isso preenche os DOIS pares (visível + escondido)
+  // com o mesmo valor, cobrindo os dois jeitos de ler o campo — sem tocar
+  // em nova_senha/nova_senha_confirma (pra não disparar troca de senha).
+  // O botão de submit também não é um <form> comum — é um <a>"Acessar" com
+  // onclick="verificarSenha()" (existe um 2º "Acessar" ESCONDIDO de outro
+  // fluxo, por isso o clique tem que ser no visível).
   const preenchido = await page.evaluate(({ usuario, senha }) => {
-    const campoUsuario = document.querySelector('input[type="text"], input[type="email"]');
-    const campoSenha = document.querySelector('input[type="password"]');
-    if (!campoUsuario || !campoSenha) return false;
-    campoUsuario.value = usuario;
-    campoUsuario.dispatchEvent(new Event('input', { bubbles: true }));
-    campoSenha.value = senha;
-    campoSenha.dispatchEvent(new Event('input', { bubbles: true }));
+    const preencher = (el) => {
+      if (!el) return false;
+      el.value = usuario;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    };
+    const preencherSenha = (el) => {
+      if (!el) return false;
+      el.value = senha;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    };
+    const campoUsuario = document.querySelector('input[name="matricula"]');
+    const campoUsuario2 = document.querySelector('input[name="matricula2"]');
+    const campoSenha = document.querySelector('input[name="senha"]');
+    const campoSenha2 = document.querySelector('input[name="senha2"]');
+    if (!campoUsuario || !campoSenha) return { ok: false, erro: 'campos de usuário/senha (matricula/senha) não encontrados' };
+    preencher(campoUsuario);
+    preencher(campoUsuario2);
+    preencherSenha(campoSenha);
+    preencherSenha(campoSenha2);
+    const visivel = (el) => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+    const acessar = Array.from(document.querySelectorAll('a')).find((a) => a.textContent.trim() === 'Acessar' && visivel(a));
+    if (acessar) {
+      acessar.click();
+      return { ok: true };
+    }
     const form = campoSenha.closest('form');
     if (form) {
       if (form.requestSubmit) form.requestSubmit();
       else form.submit();
-      return true;
+      return { ok: true };
     }
-    return false;
+    return { ok: false, erro: 'nem o botão "Acessar" nem um <form> foram encontrados' };
   }, { usuario, senha });
-  if (!preenchido) {
-    throw new Error('Login automático: não encontrei os campos de usuário/senha na tela do X2 — os seletores usados são um chute (nunca confirmado ao vivo), precisa ajustar olhando a tela real.');
+  if (!preenchido.ok) {
+    throw new Error(`Login automático: ${preenchido.erro} — a tela de login do X2 pode ter mudado, precisa confirmar ao vivo.`);
   }
   await page.waitForLoadState('domcontentloaded').catch(() => {});
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(2000);
+
+  // Verificação explícita — sem isso, um login que falha silenciosamente
+  // só aparece depois, com um erro confuso de "não achei tal botão" 2
+  // passos adiante (foi exatamente o que aconteceu na 1ª tentativa).
+  const aindaNaLogin = /login/i.test(page.url()) || (await page.locator('input[type="password"]').count().catch(() => 0)) > 0;
+  if (aindaNaLogin) {
+    throw new Error('Login automático: preenchi os campos e cliquei em "Acessar", mas ainda pareço estar na tela de login — confira se X2_USUARIO/X2_SENHA no .env estão corretos.');
+  }
 }
 
 // Acha o popup já aberto, ou pausa pedindo pro usuário logar/clicar. Só
@@ -274,8 +326,15 @@ async function garantirPopupAberto(context, { confirmar, modoAutomatico } = {}) 
       await tentarLoginAutomatico(page);
     }
 
-    await page.goto('https://sistemas7.xprocess.com.br/x2rildon/www/index_main4.jsp').catch(() => {});
-    await page.waitForTimeout(1000);
+    // ⚠️ Corrigido 2026-08-06 (2ª sessão de descoberta ao vivo, testando
+    // x2-estoque-export.js): NÃO dar goto() direto pro index_main4.jsp
+    // depois do login — mesma trava de "acesso direto não permitido" que já
+    // bloqueava telas profundas também bloqueia essa URL quando é uma
+    // navegação "fria" (sem vir de um clique/redirect de verdade),
+    // confirmado ao vivo (apareceu "Gerenciamento de Acesso / Acesso
+    // Negado!"). Por isso agora clica o menu direto de onde o login deixou
+    // a página (o próprio X2 redireciona pra home depois do login).
+    await page.waitForTimeout(500);
     // ☰ — primeiro link da página, confirmado ao vivo ser o ícone de menu
     // (ver x2-estoque-export.js pro mesmo padrão e a ressalva de fragilidade).
     await page.locator('a').first().click({ timeout: 10000 }).catch(() => {});
@@ -306,6 +365,23 @@ async function garantirPopupAberto(context, { confirmar, modoAutomatico } = {}) 
     await popup.waitForLoadState('domcontentloaded');
     await popup.waitForSelector('iframe[name="frame_pesquisa"]', { timeout: 15000 });
     return popup;
+  }
+
+  // Login automático também no modo manual (2026-08-06, pedido do usuário
+  // depois de validar isso no script de estoque): se X2_USUARIO/X2_SENHA
+  // estiverem no .env, tenta logar sozinho aqui também — sobra só o clique
+  // no popup "Catálogo de Produtos" pro usuário, que é o único passo que
+  // não dá pra automatizar (bloqueio de JS da própria página, ver aviso no
+  // topo do arquivo). Se não tiver credenciais ou o login falhar por
+  // qualquer motivo, cai pro fluxo 100% manual de sempre, sem travar.
+  const pareceLogin = /login/i.test(page.url()) || (await page.locator('input[type="password"]').count().catch(() => 0)) > 0;
+  if (pareceLogin) {
+    try {
+      await tentarLoginAutomatico(page);
+      console.log('Login automático ok — só falta abrir o popup "Catálogo de Produtos".');
+    } catch (e) {
+      console.log(`(login automático não deu: ${e.message} — faça login manualmente)`);
+    }
   }
 
   console.log('\n==============================================================');

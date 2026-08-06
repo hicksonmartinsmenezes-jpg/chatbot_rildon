@@ -65,6 +65,13 @@ const os = require('os');
 const readline = require('readline');
 const { chromium } = require('playwright');
 
+// Sem isso, X2_USUARIO/X2_SENHA (usados no login automático) só carregavam
+// quando este script rodava DENTRO do server.js (que já dá o require de
+// dotenv) — rodando direto pelo terminal (`node scripts\x2-estoque-export.js`)
+// process.env ficava vazio e o login automático falhava dizendo que as
+// variáveis não existiam, mesmo estando no .env. Confirmado ao vivo 2026-08-06.
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
+
 const WORK_DIR = path.join(os.homedir(), '.x2-rildon-scraper');
 const PROFILE_DIR = path.join(WORK_DIR, 'chrome-profile');
 const ESTOQUE_DIR = path.join(WORK_DIR, 'estoque');
@@ -108,14 +115,26 @@ async function tentarLoginAutomaticoSeNecessario(page) {
 // Navega até a tela "Relatório de Estoque" clicando pelo menu de verdade
 // (nunca por URL direta — ver aviso no topo do arquivo).
 async function abrirRelatorioEstoque(page, { modoAutomatico } = {}) {
-  await page.goto(HOME_URL).catch(() => {});
-  await page.waitForTimeout(1000);
-
   if (modoAutomatico) {
+    // ⚠️ Confirmado ao vivo 2026-08-06 (testando esta função direto pelo
+    // terminal): dar goto() direto pra HOME_URL — mesmo já logado — dispara
+    // a MESMA trava de "acesso direto não permitido" que já bloqueava
+    // telas profundas (ver aviso no topo do arquivo), aparecendo como
+    // "Gerenciamento de Acesso / Acesso Negado!" e voltando pra tela de
+    // login sozinha. LOGIN_URL, por outro lado, sempre carrega direto sem
+    // bloqueio (confirmado à parte). Por isso agora entra sempre pela tela
+    // de login — se já tiver sessão válida salva no perfil, o próprio X2
+    // redireciona sozinho pra fora dela, sem precisar logar de novo.
+    await page.goto(LOGIN_URL).catch(() => {});
+    await page.waitForTimeout(1000);
     await tentarLoginAutomaticoSeNecessario(page);
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1000);
   }
 
+  // Não navega mais pra lugar nenhum além disso — a partir daqui a página
+  // já deve estar na área logada (por redirect automático do X2 depois do
+  // login, ou porque o usuário já deixou logado manualmente antes de
+  // chegar aqui, no modo não-automático).
   // O ícone de menu (☰) não tem texto acessível — usamos "primeiro link da
   // página", confirmado ao vivo ser esse ícone nesta sessão de descoberta
   // (2026-08-06). É o ponto mais frágil desta função: se o X2 mudar o
@@ -268,7 +287,11 @@ async function main() {
   if (!OPCOES_ESTOQUE_VALIDAS.includes(estoqueOpcao)) {
     throw new Error(`--estoque inválido: "${estoqueOpcao}". Opções: ${OPCOES_ESTOQUE_VALIDAS.join(' | ')}`);
   }
-  await rodar({ channel: 'chrome', estoqueOpcao });
+  // PEDIDO DO USUÁRIO (2026-08-06): rodar via terminal deve logar sozinho
+  // (X2_USUARIO/X2_SENHA no .env), igual o modo rotina — sem pausar
+  // esperando Enter. Se a sessão salva no perfil já estiver logada,
+  // tentarLoginAutomaticoSeNecessario nem tenta logar de novo.
+  await rodar({ channel: 'chrome', estoqueOpcao, modoAutomatico: true });
 }
 
 if (require.main === module) {

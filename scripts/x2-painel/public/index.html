@@ -1154,11 +1154,18 @@
 
   document.addEventListener('click', async (ev) => {
     if (!ev.target.closest('[data-action="estoque-baixar-agora"]')) return;
+    // automatico:true (2026-08-07) — mesma correção já aplicada em
+    // "Capturar agora" da Qualidade Cadastral: login automático via
+    // X2_USUARIO/X2_SENHA já confirmado funcionando (ver x2-estoque-export.js),
+    // não tinha motivo real pra esse botão manual ainda parar esperando
+    // clique humano em "Já cliquei, continuar". Rotinas de estoque
+    // (agendadas) já rodavam automáticas — só o clique manual tinha ficado
+    // pra trás.
     const estoqueOpcao = el('estoque-opcao').value;
     const res = await fetch('/api/acao', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tipo: 'estoque', secoes: [], opcoes: { estoqueOpcao } }),
+      body: JSON.stringify({ tipo: 'estoque', secoes: [], opcoes: { estoqueOpcao, automatico: true } }),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));

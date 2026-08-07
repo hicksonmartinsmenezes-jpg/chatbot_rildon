@@ -266,6 +266,7 @@
     <span class="top-tab" data-top-tab="rotinas">Rotinas</span>
     <span class="top-tab" data-top-tab="estoque">Estoque</span>
     <span class="top-tab" data-top-tab="lancamentos">Lançamentos</span>
+    <span class="top-tab" data-top-tab="qualidade">Qualidade Cadastral</span>
   </div>
 
   <div class="top-painel active" data-top-painel="fotos">
@@ -523,6 +524,19 @@
       </div>
     </div>
   </div><!-- /top-painel lancamentos -->
+
+  <div class="top-painel" data-top-painel="qualidade">
+    <div class="aviso-banner">
+      ⚠️ Cada captura é um RETRATO do estado atual — sobrescreve a anterior (não acumula histórico das listas em si; só os totais entram no histórico do snapshot). Pode demorar 1-2 minutos (4 listas, uma pode ter milhares de produtos).
+    </div>
+
+    <div class="toolbar" style="margin-bottom:16px;">
+      <button class="primary" data-action="qualidade-capturar-agora">Capturar agora</button>
+      <span class="toolbar-sep"></span>
+    </div>
+
+    <div id="qualidade-secoes"></div>
+  </div><!-- /top-painel qualidade -->
 
 <script>
 (function () {
@@ -807,6 +821,7 @@
     if (tab.dataset.topTab === 'rotinas') carregarRotinas();
     if (tab.dataset.topTab === 'estoque') carregarEstoqueExports();
     if (tab.dataset.topTab === 'lancamentos') carregarLancamentos();
+    if (tab.dataset.topTab === 'qualidade') carregarQualidadeCadastral();
   });
 
   // ─── Rotinas (2026-08-06) ──────────────────────────────────────────
@@ -1063,6 +1078,105 @@
 
   document.addEventListener('click', (ev) => {
     if (ev.target.closest('[data-action="lancamentos-buscar"]')) carregarLancamentos();
+  });
+
+  // ─── Qualidade Cadastral (2026-08-07) — listas de Itens Inativos, Sem
+  // Foto/Arquivo, Preço de Venda Zerado, Sem Custo Médio (ver
+  // scripts/x2-painel-produtos-snapshot.js). Cada lista pode ter milhares
+  // de linhas — renderiza no máximo QUALIDADE_LIMITE_LINHAS de cada vez
+  // (filtrado pela busca), evita travar o navegador.
+  const QUALIDADE_LIMITE_LINHAS = 500;
+  const qualidadeDados = {}; // chave -> { headers, produtos }
+
+  async function carregarQualidadeCadastral() {
+    const res = await fetch('/api/painel-produtos/qualidade-cadastral');
+    const data = await res.json();
+    const tipos = data.tipos || [];
+    const container = el('qualidade-secoes');
+    container.innerHTML = tipos.map((t) => `
+      <div class="card" style="margin-bottom:16px;">
+        <h2>${t.labelBadge} <span class="contador" id="qualidade-contador-${t.chave}">...</span></h2>
+        <input type="text" class="search-input" data-qualidade-busca="${t.chave}" placeholder="Buscar por código ou descrição...">
+        <div class="table-wrap">
+          <table>
+            <thead><tr id="qualidade-cabecalho-${t.chave}"></tr></thead>
+            <tbody id="qualidade-tabela-${t.chave}"><tr><td class="skeleton">Carregando...</td></tr></tbody>
+          </table>
+        </div>
+        <p class="descricao" id="qualidade-info-${t.chave}" style="margin-top:8px;"></p>
+      </div>
+    `).join('');
+
+    tipos.forEach((t) => _carregarUmaListaQualidade(t.chave));
+  }
+
+  async function _carregarUmaListaQualidade(chave) {
+    const res = await fetch(`/api/painel-produtos/qualidade-cadastral/${chave}`);
+    const tbody = el(`qualidade-tabela-${chave}`);
+    const theadRow = el(`qualidade-cabecalho-${chave}`);
+    const contador = el(`qualidade-contador-${chave}`);
+    const info = el(`qualidade-info-${chave}`);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      contador.textContent = '—';
+      theadRow.innerHTML = '';
+      tbody.innerHTML = `<tr><td class="table-empty">${data.error || 'Nenhuma captura ainda.'}</td></tr>`;
+      return;
+    }
+    const data = await res.json();
+    const headers = data.headers || [];
+    const produtos = data.produtos || [];
+    qualidadeDados[chave] = { headers, produtos };
+
+    contador.textContent = produtos.length.toLocaleString('pt-BR');
+    theadRow.innerHTML = headers.map((h) => `<th>${h || ''}</th>`).join('');
+    _renderTabelaQualidade(chave, '');
+    info.textContent = data.capturadoEm ? `Capturado em ${formatarDataHora(data.capturadoEm)}.` : '';
+  }
+
+  function _renderTabelaQualidade(chave, filtro) {
+    const dados = qualidadeDados[chave];
+    const tbody = el(`qualidade-tabela-${chave}`);
+    if (!dados || !tbody) return;
+    const termo = filtro.trim().toLowerCase();
+    const colspan = dados.headers.length || 1;
+    const filtrados = termo
+      ? dados.produtos.filter((linha) => linha.some((c) => String(c || '').toLowerCase().includes(termo)))
+      : dados.produtos;
+
+    if (!filtrados.length) {
+      tbody.innerHTML = `<tr><td colspan="${colspan}" class="table-empty">Nenhum produto encontrado.</td></tr>`;
+      return;
+    }
+
+    const visiveis = filtrados.slice(0, QUALIDADE_LIMITE_LINHAS);
+    let html = visiveis.map((linha) => `<tr>${linha.map((c) => `<td>${c || ''}</td>`).join('')}</tr>`).join('');
+    if (filtrados.length > QUALIDADE_LIMITE_LINHAS) {
+      html += `<tr><td colspan="${colspan}" class="table-empty">Mostrando ${QUALIDADE_LIMITE_LINHAS} de ${filtrados.length.toLocaleString('pt-BR')} — refine a busca pra ver os outros.</td></tr>`;
+    }
+    tbody.innerHTML = html;
+  }
+
+  el('qualidade-secoes').addEventListener('input', (ev) => {
+    const chave = ev.target.dataset.qualidadeBusca;
+    if (!chave) return;
+    _renderTabelaQualidade(chave, ev.target.value);
+  });
+
+  document.addEventListener('click', async (ev) => {
+    if (!ev.target.closest('[data-action="qualidade-capturar-agora"]')) return;
+    const res = await fetch('/api/acao', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tipo: 'painel-produtos', secoes: [], opcoes: {} }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || 'Erro ao iniciar captura.');
+      return;
+    }
+    // acompanha o progresso na aba Fotos (mesmo mecanismo de SSE das outras ações)
+    el('top-tabs').querySelector('[data-top-tab="fotos"]').click();
   });
 
   carregarStatus();

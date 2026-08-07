@@ -43,6 +43,32 @@
  * Nada além de guardar é feito — sem processar/alertar/exibir ainda (o
  * projeto de estoque/qualidade cadastral em si é futuro, decisão já
  * registrada pro Estoque e reaproveitada aqui).
+ *
+ * ─── Listas de qualidade cadastral (2026-08-07) ───────────────────────────
+ * PEDIDO DO USUÁRIO: "no painel de gestão de produtos tem telas de itens
+ * inativos, sem fotos e sem preços, acho que poderia separar alguma aba com
+ * rotina para também armazenar esses dados". Quando este arquivo foi escrito
+ * (2026-08-06), cliques nos badges de Divergências/Situação pareciam não
+ * abrir lista nenhuma (só contador estático) — ver aviso acima. Isso estava
+ * ERRADO: confirmado ao vivo em 2026-08-07 que cada badge abre um filtro
+ * "<Rótulo> - Linha: <select>" e, ao escolher a opção "(N) Todas", mostra
+ * uma tabela real com os produtos daquela divergência (código, cód. barras,
+ * descrição, e colunas extras dependendo do tipo — ex: "Preço de Venda
+ * Zerado" e "Sem Custo Médio" mostram inputs de preço/custo editáveis,
+ * "Itens Inativos" mostra um botão "Ativar Produtos"). O engano anterior foi
+ * de automação: um clique de mouse sintético em cima da opção do <select>
+ * não disparava o evento `change` que a tela escuta — via teclado (ou via
+ * `select.value = ...; dispatchEvent(new Event('change'))`, o mesmo que
+ * Playwright faz internamente) funciona.
+ *
+ * `capturarTodasListasQualidade()` roda isso pras 4 divergências pedidas
+ * (`DIVERGENCIAS_LISTAVEIS`): clica o badge, seleciona "Todas" na Linha,
+ * espera a tabela carregar, extrai cabeçalho+linhas genericamente (sem
+ * assumir colunas fixas, já que cada tipo tem um layout um pouco diferente),
+ * e salva em `~/.x2-rildon-scraper/painel-produtos/qualidade-cadastral/
+ * <chave>.json` — SOBRESCREVE a cada captura (é um retrato do estado atual
+ * pro usuário visualizar, não um histórico acumulado — histórico de
+ * TOTAIS por divergência já existe em historico.json via capturarMetricas).
  */
 'use strict';
 
@@ -61,6 +87,17 @@ const WORK_DIR = path.join(os.homedir(), '.x2-rildon-scraper');
 const PROFILE_DIR = path.join(WORK_DIR, 'chrome-profile');
 const PAINEL_PRODUTOS_DIR = path.join(WORK_DIR, 'painel-produtos');
 const HISTORICO_PATH = path.join(PAINEL_PRODUTOS_DIR, 'historico.json');
+const QUALIDADE_DIR = path.join(PAINEL_PRODUTOS_DIR, 'qualidade-cadastral');
+
+// As 4 divergências que o usuário pediu pra capturar como LISTA (não só
+// contador) — 2026-08-07. `labelBadge` precisa bater exatamente com o texto
+// visível do badge no Painel (usado pra achar o elemento clicável).
+const DIVERGENCIAS_LISTAVEIS = [
+  { chave: 'itensInativos', labelBadge: 'Itens Inativos' },
+  { chave: 'semFotoArquivo', labelBadge: 'Sem Foto/Arquivo' },
+  { chave: 'precoVendaZerado', labelBadge: 'Preço de Venda Zerado' },
+  { chave: 'semCustoMedio', labelBadge: 'Sem Custo Médio' },
+];
 
 const HOME_URL = 'https://sistemas7.xprocess.com.br/x2rildon/www/index_main4.jsp';
 const LOGIN_URL = 'https://sistemas7.xprocess.com.br/seguranca/www/login_form.jsp';
@@ -189,6 +226,157 @@ async function capturarProdutosAtivos(page) {
   });
 }
 
+// ─── Listas de qualidade cadastral (2026-08-07, ver comentário no topo) ────
+
+// Clica no badge de uma divergência/situação (elemento-folha cujo texto
+// bate exatamente com o rótulo) — mesma técnica de leaf-node já usada pro
+// clique na aba "Painel" logo abaixo, e pro parsing genérico em
+// capturarMetricas().
+async function _clicarBadgeDivergencia(page, labelBadge) {
+  return page.evaluate((label) => {
+    const norm = (s) => String(s || '').normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '').toUpperCase().trim();
+    const frame = document.querySelector('iframe[name="principal"]');
+    const doc = frame && frame.contentDocument ? frame.contentDocument : document;
+    const alvo = norm(label);
+    const todos = Array.from(doc.querySelectorAll('*'));
+    for (const el of todos) {
+      if (el.children.length > 0) continue;
+      if (norm(el.textContent) === alvo) {
+        el.click();
+        return true;
+      }
+    }
+    return false;
+  }, labelBadge);
+}
+
+// Depois do clique no badge, aparece um <select> "<Rótulo> - Linha:" com
+// opções tipo "(47) ABRAÇADEIRA DE AÇO" e uma "(N) Todas" no topo. Achar
+// esse select pela PRESENÇA da opção "Todas" (o select "Unidade", que já
+// existe na tela antes do clique, não tem essa opção) evita depender de
+// id/name que não foram confirmados no DOM real.
+//
+// ⚠️ Setar `.value` + disparar 'change' via JS é o que corrige o engano de
+// 2026-08-06: um clique de mouse sintético na opção da lista NÃO disparava
+// o listener da tela (comprovado ao vivo); via teclado (seta+Enter) ou via
+// isso aqui (equivalente ao que Playwright faz internamente com
+// `selectOption`) funciona.
+async function _selecionarTodasNaLinha(page) {
+  return page.evaluate(() => {
+    const frame = document.querySelector('iframe[name="principal"]');
+    const doc = frame && frame.contentDocument ? frame.contentDocument : document;
+    const selects = Array.from(doc.querySelectorAll('select'));
+    for (const sel of selects) {
+      const opcaoTodas = Array.from(sel.options).find((o) => /\(\d+\)\s*todas/i.test(o.textContent));
+      if (opcaoTodas) {
+        sel.value = opcaoTodas.value;
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+      }
+    }
+    return false;
+  });
+}
+
+// Extrai a tabela de resultado de forma genérica (cada divergência tem
+// colunas diferentes — ex: "Itens Inativos" tem checkbox+Ativar Produtos,
+// "Preço de Venda Zerado"/"Sem Custo Médio" têm inputs de preço editáveis
+// em vez de texto puro). Não assume nomes de coluna fixos: pega cabeçalho +
+// linhas como arrays de texto, lendo `.value` quando a célula for um input.
+async function _scrapearTabelaResultado(page) {
+  return page.evaluate(() => {
+    const frame = document.querySelector('iframe[name="principal"]');
+    const doc = frame && frame.contentDocument ? frame.contentDocument : document;
+    const tabelas = Array.from(doc.querySelectorAll('table'));
+    for (const t of tabelas) {
+      const primeiraLinha = t.querySelector('tr');
+      if (!primeiraLinha) continue;
+      const headerTexto = primeiraLinha.textContent.toUpperCase();
+      if (!headerTexto.includes('DESCRI') && !headerTexto.includes('CÓDIGO') && !headerTexto.includes('CODIGO')) continue;
+
+      const linhas = Array.from(t.querySelectorAll('tr'));
+      const headers = Array.from(linhas[0].querySelectorAll('th, td')).map((c) => c.textContent.trim());
+      const produtos = linhas.slice(1)
+        .map((tr) => Array.from(tr.querySelectorAll('td')).map((td) => {
+          const input = td.querySelector('input[type="text"], input:not([type])');
+          if (input) return input.value;
+          return td.textContent.trim();
+        }))
+        .filter((celulas) => celulas.some((c) => c));
+      return { headers, produtos };
+    }
+    return { headers: [], produtos: [] };
+  });
+}
+
+// Volta o painel pro estado inicial (badges de Divergências/Situação
+// visíveis) — depois de abrir uma lista, o painel de conteúdo troca pra
+// mostrar só aquela lista, precisa clicar "Painel" de novo pra resetar
+// antes de capturar a próxima divergência.
+async function _voltarParaPainel(page) {
+  await page.evaluate(() => {
+    const norm = (s) => String(s || '').normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '').toUpperCase().trim();
+    const els = Array.from(document.querySelectorAll('button, a, input[type="button"], td, span, div'));
+    const el = els.find((e) => e.children.length === 0 && norm(e.textContent) === 'PAINEL');
+    if (el) el.click();
+  });
+  await page.waitForTimeout(1200);
+}
+
+function _salvarListaQualidade(chave, snapshot) {
+  fs.mkdirSync(QUALIDADE_DIR, { recursive: true });
+  fs.writeFileSync(path.join(QUALIDADE_DIR, `${chave}.json`), JSON.stringify(snapshot, null, 2));
+}
+
+/** Lê a última captura salva pra uma divergência (ou null se nunca rodou). */
+function carregarListaQualidade(chave) {
+  const caminho = path.join(QUALIDADE_DIR, `${chave}.json`);
+  if (!fs.existsSync(caminho)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(caminho, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+/** Captura a lista completa de uma única divergência (clica, seleciona
+ * "Todas", espera, extrai). Não volta pro Painel sozinha — quem chama
+ * decide quando resetar (capturarTodasListasQualidade faz isso no finally). */
+async function capturarListaDivergencia(page, { chave, labelBadge }) {
+  const clicou = await _clicarBadgeDivergencia(page, labelBadge);
+  if (!clicou) throw new Error(`Não encontrei o badge "${labelBadge}" no Painel.`);
+  await page.waitForTimeout(800);
+
+  const selecionou = await _selecionarTodasNaLinha(page);
+  if (!selecionou) throw new Error(`Não encontrei o filtro "Linha" (com opção "Todas") pra "${labelBadge}".`);
+  await page.waitForTimeout(1500);
+
+  const { headers, produtos } = await _scrapearTabelaResultado(page);
+  return { chave, labelBadge, capturadoEm: new Date().toISOString(), headers, produtos };
+}
+
+/** Roda capturarListaDivergencia pras 4 divergências configuradas, salvando
+ * cada uma (sobrescreve o arquivo anterior — é um retrato do estado atual,
+ * não histórico acumulado). Erros em uma divergência não impedem as outras. */
+async function capturarTodasListasQualidade(page) {
+  const resultados = {};
+  for (const cfg of DIVERGENCIAS_LISTAVEIS) {
+    try {
+      console.log(`Capturando lista: ${cfg.labelBadge}...`);
+      const snap = await capturarListaDivergencia(page, cfg);
+      _salvarListaQualidade(cfg.chave, snap);
+      resultados[cfg.chave] = { total: snap.produtos.length };
+      console.log(`  -> ${snap.produtos.length} produto(s) capturado(s).`);
+    } catch (e) {
+      console.log(`  -> falhou (${cfg.labelBadge}): ${e.message}`);
+      resultados[cfg.chave] = { erro: e.message };
+    } finally {
+      await _voltarParaPainel(page);
+    }
+  }
+  return resultados;
+}
+
 function carregarHistorico() {
   garantirPastas();
   if (!fs.existsSync(HISTORICO_PATH)) return [];
@@ -215,10 +403,17 @@ async function capturarSnapshot(context, { modoAutomatico } = {}) {
 
   const produtosAtivos = await capturarProdutosAtivos(page);
 
+  // Listas de qualidade cadastral (2026-08-07) — pedido do usuário. Roda
+  // DEPOIS de capturar métricas/produtos ativos porque clicar nos badges
+  // troca o conteúdo do painel; se desse erro aqui os dados já capturados
+  // acima não se perdem.
+  const listasQualidade = await capturarTodasListasQualidade(page);
+
   const snapshot = {
     capturadoEm: new Date().toISOString(),
     metricas: resultado.metricas,
     produtosAtivos,
+    listasQualidadeResumo: listasQualidade,
   };
   salvarSnapshot(snapshot);
 
@@ -263,7 +458,12 @@ module.exports = {
   WORK_DIR,
   PAINEL_PRODUTOS_DIR,
   HISTORICO_PATH,
+  QUALIDADE_DIR,
+  DIVERGENCIAS_LISTAVEIS,
   carregarHistorico,
   salvarSnapshot,
+  carregarListaQualidade,
+  capturarListaDivergencia,
+  capturarTodasListasQualidade,
   rodar,
 };

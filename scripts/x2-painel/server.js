@@ -290,6 +290,21 @@ app.get('/api/painel-produtos/historico', (req, res) => {
   res.json({ historico: painelProdutosSnapshot.carregarHistorico() });
 });
 
+// ─── Qualidade cadastral (2026-08-07) — listas de Itens Inativos, Sem
+// Foto/Arquivo, Preço de Venda Zerado, Sem Custo Médio. Capturadas junto
+// com o snapshot normal (tipo "painel-produtos", ver rodarAcao acima);
+// aqui só servimos a última captura salva em disco.
+app.get('/api/painel-produtos/qualidade-cadastral', (req, res) => {
+  res.json({ tipos: painelProdutosSnapshot.DIVERGENCIAS_LISTAVEIS });
+});
+app.get('/api/painel-produtos/qualidade-cadastral/:chave', (req, res) => {
+  const lista = painelProdutosSnapshot.carregarListaQualidade(req.params.chave);
+  if (!lista) {
+    return res.status(404).json({ error: 'Nenhuma captura ainda pra esse tipo — rode "Capturar agora" (ou a rotina Snapshot Painel de Produtos) primeiro.' });
+  }
+  res.json(lista);
+});
+
 // ─── Lançamentos (2026-08-07) — produtos novos detectados por diff entre
 // snapshots do CSV de estoque já baixados (ver scripts/x2-painel/
 // lancamentos.js). 100% arquivo local, não toca em banco nenhum.

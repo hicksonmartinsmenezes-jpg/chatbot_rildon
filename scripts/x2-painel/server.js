@@ -54,6 +54,7 @@ const scraper = require('../x2-fotos-scraper');
 const sync = require('../x2-catalogo-sync');
 const estoqueExport = require('../x2-estoque-export');
 const painelProdutosSnapshot = require('../x2-painel-produtos-snapshot');
+const qualidadeApenasCadastrados = require('./qualidade-apenas-cadastrados');
 const { listarEntradas } = require('../../src/utils/zip-reader');
 const rotinasStore = require('./rotinas');
 const lancamentos = require('./lancamentos');
@@ -363,10 +364,27 @@ app.get('/api/painel-produtos/historico', (req, res) => {
 // Foto/Arquivo, Preço de Venda Zerado, Sem Custo Médio. Capturadas junto
 // com o snapshot normal (tipo "painel-produtos", ver rodarAcao acima);
 // aqui só servimos a última captura salva em disco.
+// "Apenas Cadastrados" (2026-08-07) — 5ª categoria, mas de origem diferente
+// das outras 4: não vem de captura no navegador, é calculada na hora a
+// partir do CSV de estoque mais recente já baixado (ver comentário em
+// qualidade-apenas-cadastrados.js). Por isso entra na lista de `tipos` mas
+// tem tratamento à parte na rota de dados abaixo.
 app.get('/api/painel-produtos/qualidade-cadastral', (req, res) => {
-  res.json({ tipos: painelProdutosSnapshot.DIVERGENCIAS_LISTAVEIS });
+  res.json({
+    tipos: [
+      ...painelProdutosSnapshot.DIVERGENCIAS_LISTAVEIS,
+      { chave: qualidadeApenasCadastrados.CHAVE, labelBadge: qualidadeApenasCadastrados.LABEL_BADGE },
+    ],
+  });
 });
 app.get('/api/painel-produtos/qualidade-cadastral/:chave', (req, res) => {
+  if (req.params.chave === qualidadeApenasCadastrados.CHAVE) {
+    const lista = qualidadeApenasCadastrados.calcularApenasCadastrados();
+    if (!lista) {
+      return res.status(404).json({ error: 'Nenhum CSV de estoque baixado ainda — vá na aba Estoque e clique em "Baixar CSV agora" primeiro (opção "Com e sem estoque" traz o dado completo).' });
+    }
+    return res.json(lista);
+  }
   const lista = painelProdutosSnapshot.carregarListaQualidade(req.params.chave);
   if (!lista) {
     return res.status(404).json({ error: 'Nenhuma captura ainda pra esse tipo — rode "Capturar agora" (ou a rotina Snapshot Painel de Produtos) primeiro.' });

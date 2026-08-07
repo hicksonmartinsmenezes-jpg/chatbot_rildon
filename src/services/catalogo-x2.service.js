@@ -27,6 +27,13 @@
  */
 const fs = require("fs");
 const path = require("path");
+// PEDIDO DO USUÁRIO (2026-08-07): "Estoque ao vivo no Catálogo/orçamento" —
+// anexa qtd/preço de estoque (cache em memória, ver estoque.service.js) em
+// cada produto retornado. Cache pode estar vazio logo depois do boot (ainda
+// não carregou do banco) ou se a migration 024 não tiver sido aplicada —
+// nesse caso obterEstoque() devolve null e o produto aparece normalmente,
+// só sem o badge.
+const estoqueService = require("./estoque.service");
 
 const DIR_CATALOGO = path.join(__dirname, "../config/catalogo-x2");
 
@@ -392,6 +399,22 @@ function _resolverEquivalente(codigoBruto) {
   return null;
 }
 
+// Formato exposto ao frontend: { qtd, unidade, precoVarejo, precoAtacado }
+// ou null (sem dado de estoque pra esse código — a maioria dos ~17.400
+// produtos do catálogo, já que o Relatório de Estoque cobre só ~5.200).
+// custoMedio fica de fora de propósito (preço de custo não deve aparecer
+// pro atendente na tela de venda).
+function _anexarEstoque(codigo) {
+  const info = estoqueService.obterEstoque(codigo);
+  if (!info) return null;
+  return {
+    qtd: info.qtdEstoque,
+    unidade: info.unidade,
+    precoVarejo: info.precoVendaVarejo,
+    precoAtacado: info.precoVendaAtacado,
+  };
+}
+
 function _detalharEquivalentes(equivalentes) {
   if (!equivalentes || !equivalentes.length) return [];
   return equivalentes.map(codigoBruto => {
@@ -442,6 +465,7 @@ function buscarPorCodigo(codigoBruto, { limite = 30 } = {}) {
       barras: item.barras || null,
       marcaCompativel: false,
       anoCompativel: false,
+      estoque: _anexarEstoque(item.codigo),
     });
     if (resultado.length >= limite) break;
   }
@@ -606,6 +630,7 @@ function buscarProdutosPainel({ marca = "", modelo = "", ano = null, categoria =
       barras: p.barras || null,
       marcaCompativel: false,
       anoCompativel: false,
+      estoque: _anexarEstoque(p.codigo),
     }));
 
     return { total, produtos };
@@ -684,6 +709,7 @@ function buscarProdutosPainel({ marca = "", modelo = "", ano = null, categoria =
     barras: p.barras || null,
     marcaCompativel,
     anoCompativel,
+    estoque: _anexarEstoque(p.codigo),
   }));
 
   return { total, produtos };

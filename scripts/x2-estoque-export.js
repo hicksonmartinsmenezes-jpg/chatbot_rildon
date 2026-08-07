@@ -63,6 +63,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const readline = require('readline');
+const { execFile } = require('child_process');
 const { chromium } = require('playwright');
 
 // Sem isso, X2_USUARIO/X2_SENHA (usados no login automático) só carregavam
@@ -251,7 +252,59 @@ async function exportarEstoque(context, { estoqueOpcao = 'Com e sem estoque', mo
 
   await download.saveAs(destino);
   console.log(`CSV salvo em: ${destino}`);
+
+  // PEDIDO DO USUÁRIO (2026-08-07): "Estoque ao vivo no Catálogo/orçamento"
+  // — depois de baixar, dispara a importação pro banco automaticamente.
+  // Best-effort: se falhar (Docker parado, container com outro nome etc.),
+  // não derruba o export — o CSV já está salvo, só o Catálogo do painel
+  // não vai refletir os dados novos até rodar manualmente.
+  await _dispararImportacaoNoDocker(destino);
+
   return { arquivo: destino, nomeArquivo };
+}
+
+// Copia o CSV pra dentro do repo (src/data/estoque-latest.csv — mesma pasta
+// que o volume do docker-compose.yml monta como /app/src/data dentro do
+// container) e chama `docker exec chatbot_rildon_app npm run
+// importar-estoque`. NUNCA importa direto no host (ver aviso no topo do
+// arquivo e em src/services/estoque.service.js — Postgres nativo duplicado
+// na porta 5432 causaria import silencioso no banco errado).
+const REPO_ROOT = path.join(__dirname, '..');
+const CSV_HANDOFF_HOST = path.join(REPO_ROOT, 'src', 'data', 'estoque-latest.csv');
+const CSV_HANDOFF_CONTAINER = '/app/src/data/estoque-latest.csv';
+const DOCKER_CONTAINER = 'chatbot_rildon_app';
+
+async function _dispararImportacaoNoDocker(caminhoCsvOrigem) {
+  try {
+    fs.mkdirSync(path.dirname(CSV_HANDOFF_HOST), { recursive: true });
+    fs.copyFileSync(caminhoCsvOrigem, CSV_HANDOFF_HOST);
+  } catch (e) {
+    console.log(`(não consegui copiar o CSV pra ${CSV_HANDOFF_HOST}: ${e.message} — import pro banco não vai rodar.)`);
+    return;
+  }
+
+  console.log('Importando estoque pro banco (docker exec)...');
+  await new Promise((resolve) => {
+    execFile(
+      'docker',
+      ['exec', DOCKER_CONTAINER, 'npm', 'run', 'importar-estoque', '--', CSV_HANDOFF_CONTAINER],
+      { timeout: 60000 },
+      (err, stdout, stderr) => {
+        if (err) {
+          console.log(
+            `(import pro banco não rodou: ${err.message} — o CSV foi baixado normalmente, só o "estoque ao vivo" do ` +
+            `Catálogo que não atualizou. Confira se o Docker/container "${DOCKER_CONTAINER}" está rodando e a migration ` +
+            '024 foi aplicada — pode rodar à mão depois com: docker exec ' + DOCKER_CONTAINER +
+            ' npm run importar-estoque -- ' + CSV_HANDOFF_CONTAINER + ')'
+          );
+        } else {
+          console.log('Estoque importado pro banco — Catálogo do painel já reflete os dados novos.');
+          if (stdout) console.log(stdout.trim());
+        }
+        resolve();
+      }
+    );
+  });
 }
 
 async function rodar({ channel, estoqueOpcao, confirmar, modoAutomatico } = {}) {

@@ -19,6 +19,7 @@ const {
   limparMensagensProcessadas
 } = require("./database/postgres");
 
+const { carregarEstoque }      = require("./services/estoque.service");
 const { startAutoBackup }      = require("./services/backup.service");
 const { startScheduler: startCampaignScheduler } = require("./services/campaign-schedule.service");
 const { carregar: carregarHumanMode } = require("./services/humanMode.service");
@@ -55,6 +56,14 @@ initSocket(server);
 
     // 3. MELHORIA: agendar limpeza periódica da tabela de deduplicação (a cada 6h)
     setInterval(limparMensagensProcessadas, 6 * 60 * 60 * 1000);
+
+    // 3b. Cache de estoque do Catálogo X2 (pedido do usuário, 2026-08-07) —
+    // carrega uma vez no boot e recarrega a cada 30min (o CSV em si só é
+    // atualizado 1x/dia via Rotina, 30min é sobra de margem). Não bloqueia
+    // o boot em caso de falha (tabela pode não existir ainda — ver
+    // estoque.service.js).
+    await carregarEstoque();
+    setInterval(carregarEstoque, 30 * 60 * 1000);
 
     // 4. Iniciar backup automático
     startAutoBackup();

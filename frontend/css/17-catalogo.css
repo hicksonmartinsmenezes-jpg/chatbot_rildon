@@ -730,6 +730,37 @@
   border: 1px solid rgba(148, 163, 184, 0.26);
 }
 
+/* ─── Estoque ao vivo (pedido do usuário, 2026-08-07) ───────────────────
+   Só aparece quando o produto tem dado do Relatório de Estoque do X2
+   (~5.200 dos 17.400 produtos) — sem dado nenhum, não mostra nada (não dá
+   pra afirmar "sem estoque" sem ter consultado). */
+.catalogo-card-estoque {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 10px;
+}
+
+.catalogo-badge-estoque-ok {
+  color: #bbf7d0;
+  background: rgba(34, 197, 94, 0.16);
+  border: 1px solid rgba(34, 197, 94, 0.32);
+}
+
+.catalogo-badge-estoque-zero {
+  color: #fecaca;
+  background: rgba(239, 68, 68, 0.16);
+  border: 1px solid rgba(239, 68, 68, 0.32);
+}
+
+.catalogo-card-precos {
+  font-size: 11.5px;
+  color: var(--text-secondary, #94a3b8);
+  font-weight: 600;
+}
+
 /* ─── "Ver referências" (pedido do usuário, 2026-07-30) ───────────
    Botão some pro rodapé junto dos badges (mesmo margin-top:auto do pai,
    .catalogo-card-badges); o painel expandido fica logo abaixo, com os

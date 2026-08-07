@@ -454,6 +454,39 @@ function _catalogoReferenciasHTML(produto) {
 // (aí sim vale avisar "confirme com o cliente" quando nada bateu). No modo
 // navegação (só Seção/Linha, sem veículo informado) não tem comparação
 // nenhuma sendo feita — mostrar o aviso em toda peça listada seria ruído.
+// PEDIDO DO USUÁRIO (2026-08-07): "Estoque ao vivo no Catálogo/orçamento" —
+// produto.estoque vem null pra ~2/3 dos produtos (Relatório de Estoque do
+// X2 cobre ~5.200 dos 17.400 do catálogo) — nesse caso não mostra nada
+// (sem dado ≠ zero produtos, não dá pra afirmar "sem estoque" sem saber).
+function _formatarPrecoBRL(valor) {
+  if (valor === null || valor === undefined) return null;
+  return "R$ " + Number(valor).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function _catalogoEstoqueHTML(estoque) {
+  if (!estoque) return "";
+  const qtd = Number(estoque.qtd) || 0;
+  const temEstoque = qtd > 0;
+  const badgeClasse = temEstoque ? "catalogo-badge-estoque-ok" : "catalogo-badge-estoque-zero";
+  const badgeIcone = temEstoque ? "fa-solid fa-check" : "fa-solid fa-triangle-exclamation";
+  const badgeTexto = temEstoque
+    ? `${qtd % 1 === 0 ? qtd : qtd.toFixed(2)} em estoque`
+    : "Sem estoque";
+  const precoVarejo = _formatarPrecoBRL(estoque.precoVarejo);
+  const precoAtacado = _formatarPrecoBRL(estoque.precoAtacado);
+  const precos = [
+    precoVarejo ? `Varejo: ${precoVarejo}` : null,
+    precoAtacado ? `Atacado: ${precoAtacado}` : null,
+  ].filter(Boolean).join(" · ");
+
+  return `
+    <div class="catalogo-card-estoque">
+      <span class="catalogo-badge ${badgeClasse}"><i class="${badgeIcone}"></i> ${badgeTexto}</span>
+      ${precos ? `<span class="catalogo-card-precos">${precos}</span>` : ""}
+    </div>
+  `;
+}
+
 function _catalogoCardHTML(produto, mostrarBadgeNeutro) {
   const badges = [];
   if (produto.marcaCompativel) {
@@ -513,6 +546,7 @@ function _catalogoCardHTML(produto, mostrarBadgeNeutro) {
         ` : ""}
 
         <div class="catalogo-card-badges">${badges.join("")}</div>
+        ${_catalogoEstoqueHTML(produto.estoque)}
         ${_catalogoReferenciasHTML(produto)}
       </div>
     </article>

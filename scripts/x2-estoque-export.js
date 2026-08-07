@@ -201,20 +201,46 @@ async function configurarFiltros(page, { estoqueOpcao }) {
 }
 
 // Clica um botão/link pelo TEXTO visível, dentro do iframe principal —
-// evita depender de name=/id= que não foram confirmados ao vivo.
+// acha o elemento certo via texto normalizado (evita depender de name=/id=
+// não confirmados ao vivo), mas o CLIQUE em si é sempre um clique de
+// VERDADE do Playwright (via CDP), nunca um el.click() sintético dentro da
+// página.
+//
+// ⚠️ Corrigido 2026-08-07 (falha ao vivo: "Exportar em CSV" parecia clicar
+// sem erro — clicarPorTexto retornava true — mas o
+// context.waitForEvent('download') estourava 60s, 2x seguidas). Causa
+// mais provável: el.click() disparado de DENTRO de page.evaluate() não
+// conta como "gesto de usuário confiável" pro Chromium. Se o botão dispara
+// a exportação via window.open()/navegação de popup (comum nas telas JSP
+// antigas do X2), o navegador bloqueia isso silenciosamente por não ser um
+// clique confiável — sem erro nenhum, só o download nunca acontece. Mesma
+// categoria de bloqueio já documentada em x2-fotos-scraper.js pro botão
+// "Catálogo de Produtos" (lá a saída foi evitar .click() de vez, setando
+// .src direto — aqui não dá, precisa ser um clique de verdade no botão).
+// Fix: marca o elemento certo com um atributo temporário via evaluate, e
+// clica nele de verdade via locator do Playwright (dispatcha um evento de
+// mouse confiável via CDP — conta como gesto de usuário de verdade).
+// ⚠️ NÃO validado ao vivo ainda — próxima rodada da aba Estoque confirma.
 async function clicarPorTexto(page, texto) {
-  return page.evaluate((texto) => {
+  const MARK_ATTR = 'data-x2-click-target';
+  const achou = await page.evaluate(({ texto, MARK_ATTR }) => {
     const norm = (s) => String(s || '').normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '').toUpperCase().trim();
     const frame = document.querySelector('iframe[name="principal"]');
     if (!frame || !frame.contentDocument) return false;
     const doc = frame.contentDocument;
+    Array.from(doc.querySelectorAll(`[${MARK_ATTR}]`)).forEach((el) => el.removeAttribute(MARK_ATTR));
     const alvo = norm(texto);
     const elementos = Array.from(doc.querySelectorAll('button, input[type="button"], input[type="submit"], a'));
     const el = elementos.find((e) => norm(e.textContent || e.value) === alvo);
     if (!el) return false;
-    el.click();
+    el.setAttribute(MARK_ATTR, '1');
     return true;
-  }, texto);
+  }, { texto, MARK_ATTR });
+
+  if (!achou) return false;
+
+  await page.frameLocator('iframe[name="principal"]').locator(`[${MARK_ATTR}="1"]`).first().click({ timeout: 10000 });
+  return true;
 }
 
 function nomeArquivoTimestamp() {

@@ -6,47 +6,84 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   /* ══════════════════════════════════════════════════════════════
-     Redesign 2026-08-07 — visual limpo/moderno, tema claro.
-     Só a "pele" (cores, espaçamento, tipografia, sombras) mudou —
-     todo id/classe/data-attribute usado pelo JS abaixo permanece
-     idêntico, então nada de comportamento foi tocado aqui.
+     Redesign 2026-08-07 (v2) — minimalista, tema preto, sidebar de
+     ícones (referência escolhida pelo usuário: "Minimalista e Limpo").
+     Só a "pele" + a posição dos elementos de navegação mudou — todo
+     id/classe/data-attribute usado pelo JS abaixo permanece idêntico,
+     então nenhum comportamento foi tocado aqui.
      ══════════════════════════════════════════════════════════════ */
   :root {
-    --bg: #f5f6fa;
-    --surface: #ffffff;
-    --surface-2: #f4f5f9;
-    --surface-3: #ececf3;
-    --border: #e6e7ef;
-    --border-strong: #d9dbe6;
-    --text: #1a1c29;
-    --text-2: #4b4f63;
-    --muted: #8a8fa3;
-    --primary: #4f46e5;
-    --primary-strong: #4338ca;
-    --primary-soft: #eef0fe;
-    --primary-soft-text: #4338ca;
-    --green: #16a34a;
-    --green-soft: #eafbf0;
-    --amber: #b45309;
-    --amber-soft: #fef3e2;
-    --red: #dc2626;
-    --red-soft: #fdedec;
+    --bg: #0a0a0c;
+    --sidebar-bg: #000000;
+    --surface: #131316;
+    --surface-2: #1c1c20;
+    --surface-3: #232327;
+    --border: #26262b;
+    --border-strong: #333338;
+    --text: #f2f2f4;
+    --text-2: #b4b4bc;
+    --muted: #75757e;
+    --green: #3ddc84;
+    --green-soft: rgba(61, 220, 132, .14);
+    --amber: #f5b942;
+    --amber-soft: rgba(245, 185, 66, .14);
+    --red: #ff6b6b;
+    --red-soft: rgba(255, 107, 107, .14);
     --radius: 16px;
     --radius-sm: 10px;
-    --shadow-sm: 0 1px 2px rgba(20, 21, 41, .04);
-    --shadow-md: 0 8px 24px rgba(20, 21, 41, .06);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, .35);
+    --sidebar-w: 76px;
   }
   * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
   body {
-    margin: 0;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif;
     background: var(--bg);
     color: var(--text);
-    padding: 34px 40px 56px;
     -webkit-font-smoothing: antialiased;
   }
-  h1 { font-size: 23px; font-weight: 700; letter-spacing: -.01em; margin: 0 0 4px; }
+  h1 { font-size: 22px; font-weight: 700; letter-spacing: -.01em; margin: 0 0 4px; }
   .subtitle { color: var(--muted); margin: 0 0 28px; font-size: 13.5px; max-width: 780px; line-height: 1.55; }
+
+  /* ─── Casca do app: sidebar + conteúdo ─────────────────────────── */
+  .app-shell { display: flex; min-height: 100vh; }
+  .sidebar {
+    width: var(--sidebar-w);
+    flex: none;
+    background: var(--sidebar-bg);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px 0;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+  }
+  .sidebar-logo {
+    width: 40px; height: 40px;
+    border-radius: 11px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 800; letter-spacing: -.02em;
+    color: var(--text);
+    margin-bottom: 28px;
+    flex: none;
+  }
+  .sidebar-footer {
+    margin-top: auto;
+    display: flex; flex-direction: column; align-items: center;
+    gap: 6px;
+    font-size: 9.5px;
+    color: var(--muted);
+    text-align: center;
+    line-height: 1.4;
+    padding-top: 16px;
+  }
+  .sidebar-footer .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+
+  .main-content { flex: 1; min-width: 0; padding: 34px 40px 56px; max-width: 1440px; }
 
   /* ─── Cards base ──────────────────────────────────────────────── */
   .card {
@@ -66,6 +103,7 @@
     gap: 14px;
     margin-bottom: 24px;
   }
+  .stats-row.cols-4 { grid-template-columns: repeat(4, 1fr); }
   .stat-card {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -99,7 +137,7 @@
     transition: border-color .12s, background .12s;
   }
   .search-input::placeholder { color: var(--muted); }
-  .search-input:focus { outline: none; border-color: var(--primary); background: var(--surface); box-shadow: 0 0 0 3px var(--primary-soft); }
+  .search-input:focus { outline: none; border-color: var(--border-strong); background: var(--surface-3); box-shadow: 0 0 0 3px rgba(255,255,255,.05); }
   .filtro-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
   .chip {
     padding: 6px 13px;
@@ -114,7 +152,7 @@
     transition: background .12s, border-color .12s, color .12s;
   }
   .chip:hover { border-color: var(--border-strong); color: var(--text); }
-  .chip.active { background: var(--primary-soft); border-color: var(--primary); color: var(--primary-soft-text); }
+  .chip.active { background: var(--surface-3); border-color: var(--text); color: #fff; }
 
   .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
   .toolbar-sep { flex: 1; }
@@ -123,8 +161,8 @@
   th { text-align: left; color: var(--muted); font-weight: 700; font-size: 11.5px; text-transform: uppercase; letter-spacing: .03em; padding: 9px 12px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--surface); cursor: help; }
   td { padding: 10px 12px; border-bottom: 1px solid var(--border); color: var(--text-2); }
   tr:hover td { background: var(--surface-2); }
-  tr.selecionada td { background: var(--primary-soft); }
-  tr.selecionada:hover td { background: #e4e6fd; }
+  tr.selecionada td { background: rgba(255,255,255,.06); }
+  tr.selecionada:hover td { background: rgba(255,255,255,.09); }
   .table-wrap { max-height: 460px; overflow-y: auto; border-radius: var(--radius-sm); }
   .table-empty { padding: 34px 10px; text-align: center; color: var(--muted); font-size: 13px; }
   .skeleton { color: var(--muted); font-size: 12.5px; padding: 10px 4px; }
@@ -149,23 +187,22 @@
     font-family: inherit;
     cursor: pointer;
     border: 1px solid var(--border);
-    background: var(--surface);
+    background: var(--surface-2);
     color: var(--text);
     padding: 9px 16px;
     border-radius: 9px;
     font-size: 13px;
     font-weight: 600;
     transition: background .12s, border-color .12s, box-shadow .12s, opacity .12s;
-    box-shadow: var(--shadow-sm);
   }
-  button:hover { background: var(--surface-2); border-color: var(--border-strong); }
+  button:hover { background: var(--surface-3); border-color: var(--border-strong); }
   button:disabled { opacity: .4; cursor: not-allowed; box-shadow: none; }
-  button.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
-  button.primary:hover { background: var(--primary-strong); border-color: var(--primary-strong); }
-  button.primary-green { background: var(--green); border-color: var(--green); color: #fff; }
-  button.primary-green:hover { background: #128a3e; border-color: #128a3e; }
+  button.primary { background: #fff; border-color: #fff; color: #0a0a0c; }
+  button.primary:hover { background: #dcdce0; border-color: #dcdce0; }
+  button.primary-green { background: var(--green); border-color: var(--green); color: #06210f; }
+  button.primary-green:hover { background: #58e69c; border-color: #58e69c; }
   button.small { padding: 6px 11px; font-size: 12px; }
-  button.ghost { background: transparent; box-shadow: none; }
+  button.ghost { background: transparent; }
   button.ghost:hover { background: var(--surface-2); }
   button.full { width: 100%; margin-top: 6px; }
 
@@ -196,7 +233,7 @@
     transition: color .12s;
   }
   .acao-tab:hover { color: var(--text); }
-  .acao-tab.active { color: var(--primary); border-color: var(--primary); }
+  .acao-tab.active { color: #fff; border-color: #fff; }
 
   .acao-painel { display: none; }
   .acao-painel.active { display: block; }
@@ -217,13 +254,13 @@
   .progresso-wrap { display: none; margin-top: 14px; }
   .progresso-wrap.show { display: block; }
   .progresso-bar-track { background: var(--surface-3); border-radius: 999px; height: 8px; overflow: hidden; }
-  .progresso-bar-fill { height: 100%; background: linear-gradient(90deg, var(--primary), #7c74f0); border-radius: 999px; transition: width .25s ease; width: 0%; }
+  .progresso-bar-fill { height: 100%; background: linear-gradient(90deg, #fff, #a9a9b2); border-radius: 999px; transition: width .25s ease; width: 0%; }
   .progresso-label { font-size: 11.5px; color: var(--muted); margin-top: 6px; font-weight: 600; }
 
   .aguardando-banner {
     display: none;
     background: var(--amber-soft);
-    border: 1px solid #f3d9a8;
+    border: 1px solid rgba(245, 185, 66, .35);
     border-radius: var(--radius-sm);
     padding: 13px 15px;
     margin: 14px 0;
@@ -231,32 +268,36 @@
     gap: 14px;
   }
   .aguardando-banner.show { display: flex; }
-  .aguardando-banner span { flex: 1; font-size: 13px; color: #8a5a12; }
+  .aguardando-banner span { flex: 1; font-size: 13px; color: var(--amber); }
 
-  /* ─── Abas de topo (Fotos / Rotinas / Estoque) — 2026-08-06 ────── */
-  .top-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 26px; }
+  /* ─── Navegação (sidebar de ícones) ─────────────────────────────
+     .top-tabs / .top-tab mantêm o mesmo id/classe/data-attribute de
+     antes — só a posição (vertical, na sidebar) e a aparência (ícone)
+     mudaram. O clique continua funcionando igual (delegação por
+     .closest('.top-tab')). ──────────────────────────────────────── */
+  .top-tabs { display: flex; flex-direction: column; gap: 6px; width: 100%; align-items: center; }
   .top-tab {
-    padding: 10px 18px;
-    font-size: 13.5px;
-    font-weight: 700;
+    width: 46px; height: 46px;
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
     color: var(--muted);
     cursor: pointer;
-    border-bottom: 2px solid transparent;
-    transition: color .12s;
+    transition: background .12s, color .12s;
   }
-  .top-tab:hover { color: var(--text); }
-  .top-tab.active { color: var(--primary); border-color: var(--primary); }
+  .top-tab svg { width: 20px; height: 20px; }
+  .top-tab:hover { background: var(--surface-2); color: var(--text); }
+  .top-tab.active { background: var(--surface-2); color: #fff; }
   .top-painel { display: none; }
   .top-painel.active { display: block; }
 
   .aviso-banner {
     background: var(--amber-soft);
-    border: 1px solid #f3d9a8;
+    border: 1px solid rgba(245, 185, 66, .35);
     border-radius: var(--radius-sm);
     padding: 13px 16px;
     margin-bottom: 18px;
     font-size: 12.5px;
-    color: #8a5a12;
+    color: var(--amber);
     line-height: 1.55;
   }
 
@@ -268,12 +309,12 @@
   .rotina-toggle { position: relative; display: inline-block; width: 34px; height: 19px; vertical-align: middle; }
   .rotina-toggle input { opacity: 0; width: 0; height: 0; }
   .rotina-toggle .slider { position: absolute; inset: 0; background: var(--surface-3); border: 1px solid var(--border-strong); border-radius: 999px; cursor: pointer; transition: background .15s; }
-  .rotina-toggle .slider::before { content: ''; position: absolute; width: 13px; height: 13px; left: 2px; top: 2px; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.2); border-radius: 50%; transition: transform .15s; }
+  .rotina-toggle .slider::before { content: ''; position: absolute; width: 13px; height: 13px; left: 2px; top: 2px; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.3); border-radius: 50%; transition: transform .15s; }
   .rotina-toggle input:checked + .slider { background: var(--green); border-color: var(--green); }
-  .rotina-toggle input:checked + .slider::before { transform: translateX(15px); }
+  .rotina-toggle input:checked + .slider::before { transform: translateX(15px); background: #06210f; }
 
   pre#log {
-    background: #14151f;
+    background: #000000;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     padding: 15px;
@@ -291,285 +332,329 @@
 </head>
 <body>
 
-  <h1>Painel Fotos X2</h1>
-  <p class="subtitle">Baixar fotos, sincronizar produtos novos, agendar rotinas e (em breve) estoque — mesmos dados do Catálogo do painel do bot, sempre em sincronia.</p>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-logo" title="Painel Fotos X2">X2</div>
 
-  <div class="top-tabs" id="top-tabs">
-    <span class="top-tab active" data-top-tab="fotos">Fotos</span>
-    <span class="top-tab" data-top-tab="rotinas">Rotinas</span>
-    <span class="top-tab" data-top-tab="estoque">Estoque</span>
-    <span class="top-tab" data-top-tab="lancamentos">Lançamentos</span>
-    <span class="top-tab" data-top-tab="qualidade">Qualidade Cadastral</span>
-  </div>
-
-  <div class="top-painel active" data-top-painel="fotos">
-
-  <div class="stats-row" id="stats-row"><div class="skeleton">Carregando resumo...</div></div>
-
-  <div class="layout">
-
-    <!-- ── Coluna esquerda: Seções ── -->
-    <div class="card">
-      <h2>Seções <span class="contador" id="contador-secoes">0</span></h2>
-
-      <input type="text" class="search-input" id="busca-secao" placeholder="Buscar seção por nome...">
-
-      <div class="filtro-chips" id="filtro-chips">
-        <span class="chip active" data-filtro="todas">Todas</span>
-        <span class="chip" data-filtro="incompletas">Incompletas</span>
-        <span class="chip" data-filtro="precisa-zip">Precisam de zip</span>
-        <span class="chip" data-filtro="suspeitas">Fotos suspeitas</span>
+      <div class="top-tabs" id="top-tabs">
+        <span class="top-tab active" data-top-tab="fotos" title="Fotos">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M21 15l-5-5-9 9"/></svg>
+        </span>
+        <span class="top-tab" data-top-tab="rotinas" title="Rotinas">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+        </span>
+        <span class="top-tab" data-top-tab="estoque" title="Estoque">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>
+        </span>
+        <span class="top-tab" data-top-tab="lancamentos" title="Lançamentos">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M17 7h4v4"/></svg>
+        </span>
+        <span class="top-tab" data-top-tab="qualidade" title="Qualidade Cadastral">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>
+        </span>
       </div>
 
-      <div class="toolbar">
-        <button class="small" data-action="selecionar-visiveis">Selecionar visíveis</button>
-        <button class="small ghost" data-action="limpar-selecao">Limpar seleção</button>
+      <div class="sidebar-footer">
+        <span class="dot"></span>
+        <span>Servidor<br>online</span>
       </div>
+    </aside>
 
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th style="width:26px"></th>
-              <th>Seção</th>
-              <th title="Total de produtos dessa seção cadastrados no catálogo (arquivo JSON).">Produtos</th>
-              <th title="Já processados pelo scraper nesta máquina (com foto real, mesmo que ainda não publicado).">Baixados</th>
-              <th title="Visível AGORA na busca do Catálogo do painel do bot — só bate com 'Baixados' depois de rodar 'Montar zip'.">Publicados</th>
-              <th title="Fotos baixadas abaixo de 400px de largura — pode ser miniatura em vez da foto original.">Fotos pequenas</th>
-            </tr>
-          </thead>
-          <tbody id="tabela-secoes"><tr><td colspan="6" class="skeleton">Carregando seções...</td></tr></tbody>
-        </table>
-      </div>
-    </div>
+    <main class="main-content">
 
-    <!-- ── Coluna direita: Ação ── -->
-    <div class="card">
-      <h2>Ação</h2>
+      <h1>Painel Fotos X2</h1>
+      <p class="subtitle">Baixar fotos, sincronizar produtos novos, agendar rotinas e (em breve) estoque — mesmos dados do Catálogo do painel do bot, sempre em sincronia.</p>
 
-      <div class="selecao-resumo">
-        <span><strong id="resumo-selecao-n">0</strong> seção(ões) selecionada(s)</span>
-      </div>
+      <div class="top-painel active" data-top-painel="fotos">
 
-      <div class="acao-tabs" id="acao-tabs">
-        <span class="acao-tab active" data-tab="baixar">Baixar fotos</span>
-        <span class="acao-tab" data-tab="sync">Sync</span>
-        <span class="acao-tab" data-tab="zip">Montar zip</span>
-        <span class="acao-tab" data-tab="exportar">Exportar</span>
-      </div>
+      <div class="stats-row" id="stats-row"><div class="skeleton">Carregando resumo...</div></div>
 
-      <div class="acao-painel active" data-painel="baixar">
-        <p class="descricao">Baixa as fotos das seções selecionadas direto do X2.</p>
-        <label><input type="checkbox" id="opt-retry-sem-foto"> Tentar de novo os "sem foto"/placeholder</label>
-        <label><input type="checkbox" id="opt-reiniciar"> Reiniciar do zero (apaga progresso salvo)</label>
-        <label>Limite por seção <input type="number" id="opt-limit" min="1" placeholder="sem limite"></label>
-        <button class="primary full" data-action="baixar">Baixar fotos das selecionadas</button>
-      </div>
+      <div class="layout">
 
-      <div class="acao-painel" data-painel="sync">
-        <p class="descricao">Procura produtos novos (e desativados) no X2 pras seções selecionadas.</p>
-        <label><input type="checkbox" id="opt-dry-run" checked> Só mostrar (--dry-run, não grava nada)</label>
-        <label><input type="checkbox" id="opt-remover-desativados" checked> Remover códigos não encontrados mais</label>
-        <label><input type="checkbox" id="opt-forcar-remocao"> Forçar remoção mesmo se for muita coisa de uma vez</label>
-        <button class="primary full" data-action="sync">Procurar produtos novos</button>
-      </div>
+        <!-- ── Coluna esquerda: Seções ── -->
+        <div class="card">
+          <h2>Seções <span class="contador" id="contador-secoes">0</span></h2>
 
-      <div class="acao-painel" data-painel="zip">
-        <p class="descricao">Monta o .zip final — só funciona em seções 100% baixadas. É isso que fica visível na busca do Catálogo do painel do bot.</p>
-        <button class="primary-green full" data-action="zip">Montar zip das selecionadas</button>
-      </div>
+          <input type="text" class="search-input" id="busca-secao" placeholder="Buscar seção por nome...">
 
-      <div class="acao-painel" data-painel="exportar">
-        <p class="descricao">Copia as fotos soltas (sem compactar), pra revisão manual fora do painel.</p>
-        <button class="full" data-action="exportar">Exportar das selecionadas</button>
-      </div>
-    </div>
+          <div class="filtro-chips" id="filtro-chips">
+            <span class="chip active" data-filtro="todas">Todas</span>
+            <span class="chip" data-filtro="incompletas">Incompletas</span>
+            <span class="chip" data-filtro="precisa-zip">Precisam de zip</span>
+            <span class="chip" data-filtro="suspeitas">Fotos suspeitas</span>
+          </div>
 
-  </div>
+          <div class="toolbar">
+            <button class="small" data-action="selecionar-visiveis">Selecionar visíveis</button>
+            <button class="small ghost" data-action="limpar-selecao">Limpar seleção</button>
+          </div>
 
-  <!-- ── Execução: status + confirmação + log, tudo junto ── -->
-  <div class="card">
-    <h2>Execução</h2>
-    <div class="status-line" id="status-execucao"><span class="status-dot"></span> Nada rodando agora.</div>
-
-    <div class="aguardando-banner" id="banner-aguardando">
-      <span id="banner-texto"></span>
-      <button class="primary" id="btn-confirmar">Já cliquei, continuar</button>
-    </div>
-
-    <div class="progresso-wrap" id="progresso-wrap">
-      <div class="progresso-bar-track"><div class="progresso-bar-fill" id="progresso-bar-fill"></div></div>
-      <div class="progresso-label" id="progresso-label"></div>
-    </div>
-
-    <pre id="log">(sem execução ainda)</pre>
-  </div>
-
-  </div><!-- /top-painel fotos -->
-
-  <div class="top-painel" data-top-painel="rotinas">
-
-    <div class="aviso-banner" id="rotinas-aviso-credenciais" style="display:none;">
-      ⚠️ X2_USUARIO/X2_SENHA não configurados no arquivo .env — rotinas agendadas vão falhar no login automático até isso ser preenchido (ver .env.example). Sem essas credenciais, o botão "Testar agora" também vai falhar.
-    </div>
-
-    <div class="aviso-banner">
-      ⚠️ Rotina roda de madrugada sem ninguém na frente do computador — o login automático no X2 (e abrir a tela certa sozinho) ainda não foi confirmado numa sessão real. Use <strong>"Testar agora"</strong> numa rotina recém-criada pra confirmar que funciona antes de contar com o agendamento. Este servidor também precisa continuar aberto (pode minimizar) — rotinas não rodam com o painel fechado.
-    </div>
-
-    <div class="layout">
-      <div class="card">
-        <h2>Rotinas configuradas <span class="contador" id="contador-rotinas">0</span></h2>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Ativa</th>
-                <th>Nome</th>
-                <th>Ação</th>
-                <th>Seções</th>
-                <th>Quando</th>
-                <th>Próxima</th>
-                <th>Última execução</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="tabela-rotinas"><tr><td colspan="8" class="skeleton">Carregando rotinas...</td></tr></tbody>
-          </table>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:26px"></th>
+                  <th>Seção</th>
+                  <th title="Total de produtos dessa seção cadastrados no catálogo (arquivo JSON).">Produtos</th>
+                  <th title="Já processados pelo scraper nesta máquina (com foto real, mesmo que ainda não publicado).">Baixados</th>
+                  <th title="Visível AGORA na busca do Catálogo do painel do bot — só bate com 'Baixados' depois de rodar 'Montar zip'.">Publicados</th>
+                  <th title="Fotos baixadas abaixo de 400px de largura — pode ser miniatura em vez da foto original.">Fotos pequenas</th>
+                </tr>
+              </thead>
+              <tbody id="tabela-secoes"><tr><td colspan="6" class="skeleton">Carregando seções...</td></tr></tbody>
+            </table>
+          </div>
         </div>
-      </div>
 
-      <div class="card">
-        <h2>Nova rotina</h2>
-        <label class="form-field">Nome
-          <input type="text" class="search-input" id="rotina-nome" placeholder="Ex: Baixar fotos - seções pendentes">
-        </label>
-        <label class="form-field">Ação
-          <select class="search-input" id="rotina-tipo">
-            <option value="baixar">Baixar fotos</option>
-            <option value="sync">Sync (produtos novos)</option>
-            <option value="estoque">Exportar estoque (CSV)</option>
-            <option value="painel-produtos">Snapshot Painel de Produtos</option>
-          </select>
-        </label>
-        <label class="form-field" id="rotina-secoes-wrap">Seções (Ctrl/Cmd+clique pra selecionar várias)
-          <select class="search-input" id="rotina-secoes" multiple size="6"></select>
-        </label>
-        <label class="form-field" id="rotina-estoque-opcao-wrap" style="display:none;">Opção de estoque
-          <select class="search-input" id="rotina-estoque-opcao">
-            <option value="Com e sem estoque">Com e sem estoque</option>
-            <option value="Apenas com estoque">Apenas com estoque</option>
-            <option value="Apenas sem estoque">Apenas sem estoque</option>
-          </select>
-        </label>
-        <label class="form-field">Frequência
-          <select class="search-input" id="rotina-frequencia">
-            <option value="diaria">Diária</option>
-            <option value="semanal">Semanal</option>
-          </select>
-        </label>
-        <label class="form-field" id="rotina-dia-semana-wrap" style="display:none;">Dia da semana
-          <select class="search-input" id="rotina-dia-semana">
-            <option value="0">Domingo</option>
-            <option value="1">Segunda</option>
-            <option value="2">Terça</option>
-            <option value="3">Quarta</option>
-            <option value="4">Quinta</option>
-            <option value="5">Sexta</option>
-            <option value="6">Sábado</option>
-          </select>
-        </label>
-        <label class="form-field">Horário
-          <input type="time" class="search-input" id="rotina-horario" value="22:00">
-        </label>
-        <button class="primary full" data-action="criar-rotina">Criar rotina</button>
-      </div>
-    </div>
+        <!-- ── Coluna direita: Ação ── -->
+        <div class="card">
+          <h2>Ação</h2>
 
-  </div><!-- /top-painel rotinas -->
+          <div class="selecao-resumo">
+            <span><strong id="resumo-selecao-n">0</strong> seção(ões) selecionada(s)</span>
+          </div>
 
-  <div class="top-painel" data-top-painel="estoque">
-    <div class="aviso-banner">
-      ⚠️ Coleta pura por enquanto — baixa e guarda o CSV do Relatório de Estoque (Logística), sem processar/estruturar nada ainda (o projeto de estoque em si é futuro). Navegação e opções do filtro foram confirmadas ao vivo em 2026-08-06; o clique final em "Exportar em CSV" ainda não foi testado de forma automatizada.
-    </div>
+          <div class="acao-tabs" id="acao-tabs">
+            <span class="acao-tab active" data-tab="baixar">Baixar fotos</span>
+            <span class="acao-tab" data-tab="sync">Sync</span>
+            <span class="acao-tab" data-tab="zip">Montar zip</span>
+            <span class="acao-tab" data-tab="exportar">Exportar</span>
+          </div>
 
-    <div class="layout">
-      <div class="card">
-        <h2>Exportar agora</h2>
-        <label class="form-field">Opção de estoque
-          <select class="search-input" id="estoque-opcao">
-            <option value="Com e sem estoque">Com e sem estoque</option>
-            <option value="Apenas com estoque">Apenas com estoque</option>
-            <option value="Apenas sem estoque">Apenas sem estoque</option>
-          </select>
-        </label>
-        <button class="primary full" data-action="estoque-baixar-agora">Baixar CSV agora</button>
-      </div>
+          <div class="acao-painel active" data-painel="baixar">
+            <p class="descricao">Baixa as fotos das seções selecionadas direto do X2.</p>
+            <label><input type="checkbox" id="opt-retry-sem-foto"> Tentar de novo os "sem foto"/placeholder</label>
+            <label><input type="checkbox" id="opt-reiniciar"> Reiniciar do zero (apaga progresso salvo)</label>
+            <label>Limite por seção <input type="number" id="opt-limit" min="1" placeholder="sem limite"></label>
+            <button class="primary full" data-action="baixar">Baixar fotos das selecionadas</button>
+          </div>
 
-      <div class="card">
-        <h2>Exports anteriores <span class="contador" id="contador-estoque-exports">0</span></h2>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr><th>Arquivo</th><th>Tamanho</th><th>Quando</th><th></th></tr>
-            </thead>
-            <tbody id="tabela-estoque-exports"><tr><td colspan="4" class="skeleton">Carregando...</td></tr></tbody>
-          </table>
+          <div class="acao-painel" data-painel="sync">
+            <p class="descricao">Procura produtos novos (e desativados) no X2 pras seções selecionadas.</p>
+            <label><input type="checkbox" id="opt-dry-run" checked> Só mostrar (--dry-run, não grava nada)</label>
+            <label><input type="checkbox" id="opt-remover-desativados" checked> Remover códigos não encontrados mais</label>
+            <label><input type="checkbox" id="opt-forcar-remocao"> Forçar remoção mesmo se for muita coisa de uma vez</label>
+            <button class="primary full" data-action="sync">Procurar produtos novos</button>
+          </div>
+
+          <div class="acao-painel" data-painel="zip">
+            <p class="descricao">Monta o .zip final — só funciona em seções 100% baixadas. É isso que fica visível na busca do Catálogo do painel do bot.</p>
+            <button class="primary-green full" data-action="zip">Montar zip das selecionadas</button>
+          </div>
+
+          <div class="acao-painel" data-painel="exportar">
+            <p class="descricao">Copia as fotos soltas (sem compactar), pra revisão manual fora do painel.</p>
+            <button class="full" data-action="exportar">Exportar das selecionadas</button>
+          </div>
         </div>
-      </div>
-    </div>
-  </div><!-- /top-painel estoque -->
 
-  <div class="top-painel" data-top-painel="lancamentos">
-    <div class="aviso-banner" id="lancamentos-aviso">
-      ⚠️ Um produto só vira "lançamento" se ele NÃO aparecia em nenhum export de estoque anterior. A captura de CSVs começou em 2026-08-06/07 — não tem como detectar lançamentos de datas anteriores a essa, porque não existe snapshot de estoque de antes disso pra comparar.
-    </div>
-
-    <div class="layout">
-      <div class="card">
-        <h2>Período</h2>
-        <label class="form-field">De
-          <input type="date" class="search-input" id="lancamentos-desde">
-        </label>
-        <label class="form-field">Até
-          <input type="date" class="search-input" id="lancamentos-ate">
-        </label>
-        <button class="primary full" data-action="lancamentos-buscar">Buscar lançamentos</button>
-        <p class="descricao" id="lancamentos-info" style="margin-top:14px;"></p>
       </div>
 
+      <!-- ── Execução: status + confirmação + log, tudo junto ── -->
       <div class="card">
-        <h2>Produtos novos <span class="contador" id="contador-lancamentos">0</span></h2>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Código</th>
-                <th>Cód. Fornecedor</th>
-                <th>Descrição</th>
-                <th>Visto pela 1ª vez em</th>
-                <th title="Preço de venda no varejo, conforme o CSV daquele dia.">Preço varejo</th>
-              </tr>
-            </thead>
-            <tbody id="tabela-lancamentos"><tr><td colspan="5" class="table-empty">Escolha um período e clique em "Buscar lançamentos".</td></tr></tbody>
-          </table>
+        <h2>Execução</h2>
+        <div class="status-line" id="status-execucao"><span class="status-dot"></span> Nada rodando agora.</div>
+
+        <div class="aguardando-banner" id="banner-aguardando">
+          <span id="banner-texto"></span>
+          <button class="primary" id="btn-confirmar">Já cliquei, continuar</button>
         </div>
+
+        <div class="progresso-wrap" id="progresso-wrap">
+          <div class="progresso-bar-track"><div class="progresso-bar-fill" id="progresso-bar-fill"></div></div>
+          <div class="progresso-label" id="progresso-label"></div>
+        </div>
+
+        <pre id="log">(sem execução ainda)</pre>
       </div>
-    </div>
-  </div><!-- /top-painel lancamentos -->
 
-  <div class="top-painel" data-top-painel="qualidade">
-    <div class="aviso-banner">
-      ⚠️ Cada captura é um RETRATO do estado atual — sobrescreve a anterior (não acumula histórico das listas em si; só os totais entram no histórico do snapshot). Pode demorar 1-2 minutos (4 listas, uma pode ter milhares de produtos).
-    </div>
+      </div><!-- /top-painel fotos -->
 
-    <div class="toolbar" style="margin-bottom:16px;">
-      <button class="primary" data-action="qualidade-capturar-agora">Capturar agora</button>
-      <span class="toolbar-sep"></span>
-    </div>
+      <div class="top-painel" data-top-painel="rotinas">
 
-    <div id="qualidade-secoes"></div>
-  </div><!-- /top-painel qualidade -->
+        <div class="aviso-banner" id="rotinas-aviso-credenciais" style="display:none;">
+          ⚠️ X2_USUARIO/X2_SENHA não configurados no arquivo .env — rotinas agendadas vão falhar no login automático até isso ser preenchido (ver .env.example). Sem essas credenciais, o botão "Testar agora" também vai falhar.
+        </div>
+
+        <div class="aviso-banner">
+          ⚠️ Rotina roda de madrugada sem ninguém na frente do computador — o login automático no X2 (e abrir a tela certa sozinho) ainda não foi confirmado numa sessão real. Use <strong>"Testar agora"</strong> numa rotina recém-criada pra confirmar que funciona antes de contar com o agendamento. Este servidor também precisa continuar aberto (pode minimizar) — rotinas não rodam com o painel fechado.
+        </div>
+
+        <div class="stats-row cols-4" id="rotinas-stats-row">
+          <div class="stat-card">
+            <div class="valor" id="rotinas-stat-ativas">0</div>
+            <div class="rotulo">Rotinas ativas</div>
+          </div>
+          <div class="stat-card">
+            <div class="valor" id="rotinas-stat-execucoes-hoje">0</div>
+            <div class="rotulo">Execuções hoje</div>
+          </div>
+          <div class="stat-card" id="rotinas-stat-falhas-card">
+            <div class="valor" id="rotinas-stat-falhas-hoje">0</div>
+            <div class="rotulo">Falhas hoje</div>
+          </div>
+          <div class="stat-card">
+            <div class="valor" id="rotinas-stat-em-execucao">0</div>
+            <div class="rotulo">Em execução agora</div>
+          </div>
+        </div>
+
+        <div class="layout">
+          <div class="card">
+            <h2>Rotinas configuradas <span class="contador" id="contador-rotinas">0</span></h2>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Ativa</th>
+                    <th>Nome</th>
+                    <th>Ação</th>
+                    <th>Seções</th>
+                    <th>Quando</th>
+                    <th>Próxima</th>
+                    <th>Última execução</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="tabela-rotinas"><tr><td colspan="8" class="skeleton">Carregando rotinas...</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>Nova rotina</h2>
+            <label class="form-field">Nome
+              <input type="text" class="search-input" id="rotina-nome" placeholder="Ex: Baixar fotos - seções pendentes">
+            </label>
+            <label class="form-field">Ação
+              <select class="search-input" id="rotina-tipo">
+                <option value="baixar">Baixar fotos</option>
+                <option value="sync">Sync (produtos novos)</option>
+                <option value="estoque">Exportar estoque (CSV)</option>
+                <option value="painel-produtos">Snapshot Painel de Produtos</option>
+              </select>
+            </label>
+            <label class="form-field" id="rotina-secoes-wrap">Seções (Ctrl/Cmd+clique pra selecionar várias)
+              <select class="search-input" id="rotina-secoes" multiple size="6"></select>
+            </label>
+            <label class="form-field" id="rotina-estoque-opcao-wrap" style="display:none;">Opção de estoque
+              <select class="search-input" id="rotina-estoque-opcao">
+                <option value="Com e sem estoque">Com e sem estoque</option>
+                <option value="Apenas com estoque">Apenas com estoque</option>
+                <option value="Apenas sem estoque">Apenas sem estoque</option>
+              </select>
+            </label>
+            <label class="form-field">Frequência
+              <select class="search-input" id="rotina-frequencia">
+                <option value="diaria">Diária</option>
+                <option value="semanal">Semanal</option>
+              </select>
+            </label>
+            <label class="form-field" id="rotina-dia-semana-wrap" style="display:none;">Dia da semana
+              <select class="search-input" id="rotina-dia-semana">
+                <option value="0">Domingo</option>
+                <option value="1">Segunda</option>
+                <option value="2">Terça</option>
+                <option value="3">Quarta</option>
+                <option value="4">Quinta</option>
+                <option value="5">Sexta</option>
+                <option value="6">Sábado</option>
+              </select>
+            </label>
+            <label class="form-field">Horário
+              <input type="time" class="search-input" id="rotina-horario" value="22:00">
+            </label>
+            <button class="primary full" data-action="criar-rotina">Criar rotina</button>
+          </div>
+        </div>
+
+      </div><!-- /top-painel rotinas -->
+
+      <div class="top-painel" data-top-painel="estoque">
+        <div class="aviso-banner">
+          ⚠️ Coleta pura por enquanto — baixa e guarda o CSV do Relatório de Estoque (Logística), sem processar/estruturar nada ainda (o projeto de estoque em si é futuro). Navegação e opções do filtro foram confirmadas ao vivo em 2026-08-06; o clique final em "Exportar em CSV" ainda não foi testado de forma automatizada.
+        </div>
+
+        <div class="layout">
+          <div class="card">
+            <h2>Exportar agora</h2>
+            <label class="form-field">Opção de estoque
+              <select class="search-input" id="estoque-opcao">
+                <option value="Com e sem estoque">Com e sem estoque</option>
+                <option value="Apenas com estoque">Apenas com estoque</option>
+                <option value="Apenas sem estoque">Apenas sem estoque</option>
+              </select>
+            </label>
+            <button class="primary full" data-action="estoque-baixar-agora">Baixar CSV agora</button>
+          </div>
+
+          <div class="card">
+            <h2>Exports anteriores <span class="contador" id="contador-estoque-exports">0</span></h2>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>Arquivo</th><th>Tamanho</th><th>Quando</th><th></th></tr>
+                </thead>
+                <tbody id="tabela-estoque-exports"><tr><td colspan="4" class="skeleton">Carregando...</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div><!-- /top-painel estoque -->
+
+      <div class="top-painel" data-top-painel="lancamentos">
+        <div class="aviso-banner" id="lancamentos-aviso">
+          ⚠️ Um produto só vira "lançamento" se ele NÃO aparecia em nenhum export de estoque anterior. A captura de CSVs começou em 2026-08-06/07 — não tem como detectar lançamentos de datas anteriores a essa, porque não existe snapshot de estoque de antes disso pra comparar.
+        </div>
+
+        <div class="layout">
+          <div class="card">
+            <h2>Período</h2>
+            <label class="form-field">De
+              <input type="date" class="search-input" id="lancamentos-desde">
+            </label>
+            <label class="form-field">Até
+              <input type="date" class="search-input" id="lancamentos-ate">
+            </label>
+            <button class="primary full" data-action="lancamentos-buscar">Buscar lançamentos</button>
+            <p class="descricao" id="lancamentos-info" style="margin-top:14px;"></p>
+          </div>
+
+          <div class="card">
+            <h2>Produtos novos <span class="contador" id="contador-lancamentos">0</span></h2>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Código</th>
+                    <th>Cód. Fornecedor</th>
+                    <th>Descrição</th>
+                    <th>Visto pela 1ª vez em</th>
+                    <th title="Preço de venda no varejo, conforme o CSV daquele dia.">Preço varejo</th>
+                  </tr>
+                </thead>
+                <tbody id="tabela-lancamentos"><tr><td colspan="5" class="table-empty">Escolha um período e clique em "Buscar lançamentos".</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div><!-- /top-painel lancamentos -->
+
+      <div class="top-painel" data-top-painel="qualidade">
+        <div class="aviso-banner">
+          ⚠️ Cada captura é um RETRATO do estado atual — sobrescreve a anterior (não acumula histórico das listas em si; só os totais entram no histórico do snapshot). Pode demorar 1-2 minutos (4 listas, uma pode ter milhares de produtos).
+        </div>
+
+        <div class="toolbar" style="margin-bottom:16px;">
+          <button class="primary" data-action="qualidade-capturar-agora">Capturar agora</button>
+          <span class="toolbar-sep"></span>
+        </div>
+
+        <div id="qualidade-secoes"></div>
+      </div><!-- /top-painel qualidade -->
+
+    </main>
+  </div><!-- /app-shell -->
 
 <script>
 (function () {
@@ -758,6 +843,12 @@
       logEl.textContent = payload.texto;
       logEl.scrollTop = logEl.scrollHeight;
     }
+
+    // Reflete o estado global de execução no KPI "Em execução agora" da
+    // aba Rotinas (2026-08-07) — só atualiza se os elementos existirem
+    // (aba já foi aberta ao menos uma vez nesta sessão).
+    const emExecucaoEl = el('rotinas-stat-em-execucao');
+    if (emExecucaoEl) emExecucaoEl.textContent = rodando ? '1' : '0';
   }
 
   function conectarSSE() {
@@ -876,6 +967,27 @@
     return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
   }
 
+  function mesmoDia(a, b) {
+    return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  }
+
+  // Calculado 100% no cliente a partir do que já vem de /api/rotinas — sem
+  // endpoint novo no backend (2026-08-07, referência visual pedida pelo
+  // usuário). "Em execução agora" reflete o mesmo `rodando` global usado no
+  // resto do painel, já que rotina e ação manual compartilham o mesmo
+  // executor (só uma coisa roda por vez nesta ferramenta).
+  function renderRotinasStats() {
+    const hoje = new Date();
+    const ativas = rotinas.filter((r) => r.ativa).length;
+    const rodaramHoje = rotinas.filter((r) => r.ultimaExecucao && mesmoDia(new Date(r.ultimaExecucao), hoje));
+    const falhasHoje = rodaramHoje.filter((r) => r.ultimoResultado === 'erro').length;
+    el('rotinas-stat-ativas').textContent = ativas;
+    el('rotinas-stat-execucoes-hoje').textContent = rodaramHoje.length;
+    el('rotinas-stat-falhas-hoje').textContent = falhasHoje;
+    el('rotinas-stat-em-execucao').textContent = rodando ? '1' : '0';
+    el('rotinas-stat-falhas-card').classList.toggle('risco', falhasHoje > 0);
+  }
+
   function renderTabelaRotinas() {
     el('contador-rotinas').textContent = rotinas.length;
     const tbody = el('tabela-rotinas');
@@ -927,6 +1039,7 @@
     rotinas = data.rotinas;
     el('rotinas-aviso-credenciais').style.display = data.temCredenciais ? 'none' : 'block';
     renderTabelaRotinas();
+    renderRotinasStats();
   }
 
   el('rotina-frequencia').addEventListener('change', () => {

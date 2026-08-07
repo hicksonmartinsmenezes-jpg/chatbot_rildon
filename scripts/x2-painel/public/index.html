@@ -453,7 +453,11 @@
       <!-- ── Execução: status + confirmação + log, tudo junto ── -->
       <div class="card">
         <h2>Execução</h2>
-        <div class="status-line" id="status-execucao"><span class="status-dot"></span> Nada rodando agora.</div>
+        <div class="toolbar" style="margin-bottom:0;">
+          <div class="status-line" id="status-execucao"><span class="status-dot"></span> Nada rodando agora.</div>
+          <span class="toolbar-sep"></span>
+          <button class="small ghost" id="btn-cancelar" style="display:none;" title="Libera o painel pra tentar de novo — se ficou preso dizendo 'já tem uma ação rodando' mesmo parecendo terminado.">Cancelar / destravar</button>
+        </div>
 
         <div class="aguardando-banner" id="banner-aguardando">
           <span id="banner-texto"></span>
@@ -788,6 +792,10 @@
   function aplicarEstadoExecucao(payload) {
     rodando = !!payload.rodando;
     aplicarBotoesDesabilitados();
+    // 2026-08-07 — só mostra "Cancelar/destravar" quando tem algo rodando
+    // de verdade (ver /api/cancelar em server.js); nos outros estados fica
+    // escondido pra não confundir com um botão de uso normal.
+    el('btn-cancelar').style.display = rodando ? 'inline-block' : 'none';
 
     const statusEl = el('status-execucao');
     clearTimeout(statusTimeoutId);
@@ -934,6 +942,20 @@
 
   el('btn-confirmar').addEventListener('click', async () => {
     await fetch('/api/confirmar', { method: 'POST' });
+  });
+
+  // 2026-08-07 — "Cancelar/destravar": libera o painel quando fica preso
+  // dizendo "já tem uma ação rodando" mesmo parecendo terminado (causa mais
+  // comum: uma execução anterior ficou esperando confirmação numa aba que
+  // não estava sendo olhada — ver comentário em cancelarExecucaoAtual() no
+  // server.js).
+  el('btn-cancelar').addEventListener('click', async () => {
+    if (!confirm('Isso libera o painel pra tentar de novo. Se uma janela do Chrome da execução anterior ainda estiver aberta, pode ter que fechar ela manualmente. Confirma?')) return;
+    const res = await fetch('/api/cancelar', { method: 'POST' });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || 'Erro ao cancelar.');
+    }
   });
 
   // ─── Abas de topo (Fotos / Rotinas / Estoque) ─────────────────────

@@ -123,11 +123,48 @@ function transmitir() {
 }
 
 function confirmarFactory() {
-  return (mensagem) => new Promise((resolve) => {
-    execucao.aguardando = { mensagem, resolver: resolve };
+  return (mensagem) => new Promise((resolve, reject) => {
+    execucao.aguardando = { mensagem, resolver: resolve, rejeitador: reject };
     execucao.terminal.escrever(`\n⏸ Aguardando: ${mensagem}\n`);
     transmitir();
   });
+}
+
+// ⚠️ 2026-08-07: usuário relatou "sempre diz que algo já está sendo feito
+// mesmo quando acabado" — causa mais provável: uma execução anterior ficou
+// parada esperando confirmação humana (banner "Já cliquei, continuar", só
+// visível na aba Fotos) e o usuário nunca viu/clicou nele porque estava
+// noutra aba (ex: Estoque) — o `execucao.rodando` fica true PARA SEMPRE
+// nesse caso, travando qualquer ação nova até reiniciar o servidor. Duas
+// redes de segurança:
+//   1) TIMEOUT_MAXIMO_MS abaixo: nenhuma ação roda pra sempre, mesmo que
+//      trave em algum ponto sem confirmação pendente (ex: Playwright preso
+//      numa página que nunca responde).
+//   2) /api/cancelar (rota nova): libera a trava manualmente a qualquer
+//      momento, sem precisar reiniciar o processo inteiro.
+const TIMEOUT_MAXIMO_MS = 20 * 60 * 1000; // 20 minutos — generoso (rodar todas as seções de fotos pode demorar), mas finito.
+
+function cancelarExecucaoAtual(motivo) {
+  if (!execucao || !execucao.rodando) return false;
+  if (execucao.aguardando && execucao.aguardando.rejeitador) {
+    // Rejeita a Promise que `confirmar()` estava esperando — a função que
+    // deu await nisso (dentro de rodarMuitasSecoes/sync.rodar/etc.) recebe
+    // o erro e cai no catch/finally de rodarAcao normalmente, liberando
+    // tudo do jeito certo (browser fechado etc.), não só "esquece" o estado.
+    execucao.aguardando.rejeitador(new Error(motivo));
+  } else {
+    // Sem confirmação pendente pra rejeitar (ex: travou no meio de uma
+    // chamada do Playwright que nunca resolve) — não dá pra interromper a
+    // Promise em voo com segurança, então só libera a TRAVA (deixa novas
+    // ações rodarem). Best-effort: a janela do Chrome da execução anterior
+    // pode continuar aberta sozinha em segundo plano; fechar manualmente se
+    // aparecer na barra de tarefas.
+    execucao.erro = motivo;
+    execucao.rodando = false;
+    execucao.aguardando = null;
+    transmitir();
+  }
+  return true;
 }
 
 // `origemRotina` (id da rotina), quando presente, marca que essa execução
@@ -171,44 +208,65 @@ async function rodarAcao(tipo, opcoes, { origemRotina } = {}) {
   }
 
   try {
-    if (tipo === 'baixar') {
-      await rodarMuitasSecoes(opcoes.secoes, {
-        limit: opcoes.limit || null,
-        channel: 'chrome',
-        retrySemFoto: !!opcoes.retrySemFoto,
-        reiniciar: !!opcoes.reiniciar,
-        confirmar: modoAutomatico ? undefined : confirmarFactory(),
-        modoAutomatico,
-      });
-    } else if (tipo === 'sync') {
-      await sync.rodar(opcoes.secoes, {
-        channel: 'chrome',
-        dryRun: !!opcoes.dryRun,
-        semRemover: !!opcoes.semRemover,
-        forcarRemocao: !!opcoes.forcarRemocao,
-        confirmar: modoAutomatico ? undefined : confirmarFactory(),
-        modoAutomatico,
-      });
-    } else if (tipo === 'zip') {
-      for (const slug of opcoes.secoes) await montarZipFinal(slug);
-    } else if (tipo === 'exportar') {
-      for (const slug of opcoes.secoes) await exportarFotosSoltas(slug);
-    } else if (tipo === 'estoque') {
-      await estoqueExport.rodar({
-        channel: 'chrome',
-        estoqueOpcao: opcoes.estoqueOpcao || 'Com e sem estoque',
-        confirmar: modoAutomatico ? undefined : confirmarFactory(),
-        modoAutomatico,
-      });
-    } else if (tipo === 'painel-produtos') {
-      await painelProdutosSnapshot.rodar({
-        channel: 'chrome',
-        confirmar: modoAutomatico ? undefined : confirmarFactory(),
-        modoAutomatico,
-      });
-    } else {
-      throw new Error(`Ação desconhecida: ${tipo}`);
+    // Envolve a ação de verdade numa corrida contra TIMEOUT_MAXIMO_MS — ver
+    // comentário acima de cancelarExecucaoAtual(). Promise.race não CANCELA
+    // a tarefa original se o timeout vencer (JS não tem isso de verdade),
+    // mas já garante que a TRAVA (`execucao.rodando`) é liberada de qualquer
+    // jeito — o essencial pra não deixar o painel preso "achando" que algo
+    // ainda tá rodando quando na prática já não tem mais jeito de terminar.
+    const tarefa = (async () => {
+      if (tipo === 'baixar') {
+        await rodarMuitasSecoes(opcoes.secoes, {
+          limit: opcoes.limit || null,
+          channel: 'chrome',
+          retrySemFoto: !!opcoes.retrySemFoto,
+          reiniciar: !!opcoes.reiniciar,
+          confirmar: modoAutomatico ? undefined : confirmarFactory(),
+          modoAutomatico,
+        });
+      } else if (tipo === 'sync') {
+        await sync.rodar(opcoes.secoes, {
+          channel: 'chrome',
+          dryRun: !!opcoes.dryRun,
+          semRemover: !!opcoes.semRemover,
+          forcarRemocao: !!opcoes.forcarRemocao,
+          confirmar: modoAutomatico ? undefined : confirmarFactory(),
+          modoAutomatico,
+        });
+      } else if (tipo === 'zip') {
+        for (const slug of opcoes.secoes) await montarZipFinal(slug);
+      } else if (tipo === 'exportar') {
+        for (const slug of opcoes.secoes) await exportarFotosSoltas(slug);
+      } else if (tipo === 'estoque') {
+        await estoqueExport.rodar({
+          channel: 'chrome',
+          estoqueOpcao: opcoes.estoqueOpcao || 'Com e sem estoque',
+          confirmar: modoAutomatico ? undefined : confirmarFactory(),
+          modoAutomatico,
+        });
+      } else if (tipo === 'painel-produtos') {
+        await painelProdutosSnapshot.rodar({
+          channel: 'chrome',
+          confirmar: modoAutomatico ? undefined : confirmarFactory(),
+          modoAutomatico,
+        });
+      } else {
+        throw new Error(`Ação desconhecida: ${tipo}`);
+      }
+    })();
+
+    let timeoutId;
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error(`Passou de ${Math.round(TIMEOUT_MAXIMO_MS / 60000)} minutos sem terminar — travei a rede de segurança em vez de deixar "rodando" pra sempre. Se uma janela do Chrome da execução anterior ainda estiver aberta, pode fechar manualmente.`));
+      }, TIMEOUT_MAXIMO_MS);
+    });
+    try {
+      await Promise.race([tarefa, timeoutPromise]);
+    } finally {
+      clearTimeout(timeoutId);
     }
+
     if (origemRotina) rotinasStore.registrarExecucao(origemRotina, { resultado: 'sucesso' });
   } catch (e) {
     execucao.erro = e.message;
@@ -419,6 +477,16 @@ app.post('/api/confirmar', (req, res) => {
   execucao.terminal.escrever('\n▶ Confirmado, continuando...\n');
   transmitir();
   resolver();
+  res.json({ ok: true });
+});
+
+// 2026-08-07 — ver comentário em cancelarExecucaoAtual(). Libera a trava
+// "já tem uma ação rodando" manualmente, sem precisar reiniciar o servidor.
+app.post('/api/cancelar', (req, res) => {
+  const cancelou = cancelarExecucaoAtual('Cancelado manualmente pelo usuário.');
+  if (!cancelou) {
+    return res.status(409).json({ error: 'Nada rodando pra cancelar agora.' });
+  }
   res.json({ ok: true });
 });
 

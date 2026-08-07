@@ -119,6 +119,7 @@ function parseCsvEstoque(conteudo) {
 
   const iCodigo = idx('CODIGO');
   const iCodFornecedor = idx('COD. FORNECEDOR') !== -1 ? idx('COD. FORNECEDOR') : idx('FORNECEDOR');
+  const iDescricao = idx('DESCRICAO');
   const iQtd = idx('QTD ESTOQUE');
   const iUnd = idx('UND');
   const iCustoMedio = idx('CUSTO MEDIO');
@@ -140,6 +141,7 @@ function parseCsvEstoque(conteudo) {
     registros.push({
       codigo,
       codFornecedor: iCodFornecedor !== -1 ? (linha[iCodFornecedor] || '').trim() || null : null,
+      descricao: iDescricao !== -1 ? (linha[iDescricao] || '').trim() || null : null,
       qtdEstoque: _paraNumero(linha[iQtd]) || 0,
       unidade: iUnd !== -1 ? (linha[iUnd] || '').trim() || null : null,
       custoMedio: iCustoMedio !== -1 ? _paraNumero(linha[iCustoMedio]) : null,
@@ -157,19 +159,24 @@ const TAMANHO_LOTE = 500;
 
 async function _upsertLote(client, registros) {
   if (!registros.length) return;
-  const colunas = ['codigo', 'qtd_estoque', 'unidade', 'custo_medio', 'preco_venda_varejo', 'preco_venda_atacado'];
+  const colunas = ['codigo', 'descricao', 'qtd_estoque', 'unidade', 'custo_medio', 'preco_venda_varejo', 'preco_venda_atacado'];
   const valores = [];
   const placeholders = registros.map((r, i) => {
     const base = i * colunas.length;
-    valores.push(r.codigo, r.qtdEstoque, r.unidade, r.custoMedio, r.precoVendaVarejo, r.precoVendaAtacado);
-    return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, NOW())`;
+    valores.push(r.codigo, r.descricao, r.qtdEstoque, r.unidade, r.custoMedio, r.precoVendaVarejo, r.precoVendaAtacado);
+    return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, NOW(), NOW())`;
   });
-  // NOW() não entra nos placeholders (é literal), então ajusta a contagem:
-  // cada linha tem 6 valores parametrizados + NOW() fixo.
+  // criado_em só entra no INSERT (NOW() literal na posição certa) — de
+  // propósito NÃO aparece no ON CONFLICT DO UPDATE abaixo, pra manter a
+  // data da 1ª vez que o código apareceu num CSV mesmo depois de vários
+  // reimports (pedido do usuário 2026-08-07: "lista de lançamentos
+  // semanais de produtos que chegam" — precisa saber quando cada produto
+  // apareceu pela primeira vez, não só o estado mais recente).
   const sql = `
-    INSERT INTO estoque_produtos (codigo, qtd_estoque, unidade, custo_medio, preco_venda_varejo, preco_venda_atacado, atualizado_em)
+    INSERT INTO estoque_produtos (codigo, descricao, qtd_estoque, unidade, custo_medio, preco_venda_varejo, preco_venda_atacado, criado_em, atualizado_em)
     VALUES ${placeholders.join(', ')}
     ON CONFLICT (codigo) DO UPDATE SET
+      descricao = EXCLUDED.descricao,
       qtd_estoque = EXCLUDED.qtd_estoque,
       unidade = EXCLUDED.unidade,
       custo_medio = EXCLUDED.custo_medio,
@@ -217,12 +224,13 @@ let carregadoEm = null;
 async function carregarEstoque() {
   try {
     const { rows } = await pool.query(
-      `SELECT codigo, qtd_estoque, unidade, custo_medio, preco_venda_varejo, preco_venda_atacado, atualizado_em
+      `SELECT codigo, descricao, qtd_estoque, unidade, custo_medio, preco_venda_varejo, preco_venda_atacado, atualizado_em
        FROM estoque_produtos`
     );
     const novoMapa = new Map();
     for (const r of rows) {
       novoMapa.set(_normalizarCodigo(r.codigo), {
+        descricao: r.descricao || null,
         qtdEstoque: Number(r.qtd_estoque),
         unidade: r.unidade,
         custoMedio: r.custo_medio !== null ? Number(r.custo_medio) : null,

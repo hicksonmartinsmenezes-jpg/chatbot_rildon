@@ -56,6 +56,7 @@ const estoqueExport = require('../x2-estoque-export');
 const painelProdutosSnapshot = require('../x2-painel-produtos-snapshot');
 const { listarEntradas } = require('../../src/utils/zip-reader');
 const rotinasStore = require('./rotinas');
+const lancamentos = require('./lancamentos');
 
 // dotenv — mesmo padrão do src/server.js — pra X2_USUARIO/X2_SENHA (usados
 // só pelo login automático das rotinas, ver x2-fotos-scraper.js) ficarem
@@ -287,6 +288,18 @@ app.use('/estoque-files', express.static(estoqueExport.ESTOQUE_DIR));
 // enquanto" do Estoque, ver x2-painel-produtos-snapshot.js.
 app.get('/api/painel-produtos/historico', (req, res) => {
   res.json({ historico: painelProdutosSnapshot.carregarHistorico() });
+});
+
+// ─── Lançamentos (2026-08-07) — produtos novos detectados por diff entre
+// snapshots do CSV de estoque já baixados (ver scripts/x2-painel/
+// lancamentos.js). 100% arquivo local, não toca em banco nenhum.
+app.get('/api/lancamentos', (req, res) => {
+  const { desde, ate } = req.query;
+  try {
+    res.json(lancamentos.listarLancamentos({ desde, ate }));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.get('/api/log-stream', (req, res) => {

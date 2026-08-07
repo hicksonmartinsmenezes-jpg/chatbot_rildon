@@ -265,6 +265,7 @@
     <span class="top-tab active" data-top-tab="fotos">Fotos</span>
     <span class="top-tab" data-top-tab="rotinas">Rotinas</span>
     <span class="top-tab" data-top-tab="estoque">Estoque</span>
+    <span class="top-tab" data-top-tab="lancamentos">Lançamentos</span>
   </div>
 
   <div class="top-painel active" data-top-painel="fotos">
@@ -484,6 +485,44 @@
       </div>
     </div>
   </div><!-- /top-painel estoque -->
+
+  <div class="top-painel" data-top-painel="lancamentos">
+    <div class="aviso-banner" id="lancamentos-aviso">
+      ⚠️ Um produto só vira "lançamento" se ele NÃO aparecia em nenhum export de estoque anterior. A captura de CSVs começou em 2026-08-06/07 — não tem como detectar lançamentos de datas anteriores a essa, porque não existe snapshot de estoque de antes disso pra comparar.
+    </div>
+
+    <div class="layout">
+      <div class="card">
+        <h2>Período</h2>
+        <label class="form-field">De
+          <input type="date" class="search-input" id="lancamentos-desde">
+        </label>
+        <label class="form-field">Até
+          <input type="date" class="search-input" id="lancamentos-ate">
+        </label>
+        <button class="primary full" data-action="lancamentos-buscar">Buscar lançamentos</button>
+        <p class="descricao" id="lancamentos-info" style="margin-top:14px;"></p>
+      </div>
+
+      <div class="card">
+        <h2>Produtos novos <span class="contador" id="contador-lancamentos">0</span></h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Código</th>
+                <th>Cód. Fornecedor</th>
+                <th>Descrição</th>
+                <th>Visto pela 1ª vez em</th>
+                <th title="Preço de venda no varejo, conforme o CSV daquele dia.">Preço varejo</th>
+              </tr>
+            </thead>
+            <tbody id="tabela-lancamentos"><tr><td colspan="5" class="table-empty">Escolha um período e clique em "Buscar lançamentos".</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div><!-- /top-painel lancamentos -->
 
 <script>
 (function () {
@@ -767,6 +806,7 @@
     document.querySelectorAll('.top-painel').forEach((p) => p.classList.toggle('active', p.dataset.topPainel === tab.dataset.topTab));
     if (tab.dataset.topTab === 'rotinas') carregarRotinas();
     if (tab.dataset.topTab === 'estoque') carregarEstoqueExports();
+    if (tab.dataset.topTab === 'lancamentos') carregarLancamentos();
   });
 
   // ─── Rotinas (2026-08-06) ──────────────────────────────────────────
@@ -966,6 +1006,63 @@
     }
     // acompanha o progresso na mesma "Execução" da aba Fotos (mesmo mecanismo de SSE)
     el('top-tabs').querySelector('[data-top-tab="fotos"]').click();
+  });
+
+  // ─── Lançamentos (2026-08-07) — produtos novos por período, detectados
+  // por diff entre snapshots do CSV de estoque (ver scripts/x2-painel/
+  // lancamentos.js). Datas em branco = sem limite naquela ponta.
+  function formatarPrecoBRL(valor) {
+    if (valor === null || valor === undefined) return '—';
+    return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  }
+
+  async function carregarLancamentos() {
+    const desde = el('lancamentos-desde').value || undefined;
+    const ate = el('lancamentos-ate').value || undefined;
+    const params = new URLSearchParams();
+    if (desde) params.set('desde', desde);
+    if (ate) params.set('ate', ate);
+
+    const tbody = el('tabela-lancamentos');
+    tbody.innerHTML = '<tr><td colspan="5" class="skeleton">Carregando...</td></tr>';
+
+    const res = await fetch(`/api/lancamentos?${params.toString()}`);
+    const data = await res.json();
+    if (!res.ok) {
+      tbody.innerHTML = `<tr><td colspan="5" class="table-empty">${data.error || 'Erro ao buscar lançamentos.'}</td></tr>`;
+      return;
+    }
+
+    function dataDoNomeArquivo(nome) {
+      const m = nome && nome.match(/estoque-(\d{4})-(\d{2})-(\d{2})/);
+      return m ? `${m[3]}/${m[2]}/${m[1]}` : '—';
+    }
+    const info = data.totalArquivos > 0
+      ? `${data.totalArquivos} export(s) de estoque no histórico — 1º em ${dataDoNomeArquivo(data.primeiroArquivo)}, último em ${dataDoNomeArquivo(data.ultimoArquivo)}.`
+      : '';
+    el('lancamentos-info').textContent = data.aviso || info;
+
+    const lista = data.lancamentos || [];
+    el('contador-lancamentos').textContent = lista.length;
+
+    if (!lista.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="table-empty">Nenhum produto novo encontrado nesse período.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = lista.map((p) => `
+      <tr>
+        <td>${p.codigo}</td>
+        <td>${p.codFornecedor || '—'}</td>
+        <td>${p.descricao || '—'}</td>
+        <td>${formatarDataHora(p.primeiraVez)}</td>
+        <td>${formatarPrecoBRL(p.precoVendaVarejo)}</td>
+      </tr>
+    `).join('');
+  }
+
+  document.addEventListener('click', (ev) => {
+    if (ev.target.closest('[data-action="lancamentos-buscar"]')) carregarLancamentos();
   });
 
   carregarStatus();

@@ -24,6 +24,7 @@ describe('estoque.service: parseCsvEstoque', () => {
     expect(reg).toEqual({
       codigo: '116564',
       codFornecedor: 'TK4000',
+      descricao: '4000 130MM 12V 60/55W FAROL - POLO - TK 4000',
       qtdEstoque: 10,
       unidade: 'PC',
       custoMedio: 27.84,

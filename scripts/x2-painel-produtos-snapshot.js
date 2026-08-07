@@ -153,24 +153,205 @@ async function abrirPainelProdutos(page, { modoAutomatico } = {}) {
   await page.locator('a:has-text("Compras")').first().click({ timeout: 10000 });
   await page.waitForTimeout(500);
   await page.locator(`a[href*="${GESTAO_PRODUTOS_HREF_MARK}"]`).first().click({ timeout: 10000 });
-  await page.waitForTimeout(1200);
 
-  // A aba "Painel" (dentro da tela, no iframe) não vem selecionada por
-  // padrão — precisa desse clique extra, confirmado ao vivo.
-  const clicouPainel = await page.evaluate(() => {
-    const norm = (s) => String(s || '').normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '').toUpperCase().trim();
-    const frame = document.querySelector('iframe[name="principal"]');
-    const doc = frame && frame.contentDocument ? frame.contentDocument : document;
-    const els = Array.from(doc.querySelectorAll('button, a, input[type="button"], td, span, div'));
-    const el = els.find((e) => e.children.length === 0 && norm(e.textContent) === 'PAINEL');
-    if (!el) return false;
-    el.click();
-    return true;
-  });
-  if (!clicouPainel) {
-    throw new Error('Não achei a aba "Painel" dentro de "Gestão de Produtos" — precisa confirmar numa sessão ao vivo.');
+  // ⚠️ CORREÇÃO 2026-08-07 #2 (achado por diagnóstico ao vivo, 2ª rodada):
+  // a 1ª correção (buscar "Painel" em TODOS os frames) resolveu o problema
+  // de nó-folha, mas criou um novo: existe MAIS DE UM elemento com texto
+  // exato "Painel" na página inteira — inclusive um item do MENU de
+  // navegação (Vendas 3.0 > Painel, tela totalmente diferente). Como o
+  // clique no link "Gestão de Produtos" ainda não tinha terminado de
+  // navegar (o menu lateral ainda estava aberto por cima), a busca global
+  // pegou o "Painel" do MENU em vez da aba de dentro da tela — confirmado
+  // pelo diagnóstico salvo (nenhum frame com URL de gestao_produtos no
+  // momento do clique). Fix: espera de verdade o frame de destino
+  // (`GESTAO_PRODUTOS_HREF_MARK` na URL) aparecer ANTES de procurar a aba,
+  // e restringe a busca da aba a ESSE frame (+ o frame principal, caso a
+  // aba em si esteja fora do iframe de conteúdo) — não mais a página
+  // inteira, evitando pegar de novo um "Painel" de outro lugar.
+  let frameGestaoProdutos = null;
+  for (let i = 0; i < 10 && !frameGestaoProdutos; i++) {
+    frameGestaoProdutos = page.frames().find((f) => f.url().includes(GESTAO_PRODUTOS_HREF_MARK)) || null;
+    if (!frameGestaoProdutos) await page.waitForTimeout(500);
+  }
+
+  if (!frameGestaoProdutos) {
+    await salvarDiagnostico(page, 'sem-frame-gestao-produtos');
+    throw new Error(
+      `Cliquei em "Gestão de Produtos" mas a tela nunca carregou (nenhum frame com "${GESTAO_PRODUTOS_HREF_MARK}" na URL depois de 5s) — ` +
+      `precisa confirmar numa sessão ao vivo. Diagnóstico salvo em debug-sem-frame-gestao-produtos.png/.json.`
+    );
   }
   await page.waitForTimeout(1200);
+
+  // A aba "Painel" (dentro da tela) não vem selecionada por padrão —
+  // precisa desse clique extra, confirmado ao vivo.
+  //
+  // ⚠️ CORREÇÃO 2026-08-07 #3: a #2 (restringir a busca a
+  // `frameGestaoProdutos` + frame principal) ainda pegou o "Painel" ERRADO
+  // — o do menu, que mora no frame PRINCIPAL. Diagnóstico mostrou que
+  // `frameGestaoProdutos` sozinho não tinha nenhum "Painel" encontrável no
+  // momento do clique (a aba de verdade deve estar num frame ANINHADO
+  // dentro dele, com URL própria — `page.frames()` acha esses frames
+  // aninhados numa lista achatada, então não precisamos saber a URL exata).
+  // Fix definitivo: busca em TODOS os frames MENOS o principal (onde mora
+  // a armadilha do menu) — nunca mais inclui `page.mainFrame()` como
+  // fallback pra esse clique especificamente.
+  // ⚠️ CORREÇÃO 2026-08-07 #4: a #3 achou o frame CERTO
+  // (gestao_produtos/painel.jsp confirmado no diagnóstico), mas nesse
+  // momento ele só tinha o TÍTULO carregado ("Gestão de Produtos") — a
+  // barra de abas (Painel/Cadastro de Produtos/...) ainda não tinha
+  // renderizado via AJAX. Por isso retry com espera, igual ao que já foi
+  // aplicado em capturarMetricas — não dá pra confiar num wait fixo aqui.
+  let clicouPainel = false;
+  for (let i = 0; i < 6 && !clicouPainel; i++) {
+    const frames = page.frames().filter((f) => f !== page.mainFrame());
+    clicouPainel = await clicarTextoExato(page, 'Painel', { frames });
+    if (!clicouPainel) await page.waitForTimeout(1000);
+  }
+  if (!clicouPainel) {
+    // Diagnóstico: salva screenshot + textos-folha reais da tela nesse
+    // momento, pra debugar sem precisar de acesso ao vivo à janela (que é
+    // do Playwright, headless:false, fora do alcance do
+    // Claude-in-Chrome/computer-use read-only).
+    await garantirPastasDebug();
+    const screenshotPath = path.join(PAINEL_PRODUTOS_DIR, 'debug-ultima-falha.png');
+    await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
+    const porFrame = [];
+    for (const frame of page.frames()) {
+      try {
+        const textos = await frame.evaluate(() => {
+          const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+          const textoDe = (e) => (e.tagName === 'INPUT' ? e.value : e.textContent);
+          return Array.from(document.querySelectorAll('button, a, input[type="button"], input[type="submit"], td, span, div'))
+            .filter((e) => e.children.length === 0 && norm(textoDe(e)))
+            .slice(0, 40)
+            .map((e) => norm(textoDe(e)));
+        });
+        porFrame.push({ url: frame.url(), textos });
+      } catch (e) {
+        porFrame.push({ url: frame.url(), erro: e.message });
+      }
+    }
+    const diagnostico = { urlPrincipal: page.url(), frames: porFrame };
+    fs.writeFileSync(
+      path.join(PAINEL_PRODUTOS_DIR, 'debug-ultima-falha.json'),
+      JSON.stringify(diagnostico, null, 2)
+    );
+    throw new Error(
+      `Não achei a aba "Painel" dentro de "Gestão de Produtos" — precisa confirmar numa sessão ao vivo. ` +
+      `Diagnóstico salvo em debug-ultima-falha.png/.json (${porFrame.length} frame(s) na página).`
+    );
+  }
+  await page.waitForTimeout(1200);
+}
+
+/** Salva screenshot + textos-folha de todos os frames pra debug (usado
+ * quando alguma extração pós-navegação falha — clique certo, mas conteúdo
+ * ainda não achado). */
+async function salvarDiagnostico(page, sufixo) {
+  await garantirPastasDebug();
+  await page.screenshot({ path: path.join(PAINEL_PRODUTOS_DIR, `debug-${sufixo}.png`), fullPage: true }).catch(() => {});
+  const porFrame = [];
+  for (const frame of page.frames()) {
+    try {
+      const textos = await frame.evaluate(() => {
+        const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+        const textoDe = (e) => (e.tagName === 'INPUT' ? e.value : e.textContent);
+        return Array.from(document.querySelectorAll('button, a, input[type="button"], input[type="submit"], td, span, div'))
+          .filter((e) => e.children.length === 0 && norm(textoDe(e)))
+          .slice(0, 60)
+          .map((e) => norm(textoDe(e)));
+      });
+      porFrame.push({ url: frame.url(), textos });
+    } catch (e) {
+      porFrame.push({ url: frame.url(), erro: e.message });
+    }
+  }
+  fs.writeFileSync(
+    path.join(PAINEL_PRODUTOS_DIR, `debug-${sufixo}.json`),
+    JSON.stringify({ urlPrincipal: page.url(), frames: porFrame }, null, 2)
+  );
+}
+
+/** Roda `tentativa` várias vezes com espera crescente entre elas, até ela
+ * devolver algo que passe em `estaOk`. A tela de Gestão de Produtos carrega
+ * o conteúdo do "Painel" via AJAX depois do clique na aba — um `waitForTimeout`
+ * fixo de 1200ms nem sempre é suficiente (confirmado ao vivo 2026-08-07: o
+ * clique na aba funcionou mas os contadores ainda não tinham renderizado). */
+async function comRetry(tentativa, estaOk, { tentativas = 5, esperaMs = 1000 } = {}) {
+  let ultimoResultado;
+  for (let i = 0; i < tentativas; i++) {
+    ultimoResultado = await tentativa();
+    if (estaOk(ultimoResultado)) return ultimoResultado;
+    await new Promise((resolve) => setTimeout(resolve, esperaMs));
+  }
+  return ultimoResultado;
+}
+
+function garantirPastasDebug() {
+  fs.mkdirSync(PAINEL_PRODUTOS_DIR, { recursive: true });
+}
+
+// ─── Helpers de frame robustos (2026-08-07) ────────────────────────────────
+// A suposição antiga era que o conteúdo sempre mora em
+// `iframe[name="principal"]` e que elementos clicáveis são sempre nós-folha
+// (`children.length === 0`). Diagnóstico ao vivo mostrou os dois errados
+// pra essa tela específica (Gestão de Produtos): o botão "Painel" tem
+// markup aninhado dentro (não é folha), e não foi possível confirmar que o
+// conteúdo real mora só em "principal". Esses helpers resolvem os dois
+// problemas de vez: varrem TODOS os frames da página, e acham o elemento
+// mais "interno" (menos descendentes) entre os que batem o texto exato —
+// não exige que ele mesmo não tenha filhos.
+
+/** Clica no elemento cujo texto (normalizado, sem acento) bate exatamente
+ * com `texto`, procurando em todos os frames da página. Entre os elementos
+ * que batem, escolhe o com MENOS elementos-descendentes (o mais específico
+ * — evita clicar num container grande que só por acaso contém aquele texto
+ * inteiro). Retorna o Frame onde clicou, ou null se não achou em nenhum. */
+async function clicarTextoExato(page, texto, { frames } = {}) {
+  for (const frame of frames || page.frames()) {
+    try {
+      const clicou = await frame.evaluate((alvo) => {
+        const norm = (s) => String(s || '').normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '').toUpperCase().trim();
+        // ⚠️ CORREÇÃO 2026-08-07 #5: a #4 (retry com espera) não resolveu —
+        // porque o problema nunca foi timing. A barra de abas real é feita
+        // de `<input type="button" value="Painel">` (confirmado pela
+        // screenshot mostrando os botões, contra o diagnóstico de texto
+        // sempre vazio pra esse frame). `<input>` NÃO tem `textContent`
+        // pro seu rótulo visível — o texto mora em `.value`. `textoDe()`
+        // cobre os dois casos.
+        const textoDe = (e) => (e.tagName === 'INPUT' ? e.value : e.textContent);
+        const alvoNorm = norm(alvo);
+        const candidatos = Array.from(document.querySelectorAll('button, a, input[type="button"], input[type="submit"], td, span, div, li'))
+          .filter((e) => norm(textoDe(e)) === alvoNorm);
+        if (candidatos.length === 0) return false;
+        candidatos.sort((a, b) => a.querySelectorAll('*').length - b.querySelectorAll('*').length);
+        candidatos[0].click();
+        return true;
+      }, texto);
+      if (clicou) return frame;
+    } catch (e) {
+      // frame cross-origin ou destruído no meio da navegação — ignora e
+      // tenta o próximo.
+    }
+  }
+  return null;
+}
+
+/** Roda `avaliador` em todos os frames da página, retorna o resultado do
+ * PRIMEIRO frame em que `avaliador` devolver algo "truthy" (ou um objeto
+ * marcado com `.ok !== false` e conteúdo não-vazio, dependendo do chamador
+ * — cada avaliador já filtra isso internamente). */
+async function avaliarEmQualquerFrame(page, avaliador, arg) {
+  for (const frame of page.frames()) {
+    try {
+      const resultado = await frame.evaluate(avaliador, arg);
+      if (resultado) return { frame, resultado };
+    } catch (e) {
+      // idem — ignora frame problemático e segue.
+    }
+  }
+  return { frame: null, resultado: null };
 }
 
 // Extrai os pares rótulo→número dos cards "Divergências"/"Situação".
@@ -179,16 +360,15 @@ async function abrirPainelProdutos(page, { modoAutomatico } = {}) {
 // (menos o número) como rótulo — casa com o padrão visual observado
 // (barra escura com rótulo + badge colorido com número, lado a lado).
 async function capturarMetricas(page) {
-  return page.evaluate(() => {
-    const frame = document.querySelector('iframe[name="principal"]');
-    const doc = frame && frame.contentDocument ? frame.contentDocument : document;
-    if (!doc) return { ok: false, erro: 'iframe "principal" não encontrado.' };
-
+  const { resultado } = await avaliarEmQualquerFrame(page, () => {
+    // Mesma correção de `<input value="...">` aplicada em clicarTextoExato
+    // — alguns contadores podem estar em inputs readonly, não texto puro.
+    const textoDe = (e) => (e.tagName === 'INPUT' ? e.value : e.textContent);
     const metricas = {};
-    const todos = Array.from(doc.querySelectorAll('*'));
+    const todos = Array.from(document.querySelectorAll('*'));
     for (const el of todos) {
       if (el.children.length > 0) continue;
-      const texto = (el.textContent || '').trim();
+      const texto = (textoDe(el) || '').trim();
       if (!/^\d[\d.,]*$/.test(texto)) continue;
       const pai = el.parentElement;
       if (!pai) continue;
@@ -198,56 +378,45 @@ async function capturarMetricas(page) {
         metricas[rotulo] = Number(texto.replace(/\./g, '').replace(',', '.'));
       }
     }
-    return { ok: true, metricas };
+    return Object.keys(metricas).length ? { ok: true, metricas } : null;
   });
+  return resultado || { ok: false, erro: 'Não achei nenhum contador numérico em nenhum frame da página.' };
 }
 
 // Extrai a tabela "Produtos Ativos" (Unidade / Qtde).
 async function capturarProdutosAtivos(page) {
-  return page.evaluate(() => {
-    const frame = document.querySelector('iframe[name="principal"]');
-    const doc = frame && frame.contentDocument ? frame.contentDocument : document;
-    if (!doc) return [];
-    const tabelas = Array.from(doc.querySelectorAll('table'));
+  const { resultado } = await avaliarEmQualquerFrame(page, () => {
+    const tabelas = Array.from(document.querySelectorAll('table'));
     for (const t of tabelas) {
       const primeiraLinha = t.querySelector('tr');
       const headerTexto = primeiraLinha ? primeiraLinha.textContent.toUpperCase() : '';
       if (headerTexto.includes('UNIDADE') && headerTexto.includes('QTDE')) {
         const linhas = Array.from(t.querySelectorAll('tr')).slice(1);
-        return linhas
+        const linhasExtraidas = linhas
           .map((tr) => {
             const tds = Array.from(tr.querySelectorAll('td')).map((td) => td.textContent.trim());
             return { unidade: tds[0] || null, qtde: tds[1] ? Number(tds[1].replace(/\./g, '')) : null };
           })
           .filter((r) => r.unidade);
+        if (linhasExtraidas.length) return linhasExtraidas;
       }
     }
-    return [];
+    return null;
   });
+  return resultado || [];
 }
 
 // ─── Listas de qualidade cadastral (2026-08-07, ver comentário no topo) ────
 
-// Clica no badge de uma divergência/situação (elemento-folha cujo texto
-// bate exatamente com o rótulo) — mesma técnica de leaf-node já usada pro
-// clique na aba "Painel" logo abaixo, e pro parsing genérico em
-// capturarMetricas().
+// Clica no badge de uma divergência/situação, procurando em todos os
+// frames e escolhendo o elemento mais interno que bate o texto exato —
+// mesma técnica de `clicarTextoExato` usada pro clique na aba "Painel".
 async function _clicarBadgeDivergencia(page, labelBadge) {
-  return page.evaluate((label) => {
-    const norm = (s) => String(s || '').normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '').toUpperCase().trim();
-    const frame = document.querySelector('iframe[name="principal"]');
-    const doc = frame && frame.contentDocument ? frame.contentDocument : document;
-    const alvo = norm(label);
-    const todos = Array.from(doc.querySelectorAll('*'));
-    for (const el of todos) {
-      if (el.children.length > 0) continue;
-      if (norm(el.textContent) === alvo) {
-        el.click();
-        return true;
-      }
-    }
-    return false;
-  }, labelBadge);
+  // Mesma proteção usada pra aba "Painel": nunca procurar no frame
+  // principal (é onde mora o item de menu que pode ter texto parecido).
+  const frames = page.frames().filter((f) => f !== page.mainFrame());
+  const frame = await clicarTextoExato(page, labelBadge, { frames });
+  return !!frame;
 }
 
 // Depois do clique no badge, aparece um <select> "<Rótulo> - Linha:" com
@@ -262,10 +431,8 @@ async function _clicarBadgeDivergencia(page, labelBadge) {
 // isso aqui (equivalente ao que Playwright faz internamente com
 // `selectOption`) funciona.
 async function _selecionarTodasNaLinha(page) {
-  return page.evaluate(() => {
-    const frame = document.querySelector('iframe[name="principal"]');
-    const doc = frame && frame.contentDocument ? frame.contentDocument : document;
-    const selects = Array.from(doc.querySelectorAll('select'));
+  const { resultado } = await avaliarEmQualquerFrame(page, () => {
+    const selects = Array.from(document.querySelectorAll('select'));
     for (const sel of selects) {
       const opcaoTodas = Array.from(sel.options).find((o) => /\(\d+\)\s*todas/i.test(o.textContent));
       if (opcaoTodas) {
@@ -276,6 +443,7 @@ async function _selecionarTodasNaLinha(page) {
     }
     return false;
   });
+  return !!resultado;
 }
 
 // Extrai a tabela de resultado de forma genérica (cada divergência tem
@@ -284,10 +452,8 @@ async function _selecionarTodasNaLinha(page) {
 // em vez de texto puro). Não assume nomes de coluna fixos: pega cabeçalho +
 // linhas como arrays de texto, lendo `.value` quando a célula for um input.
 async function _scrapearTabelaResultado(page) {
-  return page.evaluate(() => {
-    const frame = document.querySelector('iframe[name="principal"]');
-    const doc = frame && frame.contentDocument ? frame.contentDocument : document;
-    const tabelas = Array.from(doc.querySelectorAll('table'));
+  const { resultado } = await avaliarEmQualquerFrame(page, () => {
+    const tabelas = Array.from(document.querySelectorAll('table'));
     for (const t of tabelas) {
       const primeiraLinha = t.querySelector('tr');
       if (!primeiraLinha) continue;
@@ -303,10 +469,11 @@ async function _scrapearTabelaResultado(page) {
           return td.textContent.trim();
         }))
         .filter((celulas) => celulas.some((c) => c));
-      return { headers, produtos };
+      if (produtos.length) return { headers, produtos };
     }
-    return { headers: [], produtos: [] };
+    return null;
   });
+  return resultado || { headers: [], produtos: [] };
 }
 
 // Volta o painel pro estado inicial (badges de Divergências/Situação
@@ -314,12 +481,10 @@ async function _scrapearTabelaResultado(page) {
 // mostrar só aquela lista, precisa clicar "Painel" de novo pra resetar
 // antes de capturar a próxima divergência.
 async function _voltarParaPainel(page) {
-  await page.evaluate(() => {
-    const norm = (s) => String(s || '').normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '').toUpperCase().trim();
-    const els = Array.from(document.querySelectorAll('button, a, input[type="button"], td, span, div'));
-    const el = els.find((e) => e.children.length === 0 && norm(e.textContent) === 'PAINEL');
-    if (el) el.click();
-  });
+  // Mesma proteção da correção #3 em abrirPainelProdutos: nunca buscar
+  // "Painel" no frame principal (tem o item do menu com o mesmo texto).
+  const frames = page.frames().filter((f) => f !== page.mainFrame());
+  await clicarTextoExato(page, 'Painel', { frames });
   await page.waitForTimeout(1200);
 }
 
@@ -343,15 +508,45 @@ function carregarListaQualidade(chave) {
  * "Todas", espera, extrai). Não volta pro Painel sozinha — quem chama
  * decide quando resetar (capturarTodasListasQualidade faz isso no finally). */
 async function capturarListaDivergencia(page, { chave, labelBadge }) {
-  const clicou = await _clicarBadgeDivergencia(page, labelBadge);
+  // ⚠️ 2026-08-07: mesma classe de bug já corrigida em capturarMetricas —
+  // cada passo (clicar badge, achar o select "Linha", ler a tabela) depende
+  // de conteúdo carregado via AJAX que nem sempre está pronto no momento
+  // exato do wait fixo seguinte. "Itens Inativos" funcionou de primeira
+  // numa rodada mas com resultado suspeito (1 produto só, tela sabidamente
+  // tem milhares) — indício de que _scrapearTabelaResultado pode ter
+  // pegado uma tabela errada/pequena antes da real carregar. Envolvendo os
+  // 3 passos em retry, igual ao resto do arquivo.
+  const clicou = await comRetry(
+    () => _clicarBadgeDivergencia(page, labelBadge),
+    (ok) => ok === true,
+    { tentativas: 4, esperaMs: 800 }
+  );
   if (!clicou) throw new Error(`Não encontrei o badge "${labelBadge}" no Painel.`);
   await page.waitForTimeout(800);
 
-  const selecionou = await _selecionarTodasNaLinha(page);
-  if (!selecionou) throw new Error(`Não encontrei o filtro "Linha" (com opção "Todas") pra "${labelBadge}".`);
+  const selecionou = await comRetry(
+    () => _selecionarTodasNaLinha(page),
+    (ok) => ok === true,
+    { tentativas: 5, esperaMs: 1000 }
+  );
+  if (!selecionou) {
+    // ⚠️ 2026-08-07: retry (5x1s) não resolveu pras 3 divergências depois
+    // da 1ª ("Itens Inativos" sempre funciona, as outras 3 sempre falham
+    // aqui, mesmo com espera) — não é timing, é estado. Diagnóstico pra
+    // ver o que a tela realmente mostra nesse momento (suspeita: o reset
+    // via _voltarParaPainel entre uma divergência e outra não está
+    // limpando o estado anterior, ou o clique no badge está caindo num
+    // elemento errado que não abre select nenhum).
+    await salvarDiagnostico(page, `sem-select-${chave}`);
+    throw new Error(`Não encontrei o filtro "Linha" (com opção "Todas") pra "${labelBadge}". Diagnóstico salvo em debug-sem-select-${chave}.png/.json.`);
+  }
   await page.waitForTimeout(1500);
 
-  const { headers, produtos } = await _scrapearTabelaResultado(page);
+  const { headers, produtos } = await comRetry(
+    () => _scrapearTabelaResultado(page),
+    (r) => r && r.produtos && r.produtos.length > 0,
+    { tentativas: 5, esperaMs: 1000 }
+  );
   return { chave, labelBadge, capturadoEm: new Date().toISOString(), headers, produtos };
 }
 
@@ -398,8 +593,19 @@ async function capturarSnapshot(context, { modoAutomatico } = {}) {
   await abrirPainelProdutos(page, { modoAutomatico });
 
   console.log('Capturando métricas...');
-  const resultado = await capturarMetricas(page);
-  if (!resultado.ok) throw new Error(resultado.erro);
+  // ⚠️ 2026-08-07: confirmado ao vivo que o clique na aba "Painel" pode
+  // funcionar (navegação certa) mas o conteúdo (contadores) ainda não ter
+  // renderizado via AJAX no momento da extração — daí o retry com espera
+  // crescente em vez de um waitForTimeout fixo só.
+  const resultado = await comRetry(
+    () => capturarMetricas(page),
+    (r) => r && r.ok,
+    { tentativas: 6, esperaMs: 1500 }
+  );
+  if (!resultado.ok) {
+    await salvarDiagnostico(page, 'sem-metricas');
+    throw new Error(`${resultado.erro} Diagnóstico salvo em debug-sem-metricas.png/.json.`);
+  }
 
   const produtosAtivos = await capturarProdutosAtivos(page);
 
@@ -443,6 +649,75 @@ async function rodar({ channel, confirmar, modoAutomatico } = {}) {
   }
 }
 
+/** Investigação pontual (2026-08-07, sugestão do usuário): a tela de cada
+ * divergência tem um botão/link "Imprimir Itens" quando "Todas" está
+ * selecionado. Em vez de continuar debugando o select+scrape (que tem um
+ * bug de estado entre uma divergência e outra — a 1ª funciona com contagem
+ * suspeita, as 3 seguintes nem acham o select), vale checar se
+ * "Imprimir Itens" gera uma página/relatório mais simples de extrair (sem
+ * o jogo de estado do select). Essa função só ACHA o elemento e reporta
+ * atributos (tag, href, onclick, target) — não clica, pra não disparar uma
+ * janela de impressão ou download sem eu saber o que esperar primeiro.
+ */
+async function investigarBotaoImprimir({ channel } = {}) {
+  const context = await abrirNavegador(channel);
+  try {
+    const page = context.pages()[0] || (await context.newPage());
+    await abrirPainelProdutos(page, { modoAutomatico: true });
+
+    const clicou = await comRetry(
+      () => _clicarBadgeDivergencia(page, 'Itens Inativos'),
+      (ok) => ok === true,
+      { tentativas: 4, esperaMs: 800 }
+    );
+    if (!clicou) throw new Error('Não achei o badge "Itens Inativos" pra investigar.');
+    await page.waitForTimeout(800);
+
+    const selecionou = await comRetry(
+      () => _selecionarTodasNaLinha(page),
+      (ok) => ok === true,
+      { tentativas: 5, esperaMs: 1000 }
+    );
+    if (!selecionou) throw new Error('Não achei o filtro "Linha" pra investigar o botão Imprimir.');
+    await page.waitForTimeout(1500);
+
+    await garantirPastasDebug();
+    await page.screenshot({ path: path.join(PAINEL_PRODUTOS_DIR, 'debug-investigar-imprimir.png'), fullPage: true }).catch(() => {});
+
+    const porFrame = [];
+    for (const frame of page.frames()) {
+      try {
+        const achados = await frame.evaluate(() => {
+          const norm = (s) => String(s || '').normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '').toUpperCase().trim();
+          const textoDe = (e) => (e.tagName === 'INPUT' ? e.value : e.textContent);
+          return Array.from(document.querySelectorAll('button, a, input[type="button"], input[type="submit"], td, span, div, li'))
+            .filter((e) => norm(textoDe(e)).includes('IMPRIMIR'))
+            .map((e) => ({
+              tag: e.tagName,
+              texto: (textoDe(e) || '').trim(),
+              href: e.getAttribute('href') || null,
+              onclick: e.getAttribute('onclick') || null,
+              target: e.getAttribute('target') || null,
+              id: e.id || null,
+              classe: e.className || null,
+            }));
+        });
+        if (achados.length) porFrame.push({ url: frame.url(), achados });
+      } catch (e) {
+        // frame problemático, ignora
+      }
+    }
+    fs.writeFileSync(
+      path.join(PAINEL_PRODUTOS_DIR, 'debug-investigar-imprimir.json'),
+      JSON.stringify({ frames: porFrame }, null, 2)
+    );
+    console.log(`Investigação salva: ${porFrame.reduce((n, f) => n + f.achados.length, 0)} elemento(s) com "Imprimir" achado(s).`);
+    return porFrame;
+  } finally {
+    await context.close().catch(() => {});
+  }
+}
+
 async function main() {
   await rodar({ channel: 'chrome' });
 }
@@ -465,5 +740,6 @@ module.exports = {
   carregarListaQualidade,
   capturarListaDivergencia,
   capturarTodasListasQualidade,
+  investigarBotaoImprimir,
   rodar,
 };

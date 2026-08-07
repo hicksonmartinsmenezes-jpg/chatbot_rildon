@@ -1165,10 +1165,15 @@
 
   document.addEventListener('click', async (ev) => {
     if (!ev.target.closest('[data-action="qualidade-capturar-agora"]')) return;
+    // automatico:true — login automático via X2_USUARIO/X2_SENHA (.env),
+    // já confirmado funcionando. Antes disso, "Capturar agora" sempre
+    // parava esperando um clique humano em "Já cliquei, continuar" mesmo
+    // não tendo motivo real pra isso (diferente do fluxo de Fotos, que
+    // trava por um bug real do X2, não por login).
     const res = await fetch('/api/acao', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tipo: 'painel-produtos', secoes: [], opcoes: {} }),
+      body: JSON.stringify({ tipo: 'painel-produtos', secoes: [], opcoes: { automatico: true } }),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));

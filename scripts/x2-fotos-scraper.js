@@ -179,10 +179,30 @@ function reiniciarSecao(secaoSlug) {
 
 async function abrirNavegador(channel) {
   garantirPastas();
-  return chromium.launchPersistentContext(PROFILE_DIR, {
+  const context = await chromium.launchPersistentContext(PROFILE_DIR, {
     channel,
     headless: false,
     viewport: null,
+  });
+  await esconderWebdriver(context);
+  return context;
+}
+
+// ⚠️ Descoberto ao vivo 2026-08-06 (pedido do usuário: testando o clique
+// em "Catálogo de Produtos" que sempre falhou automatizado — inclusive
+// clicando com o MOUSE de verdade dentro dessa janela do Chrome, ainda
+// falhava). Rodando `navigator.webdriver` no console da janela do
+// Playwright, o usuário confirmou `true`. Isso explica o "bloqueio": não é
+// o clique em si (automatizado vs humano) que o X2 rejeita nesse botão —
+// é a página detectando que está rodando num navegador controlado por
+// automação (CDP/Playwright) e desativando essa ação específica pra
+// QUALQUER clique nessa janela. Escondendo essa flag (técnica padrão do
+// Playwright, não é exploração de falha nenhuma — só faz o navegador não
+// se anunciar como automatizado), o clique humano real deve voltar a
+// funcionar normalmente.
+async function esconderWebdriver(context) {
+  await context.addInitScript(() => {
+    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
   });
 }
 
@@ -971,4 +991,5 @@ module.exports = {
   LARGURA_MINIMA_AVISO,
   fotosSuspeitas,
   tentarLoginAutomatico,
+  esconderWebdriver,
 };

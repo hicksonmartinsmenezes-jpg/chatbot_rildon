@@ -149,7 +149,13 @@ function parsearProdutos(textoCompleto) {
 
 async function abrirNavegador(channel) {
   fs.mkdirSync(PROFILE_DIR, { recursive: true });
-  return chromium.launchPersistentContext(PROFILE_DIR, { channel, headless: false, viewport: null });
+  const context = await chromium.launchPersistentContext(PROFILE_DIR, { channel, headless: false, viewport: null });
+  // Ver x2-fotos-scraper.js pro relato completo (navigator.webdriver=true
+  // confirmado ao vivo 2026-08-06 como causa do botão "Catálogo de
+  // Produtos" não responder nem a clique humano de verdade).
+  const { esconderWebdriver } = require('./x2-fotos-scraper');
+  await esconderWebdriver(context);
+  return context;
 }
 
 async function telaTemFormulario(page) {

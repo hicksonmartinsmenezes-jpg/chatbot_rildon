@@ -95,12 +95,18 @@ function ask(pergunta) {
 
 async function abrirNavegador(channel) {
   garantirPastas();
-  return chromium.launchPersistentContext(PROFILE_DIR, {
+  const context = await chromium.launchPersistentContext(PROFILE_DIR, {
     channel,
     headless: false,
     viewport: null,
     acceptDownloads: true,
   });
+  // Ver x2-fotos-scraper.js pro relato completo (navigator.webdriver=true
+  // confirmado ao vivo 2026-08-06 — esconde por precaução, mesmo esta tela
+  // não tendo o bloqueio conhecido do popup de fotos).
+  const { esconderWebdriver } = require('./x2-fotos-scraper');
+  await esconderWebdriver(context);
+  return context;
 }
 
 // Mesma heurística de login automático do x2-fotos-scraper.js — reusada

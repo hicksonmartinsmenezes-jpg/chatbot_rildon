@@ -375,20 +375,46 @@ async function garantirPopupAberto(context, { confirmar, modoAutomatico } = {}) 
   // topo do arquivo). Se não tiver credenciais ou o login falhar por
   // qualquer motivo, cai pro fluxo 100% manual de sempre, sem travar.
   const pareceLogin = /login/i.test(page.url()) || (await page.locator('input[type="password"]').count().catch(() => 0)) > 0;
+  let chegouNaTela = false;
   if (pareceLogin) {
     try {
       await tentarLoginAutomatico(page);
-      console.log('Login automático ok — só falta abrir o popup "Catálogo de Produtos".');
+      console.log('Login automático ok.');
     } catch (e) {
       console.log(`(login automático não deu: ${e.message} — faça login manualmente)`);
     }
   }
 
+  // Navegação também automática até a tela certa (2026-08-06, pedido do
+  // usuário: "queria que fizesse aquele caminho, clicar vendas - catálogo
+  // de produtos"). Cliques de MENU não têm o bloqueio — só o botão
+  // "Catálogo de Produtos" em si tem. Então chega até a tela sozinho e
+  // pausa só nesse último clique. Se algo aqui falhar (layout mudou, ainda
+  // não logado etc.), cai pras instruções manuais de sempre sem travar.
+  try {
+    await page.waitForTimeout(500);
+    await page.locator('a').first().click({ timeout: 8000 });
+    await page.waitForTimeout(500);
+    await page.locator('a:has-text("Vendas 3.0")').first().click({ timeout: 8000 });
+    await page.waitForTimeout(500);
+    await page.locator('a:has-text("Produção de Vendas")').first().click({ timeout: 8000 });
+    await page.waitForTimeout(1000);
+    chegouNaTela = true;
+  } catch (e) {
+    console.log(`(navegação automática até a tela não deu: ${e.message} — vá até lá manualmente)`);
+  }
+
   console.log('\n==============================================================');
-  console.log('Na janela do Chrome que abriu: faça login se precisar (a sessão fica');
-  console.log('salva — nas próximas vezes já deve abrir logado).');
-  console.log('Depois vá em: Vendas 3.0 > Produção de Vendas > botão "Catálogo de Produtos".');
-  console.log('Esse clique precisa ser seu de verdade — o X2 bloqueia clique automatizado nesse botão específico.');
+  if (chegouNaTela) {
+    console.log('Já cheguei em Vendas 3.0 > Produção de Vendas. Só falta VOCÊ clicar no');
+    console.log('botão "Catálogo de Produtos" — esse clique é bloqueado pro robô, precisa');
+    console.log('ser um clique seu de verdade.');
+  } else {
+    console.log('Na janela do Chrome que abriu: faça login se precisar (a sessão fica');
+    console.log('salva — nas próximas vezes já deve abrir logado).');
+    console.log('Depois vá em: Vendas 3.0 > Produção de Vendas > botão "Catálogo de Produtos".');
+    console.log('Esse clique precisa ser seu de verdade — o X2 bloqueia clique automatizado nesse botão específico.');
+  }
   console.log('==============================================================\n');
 
   if (confirmar) {

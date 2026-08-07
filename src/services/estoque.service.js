@@ -48,7 +48,7 @@ function _tokenizarCsv(conteudo) {
   let campo = '';
   let linha = [];
   let dentroAspas = false;
-  const texto = conteudo.replace(/^﻿/, ''); // remove BOM se existir
+  const texto = conteudo.replace(/^\uFEFF/, ''); // remove BOM se existir
 
   for (let i = 0; i < texto.length; i++) {
     const c = texto[i];

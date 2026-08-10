@@ -421,7 +421,7 @@ async function _dispararImportacaoNoDocker(caminhoCsvOrigem) {
       'docker',
       ['exec', DOCKER_CONTAINER, 'npm', 'run', 'importar-estoque', '--', CSV_HANDOFF_CONTAINER],
       { timeout: 60000 },
-      (err, stdout, stderr) => {
+      async (err, stdout, stderr) => {
         if (err) {
           console.log(
             `(import pro banco não rodou: ${err.message} — o CSV foi baixado normalmente, só o "estoque ao vivo" do ` +
@@ -430,13 +430,49 @@ async function _dispararImportacaoNoDocker(caminhoCsvOrigem) {
             ' npm run importar-estoque -- ' + CSV_HANDOFF_CONTAINER + ')'
           );
         } else {
-          console.log('Estoque importado pro banco — Catálogo do painel já reflete os dados novos.');
+          console.log('Estoque importado pro banco.');
           if (stdout) console.log(stdout.trim());
+          await _forcarReloadCacheEstoque();
         }
         resolve();
       }
     );
   });
+}
+
+// PEDIDO DO USUÁRIO (2026-08-10): "sincronize em tempo real, quando eu baixo
+// o novo csv... não atualiza a menos que eu clique em atualizar página" —
+// investigando, o problema é mais fundo que o front: o `docker exec` acima
+// grava no Postgres num processo Node AVULSO, mas o cache em memória do
+// processo principal (usado pro badge de estoque no Catálogo) só recarregava
+// no boot e a cada 30min (`setInterval` em src/server.js) — sem esse aviso
+// aqui, o painel podia mostrar estoque desatualizado por até meia hora mesmo
+// logo depois de um import bem-sucedido. Chama o endpoint novo
+// (POST /api/catalogo/estoque/recarregar) pra forçar o reload na hora, MESMO
+// padrão de scripts/x2-whatsapp-alerta.js (Bearer API_TOKEN, best-effort —
+// se falhar, o import já está no banco e o setInterval de 30min ainda pega
+// mais tarde, então não é motivo pra derrubar o export).
+async function _forcarReloadCacheEstoque() {
+  const apiToken = process.env.API_TOKEN;
+  if (!apiToken || apiToken === 'troque_por_um_token_com_64_caracteres_ou_mais') {
+    console.log('(API_TOKEN não configurado no .env — não deu pra forçar o reload do cache, só o setInterval de 30min do bot Rildon vai pegar essa atualização.)');
+    return;
+  }
+  try {
+    const { BASE_URL } = require('./x2-whatsapp-alerta');
+    const resposta = await fetch(`${BASE_URL}/api/catalogo/estoque/recarregar`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiToken}` },
+    });
+    const corpo = await resposta.json().catch(() => ({}));
+    if (!resposta.ok) {
+      console.log(`(reload do cache de estoque recusado pelo bot Rildon: HTTP ${resposta.status} — ${corpo.error || 'sem detalhe'}. O setInterval de 30min ainda vai atualizar sozinho.)`);
+      return;
+    }
+    console.log(`Cache de estoque recarregado na hora — Catálogo do painel já reflete os ${corpo.produtos ?? '?'} produtos novos.`);
+  } catch (e) {
+    console.log(`(não consegui chamar o bot Rildon pra recarregar o cache de estoque: ${e.message}. O setInterval de 30min ainda vai atualizar sozinho.)`);
+  }
 }
 
 async function rodar({ channel, estoqueOpcao, confirmar, modoAutomatico } = {}) {

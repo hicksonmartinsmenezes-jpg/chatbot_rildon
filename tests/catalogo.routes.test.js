@@ -23,12 +23,17 @@ jest.mock("../src/services/catalogo-fotos.service", () => ({
   listarFotos: jest.fn(),
   obterFoto: jest.fn(),
 }));
+jest.mock("../src/services/estoque.service", () => ({
+  carregarEstoque: jest.fn(),
+  statusCache: jest.fn(),
+}));
 
 const express = require("express");
 const request = require("supertest");
 
 const { buscarProdutosPainel, buscarPorCodigo, listarFabricantes } = require("../src/services/catalogo-x2.service");
 const { listarSecoes, listarLinhasPorSecao } = require("../src/services/catalogo.service");
+const { carregarEstoque, statusCache } = require("../src/services/estoque.service");
 const catalogoRoutes = require("../src/routes/catalogo.routes");
 
 function buildApp() {
@@ -197,6 +202,28 @@ describe("GET /api/catalogo/buscar-codigo", () => {
   test("erro interno do service → 500 genérico", async () => {
     buscarPorCodigo.mockImplementation(() => { throw new Error("boom"); });
     const res = await request(buildApp()).get("/api/catalogo/buscar-codigo").query({ codigo: "REF1" });
+    expect(res.status).toBe(500);
+  });
+});
+
+// Pedido do usuário (2026-08-10): força o reload do cache de estoque em
+// memória fora do ciclo normal (boot + setInterval de 30min) — chamado pelo
+// pipeline scripts/x2-estoque-export.js logo após o import no Postgres, pra
+// o badge de estoque no Catálogo não ficar desatualizado por até meia hora.
+describe("POST /api/catalogo/estoque/recarregar", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  test("recarrega o cache e devolve o status atualizado", async () => {
+    statusCache.mockReturnValue({ produtos: 8635, carregadoEm: "2026-08-10T12:00:00.000Z" });
+    const res = await request(buildApp()).post("/api/catalogo/estoque/recarregar");
+    expect(res.status).toBe(200);
+    expect(carregarEstoque).toHaveBeenCalledTimes(1);
+    expect(res.body).toEqual({ ok: true, produtos: 8635, carregadoEm: "2026-08-10T12:00:00.000Z" });
+  });
+
+  test("erro ao recarregar → 500 genérico", async () => {
+    carregarEstoque.mockImplementation(() => { throw new Error("banco fora do ar"); });
+    const res = await request(buildApp()).post("/api/catalogo/estoque/recarregar");
     expect(res.status).toBe(500);
   });
 });

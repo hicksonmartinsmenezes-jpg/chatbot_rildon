@@ -9,6 +9,7 @@ const {
   listarFabricantesHandler,
   buscarPorCodigoHandler,
   exportarPdfHandler,
+  recarregarEstoqueHandler,
 } = require("../controllers/catalogo.controller");
 
 // Painel "Catálogo de Produtos" (pedido do usuário, 2026-07-21): busca por
@@ -28,6 +29,10 @@ router.get("/catalogo/buscar-codigo", buscarPorCodigoHandler);
 // critérios de /catalogo/buscar (ou um `codigo` isolado), mas sem o teto de
 // 200 da tela — traz tudo que bateu no filtro, até MAX_EXPORT_PDF.
 router.get("/catalogo/exportar-pdf", exportarPdfHandler);
+// Força o reload do cache de estoque em memória (ver comentário no handler)
+// — chamado pelo pipeline scripts/x2-estoque-export.js via API_TOKEN logo
+// após o import no banco, pra não esperar o setInterval de 30min.
+router.post("/catalogo/estoque/recarregar", recarregarEstoqueHandler);
 
 // Lista as fotos disponíveis de um produto do catálogo X2 (só metadados —
 // nome de arquivo e índice, sem os bytes).

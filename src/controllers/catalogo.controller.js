@@ -3,6 +3,7 @@ const { listarFotos, obterFoto } = require("../services/catalogo-fotos.service")
 const { buscarProdutosPainel, buscarPorCodigo, listarFabricantes } = require("../services/catalogo-x2.service");
 const { listarSecoes, listarLinhasPorSecao } = require("../services/catalogo.service");
 const { gerarPdfCatalogo } = require("../services/catalogo-pdf.service");
+const { carregarEstoque, statusCache } = require("../services/estoque.service");
 
 // Código de produto do X2 é sempre numérico (ex: "111430") — validação
 // simples evita processar entrada absurda antes de tocar no índice em memória.
@@ -213,10 +214,33 @@ async function listarLinhasHandler(req, res) {
   }
 }
 
+// POST /api/catalogo/estoque/recarregar — pedido do usuário (2026-08-10):
+// o cache de estoque em memória (usado pro badge do Catálogo) só recarregava
+// no boot do servidor e a cada 30min (setInterval em server.js). O import de
+// um CSV novo via `x2-estoque-export.js` roda num processo Node SEPARADO
+// (docker exec avulso) que grava no Postgres mas não tem como avisar o
+// processo principal já rodando — resultado: estoque podia ficar até 30min
+// desatualizado no painel mesmo logo depois de baixar um CSV novo, mesmo
+// dando F5 na página. Esse endpoint deixa o próprio pipeline de export
+// forçar o reload assim que o import termina, em vez de esperar o intervalo.
+// Protegido por authSession (aplicado em app.js) — aceita tanto sessão de
+// usuário logado quanto o Bearer API_TOKEN (usado pelo script via HTTP,
+// mesmo padrão de scripts/x2-whatsapp-alerta.js).
+async function recarregarEstoqueHandler(req, res) {
+  try {
+    await carregarEstoque();
+    res.json({ ok: true, ...statusCache() });
+  } catch (err) {
+    logger.error("❌ Erro ao recarregar cache de estoque:", err.message);
+    res.status(500).json({ error: "Erro ao recarregar estoque." });
+  }
+}
+
 module.exports = {
   listarFotosHandler,
   servirFotoHandler,
   buscarProdutosHandler,
+  recarregarEstoqueHandler,
   listarSecoesHandler,
   listarLinhasHandler,
   listarFabricantesHandler,

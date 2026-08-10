@@ -210,37 +210,61 @@ async function configurarFiltros(page, { estoqueOpcao }) {
 // sem erro — clicarPorTexto retornava true — mas o
 // context.waitForEvent('download') estourava 60s, 2x seguidas). Causa
 // mais provável: el.click() disparado de DENTRO de page.evaluate() não
-// conta como "gesto de usuário confiável" pro Chromium. Se o botão dispara
-// a exportação via window.open()/navegação de popup (comum nas telas JSP
-// antigas do X2), o navegador bloqueia isso silenciosamente por não ser um
-// clique confiável — sem erro nenhum, só o download nunca acontece. Mesma
-// categoria de bloqueio já documentada em x2-fotos-scraper.js pro botão
-// "Catálogo de Produtos" (lá a saída foi evitar .click() de vez, setando
-// .src direto — aqui não dá, precisa ser um clique de verdade no botão).
-// Fix: marca o elemento certo com um atributo temporário via evaluate, e
-// clica nele de verdade via locator do Playwright (dispatcha um evento de
-// mouse confiável via CDP — conta como gesto de usuário de verdade).
-// ⚠️ NÃO validado ao vivo ainda — próxima rodada da aba Estoque confirma.
-async function clicarPorTexto(page, texto) {
+// conta como "gesto de usuário confiável" pro Chromium. Mesma categoria de
+// bloqueio já documentada em x2-fotos-scraper.js pro botão "Catálogo de
+// Produtos" (lá a saída foi evitar .click() de vez, setando .src direto —
+// aqui não dá, precisa ser um clique de verdade no botão). 1ª correção:
+// marca o elemento certo com um atributo temporário via evaluate, e clica
+// nele de verdade via locator do Playwright (dispatcha um evento de mouse
+// confiável via CDP — conta como gesto de usuário de verdade).
+//
+// ⚠️ 2ª correção, mesmo dia (falha ao vivo NUMA rodada de "Testar agora"
+// da rotina "Lançamentos Semanais", confirmado no log de execução do
+// painel): a 1ª correção resolveu o problema do clique não-confiável, mas
+// revelou outro: `locator.click` deu "element is not visible" e depois
+// "element was detached from the DOM, retrying" — o botão #botaoCSV (id
+// confirmado ao vivo nesse mesmo log de erro) existe no DOM mas a tabela
+// de resultados ("Com e sem estoque" pode ter milhares de linhas) ainda
+// estava sendo (re)desenhada quando tentamos clicar, então o elemento que
+// marcamos foi substituído por um novo (sem a marca) antes do clique
+// completar. Fix: tenta o ciclo inteiro (marcar → clicar) até 3x, marcando
+// de novo a cada tentativa — se a tabela ainda estiver instável na
+// tentativa 1, a 2ª/3ª acha o elemento já estável. Ainda não validado ao
+// vivo — próxima falha (se houver) deve trazer um log diferente.
+async function clicarPorTexto(page, texto, { tentativas = 3 } = {}) {
   const MARK_ATTR = 'data-x2-click-target';
-  const achou = await page.evaluate(({ texto, MARK_ATTR }) => {
-    const norm = (s) => String(s || '').normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '').toUpperCase().trim();
-    const frame = document.querySelector('iframe[name="principal"]');
-    if (!frame || !frame.contentDocument) return false;
-    const doc = frame.contentDocument;
-    Array.from(doc.querySelectorAll(`[${MARK_ATTR}]`)).forEach((el) => el.removeAttribute(MARK_ATTR));
-    const alvo = norm(texto);
-    const elementos = Array.from(doc.querySelectorAll('button, input[type="button"], input[type="submit"], a'));
-    const el = elementos.find((e) => norm(e.textContent || e.value) === alvo);
-    if (!el) return false;
-    el.setAttribute(MARK_ATTR, '1');
-    return true;
-  }, { texto, MARK_ATTR });
+  let ultimoErro = null;
 
-  if (!achou) return false;
+  for (let tentativa = 1; tentativa <= tentativas; tentativa++) {
+    const achou = await page.evaluate(({ texto, MARK_ATTR }) => {
+      const norm = (s) => String(s || '').normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '').toUpperCase().trim();
+      const frame = document.querySelector('iframe[name="principal"]');
+      if (!frame || !frame.contentDocument) return false;
+      const doc = frame.contentDocument;
+      Array.from(doc.querySelectorAll(`[${MARK_ATTR}]`)).forEach((el) => el.removeAttribute(MARK_ATTR));
+      const alvo = norm(texto);
+      const elementos = Array.from(doc.querySelectorAll('button, input[type="button"], input[type="submit"], a'));
+      const el = elementos.find((e) => norm(e.textContent || e.value) === alvo);
+      if (!el) return false;
+      el.setAttribute(MARK_ATTR, '1');
+      return true;
+    }, { texto, MARK_ATTR });
 
-  await page.frameLocator('iframe[name="principal"]').locator(`[${MARK_ATTR}="1"]`).first().click({ timeout: 10000 });
-  return true;
+    if (!achou) return false; // elemento não existe de jeito nenhum — não adianta retentar
+
+    try {
+      await page.frameLocator('iframe[name="principal"]').locator(`[${MARK_ATTR}="1"]`).first().click({ timeout: 8000 });
+      return true;
+    } catch (e) {
+      ultimoErro = e;
+      if (tentativa < tentativas) {
+        console.log(`(clique em "${texto}" falhou na tentativa ${tentativa}/${tentativas} — tabela ainda deve estar carregando, tentando de novo...)`);
+        await page.waitForTimeout(1000);
+      }
+    }
+  }
+
+  throw new Error(`Clique em "${texto}" falhou depois de ${tentativas} tentativas: ${ultimoErro.message}`);
 }
 
 function nomeArquivoTimestamp() {
@@ -262,14 +286,21 @@ async function exportarEstoque(context, { estoqueOpcao = 'Com e sem estoque', mo
   console.log('Clicando em "Pesquisar"...');
   const pesquisouOk = await clicarPorTexto(page, 'Pesquisar');
   if (!pesquisouOk) throw new Error('Não achei o botão "Pesquisar" — precisa confirmar numa sessão ao vivo.');
-  await page.waitForTimeout(2500); // pesquisa pode demorar em catálogos grandes
+  // 4000ms (era 2500) — "Com e sem estoque" pode ter milhares de linhas;
+  // aumentado 2026-08-10 depois de ver ao vivo a tabela ainda se
+  // (re)desenhando quando o clique em "Exportar em CSV" era tentado (ver
+  // aviso em clicarPorTexto).
+  await page.waitForTimeout(4000);
 
   console.log('Clicando em "Exportar em CSV" e aguardando o download...');
   const nomeArquivo = nomeArquivoTimestamp();
   const destino = path.join(ESTOQUE_DIR, nomeArquivo);
 
+  // 90s (era 60) — dá mais folga pro clique com retry (clicarPorTexto pode
+  // levar até ~25s só nas tentativas) mais o tempo real de geração/download
+  // do relatório em si.
   const [download] = await Promise.all([
-    context.waitForEvent('download', { timeout: 60000 }),
+    context.waitForEvent('download', { timeout: 90000 }),
     (async () => {
       const clicouOk = await clicarPorTexto(page, 'Exportar em CSV');
       if (!clicouOk) throw new Error('Não achei o botão "Exportar em CSV" — só aparece depois de Pesquisar retornar resultado; confirme numa sessão ao vivo se o clique automatizado funciona nele (nunca testado antes de hoje).');

@@ -298,6 +298,66 @@ async function buscarSecao(page, labelSecao) {
   );
 }
 
+// PEDIDO DO USUÁRIO (2026-08-10): "com a lista csv que eu extraio, não
+// seria mais fácil capturar códigos novos por lá e depois rastreá-los com
+// o sync" — em vez de re-varrer as 26 seções inteiras (caro, e foi o que
+// travou o servidor no dia 10/08 numa rodada --todas), busca cada código
+// INDIVIDUALMENTE pelo campo "Código do Produto" (`id_produto`), com Seção
+// = Todos. O resultado já traz "Seção > Linha" no texto — parsearProdutos
+// já sabia ler isso, não precisou de nenhuma mudança nessa parte — então
+// descobrimos a seção certa sem precisar adivinhar nem escanear tudo.
+// Mesmo reset de filtros de buscarSecao() (duplicado de propósito — cada
+// page.evaluate() roda isolado no contexto da página, então compartilhar a
+// função helper entre as duas exigiria injeção extra sem ganho real pra um
+// bloco desse tamanho).
+async function buscarPorCodigo(page, codigo) {
+  await page.evaluate((cod) => {
+    function marcarRadio(doc, name, valor) {
+      const el = doc.querySelector(`input[name="${name}"][value="${valor}"]`);
+      if (el) el.checked = true;
+    }
+    const frame = document.querySelector('iframe[name="principal"]');
+    const doc = frame.contentDocument;
+    const win = frame.contentWindow;
+
+    for (const nome of ['ds_descricao_comercial', 'cd_barras', 'dt_inicio', 'dt_fim', 'dt_inicio_recebimento', 'dt_fim_recebimento']) {
+      const el = doc.querySelector(`input[name="${nome}"]`);
+      if (el) el.value = '';
+    }
+    for (const nome of ['id_empresa', 'id_linha', 'id_sub_linha', 'id_fornecedor_pesq', 'id_fabricante_pesq']) {
+      const el = doc.querySelector(`select[name="${nome}"]`);
+      if (el) el.value = '';
+    }
+    marcarRadio(doc, 'radio_medidas', 'I');
+    marcarRadio(doc, 'radio_imagem', 'I');
+    marcarRadio(doc, 'radio_descricao', 'I');
+    marcarRadio(doc, 'radio_estoque', 'I');
+    marcarRadio(doc, 'radio_primeira_entrada', 'N');
+    marcarRadio(doc, 'in_controle_promocao', '');
+    marcarRadio(doc, 'in_exibir_produto_ecommerce', 'I');
+
+    const selSecao = doc.querySelector('select[name="id_secao"]');
+    if (selSecao) selSecao.value = ''; // Todos — deixa o X2 dizer qual é a seção certa
+
+    const idProdutoEl = doc.querySelector('input[name="id_produto"]');
+    if (!idProdutoEl) throw new Error('Campo "Código do Produto" (id_produto) não encontrado no formulário.');
+    idProdutoEl.value = cod;
+
+    win.pesquisar();
+  }, codigo);
+
+  // Sem cabeçalho garantido quando o código não existe (tela pode só voltar
+  // vazia) — por isso aqui o timeout NÃO é fatal, quem chama decide olhando
+  // o texto extraído depois (ver sincronizarCodigos).
+  await page.waitForFunction(
+    () => {
+      const doc = document.querySelector('iframe[name="principal"]').contentDocument;
+      return /Produto\tDescrição detalhada\tVolumetria|nenhum resultado|não foi encontrado/i.test(doc.body.innerText);
+    },
+    { timeout: 15000, polling: 400 }
+  ).catch(() => {});
+}
+
 async function extrairTextoResultado(page) {
   return page.evaluate(() => document.querySelector('iframe[name="principal"]').contentDocument.body.innerText);
 }
@@ -421,6 +481,110 @@ async function sincronizarSecao(page, secaoSlug, { dryRun, semRemover, forcarRem
   return { secaoSlug, novos: novos.length, removidos: dryRun ? removidos.length : removidosAplicados, total: listaFinal.length };
 }
 
+// Mapa label X2 ("ALTERNADOR") -> slug do nosso catálogo ("alternador"),
+// pro sentido inverso de SECOES (slug -> label). Normaliza igual ao resto
+// do arquivo pra não depender de acento/maiúscula bater exatamente.
+function _normLabel(s) {
+  return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
+}
+const LABEL_PARA_SLUG = Object.fromEntries(
+  Object.entries(SECOES).map(([slug, label]) => [_normLabel(label), slug])
+);
+
+// PEDIDO DO USUÁRIO (2026-08-10) — ver comentário de buscarPorCodigo().
+// Busca uma LISTA de códigos individualmente (1 pesquisa por código, Seção
+// = Todos), agrupa os achados por seção (usando o texto "Seção > Linha" que
+// o próprio X2 devolve) e GRAVA direto no <slug>.json certo — sem precisar
+// escanear a seção inteira. Só adiciona (nunca remove nada aqui: um código
+// "não encontrado" nessa busca pontual não prova que o produto foi
+// descontinuado — pode ser erro de digitação, item sem cadastro completo
+// no X2, etc. — fica só num aviso pro usuário decidir).
+async function sincronizarPorCodigos(page, codigos, { dryRun } = {}) {
+  const porSecao = new Map(); // slug -> [produto, ...]
+  const naoEncontrados = [];
+  const semSecaoReconhecida = [];
+
+  for (const codigo of codigos) {
+    await buscarPorCodigo(page, codigo);
+    const texto = await extrairTextoResultado(page);
+    const encontrados = parsearProdutos(texto).filter((p) => p.codigo === String(codigo).trim());
+
+    if (!encontrados.length) {
+      console.log(`  ? ${codigo} — não encontrado na busca individual do X2 (confira se o código está certo).`);
+      naoEncontrados.push(codigo);
+      continue;
+    }
+
+    const produto = encontrados[0];
+    const slug = produto.secao ? LABEL_PARA_SLUG[_normLabel(produto.secao)] : null;
+    if (!slug) {
+      console.log(`  ? ${codigo} — ${produto.nome} — achei no X2 (Seção: "${produto.secao || '?'}") mas não bate com nenhuma das 26 seções conhecidas. Precisa mapear manualmente.`);
+      semSecaoReconhecida.push({ codigo, produto });
+      continue;
+    }
+
+    const descricaoDetalhada = await extrairDescricaoDetalhada(page, produto.codigo);
+    const novoProduto = {
+      codigo: produto.codigo,
+      nome: produto.nome,
+      barras: produto.barras,
+      secao: produto.secao,
+      linha: produto.linha,
+      descricaoDetalhada: descricaoDetalhada || null,
+      ficha: null, // mesma decisão consciente do resto do arquivo (ver cabeçalho)
+    };
+    if (!porSecao.has(slug)) porSecao.set(slug, []);
+    porSecao.get(slug).push(novoProduto);
+    console.log(`  + ${codigo} — ${produto.nome} (${SECOES[slug]})`);
+  }
+
+  const gravados = [];
+  for (const [slug, produtosNovos] of porSecao.entries()) {
+    const jsonPath = path.join(CATALOGO_DIR, `${slug}.json`);
+    const existentes = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+    const codigosExistentes = new Set(existentes.map((p) => p.codigo));
+    const paraAdicionar = produtosNovos.filter((p) => !codigosExistentes.has(p.codigo));
+
+    if (!paraAdicionar.length) continue;
+
+    if (dryRun) {
+      console.log(`(--dry-run: +${paraAdicionar.length} produto(s) seriam adicionados a ${slug}.json)`);
+    } else {
+      const backupPath = `${jsonPath}.bak-${Date.now()}`;
+      fs.copyFileSync(jsonPath, backupPath);
+      const listaFinal = [...existentes, ...paraAdicionar];
+      fs.writeFileSync(jsonPath, JSON.stringify(listaFinal, null, 2));
+      console.log(`Backup: ${backupPath}`);
+      console.log(`Gravado: ${jsonPath} agora tem ${listaFinal.length} produtos (+${paraAdicionar.length}).`);
+    }
+    gravados.push({ slug, adicionados: paraAdicionar.length });
+  }
+
+  return { gravados, naoEncontrados, semSecaoReconhecida };
+}
+
+// Lê o CSV do Relatório de Estoque (mesmo formato de x2-estoque-export.js,
+// parseado com a MESMA função já usada/testada pelo import pro Postgres —
+// ver src/services/estoque.service.js) e compara com os códigos que já
+// estão no catálogo de fotos. Só retorna os que faltam (o resto do fluxo
+// cuida de buscar e gravar cada um).
+function codigosFaltandoNoCatalogo(caminhoCsv) {
+  const { parseCsvEstoque } = require('../src/services/estoque.service');
+  const conteudo = fs.readFileSync(caminhoCsv, 'utf8');
+  const registros = parseCsvEstoque(conteudo);
+  const codigosEstoque = new Set(registros.map((r) => r.codigo));
+
+  const codigosCatalogo = new Set();
+  for (const slug of Object.keys(SECOES)) {
+    try {
+      const produtos = JSON.parse(fs.readFileSync(path.join(CATALOGO_DIR, `${slug}.json`), 'utf8'));
+      for (const p of produtos) codigosCatalogo.add(String(p.codigo).trim());
+    } catch { /* json não encontrado ainda */ }
+  }
+
+  return [...codigosEstoque].filter((c) => !codigosCatalogo.has(c)).sort();
+}
+
 async function rodar(slugs, { channel, dryRun, semRemover, forcarRemocao, confirmar, modoAutomatico }) {
   const context = await abrirNavegador(channel);
   const resumo = [];
@@ -453,11 +617,53 @@ async function rodar(slugs, { channel, dryRun, semRemover, forcarRemocao, confir
   }
 }
 
+// PEDIDO DO USUÁRIO (2026-08-10) — ver comentário de sincronizarPorCodigos.
+// Fluxo ponta-a-ponta: acha o CSV de estoque mais recente (ou o caminho
+// passado em --diff-estoque=<caminho>), calcula quais códigos existem no
+// estoque real mas ainda não estão em nenhum <seção>.json, e busca só
+// ESSES no X2 — sem escanear as 26 seções inteiras.
+async function rodarDiffEstoque({ caminhoCsv, channel, dryRun, confirmar, modoAutomatico }) {
+  let csvFinal = caminhoCsv;
+  if (!csvFinal) {
+    // Mesmo diretório usado por x2-estoque-export.js (~/.x2-rildon-scraper/estoque/).
+    const { ESTOQUE_DIR, carregarExports } = require('./x2-estoque-export');
+    const exports = carregarExports();
+    if (!exports.length) throw new Error(`Nenhum CSV de estoque encontrado em ${ESTOQUE_DIR} — rode x2-estoque-export.js primeiro, ou passe --diff-estoque=<caminho>.`);
+    csvFinal = path.join(ESTOQUE_DIR, exports[0].nome); // já vem ordenado do mais recente
+  }
+
+  console.log(`Comparando catálogo de fotos com: ${csvFinal}`);
+  const faltando = codigosFaltandoNoCatalogo(csvFinal);
+  console.log(`${faltando.length} código(s) no estoque que ainda não estão no catálogo de fotos.`);
+  if (!faltando.length) {
+    console.log('Nada a fazer — catálogo já cobre todo o estoque.');
+    return;
+  }
+  console.log(faltando.join(', '));
+
+  const context = await abrirNavegador(channel);
+  try {
+    const page = await garantirTelaCatalogoAberta(context, { confirmar, modoAutomatico });
+    const resultado = await sincronizarPorCodigos(page, faltando, { dryRun });
+
+    console.log('\n=== Resumo ===');
+    for (const g of resultado.gravados) console.log(`${g.slug}: +${g.adicionados} produto(s)`);
+    if (resultado.naoEncontrados.length) console.log(`Não encontrados no X2: ${resultado.naoEncontrados.join(', ')}`);
+    if (resultado.semSecaoReconhecida.length) console.log(`Seção não reconhecida (precisa checar manualmente): ${resultado.semSecaoReconhecida.map((s) => s.codigo).join(', ')}`);
+    const totalAdicionado = resultado.gravados.reduce((a, g) => a + g.adicionados, 0);
+    if (totalAdicionado && !dryRun) console.log('\nLembre de rodar o x2-fotos-scraper.js pra esses códigos novos ganharem foto.');
+  } finally {
+    await context.close().catch(() => {});
+  }
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const secaoArg = args.find((a) => a.startsWith('--secao='));
   const secoesArg = args.find((a) => a.startsWith('--secoes='));
   const todas = args.includes('--todas');
+  const diffEstoque = args.includes('--diff-estoque') || args.some((a) => a.startsWith('--diff-estoque='));
+  const diffEstoqueArg = args.find((a) => a.startsWith('--diff-estoque='));
   const channelArg = args.find((a) => a.startsWith('--channel='));
   const dryRun = args.includes('--dry-run');
   const semRemover = args.includes('--sem-remover');
@@ -465,11 +671,19 @@ async function main() {
 
   const channel = channelArg ? channelArg.split('=')[1] : 'chrome';
 
+  if (diffEstoque) {
+    const caminhoCsv = diffEstoqueArg ? diffEstoqueArg.split('=').slice(1).join('=') : null;
+    await rodarDiffEstoque({ caminhoCsv, channel, dryRun, modoAutomatico: true });
+    return;
+  }
+
   if (!secaoArg && !secoesArg && !todas) {
     console.log('Uso:');
     console.log('  node scripts/x2-catalogo-sync.js --secao=<slug> [--dry-run] [--sem-remover] [--channel=chrome|msedge]');
     console.log('  node scripts/x2-catalogo-sync.js --secoes=<slug1>,<slug2>,... [--dry-run] [--sem-remover]');
     console.log('  node scripts/x2-catalogo-sync.js --todas [--dry-run] [--sem-remover]');
+    console.log('  node scripts/x2-catalogo-sync.js --diff-estoque[=<caminho.csv>] [--dry-run]  (usa o CSV de estoque mais recente por padrão;');
+    console.log('                                                                                busca SÓ os códigos novos, 1 por 1 — não escaneia as 26 seções)');
     console.log('\nPor padrão, código que já está no JSON mas não é mais encontrado no X2 é REMOVIDO');
     console.log('(provável produto desativado) — com backup automático do JSON antigo. Use');
     console.log('--sem-remover pra só acrescentar produtos novos, sem nunca remover nada.');
@@ -507,4 +721,13 @@ if (require.main === module) {
   });
 }
 
-module.exports = { parsearProdutos, calcularDiferenca, CABECALHO_RESULTADO, rodar, LIMITE_REMOCAO_SUSPEITA };
+module.exports = {
+  parsearProdutos,
+  calcularDiferenca,
+  CABECALHO_RESULTADO,
+  rodar,
+  LIMITE_REMOCAO_SUSPEITA,
+  codigosFaltandoNoCatalogo,
+  sincronizarPorCodigos,
+  rodarDiffEstoque,
+};

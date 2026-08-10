@@ -301,6 +301,24 @@
     line-height: 1.55;
   }
 
+  /* Aviso menor, pra dentro de um card (ex: "selecione uma seção antes") —
+     mesma cor de alerta do .aviso-banner, mas sem o padding grande. */
+  .aviso-inline {
+    background: var(--amber-soft);
+    border: 1px solid rgba(245, 185, 66, .35);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+    margin: 0 0 12px;
+    font-size: 12px;
+    color: var(--amber);
+    line-height: 1.5;
+  }
+
+  /* Texto de apoio menor, logo abaixo de um checkbox (.acao-painel label é
+     flex, então isso fica FORA do <label>, como parágrafo irmão — senão o
+     flex empurra o texto pra do lado em vez de embaixo). */
+  .hint-sub { margin: -5px 0 12px 24px; font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+
   .form-field { display: block; font-size: 12.5px; color: var(--text-2); font-weight: 600; margin-bottom: 14px; }
   .form-field > *:not(:first-child) { margin-top: 6px; font-weight: 400; }
   select.search-input { cursor: pointer; }
@@ -430,10 +448,13 @@
           </div>
 
           <div class="acao-painel" data-painel="sync">
-            <p class="descricao">Procura produtos novos (e desativados) no X2 pras seções selecionadas.</p>
-            <label><input type="checkbox" id="opt-dry-run" checked> Só mostrar (--dry-run, não grava nada)</label>
-            <label><input type="checkbox" id="opt-remover-desativados" checked> Remover códigos não encontrados mais</label>
-            <label><input type="checkbox" id="opt-forcar-remocao"> Forçar remoção mesmo se for muita coisa de uma vez</label>
+            <p class="descricao">Revarre do zero cada seção marcada na lista à esquerda e compara com o X2 — acha produtos novos <strong>e</strong> percebe quais sumiram de lá (prováveis descontinuados). Mais completo, mas mais lento do que precisar ser na maioria das vezes.</p>
+            <p class="descricao" style="margin-top:-8px;">Pra só pegar os produtos novos mais recentes de forma rápida, use <strong>"Sincronizar com o Catálogo"</strong> na aba Estoque — usa o CSV de estoque pra buscar só o que falta, sem revarrer tudo.</p>
+            <p class="aviso-inline" id="sync-aviso-selecao" style="display:none;">⚠️ Marque pelo menos 1 seção na lista à esquerda antes de clicar em "Procurar produtos novos".</p>
+            <label><input type="checkbox" id="opt-dry-run" checked> Só simular — mostra o que encontraria, sem gravar nada ainda</label>
+            <label><input type="checkbox" id="opt-remover-desativados" checked> Se um código não aparecer mais no X2, apagar ele do catálogo (provável produto descontinuado)</label>
+            <label><input type="checkbox" id="opt-forcar-remocao"> Apagar mesmo se sumir muita coisa de uma vez de uma seção só</label>
+            <p class="hint-sub">Por padrão, se mais de 30% dos produtos de uma seção "sumirem" numa busca só, o painel NÃO apaga automaticamente — provavelmente é falha na busca, não descontinuação de verdade. Só marque isso se tiver certeza que é uma remoção em massa real.</p>
             <button class="primary full" data-action="sync">Procurar produtos novos</button>
           </div>
 
@@ -779,6 +800,11 @@
 
   function atualizarResumoSelecao() {
     el('resumo-selecao-n').textContent = selecionadas.size;
+    // "Sync" (e as outras ações por seção) não funcionam sem nada marcado
+    // na tabela — mostra um aviso claro em vez de deixar a pessoa clicar
+    // e só descobrir pelo alert() de erro depois.
+    const avisoSync = el('sync-aviso-selecao');
+    if (avisoSync) avisoSync.style.display = (!selecionadas.size && acaoAtiva === 'sync') ? 'block' : 'none';
   }
 
   async function carregarStatus() {
@@ -796,6 +822,7 @@
     acaoAtiva = tab;
     document.querySelectorAll('.acao-tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === tab));
     document.querySelectorAll('.acao-painel').forEach((p) => p.classList.toggle('active', p.dataset.painel === tab));
+    atualizarResumoSelecao();
   }
 
   // ─── Estado de execução (via SSE) ──────────────────────────────────

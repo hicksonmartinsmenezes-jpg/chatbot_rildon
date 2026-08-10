@@ -111,7 +111,9 @@
     border-radius: var(--radius-sm);
     padding: 15px 16px;
     box-shadow: var(--shadow-sm);
+    transition: border-color .12s, background .12s;
   }
+  .stat-card:hover { background: var(--surface-2); border-color: var(--border-strong); }
   .stat-card .valor { font-size: 23px; font-weight: 800; line-height: 1.1; letter-spacing: -.01em; }
   .stat-card .rotulo { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-top: 6px; font-weight: 600; }
   .stat-card.alerta { border-left-color: var(--amber); }
@@ -332,6 +334,23 @@
     line-height: 1.55;
   }
 
+  /* 2026-08-10: alguns ".aviso-banner" eram só CONTEXTO (como um cálculo
+     funciona, uma limitação conhecida) sem nada de errado ou pendente —
+     ficavam em âmbar do mesmo jeito que um aviso de verdade (ex: ".env"
+     sem preencher), o que "cansa o olho" e faz o usuário aprender a
+     ignorar âmbar. `.info-banner` é a mesma caixa, mas neutra (cinza),
+     reservando âmbar só pro que precisa mesmo de atenção/ação. */
+  .info-banner {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 13px 16px;
+    margin-bottom: 18px;
+    font-size: 12.5px;
+    color: var(--text-2);
+    line-height: 1.55;
+  }
+
   /* Aviso menor, pra dentro de um card (ex: "selecione uma seção antes") —
      mesma cor de alerta do .aviso-banner, mas sem o padding grande. */
   .aviso-inline {
@@ -412,7 +431,7 @@
     <main class="main-content">
 
       <h1>Painel Fotos X2</h1>
-      <p class="subtitle">Baixar fotos, sincronizar produtos novos, agendar rotinas e (em breve) estoque — mesmos dados do Catálogo do painel do bot, sempre em sincronia.</p>
+      <p class="subtitle">Baixar, sincronizar e publicar as fotos do catálogo — mesmos dados do Catálogo do painel do bot, sempre em sincronia.</p>
 
       <div class="top-painel active" data-top-painel="fotos">
 
@@ -532,8 +551,8 @@
           ⚠️ X2_USUARIO/X2_SENHA não configurados no arquivo .env — rotinas agendadas vão falhar no login automático até isso ser preenchido (ver .env.example). Sem essas credenciais, o botão "Testar agora" também vai falhar.
         </div>
 
-        <div class="aviso-banner">
-          ⚠️ Rotina roda de madrugada sem ninguém na frente do computador — o login automático no X2 (e abrir a tela certa sozinho) ainda não foi confirmado numa sessão real. Use <strong>"Testar agora"</strong> numa rotina recém-criada pra confirmar que funciona antes de contar com o agendamento. Este servidor também precisa continuar aberto (pode minimizar) — rotinas não rodam com o painel fechado.
+        <div class="info-banner">
+          ℹ️ Login automático + navegação sozinha já validados ao vivo (funcionam pra Estoque, Sync/Diff Estoque e Painel de Produtos). Ainda vale rodar <strong>"Testar agora"</strong> numa rotina recém-criada antes de contar com o agendamento — e lembre que este servidor precisa continuar aberto (pode minimizar): rotinas não rodam com o painel fechado.
         </div>
 
         <div class="stats-row cols-4" id="rotinas-stats-row">
@@ -628,8 +647,8 @@
       </div><!-- /top-painel rotinas -->
 
       <div class="top-painel" data-top-painel="estoque">
-        <div class="aviso-banner">
-          ⚠️ Coleta pura por enquanto — baixa e guarda o CSV do Relatório de Estoque (Logística), sem processar/estruturar nada ainda (o projeto de estoque em si é futuro). Navegação e opções do filtro foram confirmadas ao vivo em 2026-08-06; o clique final em "Exportar em CSV" ainda não foi testado de forma automatizada.
+        <div class="info-banner">
+          ℹ️ Baixa e guarda o CSV do Relatório de Estoque (Logística) direto do X2 — validado ao vivo, com checagem automática de que a tabela terminou de carregar antes de exportar (evita CSV incompleto). O catálogo de fotos e o painel do bot já usam esses dados (preço, custo, estoque) pra "Preço de Venda Zerado", "Sem Custo Médio" e o badge de estoque no Catálogo.
         </div>
 
         <div class="layout">
@@ -672,8 +691,8 @@
       </div><!-- /top-painel estoque -->
 
       <div class="top-painel" data-top-painel="lancamentos">
-        <div class="aviso-banner" id="lancamentos-aviso">
-          ⚠️ Um produto só vira "lançamento" se ele NÃO aparecia em nenhum export de estoque anterior. A captura de CSVs começou em 2026-08-06/07 — não tem como detectar lançamentos de datas anteriores a essa, porque não existe snapshot de estoque de antes disso pra comparar.
+        <div class="info-banner" id="lancamentos-aviso">
+          ℹ️ Um produto só vira "lançamento" se ele NÃO aparecia em nenhum export de estoque anterior. A captura de CSVs começou em 2026-08-06/07 — não tem como detectar lançamentos de datas anteriores a essa, porque não existe snapshot de estoque de antes disso pra comparar.
         </div>
 
         <div class="layout">
@@ -710,8 +729,8 @@
       </div><!-- /top-painel lancamentos -->
 
       <div class="top-painel" data-top-painel="qualidade">
-        <div class="aviso-banner">
-          ⚠️ Cada captura é um RETRATO do estado atual — sobrescreve a anterior (não acumula histórico das listas em si; só os totais entram no histórico do snapshot). "Itens Inativos" e "Sem Foto/Arquivo" vêm do X2 (pode levar 1-2 min); "Preço de Venda Zerado" e "Sem Custo Médio" saem do CSV de estoque mais recente (na hora).
+        <div class="info-banner">
+          ℹ️ Cada captura é um RETRATO do estado atual — sobrescreve a anterior (não acumula histórico das listas em si; só os totais entram no histórico do snapshot). "Itens Inativos" e "Sem Foto/Arquivo" vêm do X2 (pode levar 1-2 min); "Preço de Venda Zerado" e "Sem Custo Médio" saem do CSV de estoque mais recente (na hora).
         </div>
 
         <div class="toolbar" style="margin-bottom:16px;">
@@ -1039,11 +1058,27 @@
   });
 
   // ─── Abas de topo (Fotos / Rotinas / Estoque) ─────────────────────
+  // 2026-08-10: h1/subtítulo eram FIXOS ("Painel Fotos X2" + descrição
+  // genérica de tudo, incluindo um "(em breve) estoque" desatualizado —
+  // Estoque já existe faz tempo) em toda aba. Sem nenhum texto mudando
+  // com a navegação, a única pista de "onde eu estou" era o ícone aceso
+  // na sidebar (sem rótulo visível, só tooltip no hover). Agora o
+  // subtítulo troca por aba, sempre descrevendo o que ESSA tela faz.
+  const SUBTITULO_POR_ABA = {
+    fotos: 'Baixar, sincronizar e publicar as fotos do catálogo — mesmos dados do Catálogo do painel do bot, sempre em sincronia.',
+    rotinas: 'Agende qualquer ação (baixar fotos, sync, exportar estoque, snapshot do Painel de Produtos, diff estoque) pra rodar sozinha num horário fixo, sem precisar abrir o painel.',
+    estoque: 'Exporta o Relatório de Estoque (Logística) do X2 em CSV — alimenta preço, custo e disponibilidade no Catálogo do painel do bot e as listas de Qualidade Cadastral.',
+    lancamentos: 'Compara exports de estoque de datas diferentes pra achar produtos que apareceram pela 1ª vez no período escolhido.',
+    qualidade: 'Listas de produtos com pendência de cadastro no X2 — itens inativos, sem foto, sem preço de venda, sem custo médio, ou só cadastrados sem estoque nem preço.',
+  };
+
   el('top-tabs').addEventListener('click', (ev) => {
     const tab = ev.target.closest('.top-tab');
     if (!tab) return;
     document.querySelectorAll('.top-tab').forEach((t) => t.classList.toggle('active', t === tab));
     document.querySelectorAll('.top-painel').forEach((p) => p.classList.toggle('active', p.dataset.topPainel === tab.dataset.topTab));
+    const subtitulo = SUBTITULO_POR_ABA[tab.dataset.topTab];
+    if (subtitulo) document.querySelector('.subtitle').textContent = subtitulo;
     if (tab.dataset.topTab === 'rotinas') carregarRotinas();
     if (tab.dataset.topTab === 'estoque') carregarEstoqueExports();
     if (tab.dataset.topTab === 'lancamentos') carregarLancamentos();

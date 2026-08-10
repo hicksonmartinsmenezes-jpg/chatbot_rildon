@@ -92,11 +92,19 @@ const QUALIDADE_DIR = path.join(PAINEL_PRODUTOS_DIR, 'qualidade-cadastral');
 // As 4 divergências que o usuário pediu pra capturar como LISTA (não só
 // contador) — 2026-08-07. `labelBadge` precisa bater exatamente com o texto
 // visível do badge no Painel (usado pra achar o elemento clicável).
+//
+// ⚠️ 2026-08-10: "Preço de Venda Zerado" e "Sem Custo Médio" saem via CSV
+// agora (`viaCsv: true`), não mais pelo scrape do X2 — ver
+// `capturarDivergenciasViaCsv` logo abaixo pro motivo (o scrape via UI pra
+// essas duas nunca funcionou, é bug de estado reproduzido de novo ao vivo
+// nessa data). "Itens Inativos" e "Sem Foto/Arquivo" continuam via UI
+// porque não existe coluna de "produto inativo" nem "tem foto no X2" no CSV
+// de estoque — só custo/preço estão lá.
 const DIVERGENCIAS_LISTAVEIS = [
   { chave: 'itensInativos', labelBadge: 'Itens Inativos' },
   { chave: 'semFotoArquivo', labelBadge: 'Sem Foto/Arquivo' },
-  { chave: 'precoVendaZerado', labelBadge: 'Preço de Venda Zerado' },
-  { chave: 'semCustoMedio', labelBadge: 'Sem Custo Médio' },
+  { chave: 'precoVendaZerado', labelBadge: 'Preço de Venda Zerado', viaCsv: true },
+  { chave: 'semCustoMedio', labelBadge: 'Sem Custo Médio', viaCsv: true },
 ];
 
 const HOME_URL = 'https://sistemas7.xprocess.com.br/x2rildon/www/index_main4.jsp';
@@ -550,12 +558,78 @@ async function capturarListaDivergencia(page, { chave, labelBadge }) {
   return { chave, labelBadge, capturadoEm: new Date().toISOString(), headers, produtos };
 }
 
-/** Roda capturarListaDivergencia pras 4 divergências configuradas, salvando
- * cada uma (sobrescreve o arquivo anterior — é um retrato do estado atual,
- * não histórico acumulado). Erros em uma divergência não impedem as outras. */
+/** 2026-08-10 (sugestão do usuário, testando ao vivo): o scrape via UI de
+ * "Preço de Venda Zerado" e "Sem Custo Médio" está quebrado desde 2026-08-07
+ * (o <select> "Linha" só é achado pra 1ª divergência clicada da rodada —
+ * "Itens Inativos" — as demais falham sempre, mesmo com retry; suspeita
+ * documentada em `capturarListaDivergencia` de que `_voltarParaPainel` não
+ * limpa o estado direito entre uma divergência e a próxima. Reproduzido ao
+ * vivo de novo nessa data, ainda sem causa raiz confirmada).
+ *
+ * Só que essas duas divergências não precisam do X2 pra nada: o CSV do
+ * Relatório de Estoque que já baixamos (x2-estoque-export.js, via
+ * estoque.service.parseCsvEstoque) já traz `custoMedio` e
+ * `precoVendaVarejo`/`precoVendaAtacado` por produto. Em vez de brigar mais
+ * com o scrape, calcula direto do CSV mais recente — zero Playwright, zero
+ * flakiness. "Preço de Venda Zerado" considera preço de varejo zerado ou
+ * ausente na coluna; "Sem Custo Médio" considera custo médio zerado ou
+ * ausente. Lança erro se a coluna correspondente não existir em NENHUMA
+ * linha do CSV (em vez de silenciosamente marcar tudo como zerado, que
+ * indicaria cabeçalho não reconhecido, não divergência real). */
+function capturarDivergenciasViaCsv() {
+  const { ESTOQUE_DIR, carregarExports } = require('./x2-estoque-export');
+  const { parseCsvEstoque } = require('../src/services/estoque.service');
+
+  const exports = carregarExports();
+  if (!exports.length) {
+    throw new Error('Nenhum export de estoque encontrado ainda (aba Estoque) — precisa de pelo menos 1 CSV pra calcular isso.');
+  }
+  const nomeCsv = exports[0].nome;
+  const conteudo = fs.readFileSync(path.join(ESTOQUE_DIR, nomeCsv), 'utf8');
+  const registros = parseCsvEstoque(conteudo);
+
+  const temColunaVarejo = registros.some((r) => r.precoVendaVarejo !== null);
+  const temColunaCusto = registros.some((r) => r.custoMedio !== null);
+  if (!temColunaVarejo) throw new Error(`CSV "${nomeCsv}" não tem coluna de Preço Varejo reconhecida — não dá pra calcular "Preço de Venda Zerado".`);
+  if (!temColunaCusto) throw new Error(`CSV "${nomeCsv}" não tem coluna de Custo Médio reconhecida — não dá pra calcular "Sem Custo Médio".`);
+
+  const precoVendaZerado = registros.filter((r) => !r.precoVendaVarejo);
+  const semCustoMedio = registros.filter((r) => !r.custoMedio);
+  const agora = new Date().toISOString();
+
+  _salvarListaQualidade('precoVendaZerado', {
+    chave: 'precoVendaZerado',
+    labelBadge: 'Preço de Venda Zerado',
+    fonte: 'csv-estoque',
+    csvUsado: nomeCsv,
+    capturadoEm: agora,
+    headers: ['Código', 'Descrição', 'Preço Varejo', 'Preço Atacado'],
+    produtos: precoVendaZerado.map((r) => [r.codigo, r.descricao, r.precoVendaVarejo ?? 0, r.precoVendaAtacado ?? 0]),
+  });
+  _salvarListaQualidade('semCustoMedio', {
+    chave: 'semCustoMedio',
+    labelBadge: 'Sem Custo Médio',
+    fonte: 'csv-estoque',
+    csvUsado: nomeCsv,
+    capturadoEm: agora,
+    headers: ['Código', 'Descrição', 'Custo Médio'],
+    produtos: semCustoMedio.map((r) => [r.codigo, r.descricao, r.custoMedio ?? 0]),
+  });
+
+  return {
+    precoVendaZerado: { total: precoVendaZerado.length },
+    semCustoMedio: { total: semCustoMedio.length },
+  };
+}
+
+/** Roda capturarListaDivergencia pras divergências que ainda dependem do X2
+ * (`viaCsv` não marcado) + capturarDivergenciasViaCsv pras que saem do CSV,
+ * salvando cada uma (sobrescreve o arquivo anterior — é um retrato do
+ * estado atual, não histórico acumulado). Erros em uma divergência não
+ * impedem as outras. */
 async function capturarTodasListasQualidade(page) {
   const resultados = {};
-  for (const cfg of DIVERGENCIAS_LISTAVEIS) {
+  for (const cfg of DIVERGENCIAS_LISTAVEIS.filter((c) => !c.viaCsv)) {
     try {
       console.log(`Capturando lista: ${cfg.labelBadge}...`);
       const snap = await capturarListaDivergencia(page, cfg);
@@ -569,6 +643,18 @@ async function capturarTodasListasQualidade(page) {
       await _voltarParaPainel(page);
     }
   }
+
+  try {
+    console.log('Calculando "Preço de Venda Zerado" e "Sem Custo Médio" a partir do CSV de estoque...');
+    const viaCsv = capturarDivergenciasViaCsv();
+    Object.assign(resultados, viaCsv);
+    console.log(`  -> Preço de Venda Zerado: ${viaCsv.precoVendaZerado.total} | Sem Custo Médio: ${viaCsv.semCustoMedio.total}`);
+  } catch (e) {
+    console.log(`  -> falhou (via CSV): ${e.message}`);
+    resultados.precoVendaZerado = { erro: e.message };
+    resultados.semCustoMedio = { erro: e.message };
+  }
+
   return resultados;
 }
 
@@ -739,6 +825,7 @@ module.exports = {
   salvarSnapshot,
   carregarListaQualidade,
   capturarListaDivergencia,
+  capturarDivergenciasViaCsv,
   capturarTodasListasQualidade,
   investigarBotaoImprimir,
   rodar,

@@ -459,9 +459,21 @@ async function _selecionarTodasNaLinha(page) {
 // "Preço de Venda Zerado"/"Sem Custo Médio" têm inputs de preço editáveis
 // em vez de texto puro). Não assume nomes de coluna fixos: pega cabeçalho +
 // linhas como arrays de texto, lendo `.value` quando a célula for um input.
+//
+// ⚠️ CORREÇÃO 2026-08-10: antes retornava a PRIMEIRA tabela que batesse o
+// header (DESCRI/CÓDIGO) e tivesse pelo menos 1 produto — confirmado ao
+// vivo (2x, em sessões diferentes) que isso pega uma tabela pequena/decoy
+// (ex: um resumo de filtro com só 1 linha) antes da tabela real (que tem
+// milhares de linhas) terminar de carregar via AJAX. Sintoma observado:
+// "Itens Inativos" sempre captura exatamente 1 produto quando o X2 mostra
+// 8.635 no contador. Fix: entre TODAS as tabelas candidatas (mesmo
+// critério de header), fica com a MAIOR — e quem chama isso
+// (`_aguardarTabelaResultadoEstavel`) faz polling até essa contagem parar
+// de crescer, em vez de aceitar o primeiro resultado não-vazio.
 async function _scrapearTabelaResultado(page) {
   const { resultado } = await avaliarEmQualquerFrame(page, () => {
     const tabelas = Array.from(document.querySelectorAll('table'));
+    let melhor = null;
     for (const t of tabelas) {
       const primeiraLinha = t.querySelector('tr');
       if (!primeiraLinha) continue;
@@ -477,17 +489,52 @@ async function _scrapearTabelaResultado(page) {
           return td.textContent.trim();
         }))
         .filter((celulas) => celulas.some((c) => c));
-      if (produtos.length) return { headers, produtos };
+      if (produtos.length && (!melhor || produtos.length > melhor.produtos.length)) {
+        melhor = { headers, produtos };
+      }
     }
-    return null;
+    return melhor;
   });
   return resultado || { headers: [], produtos: [] };
+}
+
+// 2026-08-10: mesma técnica de `aguardarTabelaEstavel` em
+// x2-estoque-export.js (já validada ao vivo pra corrigir o export de
+// Estoque intermitente) — em vez de aceitar a 1ª contagem não-zero (que
+// pode ser uma tabela ainda carregando), faz polling até a contagem da
+// MAIOR tabela candidata parar de crescer por `estabilidadeMs` seguidos.
+async function _aguardarTabelaResultadoEstavel(page, { timeoutMs = 25000, intervaloMs = 500, estabilidadeMs = 1500 } = {}) {
+  const inicio = Date.now();
+  let melhor = { headers: [], produtos: [] };
+  let ultimaContagem = -1;
+  let desdeQuandoEstavel = Date.now();
+  while (Date.now() - inicio < timeoutMs) {
+    const atual = await _scrapearTabelaResultado(page);
+    if (atual.produtos.length >= melhor.produtos.length) melhor = atual;
+    if (atual.produtos.length !== ultimaContagem) {
+      ultimaContagem = atual.produtos.length;
+      desdeQuandoEstavel = Date.now();
+    } else if (ultimaContagem > 0 && Date.now() - desdeQuandoEstavel >= estabilidadeMs) {
+      return melhor;
+    }
+    await page.waitForTimeout(intervaloMs);
+  }
+  return melhor; // timeout — devolve o melhor que já achou, mesmo sem confirmar estabilidade
 }
 
 // Volta o painel pro estado inicial (badges de Divergências/Situação
 // visíveis) — depois de abrir uma lista, o painel de conteúdo troca pra
 // mostrar só aquela lista, precisa clicar "Painel" de novo pra resetar
 // antes de capturar a próxima divergência.
+//
+// ⚠️ 2026-08-07/2026-08-10: reset "in-place" (só clicar "Painel" de novo)
+// não limpa o estado direito — confirmado ao vivo 2x que a divergência
+// clicada IMEDIATAMENTE DEPOIS de outra sempre falha em achar o select
+// "Linha" (a 1ª clicada da rodada sempre funciona, a 2ª sempre falha,
+// não é timing). Em vez de continuar debugando esse reset in-place,
+// `capturarTodasListasQualidade` agora re-navega do zero
+// (`abrirPainelProdutos`) antes de CADA divergência via UI, então esta
+// função só é mantida pro caso de uso avulso (`investigarBotaoImprimir`).
 async function _voltarParaPainel(page) {
   // Mesma proteção da correção #3 em abrirPainelProdutos: nunca buscar
   // "Painel" no frame principal (tem o item do menu com o mesmo texto).
@@ -538,23 +585,24 @@ async function capturarListaDivergencia(page, { chave, labelBadge }) {
     { tentativas: 5, esperaMs: 1000 }
   );
   if (!selecionou) {
-    // ⚠️ 2026-08-07: retry (5x1s) não resolveu pras 3 divergências depois
-    // da 1ª ("Itens Inativos" sempre funciona, as outras 3 sempre falham
-    // aqui, mesmo com espera) — não é timing, é estado. Diagnóstico pra
-    // ver o que a tela realmente mostra nesse momento (suspeita: o reset
-    // via _voltarParaPainel entre uma divergência e outra não está
-    // limpando o estado anterior, ou o clique no badge está caindo num
-    // elemento errado que não abre select nenhum).
+    // ⚠️ 2026-08-07: retry (5x1s) não resolveu quando a divergência não é
+    // a 1ª clicada na MESMA navegação — bug de estado que resistiu a
+    // várias tentativas de fix in-place. Resolvido em 2026-08-10 fazendo
+    // `capturarTodasListasQualidade` re-navegar do zero (abrirPainelProdutos)
+    // antes de CADA divergência via UI, então esse erro não deveria mais
+    // acontecer na prática — mantido como rede de segurança.
     await salvarDiagnostico(page, `sem-select-${chave}`);
     throw new Error(`Não encontrei o filtro "Linha" (com opção "Todas") pra "${labelBadge}". Diagnóstico salvo em debug-sem-select-${chave}.png/.json.`);
   }
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(1000);
 
-  const { headers, produtos } = await comRetry(
-    () => _scrapearTabelaResultado(page),
-    (r) => r && r.produtos && r.produtos.length > 0,
-    { tentativas: 5, esperaMs: 1000 }
-  );
+  // 2026-08-10: polling de estabilidade (ver _aguardarTabelaResultadoEstavel)
+  // em vez de aceitar a 1ª contagem não-zero — corrige "Itens Inativos"
+  // sempre capturando 1 produto quando o X2 mostra milhares.
+  const { headers, produtos } = await _aguardarTabelaResultadoEstavel(page);
+  if (!produtos.length) {
+    await salvarDiagnostico(page, `tabela-vazia-${chave}`);
+  }
   return { chave, labelBadge, capturadoEm: new Date().toISOString(), headers, produtos };
 }
 
@@ -626,11 +674,30 @@ function capturarDivergenciasViaCsv() {
  * (`viaCsv` não marcado) + capturarDivergenciasViaCsv pras que saem do CSV,
  * salvando cada uma (sobrescreve o arquivo anterior — é um retrato do
  * estado atual, não histórico acumulado). Erros em uma divergência não
- * impedem as outras. */
-async function capturarTodasListasQualidade(page) {
+ * impedem as outras.
+ *
+ * ⚠️ 2026-08-10: pedido do usuário pra corrigir "Itens Inativos" e "Sem
+ * Foto/Arquivo" de vez (mostrando print do X2 com 8.635 e 2.782 — bem
+ * longe do que a captura vinha trazendo: 1 e erro). Duas causas raiz
+ * diferentes, corrigidas juntas:
+ * 1) `_scrapearTabelaResultado` pegava a 1ª tabela pequena que batesse o
+ *    header, antes da tabela real (milhares de linhas) terminar de
+ *    carregar via AJAX — agora usa `_aguardarTabelaResultadoEstavel`
+ *    (mesma técnica de polling já validada no export de Estoque).
+ * 2) A 2ª divergência clicada na MESMA navegação sempre falhava em achar
+ *    o select "Linha" — bug de estado no reset in-place
+ *    (`_voltarParaPainel`) que resistiu a várias tentativas de fix
+ *    pontual. Em vez de continuar caçando esse bug, cada divergência via
+ *    UI agora RE-NAVEGA do zero (`abrirPainelProdutos`) antes de clicar —
+ *    mais lento (repete o menu inteiro a cada uma), mas sempre parte do
+ *    mesmo estado "limpo" que já comprovadamente funciona pra 1ª
+ *    divergência de qualquer rodada. */
+async function capturarTodasListasQualidade(page, { modoAutomatico } = {}) {
   const resultados = {};
   for (const cfg of DIVERGENCIAS_LISTAVEIS.filter((c) => !c.viaCsv)) {
     try {
+      console.log(`Voltando pro Painel do zero antes de "${cfg.labelBadge}"...`);
+      await abrirPainelProdutos(page, { modoAutomatico });
       console.log(`Capturando lista: ${cfg.labelBadge}...`);
       const snap = await capturarListaDivergencia(page, cfg);
       _salvarListaQualidade(cfg.chave, snap);
@@ -639,8 +706,6 @@ async function capturarTodasListasQualidade(page) {
     } catch (e) {
       console.log(`  -> falhou (${cfg.labelBadge}): ${e.message}`);
       resultados[cfg.chave] = { erro: e.message };
-    } finally {
-      await _voltarParaPainel(page);
     }
   }
 
@@ -699,7 +764,7 @@ async function capturarSnapshot(context, { modoAutomatico } = {}) {
   // DEPOIS de capturar métricas/produtos ativos porque clicar nos badges
   // troca o conteúdo do painel; se desse erro aqui os dados já capturados
   // acima não se perdem.
-  const listasQualidade = await capturarTodasListasQualidade(page);
+  const listasQualidade = await capturarTodasListasQualidade(page, { modoAutomatico });
 
   const snapshot = {
     capturadoEm: new Date().toISOString(),
@@ -827,6 +892,8 @@ module.exports = {
   capturarListaDivergencia,
   capturarDivergenciasViaCsv,
   capturarTodasListasQualidade,
+  _scrapearTabelaResultado,
+  _aguardarTabelaResultadoEstavel,
   investigarBotaoImprimir,
   rodar,
 };

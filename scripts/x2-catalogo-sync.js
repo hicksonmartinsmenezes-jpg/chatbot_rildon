@@ -310,7 +310,20 @@ async function buscarSecao(page, labelSecao) {
 // page.evaluate() roda isolado no contexto da página, então compartilhar a
 // função helper entre as duas exigiria injeção extra sem ganho real pra um
 // bloco desse tamanho).
+// ⚠️ Corrigido 2026-08-10 (falha ao vivo: rodando --diff-estoque pra 86
+// códigos em sequência, só o 1º achou resultado certo — os outros 85
+// vieram "não encontrado" mesmo devendo existir). Causa: o waitForFunction
+// só checava "o cabeçalho de resultado apareceu" — se a busca ANTERIOR já
+// tinha deixado esse cabeçalho na tela, a promise resolvia IMEDIATAMENTE,
+// antes da busca do código atual terminar de verdade, e extrairTextoResultado
+// lia o resultado do código ANTERIOR (que não bate com o código atual no
+// filter de sincronizarPorCodigos, então virava "não encontrado" por
+// engano). Fix: tira um "retrato" do texto ANTES de disparar a busca, e só
+// considera pronto quando o texto muda desse retrato E bate um dos padrões
+// esperados — garante que é resultado da busca ATUAL, não da anterior.
 async function buscarPorCodigo(page, codigo) {
+  const textoAntes = await extrairTextoResultado(page).catch(() => '');
+
   await page.evaluate((cod) => {
     function marcarRadio(doc, name, valor) {
       const el = doc.querySelector(`input[name="${name}"][value="${valor}"]`);
@@ -348,13 +361,25 @@ async function buscarPorCodigo(page, codigo) {
 
   // Sem cabeçalho garantido quando o código não existe (tela pode só voltar
   // vazia) — por isso aqui o timeout NÃO é fatal, quem chama decide olhando
-  // o texto extraído depois (ver sincronizarCodigos).
+  // o texto extraído depois (ver sincronizarPorCodigos). `texto !== anterior`
+  // é a parte que garante que não estamos lendo resultado velho (ver
+  // comentário acima de buscarPorCodigo).
+  // 6s (não 15s): se a tela de "nenhum resultado" for IDÊNTICA pra qualquer
+  // código sem match (sem nada específico do código na mensagem — bem
+  // provável), `texto !== anterior` nunca vira true de propósito quando 2
+  // códigos seguidos não são encontrados, e sempre estoura o timeout — com
+  // 85 códigos "não encontrados" numa rodada só, 15s cada vira ~20min. Cai
+  // no .catch() de qualquer jeito (resultado correto: "não encontrado"
+  // continua válido mesmo por timeout), só reduz a espera desperdiçada.
   await page.waitForFunction(
-    () => {
+    (anterior) => {
       const doc = document.querySelector('iframe[name="principal"]').contentDocument;
-      return /Produto\tDescrição detalhada\tVolumetria|nenhum resultado|não foi encontrado/i.test(doc.body.innerText);
+      const texto = doc.body.innerText;
+      if (texto === anterior) return false;
+      return /Produto\tDescrição detalhada\tVolumetria|nenhum resultado|não foi encontrado/i.test(texto);
     },
-    { timeout: 15000, polling: 400 }
+    textoAntes,
+    { timeout: 6000, polling: 300 }
   ).catch(() => {});
 }
 

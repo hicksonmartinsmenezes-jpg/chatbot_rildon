@@ -267,6 +267,59 @@ async function clicarPorTexto(page, texto, { tentativas = 3 } = {}) {
   throw new Error(`Clique em "${texto}" falhou depois de ${tentativas} tentativas: ${ultimoErro.message}`);
 }
 
+// ID confirmado ao vivo no onclick do botão: exportTableToCSV('Estoque
+// Produto', 'tb_estoque_produto', [...]) — 2º argumento é o id da <table>.
+const TABELA_ESTOQUE_ID = 'tb_estoque_produto';
+
+function contarLinhasTabelaEstoque(page) {
+  return page.evaluate((id) => {
+    const frame = document.querySelector('iframe[name="principal"]');
+    if (!frame || !frame.contentDocument) return -1;
+    const tabela = frame.contentDocument.getElementById(id);
+    return tabela ? tabela.rows.length : -1;
+  }, TABELA_ESTOQUE_ID);
+}
+
+// Corrigido 2026-08-10 — CAUSA RAIZ da falha intermitente já mitigada (mas
+// não resolvida) pelos 2 fixes anteriores em clicarPorTexto: depois de
+// "Pesquisar", a tabela de resultados (até ~17.500 linhas em "Com e sem
+// estoque") é preenchida progressivamente pelo X2, e o código sempre usou
+// um `waitForTimeout` FIXO (2500ms → 4000ms) antes de exportar. Isso é uma
+// corrida: se a tabela terminar de renderizar em menos tempo que o fixo,
+// funciona (foi o que aconteceu nos testes manuais que "confirmaram"
+// cada aumento); se o servidor/rede estiver mais lento naquele momento
+// específico, o clique em "Exportar em CSV" acontece com a tabela ainda
+// parcialmente preenchida — e o CSV sai pequeno (visto ao vivo: 344
+// produtos / 61.7KB, várias vezes, mesmo depois de 4000ms). Os retries em
+// clicarPorTexto só protegem o CLIQUE em si (elemento sendo substituído no
+// DOM); não têm como saber se a tabela está com os dados TODOS ainda.
+// Fix de verdade: substituir o tempo fixo por um polling que só avança
+// quando o Nº DE LINHAS da tabela parar de crescer por `estabilidadeMs`
+// seguidos (mesma ideia do waitForFunction em buscarSecao() do
+// x2-catalogo-sync.js, adaptada pra "estabilidade" em vez de "texto
+// específico apareceu", já que aqui não sabemos o total esperado de
+// antemão).
+async function aguardarTabelaEstavel(page, { timeoutMs = 30000, intervaloMs = 500, estabilidadeMs = 1500 } = {}) {
+  const inicio = Date.now();
+  let ultimaContagem = -1;
+  let desdeQuandoEstavel = Date.now();
+
+  while (Date.now() - inicio < timeoutMs) {
+    const contagem = await contarLinhasTabelaEstoque(page);
+    if (contagem !== ultimaContagem) {
+      ultimaContagem = contagem;
+      desdeQuandoEstavel = Date.now();
+    } else if (contagem > 0 && Date.now() - desdeQuandoEstavel >= estabilidadeMs) {
+      console.log(`(tabela estabilizou em ${contagem} linhas depois de ${Date.now() - inicio}ms)`);
+      return contagem;
+    }
+    await page.waitForTimeout(intervaloMs);
+  }
+
+  console.log(`(aviso: tabela não estabilizou dentro de ${timeoutMs}ms — última contagem vista: ${ultimaContagem} linhas. Prosseguindo mesmo assim.)`);
+  return ultimaContagem;
+}
+
 function nomeArquivoTimestamp() {
   const agora = new Date();
   const pad = (n) => String(n).padStart(2, '0');
@@ -286,11 +339,11 @@ async function exportarEstoque(context, { estoqueOpcao = 'Com e sem estoque', mo
   console.log('Clicando em "Pesquisar"...');
   const pesquisouOk = await clicarPorTexto(page, 'Pesquisar');
   if (!pesquisouOk) throw new Error('Não achei o botão "Pesquisar" — precisa confirmar numa sessão ao vivo.');
-  // 4000ms (era 2500) — "Com e sem estoque" pode ter milhares de linhas;
-  // aumentado 2026-08-10 depois de ver ao vivo a tabela ainda se
-  // (re)desenhando quando o clique em "Exportar em CSV" era tentado (ver
-  // aviso em clicarPorTexto).
-  await page.waitForTimeout(4000);
+  // Espera de verdade (polling até o Nº de linhas parar de crescer) em vez
+  // do tempo fixo antigo — ver comentário completo em aguardarTabelaEstavel
+  // (causa raiz da falha intermitente de export incompleto, 2026-08-10).
+  console.log('Aguardando a tabela de resultados carregar por completo...');
+  const linhasEsperadas = await aguardarTabelaEstavel(page);
 
   console.log('Clicando em "Exportar em CSV" e aguardando o download...');
   const nomeArquivo = nomeArquivoTimestamp();
@@ -309,6 +362,28 @@ async function exportarEstoque(context, { estoqueOpcao = 'Com e sem estoque', mo
 
   await download.saveAs(destino);
   console.log(`CSV salvo em: ${destino}`);
+
+  // Checagem de sanidade (2026-08-10): compara o Nº de linhas do CSV salvo
+  // com o Nº de linhas que a tabela tinha quando estabilizou (linhasEsperadas,
+  // acima). Não bloqueia nem tenta de novo sozinho — só avisa bem alto no
+  // log, já que depois de aguardarTabelaEstavel um export pequeno de
+  // verdade (ex.: "Apenas sem estoque" com poucos itens) é legítimo, não dá
+  // pra travar nisso. Serve pra próxima falha (se houver) já vir com
+  // diagnóstico pronto em vez de precisar investigar do zero de novo.
+  try {
+    const conteudo = fs.readFileSync(destino, 'utf8');
+    const linhasCsv = conteudo.split('\n').filter((l) => l.trim()).length - 1; // -1 = cabeçalho
+    if (linhasEsperadas > 0 && linhasCsv < linhasEsperadas * 0.9) {
+      console.log(
+        `⚠ ATENÇÃO: a tabela tinha ${linhasEsperadas} linhas quando estabilizou, mas o CSV salvo só tem ` +
+        `${linhasCsv} produtos — pode ser um export incompleto (mesmo bug de antes). Confira o arquivo antes de usar.`
+      );
+    } else {
+      console.log(`(checagem ok: ${linhasCsv} produtos no CSV, tabela tinha ${linhasEsperadas} linhas)`);
+    }
+  } catch (e) {
+    console.log(`(não consegui checar o Nº de linhas do CSV salvo: ${e.message})`);
+  }
 
   // PEDIDO DO USUÁRIO (2026-08-07): "Estoque ao vivo no Catálogo/orçamento"
   // — depois de baixar, dispara a importação pro banco automaticamente.

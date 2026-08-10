@@ -241,6 +241,37 @@
   .acao-painel label { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text-2); margin-bottom: 9px; cursor: pointer; }
   .acao-painel input[type="number"] { width: 90px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text); border-radius: 7px; padding: 5px 9px; margin-left: auto; font-family: inherit; }
 
+  /* ─── Qualidade Cadastral: 1 aba por divergência (2026-08-10) ──────
+     Visualmente igual ao .acao-tabs/.acao-painel de Fotos, mas com
+     classe PRÓPRIA de propósito: trocarAba() (Fotos) faz
+     querySelectorAll GLOBAL em .acao-tab/.acao-painel — reusar a mesma
+     classe faria trocar de aba em Fotos desativar essas abas também. */
+  .qualidade-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 18px; flex-wrap: wrap; }
+  .qualidade-tab {
+    padding: 9px 13px;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+    transition: color .12s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .qualidade-tab:hover { color: var(--text); }
+  .qualidade-tab.active { color: #fff; border-color: #fff; }
+  .qualidade-tab-contador { font-size: 10.5px; font-weight: 700; color: var(--text-2); background: var(--surface-2); padding: 2px 8px; border-radius: 999px; }
+  .qualidade-tab.active .qualidade-tab-contador { background: var(--surface-3); color: #fff; }
+  .qualidade-tab-erro .qualidade-tab-contador { background: var(--red-soft); color: var(--red); }
+
+  .qualidade-painel { display: none; }
+  .qualidade-painel.active { display: block; }
+
+  .qualidade-paginacao { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 12px; }
+  .qualidade-pagina-info { font-size: 12px; color: var(--muted); font-weight: 600; white-space: nowrap; }
+
   /* ─── Execução (status + confirmação + log), unificado ────────── */
   .status-line { font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 9px; font-weight: 500; }
   .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
@@ -680,7 +711,7 @@
 
       <div class="top-painel" data-top-painel="qualidade">
         <div class="aviso-banner">
-          ⚠️ Cada captura é um RETRATO do estado atual — sobrescreve a anterior (não acumula histórico das listas em si; só os totais entram no histórico do snapshot). Pode demorar 1-2 minutos (4 listas, uma pode ter milhares de produtos).
+          ⚠️ Cada captura é um RETRATO do estado atual — sobrescreve a anterior (não acumula histórico das listas em si; só os totais entram no histórico do snapshot). "Itens Inativos" e "Sem Foto/Arquivo" vêm do X2 (pode levar 1-2 min); "Preço de Venda Zerado" e "Sem Custo Médio" saem do CSV de estoque mais recente (na hora).
         </div>
 
         <div class="toolbar" style="margin-bottom:16px;">
@@ -688,7 +719,10 @@
           <span class="toolbar-sep"></span>
         </div>
 
-        <div id="qualidade-secoes"></div>
+        <div class="card">
+          <div class="qualidade-tabs" id="qualidade-tabs"></div>
+          <div id="qualidade-paineis"></div>
+        </div>
       </div><!-- /top-painel qualidade -->
 
     </main>
@@ -1334,22 +1368,39 @@
     if (ev.target.closest('[data-action="lancamentos-buscar"]')) carregarLancamentos();
   });
 
-  // ─── Qualidade Cadastral (2026-08-07) — listas de Itens Inativos, Sem
-  // Foto/Arquivo, Preço de Venda Zerado, Sem Custo Médio (ver
-  // scripts/x2-painel-produtos-snapshot.js). Cada lista pode ter milhares
-  // de linhas — renderiza no máximo QUALIDADE_LIMITE_LINHAS de cada vez
-  // (filtrado pela busca), evita travar o navegador.
-  const QUALIDADE_LIMITE_LINHAS = 500;
-  const qualidadeDados = {}; // chave -> { headers, produtos }
+  // ─── Qualidade Cadastral (2026-08-07, reformulado em abas 2026-08-10) —
+  // listas de Itens Inativos, Sem Foto/Arquivo, Preço de Venda Zerado, Sem
+  // Custo Médio (ver scripts/x2-painel-produtos-snapshot.js). Antes, as 4
+  // ficavam empilhadas na mesma tela (card atrás de card) e a busca cortava
+  // em 500 linhas com uma mensagem de "mostrando 500 de X" fácil de não
+  // notar — dava a impressão de filtro incompleto. Agora: 1 aba por
+  // divergência (só uma tabela na tela por vez) + paginação de verdade
+  // (Anterior/Próxima), então a busca sempre alcança o resultado inteiro,
+  // só dividido em páginas em vez de escondido.
+  const QUALIDADE_PAGINA_TAMANHO = 100;
+  const qualidadeDados = {}; // chave -> { headers, produtos, labelBadge }
+  const qualidadeEstado = {}; // chave -> { filtro, pagina }
+  let qualidadeAbaAtiva = null;
+
+  function _qualidadeEstadoDe(chave) {
+    return qualidadeEstado[chave] || (qualidadeEstado[chave] = { filtro: '', pagina: 0 });
+  }
 
   async function carregarQualidadeCadastral() {
     const res = await fetch('/api/painel-produtos/qualidade-cadastral');
     const data = await res.json();
     const tipos = data.tipos || [];
-    const container = el('qualidade-secoes');
-    container.innerHTML = tipos.map((t) => `
-      <div class="card" style="margin-bottom:16px;">
-        <h2>${t.labelBadge} <span class="contador" id="qualidade-contador-${t.chave}">...</span></h2>
+    if (!qualidadeAbaAtiva && tipos.length) qualidadeAbaAtiva = tipos[0].chave;
+
+    el('qualidade-tabs').innerHTML = tipos.map((t) => `
+      <span class="qualidade-tab${t.chave === qualidadeAbaAtiva ? ' active' : ''}" data-qualidade-tab="${t.chave}">
+        ${t.labelBadge}
+        <span class="qualidade-tab-contador" id="qualidade-tab-contador-${t.chave}">…</span>
+      </span>
+    `).join('');
+
+    el('qualidade-paineis').innerHTML = tipos.map((t) => `
+      <div class="qualidade-painel${t.chave === qualidadeAbaAtiva ? ' active' : ''}" data-qualidade-painel="${t.chave}">
         <input type="text" class="search-input" data-qualidade-busca="${t.chave}" placeholder="Buscar por código ou descrição...">
         <div class="table-wrap">
           <table>
@@ -1357,64 +1408,115 @@
             <tbody id="qualidade-tabela-${t.chave}"><tr><td class="skeleton">Carregando...</td></tr></tbody>
           </table>
         </div>
-        <p class="descricao" id="qualidade-info-${t.chave}" style="margin-top:8px;"></p>
+        <div class="qualidade-paginacao">
+          <button class="small ghost" data-qualidade-pag="anterior" data-qualidade-chave="${t.chave}" id="qualidade-pag-anterior-${t.chave}">‹ Anterior</button>
+          <span class="qualidade-pagina-info" id="qualidade-pagina-info-${t.chave}"></span>
+          <button class="small ghost" data-qualidade-pag="proxima" data-qualidade-chave="${t.chave}" id="qualidade-pag-proxima-${t.chave}">Próxima ›</button>
+        </div>
+        <p class="descricao" id="qualidade-info-${t.chave}" style="margin-top:10px;"></p>
       </div>
     `).join('');
 
     tipos.forEach((t) => _carregarUmaListaQualidade(t.chave));
   }
 
+  function _qualidadeTrocarAba(chave) {
+    qualidadeAbaAtiva = chave;
+    document.querySelectorAll('.qualidade-tab').forEach((t) => t.classList.toggle('active', t.dataset.qualidadeTab === chave));
+    document.querySelectorAll('.qualidade-painel').forEach((p) => p.classList.toggle('active', p.dataset.qualidadePainel === chave));
+  }
+
   async function _carregarUmaListaQualidade(chave) {
     const res = await fetch(`/api/painel-produtos/qualidade-cadastral/${chave}`);
     const tbody = el(`qualidade-tabela-${chave}`);
     const theadRow = el(`qualidade-cabecalho-${chave}`);
-    const contador = el(`qualidade-contador-${chave}`);
+    const tabContador = el(`qualidade-tab-contador-${chave}`);
     const info = el(`qualidade-info-${chave}`);
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      contador.textContent = '—';
+      tabContador.textContent = '—';
+      tabContador.closest('.qualidade-tab').classList.add('qualidade-tab-erro');
       theadRow.innerHTML = '';
       tbody.innerHTML = `<tr><td class="table-empty">${data.error || 'Nenhuma captura ainda.'}</td></tr>`;
+      info.textContent = '';
+      const btnAnterior = el(`qualidade-pag-anterior-${chave}`);
+      const btnProxima = el(`qualidade-pag-proxima-${chave}`);
+      if (btnAnterior) btnAnterior.disabled = true;
+      if (btnProxima) btnProxima.disabled = true;
+      const pagInfo = el(`qualidade-pagina-info-${chave}`);
+      if (pagInfo) pagInfo.textContent = '';
       return;
     }
     const data = await res.json();
     const headers = data.headers || [];
     const produtos = data.produtos || [];
     qualidadeDados[chave] = { headers, produtos };
+    qualidadeEstado[chave] = { filtro: '', pagina: 0 };
 
-    contador.textContent = produtos.length.toLocaleString('pt-BR');
+    tabContador.textContent = produtos.length.toLocaleString('pt-BR');
     theadRow.innerHTML = headers.map((h) => `<th>${h || ''}</th>`).join('');
-    _renderTabelaQualidade(chave, '');
-    info.textContent = data.capturadoEm ? `Capturado em ${formatarDataHora(data.capturadoEm)}.` : '';
+    _renderTabelaQualidade(chave);
+    info.textContent = data.capturadoEm
+      ? `Capturado em ${formatarDataHora(data.capturadoEm)}${data.fonte === 'csv-estoque' ? ` — a partir do CSV "${data.csvUsado}".` : '.'}`
+      : '';
   }
 
-  function _renderTabelaQualidade(chave, filtro) {
+  function _renderTabelaQualidade(chave) {
     const dados = qualidadeDados[chave];
     const tbody = el(`qualidade-tabela-${chave}`);
     if (!dados || !tbody) return;
-    const termo = filtro.trim().toLowerCase();
+    const estado = _qualidadeEstadoDe(chave);
     const colspan = dados.headers.length || 1;
+    const termo = estado.filtro.trim().toLowerCase();
     const filtrados = termo
       ? dados.produtos.filter((linha) => linha.some((c) => String(c || '').toLowerCase().includes(termo)))
       : dados.produtos;
 
+    const totalPaginas = Math.max(1, Math.ceil(filtrados.length / QUALIDADE_PAGINA_TAMANHO));
+    if (estado.pagina >= totalPaginas) estado.pagina = totalPaginas - 1;
+    if (estado.pagina < 0) estado.pagina = 0;
+
     if (!filtrados.length) {
       tbody.innerHTML = `<tr><td colspan="${colspan}" class="table-empty">Nenhum produto encontrado.</td></tr>`;
-      return;
+    } else {
+      const inicio = estado.pagina * QUALIDADE_PAGINA_TAMANHO;
+      const visiveis = filtrados.slice(inicio, inicio + QUALIDADE_PAGINA_TAMANHO);
+      tbody.innerHTML = visiveis.map((linha) => `<tr>${linha.map((c) => `<td>${c === null || c === undefined ? '' : c}</td>`).join('')}</tr>`).join('');
     }
 
-    const visiveis = filtrados.slice(0, QUALIDADE_LIMITE_LINHAS);
-    let html = visiveis.map((linha) => `<tr>${linha.map((c) => `<td>${c || ''}</td>`).join('')}</tr>`).join('');
-    if (filtrados.length > QUALIDADE_LIMITE_LINHAS) {
-      html += `<tr><td colspan="${colspan}" class="table-empty">Mostrando ${QUALIDADE_LIMITE_LINHAS} de ${filtrados.length.toLocaleString('pt-BR')} — refine a busca pra ver os outros.</td></tr>`;
+    const pagInfo = el(`qualidade-pagina-info-${chave}`);
+    if (pagInfo) {
+      pagInfo.textContent = filtrados.length
+        ? `Página ${estado.pagina + 1} de ${totalPaginas} — ${filtrados.length.toLocaleString('pt-BR')} produto(s)`
+        : '';
     }
-    tbody.innerHTML = html;
+    const btnAnterior = el(`qualidade-pag-anterior-${chave}`);
+    const btnProxima = el(`qualidade-pag-proxima-${chave}`);
+    if (btnAnterior) btnAnterior.disabled = estado.pagina <= 0;
+    if (btnProxima) btnProxima.disabled = estado.pagina >= totalPaginas - 1;
   }
 
-  el('qualidade-secoes').addEventListener('input', (ev) => {
+  el('qualidade-tabs').addEventListener('click', (ev) => {
+    const tab = ev.target.closest('.qualidade-tab');
+    if (tab) _qualidadeTrocarAba(tab.dataset.qualidadeTab);
+  });
+
+  el('qualidade-paineis').addEventListener('input', (ev) => {
     const chave = ev.target.dataset.qualidadeBusca;
     if (!chave) return;
-    _renderTabelaQualidade(chave, ev.target.value);
+    const estado = _qualidadeEstadoDe(chave);
+    estado.filtro = ev.target.value;
+    estado.pagina = 0; // busca nova sempre volta pra 1ª página
+    _renderTabelaQualidade(chave);
+  });
+
+  el('qualidade-paineis').addEventListener('click', (ev) => {
+    const btn = ev.target.closest('[data-qualidade-pag]');
+    if (!btn || btn.disabled) return;
+    const chave = btn.dataset.qualidadeChave;
+    const estado = _qualidadeEstadoDe(chave);
+    estado.pagina += btn.dataset.qualidadePag === 'proxima' ? 1 : -1;
+    _renderTabelaQualidade(chave);
   });
 
   document.addEventListener('click', async (ev) => {

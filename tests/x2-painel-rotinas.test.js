@@ -37,11 +37,15 @@ describe('rotinas: validação', () => {
   });
 
   test('tipo inválido é rejeitado', () => {
-    expect(rotinas.validarRotina({ ...rotinaBase, tipo: 'zip' })).toContain('tipo precisa ser "baixar", "sync", "estoque" ou "painel-produtos".');
+    expect(rotinas.validarRotina({ ...rotinaBase, tipo: 'zip' })).toContain('tipo precisa ser "baixar", "sync", "estoque", "painel-produtos" ou "diff-estoque".');
   });
 
   test('tipo painel-produtos não exige secoes', () => {
     expect(rotinas.validarRotina({ ...rotinaBase, tipo: 'painel-produtos', secoes: undefined })).toEqual([]);
+  });
+
+  test('tipo diff-estoque não exige secoes', () => {
+    expect(rotinas.validarRotina({ ...rotinaBase, tipo: 'diff-estoque', secoes: undefined })).toEqual([]);
   });
 
   test('secoes vazia é rejeitada (tipo baixar/sync)', () => {

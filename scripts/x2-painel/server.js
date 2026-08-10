@@ -251,6 +251,26 @@ async function rodarAcao(tipo, opcoes, { origemRotina } = {}) {
           confirmar: modoAutomatico ? undefined : confirmarFactory(),
           modoAutomatico,
         });
+      } else if (tipo === 'diff-estoque') {
+        // PEDIDO DO USUÁRIO (2026-08-10): "com a lista csv que eu extraio,
+        // não seria mais fácil capturar códigos novos por lá e depois
+        // rastreá-los com o sync" — usa o CSV de estoque (mais recente, ou
+        // opcoes.caminhoCsv se um export específico foi escolhido no
+        // painel) pra achar só os códigos que faltam no catálogo e buscar
+        // cada um individualmente, sem escanear as 26 seções inteiras.
+        // opcoes.caminhoCsv vem do painel como só o NOME do arquivo (não o
+        // caminho completo) — sempre resolvido dentro de ESTOQUE_DIR, nunca
+        // um caminho arbitrário mandado pelo cliente (evita path traversal).
+        const caminhoCsv = opcoes.caminhoCsv
+          ? path.join(estoqueExport.ESTOQUE_DIR, path.basename(opcoes.caminhoCsv))
+          : null;
+        await sync.rodarDiffEstoque({
+          caminhoCsv,
+          channel: 'chrome',
+          dryRun: !!opcoes.dryRun,
+          confirmar: modoAutomatico ? undefined : confirmarFactory(),
+          modoAutomatico,
+        });
       } else {
         throw new Error(`Ação desconhecida: ${tipo}`);
       }
@@ -475,7 +495,7 @@ app.post('/api/acao', (req, res) => {
   // "estoque"/"painel-produtos" não usam secoes (capturam/exportam tudo de
   // uma vez — ver x2-estoque-export.js / x2-painel-produtos-snapshot.js) —
   // as outras ações continuam exigindo pelo menos 1 seção selecionada.
-  const TIPOS_SEM_SECOES = ['estoque', 'painel-produtos'];
+  const TIPOS_SEM_SECOES = ['estoque', 'painel-produtos', 'diff-estoque'];
   if (!tipo) {
     return res.status(400).json({ error: 'tipo é obrigatório.' });
   }

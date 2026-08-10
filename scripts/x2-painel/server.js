@@ -300,6 +300,21 @@ function contarPublicados(slug) {
   }
 }
 
+// Um mesmo código de produto pode aparecer em mais de uma seção (peça que
+// se encaixa em duas categorias no X2 — ex.: acessorios-ferramentas +
+// alternador). A soma bruta de `produtos` por seção conta essas peças 2x,
+// então o total "Produtos no catálogo" precisa deduplicar por código.
+function totalProdutosUnicos() {
+  const codigos = new Set();
+  for (const slug of Object.keys(SECOES)) {
+    try {
+      const produtos = JSON.parse(fs.readFileSync(path.join(CATALOGO_DIR, `${slug}.json`), 'utf8'));
+      for (const p of produtos) codigos.add(String(p.codigo).trim());
+    } catch { /* json não encontrado ainda */ }
+  }
+  return codigos.size;
+}
+
 function statusSecoes() {
   return Object.entries(SECOES).map(([slug, label]) => {
     let produtos = 0;
@@ -334,6 +349,7 @@ function statusSecoes() {
 app.get('/api/status', (req, res) => {
   res.json({
     secoes: statusSecoes(),
+    totalProdutosUnicos: totalProdutosUnicos(),
     limiteRemocaoSuspeitaPct: Math.round((sync.LIMITE_REMOCAO_SUSPEITA || 0.3) * 100),
     larguraMinimaAviso: LARGURA_MINIMA_AVISO,
     execucao: execucao ? {

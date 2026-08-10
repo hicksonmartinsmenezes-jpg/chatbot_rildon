@@ -665,6 +665,7 @@
   'use strict';
 
   let secoes = [];
+  let totalProdutosUnicos = 0;
   const selecionadas = new Set();
   let rodando = false;
   let filtroTexto = '';
@@ -675,7 +676,11 @@
 
   // ─── Resumo (KPIs) ────────────────────────────────────────────────
   function renderStats() {
-    const totalProdutos = secoes.reduce((a, s) => a + s.produtos, 0);
+    // totalProdutosUnicos vem do backend (dedup por código, ver server.js) —
+    // uma peça pode aparecer em 2 seções, então a soma bruta de s.produtos
+    // conta ela 2x. Fallback pra soma bruta só se o backend ainda não
+    // mandou o campo (versão antiga do server rodando).
+    const totalProdutos = totalProdutosUnicos || secoes.reduce((a, s) => a + s.produtos, 0);
     const totalBaixados = secoes.reduce((a, s) => a + s.comFotoReal, 0);
     const totalPublicados = secoes.reduce((a, s) => a + s.publicados, 0);
     const precisamZip = secoes.filter((s) => s.precisaZip).length;
@@ -767,6 +772,7 @@
     const res = await fetch('/api/status');
     const data = await res.json();
     secoes = data.secoes;
+    totalProdutosUnicos = data.totalProdutosUnicos || 0;
     renderStats();
     renderTabela();
     atualizarResumoSelecao();

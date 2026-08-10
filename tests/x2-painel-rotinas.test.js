@@ -37,7 +37,16 @@ describe('rotinas: validação', () => {
   });
 
   test('tipo inválido é rejeitado', () => {
-    expect(rotinas.validarRotina({ ...rotinaBase, tipo: 'zip' })).toContain('tipo precisa ser "baixar", "sync", "estoque", "painel-produtos" ou "diff-estoque".');
+    const erros = rotinas.validarRotina({ ...rotinaBase, tipo: 'zip' });
+    expect(erros.some((e) => e.startsWith('tipo precisa ser um de:'))).toBe(true);
+  });
+
+  test('tipo cortes-produtos não exige secoes', () => {
+    expect(rotinas.validarRotina({ ...rotinaBase, tipo: 'cortes-produtos', secoes: undefined })).toEqual([]);
+  });
+
+  test('tipo produtos-parados não exige secoes', () => {
+    expect(rotinas.validarRotina({ ...rotinaBase, tipo: 'produtos-parados', secoes: undefined })).toEqual([]);
   });
 
   test('tipo painel-produtos não exige secoes', () => {

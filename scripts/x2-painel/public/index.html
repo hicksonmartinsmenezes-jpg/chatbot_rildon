@@ -243,6 +243,12 @@
   .acao-painel label { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text-2); margin-bottom: 9px; cursor: pointer; }
   .acao-painel input[type="number"] { width: 90px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text); border-radius: 7px; padding: 5px 9px; margin-left: auto; font-family: inherit; }
 
+  /* ─── Alertas (2026-08-10): lista curta de itens dentro do card, sem
+     depender de tabela — mesma paleta neutra do resto do painel. */
+  .lista-simples { list-style: none; margin: 0 0 14px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .lista-simples li { font-size: 12.5px; color: var(--text-2); border-bottom: 1px dashed var(--border); padding-bottom: 6px; }
+  .lista-simples li:last-child { border-bottom: none; padding-bottom: 0; }
+
   /* ─── Qualidade Cadastral: 1 aba por divergência (2026-08-10) ──────
      Visualmente igual ao .acao-tabs/.acao-painel de Fotos, mas com
      classe PRÓPRIA de propósito: trocarAba() (Fotos) faz
@@ -419,6 +425,9 @@
         </span>
         <span class="top-tab" data-top-tab="qualidade" title="Qualidade Cadastral">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>
+        </span>
+        <span class="top-tab" data-top-tab="alertas" title="Alertas WhatsApp">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
         </span>
       </div>
 
@@ -608,6 +617,8 @@
                 <option value="estoque">Exportar estoque (CSV)</option>
                 <option value="painel-produtos">Snapshot Painel de Produtos</option>
                 <option value="diff-estoque">Sincronizar com o Catálogo (diff estoque)</option>
+                <option value="cortes-produtos">Alerta: Cortes de Produtos (estoque baixo)</option>
+                <option value="produtos-parados">Alerta: Produtos Parados (Curva ABC)</option>
               </select>
             </label>
             <label class="form-field" id="rotina-secoes-wrap">Seções (Ctrl/Cmd+clique pra selecionar várias)
@@ -743,6 +754,28 @@
           <div id="qualidade-paineis"></div>
         </div>
       </div><!-- /top-painel qualidade -->
+
+      <div class="top-painel" data-top-painel="alertas">
+        <div class="info-banner">
+          ℹ️ Dois alertas automáticos por WhatsApp: "Cortes de Produtos" (estoque baixo — perda de faturamento real, já aconteceu) e "Produtos Parados" (Curva C — sem venda há muito tempo, ainda com estoque). Pra rodar sozinho todo dia/semana, configure uma Rotina na aba Rotinas (tipos "Cortes de Produtos"/"Produtos Parados") apontando pro número em ALERTA_WHATSAPP_NUMERO (.env). Aqui só mostra a última captura e deixa rodar na hora.
+        </div>
+
+        <div class="layout">
+          <div class="card">
+            <h2>📦 Cortes de Produtos <span class="contador" id="alertas-cortes-contador">–</span></h2>
+            <p class="descricao" id="alertas-cortes-resumo">Nenhuma captura ainda.</p>
+            <div id="alertas-cortes-lista"></div>
+            <button class="primary full" data-action="alertas-cortes-rodar">Rodar agora</button>
+          </div>
+
+          <div class="card">
+            <h2>🐌 Produtos Parados <span class="contador" id="alertas-parados-contador">–</span></h2>
+            <p class="descricao" id="alertas-parados-resumo">Nenhuma captura ainda.</p>
+            <div id="alertas-parados-lista"></div>
+            <button class="primary full" data-action="alertas-parados-rodar">Rodar agora</button>
+          </div>
+        </div>
+      </div><!-- /top-painel alertas -->
 
     </main>
   </div><!-- /app-shell -->
@@ -1070,6 +1103,7 @@
     estoque: 'Exporta o Relatório de Estoque (Logística) do X2 em CSV — alimenta preço, custo e disponibilidade no Catálogo do painel do bot e as listas de Qualidade Cadastral.',
     lancamentos: 'Compara exports de estoque de datas diferentes pra achar produtos que apareceram pela 1ª vez no período escolhido.',
     qualidade: 'Listas de produtos com pendência de cadastro no X2 — itens inativos, sem foto, sem preço de venda, sem custo médio, ou só cadastrados sem estoque nem preço.',
+    alertas: 'Alertas automáticos de WhatsApp: Cortes de Produtos (estoque baixo, perda de faturamento real) e Produtos Parados (Curva C, sem venda há muito tempo).',
   };
 
   el('top-tabs').addEventListener('click', (ev) => {
@@ -1083,6 +1117,7 @@
     if (tab.dataset.topTab === 'estoque') carregarEstoqueExports();
     if (tab.dataset.topTab === 'lancamentos') carregarLancamentos();
     if (tab.dataset.topTab === 'qualidade') carregarQualidadeCadastral();
+    if (tab.dataset.topTab === 'alertas') carregarAlertas();
   });
 
   // ─── Rotinas (2026-08-06) ──────────────────────────────────────────
@@ -1155,8 +1190,8 @@
             </label>
           </td>
           <td>${r.nome}</td>
-          <td>${{ baixar: 'Baixar fotos', sync: 'Sync', estoque: 'Exportar estoque', 'painel-produtos': 'Snapshot Painel', 'diff-estoque': 'Diff Estoque' }[r.tipo] || r.tipo}</td>
-          <td title="${labelsSecoes.join(', ')}">${r.tipo === 'estoque' ? (r.opcoes && r.opcoes.estoqueOpcao || 'Com e sem estoque') : r.tipo === 'painel-produtos' ? 'Divergências/Situação' : (secoesTexto || '—')}</td>
+          <td>${{ baixar: 'Baixar fotos', sync: 'Sync', estoque: 'Exportar estoque', 'painel-produtos': 'Snapshot Painel', 'diff-estoque': 'Diff Estoque', 'cortes-produtos': 'Alerta: Cortes', 'produtos-parados': 'Alerta: Parados' }[r.tipo] || r.tipo}</td>
+          <td title="${labelsSecoes.join(', ')}">${r.tipo === 'estoque' ? (r.opcoes && r.opcoes.estoqueOpcao || 'Com e sem estoque') : r.tipo === 'painel-produtos' ? 'Divergências/Situação' : r.tipo === 'cortes-produtos' ? 'Perda por falta de estoque' : r.tipo === 'produtos-parados' ? 'Curva C sem venda' : (secoesTexto || '—')}</td>
           <td>${quando}</td>
           <td>${r.ativa ? formatarDataHora(r.proximaExecucao) : '—'}</td>
           <td>${resultadoBadge} <span class="cell-slug">${formatarDataHora(r.ultimaExecucao)}</span></td>
@@ -1196,7 +1231,7 @@
       const nome = el('rotina-nome').value.trim();
       const tipo = el('rotina-tipo').value;
       const ehEstoque = tipo === 'estoque';
-      const semSecoes = tipo === 'estoque' || tipo === 'painel-produtos' || tipo === 'diff-estoque';
+      const semSecoes = tipo === 'estoque' || tipo === 'painel-produtos' || tipo === 'diff-estoque' || tipo === 'cortes-produtos' || tipo === 'produtos-parados';
       const secoesEscolhidas = semSecoes ? [] : Array.from(el('rotina-secoes').selectedOptions).map((o) => o.value);
       const frequencia = el('rotina-frequencia').value;
       const diaSemana = Number(el('rotina-dia-semana').value);
@@ -1572,6 +1607,71 @@
       return;
     }
     // acompanha o progresso na aba Fotos (mesmo mecanismo de SSE das outras ações)
+    el('top-tabs').querySelector('[data-top-tab="fotos"]').click();
+  });
+
+  // ─── Alertas de WhatsApp (2026-08-10) — Cortes de Produtos (estoque
+  // baixo) e Produtos Parados (Curva ABC). Mostra a última captura salva em
+  // disco (mesmo padrão de Estoque/Painel de Produtos); "Rodar agora" só
+  // dispara a ação (POST /api/acao) e manda o usuário acompanhar o log na
+  // aba Fotos, igual "Capturar agora" da Qualidade Cadastral — o disparo do
+  // WhatsApp em si acontece no fim do script (ver x2-whatsapp-alerta.js),
+  // não tem nada pra esperar aqui além do término da captura.
+  function formatarMoeda(n) {
+    return 'R$ ' + Number(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  async function carregarAlertas() {
+    try {
+      const res = await fetch('/api/alertas/cortes-produtos/ultima-captura');
+      if (res.ok) {
+        const captura = await res.json();
+        const total = (captura.resumo && captura.resumo['Total de Produtos Cortados']) || captura.produtos.length;
+        const perda = captura.resumo && captura.resumo['Perda de Faturamento'];
+        el('alertas-cortes-contador').textContent = total;
+        el('alertas-cortes-resumo').textContent = `${formatarDataHora(captura.capturadoEm)} — ${total} produto(s), ${formatarMoeda(perda)} perdidos.`;
+        el('alertas-cortes-lista').innerHTML = captura.produtos.length
+          ? `<ul class="lista-simples">${captura.produtos.slice(0, 8).map((p) => `<li>${p.descricao} — ${formatarMoeda(p.perdaReais)}</li>`).join('')}</ul>`
+          : '';
+      } else {
+        el('alertas-cortes-contador').textContent = '–';
+        el('alertas-cortes-resumo').textContent = 'Nenhuma captura ainda.';
+        el('alertas-cortes-lista').innerHTML = '';
+      }
+    } catch (e) { /* painel segue funcionando sem isso */ }
+
+    try {
+      const res = await fetch('/api/alertas/produtos-parados/ultima-captura');
+      if (res.ok) {
+        const captura = await res.json();
+        const comEstoque = captura.produtos.filter((p) => (p.qtdeEstoqueAtual || 0) > 0);
+        el('alertas-parados-contador').textContent = comEstoque.length;
+        el('alertas-parados-resumo').textContent = `${formatarDataHora(captura.capturadoEm)} — ${comEstoque.length} produto(s) parado(s) com estoque (últimos ${captura.diasHistorico} dias).`;
+        el('alertas-parados-lista').innerHTML = comEstoque.length
+          ? `<ul class="lista-simples">${comEstoque.slice(0, 8).map((p) => `<li>${p.descricao} — ${p.diasSemFaturamento}d sem vender, ${p.qtdeEstoqueAtual} em estoque</li>`).join('')}</ul>`
+          : '';
+      } else {
+        el('alertas-parados-contador').textContent = '–';
+        el('alertas-parados-resumo').textContent = 'Nenhuma captura ainda.';
+        el('alertas-parados-lista').innerHTML = '';
+      }
+    } catch (e) { /* painel segue funcionando sem isso */ }
+  }
+
+  document.addEventListener('click', async (ev) => {
+    const alvo = ev.target.closest('[data-action="alertas-cortes-rodar"], [data-action="alertas-parados-rodar"]');
+    if (!alvo) return;
+    const tipo = alvo.dataset.action === 'alertas-cortes-rodar' ? 'cortes-produtos' : 'produtos-parados';
+    const res = await fetch('/api/acao', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tipo, secoes: [], opcoes: { automatico: true } }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || 'Erro ao iniciar captura.');
+      return;
+    }
     el('top-tabs').querySelector('[data-top-tab="fotos"]').click();
   });
 

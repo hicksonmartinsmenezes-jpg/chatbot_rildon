@@ -54,6 +54,8 @@ const scraper = require('../x2-fotos-scraper');
 const sync = require('../x2-catalogo-sync');
 const estoqueExport = require('../x2-estoque-export');
 const painelProdutosSnapshot = require('../x2-painel-produtos-snapshot');
+const cortesProdutos = require('../x2-cortes-produtos-scraper');
+const curvaAbcParados = require('../x2-curva-abc-parados-scraper');
 const qualidadeApenasCadastrados = require('./qualidade-apenas-cadastrados');
 const { listarEntradas } = require('../../src/utils/zip-reader');
 const rotinasStore = require('./rotinas');
@@ -271,6 +273,29 @@ async function rodarAcao(tipo, opcoes, { origemRotina } = {}) {
           confirmar: modoAutomatico ? undefined : confirmarFactory(),
           modoAutomatico,
         });
+      } else if (tipo === 'cortes-produtos') {
+        // Alerta de estoque baixo (2026-08-10) — ver x2-cortes-produtos-scraper.js.
+        // Dispara WhatsApp pro número em ALERTA_WHATSAPP_NUMERO (.env) ao
+        // final, a menos que opcoes.semAlerta.
+        await cortesProdutos.rodar({
+          channel: 'chrome',
+          confirmar: modoAutomatico ? undefined : confirmarFactory(),
+          modoAutomatico,
+          semAlerta: !!opcoes.semAlerta,
+          numeroAlerta: opcoes.numeroAlerta || undefined,
+        });
+      } else if (tipo === 'produtos-parados') {
+        // Alerta de produtos parados (2026-08-10) — ver
+        // x2-curva-abc-parados-scraper.js. Mesma lógica de disparo de
+        // WhatsApp do tipo acima.
+        await curvaAbcParados.rodar({
+          channel: 'chrome',
+          confirmar: modoAutomatico ? undefined : confirmarFactory(),
+          modoAutomatico,
+          diasHistorico: opcoes.diasHistorico || undefined,
+          semAlerta: !!opcoes.semAlerta,
+          numeroAlerta: opcoes.numeroAlerta || undefined,
+        });
       } else {
         throw new Error(`Ação desconhecida: ${tipo}`);
       }
@@ -396,6 +421,29 @@ app.get('/api/painel-produtos/historico', (req, res) => {
   res.json({ historico: painelProdutosSnapshot.carregarHistorico() });
 });
 
+// ─── Alertas de WhatsApp (2026-08-10) — Cortes de Produtos (estoque baixo,
+// diário) e Curva ABC Produtos Parados (sem venda, semanal). Cada rota só
+// serve a última captura salva em disco (mesmo padrão de Estoque/Painel de
+// Produtos) — o disparo em si acontece no fim de `rodar()` de cada script
+// (ver x2-cortes-produtos-scraper.js / x2-curva-abc-parados-scraper.js),
+// não aqui.
+app.get('/api/alertas/cortes-produtos/ultima-captura', (req, res) => {
+  const captura = cortesProdutos.carregarUltimaCaptura();
+  if (!captura) return res.status(404).json({ error: 'Nenhuma captura ainda — rode "Rodar agora" na rotina de Cortes de Produtos primeiro.' });
+  res.json(captura);
+});
+app.get('/api/alertas/cortes-produtos/historico', (req, res) => {
+  res.json({ historico: cortesProdutos.carregarHistorico() });
+});
+app.get('/api/alertas/produtos-parados/ultima-captura', (req, res) => {
+  const captura = curvaAbcParados.carregarUltimaCaptura();
+  if (!captura) return res.status(404).json({ error: 'Nenhuma captura ainda — rode "Rodar agora" na rotina de Produtos Parados primeiro.' });
+  res.json(captura);
+});
+app.get('/api/alertas/produtos-parados/historico', (req, res) => {
+  res.json({ historico: curvaAbcParados.carregarHistorico() });
+});
+
 // ─── Qualidade cadastral (2026-08-07) — listas de Itens Inativos, Sem
 // Foto/Arquivo, Preço de Venda Zerado, Sem Custo Médio. Capturadas junto
 // com o snapshot normal (tipo "painel-produtos", ver rodarAcao acima);
@@ -492,10 +540,15 @@ app.get('/api/log-stream', (req, res) => {
 
 app.post('/api/acao', (req, res) => {
   const { tipo, secoes, opcoes } = req.body || {};
-  // "estoque"/"painel-produtos" não usam secoes (capturam/exportam tudo de
-  // uma vez — ver x2-estoque-export.js / x2-painel-produtos-snapshot.js) —
-  // as outras ações continuam exigindo pelo menos 1 seção selecionada.
-  const TIPOS_SEM_SECOES = ['estoque', 'painel-produtos', 'diff-estoque'];
+  // "estoque"/"painel-produtos"/"diff-estoque"/"cortes-produtos"/
+  // "produtos-parados" não usam secoes (capturam/exportam/alertam tudo de
+  // uma vez — ver x2-estoque-export.js / x2-painel-produtos-snapshot.js /
+  // x2-cortes-produtos-scraper.js / x2-curva-abc-parados-scraper.js) — as
+  // outras ações continuam exigindo pelo menos 1 seção selecionada. Mesma
+  // lista de scripts/x2-painel/rotinas.js (TIPOS_SEM_SECOES) — duplicada de
+  // propósito aqui porque esta rota valida requisições AVULSAS do painel
+  // (clique em "Rodar agora"), não uma Rotina agendada.
+  const TIPOS_SEM_SECOES = rotinasStore.TIPOS_SEM_SECOES;
   if (!tipo) {
     return res.status(400).json({ error: 'tipo é obrigatório.' });
   }

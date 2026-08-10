@@ -57,15 +57,18 @@ function salvarRotinas(lista) {
   fs.writeFileSync(ROTINAS_PATH, JSON.stringify(lista, null, 2));
 }
 
-// "estoque", "painel-produtos" e "diff-estoque" (2026-08-06 / 2026-08-10)
-// não usam `secoes` — exportam/capturam/diffam tudo de uma vez, não seção
-// por seção como baixar/sync.
-const TIPOS_SEM_SECOES = ['estoque', 'painel-produtos', 'diff-estoque'];
+// "estoque", "painel-produtos", "diff-estoque" (2026-08-06 / 2026-08-10) e
+// "cortes-produtos"/"produtos-parados" (2026-08-10, alertas de WhatsApp) não
+// usam `secoes` — exportam/capturam/diffam tudo de uma vez, não seção por
+// seção como baixar/sync.
+const TIPOS_SEM_SECOES = ['estoque', 'painel-produtos', 'diff-estoque', 'cortes-produtos', 'produtos-parados'];
+
+const TIPOS_VALIDOS = ['baixar', 'sync', 'estoque', 'painel-produtos', 'diff-estoque', 'cortes-produtos', 'produtos-parados'];
 
 function validarRotina(dados) {
   const erros = [];
   if (!dados.nome || !String(dados.nome).trim()) erros.push('nome é obrigatório.');
-  if (!['baixar', 'sync', 'estoque', 'painel-produtos', 'diff-estoque'].includes(dados.tipo)) erros.push('tipo precisa ser "baixar", "sync", "estoque", "painel-produtos" ou "diff-estoque".');
+  if (!TIPOS_VALIDOS.includes(dados.tipo)) erros.push(`tipo precisa ser um de: ${TIPOS_VALIDOS.join(', ')}.`);
   if (!TIPOS_SEM_SECOES.includes(dados.tipo) && (!Array.isArray(dados.secoes) || !dados.secoes.length)) erros.push('secoes precisa ser uma lista não vazia.');
   if (!['diaria', 'semanal'].includes(dados.frequencia)) erros.push('frequencia precisa ser "diaria" ou "semanal".');
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(dados.horario || '')) erros.push('horario precisa estar no formato HH:MM (24h).');
@@ -177,6 +180,8 @@ function deveRodarAgora(rotina, agora = new Date()) {
 module.exports = {
   WORK_DIR,
   ROTINAS_PATH,
+  TIPOS_VALIDOS,
+  TIPOS_SEM_SECOES,
   carregarRotinas,
   salvarRotinas,
   validarRotina,

@@ -29,6 +29,10 @@
     --amber-soft: rgba(245, 185, 66, .14);
     --red: #ff6b6b;
     --red-soft: rgba(255, 107, 107, .14);
+    --blue: #4d8dff;
+    --blue-soft: rgba(77, 141, 255, .14);
+    --purple: #a78bfa;
+    --purple-soft: rgba(167, 139, 250, .14);
     --radius: 16px;
     --radius-sm: 10px;
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, .35);
@@ -110,6 +114,28 @@
   .stat-card.risco { border-left-color: var(--red); }
   .stat-card.risco .valor { color: var(--red); }
 
+  /* Variante "rica" (2026-08-11, pedido do usuário — mockup de referência):
+     ícone colorido + barra de acento embaixo + subtexto contextual. Opt-in
+     via classe extra pra não mudar o visual dos stat-card simples de
+     outras abas (Rotinas etc.) que reusam a mesma base .stat-card. */
+  .stat-card--rico { position: relative; overflow: hidden; padding-bottom: 18px; border-left-color: var(--border); }
+  .stat-card--rico::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--border-strong); }
+  .stat-card--rico.acento-azul::after { background: var(--blue); }
+  .stat-card--rico.acento-azul .stat-icone { background: var(--blue-soft); color: var(--blue); }
+  .stat-card--rico.acento-roxo::after { background: var(--purple); }
+  .stat-card--rico.acento-roxo .stat-icone { background: var(--purple-soft); color: var(--purple); }
+  .stat-card--rico.acento-verde::after { background: var(--green); }
+  .stat-card--rico.acento-verde .stat-icone { background: var(--green-soft); color: var(--green); }
+  .stat-card--rico.alerta::after { background: var(--amber); }
+  .stat-card--rico.risco::after { background: var(--red); }
+  .stat-card--rico.alerta .valor, .stat-card--rico.risco .valor { color: var(--text); }
+  .stat-icone { width: 34px; height: 34px; border-radius: 9px; display: flex; align-items: center; justify-content: center; margin-bottom: 9px; flex: none; }
+  .stat-icone svg { width: 17px; height: 17px; }
+  .stat-sub { font-size: 11px; color: var(--muted); font-weight: 600; margin-top: 6px; }
+  .stat-sub-link { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; background: none; border: none; padding: 0; font: inherit; }
+  .stat-card--rico.risco .stat-sub-link { color: var(--red); font-weight: 700; }
+  .stat-card--rico.risco .stat-sub-link:hover { text-decoration: underline; }
+
   /* ─── Layout principal: Seções (esq.) + Ação (dir.) ──────────── */
   .layout { display: grid; grid-template-columns: 1.65fr 1fr; gap: 18px; align-items: start; margin-bottom: 18px; }
   @media (max-width: 980px) { .layout { grid-template-columns: 1fr; } }
@@ -162,6 +188,29 @@
   .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
   .toolbar-sep { flex: 1; }
 
+  /* Linha "Sincronizado / última atualização" no topo da aba Catálogo
+     (2026-08-11) — horário é o momento real do último /api/status
+     respondido nesta sessão do navegador, não um valor inventado. */
+  .catalogo-sync-row { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-bottom: 14px; }
+  .catalogo-sync-status { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: var(--text-2); }
+  .catalogo-sync-status .status-dot { width: 7px; height: 7px; background: var(--green); box-shadow: 0 0 0 4px var(--green-soft); }
+  .catalogo-sync-hora { color: var(--muted); font-weight: 500; }
+  #btn-atualizar-catalogo { width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; }
+  #btn-atualizar-catalogo svg { width: 15px; height: 15px; }
+  #btn-atualizar-catalogo.girando svg { animation: girar .7s linear; }
+  @keyframes girar { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+
+  /* Checkbox com cor de destaque consistente em todo o painel. */
+  input[type="checkbox"] { accent-color: var(--blue); width: 15px; height: 15px; cursor: pointer; }
+
+  /* Mini barra de progresso na coluna "Publicados" da tabela de Seções. */
+  .mini-progresso { height: 4px; width: 70px; background: var(--surface-3); border-radius: 999px; margin-top: 6px; overflow: hidden; }
+  .mini-progresso-fill { height: 100%; background: var(--blue); border-radius: 999px; }
+
+  /* Paginação simples da tabela de Seções — mostra as N primeiras e deixa
+     expandir sob pedido, em vez de tabela rolável enorme sempre cheia. */
+  .tabela-rodape { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; font-size: 12px; color: var(--muted); }
+
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th { text-align: left; color: var(--muted); font-weight: 700; font-size: 11.5px; text-transform: uppercase; letter-spacing: .03em; padding: 9px 12px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--surface); cursor: help; }
   td { padding: 10px 12px; border-bottom: 1px solid var(--border); color: var(--text-2); }
@@ -206,6 +255,8 @@
   button.primary:hover { background: #dcdce0; border-color: #dcdce0; }
   button.primary-green { background: var(--green); border-color: var(--green); color: #06210f; }
   button.primary-green:hover { background: #58e69c; border-color: #58e69c; }
+  button.primary-blue { background: var(--blue); border-color: var(--blue); color: #fff; }
+  button.primary-blue:hover { background: #3f7ae0; border-color: #3f7ae0; }
   button.small { padding: 6px 11px; font-size: 12px; }
   button.ghost { background: transparent; }
   button.ghost:hover { background: var(--surface-2); }
@@ -226,19 +277,29 @@
   }
   .selecao-resumo strong { color: var(--text); }
 
-  .acao-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+  /* Abas de Ação em formato "pill" com ícone (2026-08-11) — antes era
+     aba sublinhada; mockup de referência do usuário usa botões com ícone
+     e a ativa preenchida. Cor azul nova (--blue), separada da linguagem
+     branca/verde dos botões de ação pra não repintar o app inteiro. */
+  .acao-tabs { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
   .acao-tab {
-    padding: 9px 11px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
     font-size: 12px;
     font-weight: 700;
-    color: var(--muted);
+    color: var(--text-2);
     cursor: pointer;
-    border-bottom: 2px solid transparent;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    border-radius: 9px;
     white-space: nowrap;
-    transition: color .12s;
+    transition: background .12s, border-color .12s, color .12s;
   }
-  .acao-tab:hover { color: var(--text); }
-  .acao-tab.active { color: #fff; border-color: #fff; }
+  .acao-tab svg { width: 14px; height: 14px; flex: none; }
+  .acao-tab:hover { color: var(--text); border-color: var(--border-strong); }
+  .acao-tab.active { color: #fff; background: var(--blue); border-color: var(--blue); }
 
   .acao-painel { display: none; }
   .acao-painel.active { display: block; }
@@ -298,6 +359,18 @@
   .progresso-bar-track { background: var(--surface-3); border-radius: 999px; height: 8px; overflow: hidden; }
   .progresso-bar-fill { height: 100%; background: linear-gradient(90deg, #fff, #a9a9b2); border-radius: 999px; transition: width .25s ease; width: 0%; }
   .progresso-label { font-size: 11.5px; color: var(--muted); margin-top: 6px; font-weight: 600; }
+
+  /* Estado "parado" do card Execução (2026-08-11) — some quando tem algo
+     rodando (JS troca pra display:none) pra não duplicar com status-line. */
+  .execucao-idle { margin-bottom: 16px; }
+  .execucao-idle-topo { display: flex; align-items: center; gap: 12px; }
+  .execucao-idle-icone { width: 38px; height: 38px; border-radius: 50%; background: var(--green-soft); color: var(--green); display: flex; align-items: center; justify-content: center; flex: none; }
+  .execucao-idle-icone svg { width: 19px; height: 19px; }
+  .execucao-idle-titulo { font-size: 13.5px; font-weight: 700; color: var(--text); }
+  .execucao-idle-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .execucao-resumo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 16px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; }
+  .execucao-resumo-grid .rotulo { display: block; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-weight: 700; margin-bottom: 4px; }
+  .execucao-resumo-grid strong { font-size: 13px; color: var(--text); font-weight: 700; }
 
   .aguardando-banner {
     display: none;
@@ -473,6 +546,17 @@
 
       <div class="top-painel active" data-top-painel="fotos">
 
+      <div class="catalogo-sync-row">
+        <div class="catalogo-sync-status">
+          <span class="status-dot"></span>
+          <span>Sincronizado</span>
+          <span class="catalogo-sync-hora" id="catalogo-sync-hora"></span>
+        </div>
+        <button class="small ghost" id="btn-atualizar-catalogo" title="Buscar números atualizados agora">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+        </button>
+      </div>
+
       <div class="stats-row" id="stats-row"><div class="skeleton">Carregando resumo...</div></div>
 
       <div class="layout">
@@ -510,6 +594,11 @@
               <tbody id="tabela-secoes"><tr><td colspan="6" class="skeleton">Carregando seções...</td></tr></tbody>
             </table>
           </div>
+
+          <div class="tabela-rodape" id="tabela-rodape" style="display:none;">
+            <span id="tabela-rodape-texto"></span>
+            <button class="small ghost" id="btn-ver-todas">Ver todas as seções</button>
+          </div>
         </div>
 
         <!-- ── Coluna direita: Ação + Execução empilhados ── -->
@@ -522,17 +611,17 @@
           </div>
 
           <div class="acao-tabs" id="acao-tabs">
-            <span class="acao-tab active" data-tab="baixar">Atualizar Fotos</span>
-            <span class="acao-tab" data-tab="sync">Cadastrar produtos</span>
-            <span class="acao-tab" data-tab="zip">Montar zip</span>
-            <span class="acao-tab" data-tab="exportar">Exportar</span>
+            <span class="acao-tab active" data-tab="baixar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M21 15l-5-5-9 9"/></svg>Atualizar Fotos</span>
+            <span class="acao-tab" data-tab="sync"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>Cadastrar produtos</span>
+            <span class="acao-tab" data-tab="zip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8"/><path d="M10 13h4"/></svg>Montar zip</span>
+            <span class="acao-tab" data-tab="exportar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>Exportar</span>
           </div>
 
           <div class="acao-painel active" data-painel="baixar">
             <label><input type="checkbox" id="opt-retry-sem-foto"> Tentar de novo os "sem foto"/placeholder</label>
             <label><input type="checkbox" id="opt-reiniciar"> Reiniciar do zero (apaga progresso salvo)</label>
             <label>Limite por seção <input type="number" id="opt-limit" min="1" placeholder="sem limite"></label>
-            <button class="primary full" data-action="baixar">Atualizar fotos das selecionadas</button>
+            <button class="primary-blue full" data-action="baixar">Atualizar fotos das selecionadas</button>
           </div>
 
           <div class="acao-painel" data-painel="sync">
@@ -541,7 +630,7 @@
             <label><input type="checkbox" id="opt-remover-desativados" checked> Se um código não aparecer mais no X2, apagar ele do catálogo (provável produto descontinuado)</label>
             <label><input type="checkbox" id="opt-forcar-remocao"> Apagar mesmo se sumir muita coisa de uma vez de uma seção só</label>
             <p class="hint-sub">Por padrão, se mais de 30% dos produtos de uma seção "sumirem" numa busca só, o painel NÃO apaga automaticamente — provavelmente é falha na busca, não descontinuação de verdade. Só marque isso se tiver certeza que é uma remoção em massa real.</p>
-            <button class="primary full" data-action="sync">Cadastrar produtos novos</button>
+            <button class="primary-blue full" data-action="sync">Cadastrar produtos novos</button>
           </div>
 
           <div class="acao-painel" data-painel="zip">
@@ -556,6 +645,28 @@
         <!-- ── Execução: status + confirmação + log, tudo junto ── -->
         <div class="card">
           <h2>Execução</h2>
+
+          <!-- Estado "parado", com resumo da última execução desta sessão do
+               navegador (2026-08-11) — calculado 100% a partir do que o SSE
+               já reporta (tipo/duração/progresso "[N/M]" do próprio log do
+               scraper), nada inventado. Não persiste entre F5 — some ao
+               recarregar a página, já que não tem histórico salvo no backend
+               pra essa ação (diferente de Rotinas/Alertas, que têm). -->
+          <div class="execucao-idle" id="execucao-idle">
+            <div class="execucao-idle-topo">
+              <div class="execucao-idle-icone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9 12l2 2 4-4"/></svg></div>
+              <div>
+                <div class="execucao-idle-titulo">Nenhuma tarefa em andamento</div>
+                <div class="execucao-idle-sub">Selecione uma ação acima para começar.</div>
+              </div>
+            </div>
+            <div class="execucao-resumo-grid" id="execucao-resumo-grid" style="display:none;">
+              <div><span class="rotulo">Última execução</span><strong id="resumo-quando">–</strong></div>
+              <div><span class="rotulo">Itens processados</span><strong id="resumo-itens">–</strong></div>
+              <div><span class="rotulo">Duração</span><strong id="resumo-duracao">–</strong></div>
+            </div>
+          </div>
+
           <div class="toolbar" style="margin-bottom:0;">
             <div class="status-line" id="status-execucao"><span class="status-dot"></span> Nada rodando agora.</div>
             <span class="toolbar-sep"></span>
@@ -830,10 +941,20 @@
   let filtroTexto = '';
   let filtroRapido = 'todas';
   let acaoAtiva = 'baixar';
+  let secoesExpandido = false;
+  const LIMITE_SECOES_VISIVEIS = 8;
 
   function el(id) { return document.getElementById(id); }
 
   // ─── Resumo (KPIs) ────────────────────────────────────────────────
+  // Ícones/acentos e subtexto contextual (2026-08-11, mockup do usuário) —
+  // tudo calculado em cima do que já vinha em `secoes`, nada novo do backend.
+  const ICONE_SECOES = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>';
+  const ICONE_PRODUTOS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>';
+  const ICONE_BAIXADAS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M21 15l-5-5-9 9"/></svg>';
+  const ICONE_ZIP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8"/><path d="M10 13h4"/></svg>';
+  const ICONE_ALERTA = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.9 18a2 2 0 0 0 1.7 3h16.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>';
+
   function renderStats() {
     // totalProdutosUnicos vem do backend (dedup por código, ver server.js) —
     // uma peça pode aparecer em 2 seções, então a soma bruta de s.produtos
@@ -841,32 +962,57 @@
     // mandou o campo (versão antiga do server rodando).
     const totalProdutos = totalProdutosUnicos || secoes.reduce((a, s) => a + s.produtos, 0);
     const totalBaixados = secoes.reduce((a, s) => a + s.comFotoReal, 0);
-    const totalPublicados = secoes.reduce((a, s) => a + s.publicados, 0);
     const precisamZip = secoes.filter((s) => s.precisaZip).length;
     const comSuspeitas = secoes.reduce((a, s) => a + s.pequenas, 0);
+    const completas = secoes.filter((s) => s.produtos > 0 && s.comFotoReal >= s.produtos).length;
+    const pctCompletas = secoes.length ? Math.round((completas / secoes.length) * 100) : 0;
+    const pctBaixadas = totalProdutos ? Math.round((totalBaixados / totalProdutos) * 100) : 0;
 
     el('stats-row').innerHTML = `
-      <div class="stat-card">
+      <div class="stat-card stat-card--rico acento-azul">
+        <div class="stat-icone">${ICONE_SECOES}</div>
         <div class="valor">${secoes.length}</div>
         <div class="rotulo">Seções</div>
+        <div class="stat-sub">${pctCompletas}% completas</div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card stat-card--rico acento-roxo">
+        <div class="stat-icone">${ICONE_PRODUTOS}</div>
         <div class="valor">${totalProdutos.toLocaleString('pt-BR')}</div>
         <div class="rotulo">Produtos no catálogo</div>
+        <div class="stat-sub">Total cadastrado</div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card stat-card--rico acento-verde">
+        <div class="stat-icone">${ICONE_BAIXADAS}</div>
         <div class="valor">${totalBaixados.toLocaleString('pt-BR')}</div>
         <div class="rotulo">Com foto baixada</div>
+        <div class="stat-sub">${pctBaixadas}% do catálogo</div>
       </div>
-      <div class="stat-card ${precisamZip ? 'alerta' : ''}">
+      <div class="stat-card stat-card--rico ${precisamZip ? 'alerta' : ''}">
+        <div class="stat-icone">${ICONE_ZIP}</div>
         <div class="valor">${precisamZip}</div>
         <div class="rotulo">Precisam de zip</div>
+        <div class="stat-sub">${precisamZip ? `${precisamZip} seção(ões) pendente(s)` : 'Nenhuma pendente'}</div>
       </div>
-      <div class="stat-card ${comSuspeitas ? 'risco' : ''}">
+      <div class="stat-card stat-card--rico ${comSuspeitas ? 'risco' : ''}">
+        <div class="stat-icone">${ICONE_ALERTA}</div>
         <div class="valor">${comSuspeitas}</div>
         <div class="rotulo">Fotos suspeitas</div>
+        ${comSuspeitas
+          ? `<button type="button" class="stat-sub-link" id="stat-link-suspeitas">Para revisar →</button>`
+          : `<div class="stat-sub">Nenhuma encontrada</div>`}
       </div>
     `;
+
+    const linkSuspeitas = el('stat-link-suspeitas');
+    if (linkSuspeitas) {
+      linkSuspeitas.addEventListener('click', () => {
+        filtroRapido = 'suspeitas';
+        secoesExpandido = false;
+        document.querySelectorAll('.chip').forEach((c) => c.classList.toggle('active', c.dataset.filtro === 'suspeitas'));
+        renderTabela();
+        el('tabela-secoes').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
+    }
   }
 
   // ─── Filtro + tabela de seções ────────────────────────────────────
@@ -887,10 +1033,15 @@
 
     if (!visiveis.length) {
       tbody.innerHTML = `<tr><td colspan="6" class="table-empty">Nenhuma seção bate com esse filtro.</td></tr>`;
+      atualizarRodapePaginacao(0, 0);
       return;
     }
 
-    tbody.innerHTML = visiveis.map((s) => {
+    // Paginação simples (2026-08-11): mostra só as N primeiras por padrão
+    // e deixa expandir sob pedido, em vez de tabela rolável sempre cheia.
+    const mostrar = secoesExpandido ? visiveis : visiveis.slice(0, LIMITE_SECOES_VISIVEIS);
+
+    tbody.innerHTML = mostrar.map((s) => {
       const publicadoOk = s.publicados >= s.comFotoReal && s.comFotoReal > 0;
       const badgePublicado = s.produtos === 0
         ? '<span class="badge badge-muted">sem dados</span>'
@@ -900,6 +1051,7 @@
       const badgePequenas = s.pequenas > 0
         ? `<span class="badge badge-red">${s.pequenas} suspeita(s)</span>`
         : '<span class="badge badge-muted">0</span>';
+      const pctPublicado = s.produtos > 0 ? Math.min(100, Math.round((s.publicados / s.produtos) * 100)) : 0;
       const selecionada = selecionadas.has(s.slug);
       return `
         <tr class="${selecionada ? 'selecionada' : ''}">
@@ -907,7 +1059,7 @@
           <td>${s.label}<div class="cell-slug">${s.slug}</div></td>
           <td>${s.produtos}</td>
           <td>${s.baixados}/${s.produtos}</td>
-          <td>${badgePublicado}</td>
+          <td>${badgePublicado}<div class="mini-progresso"><div class="mini-progresso-fill" style="width:${pctPublicado}%"></div></div></td>
           <td>${badgePequenas}</td>
         </tr>
       `;
@@ -921,6 +1073,17 @@
         atualizarResumoSelecao();
       });
     });
+
+    atualizarRodapePaginacao(mostrar.length, visiveis.length);
+  }
+
+  function atualizarRodapePaginacao(mostrando, total) {
+    const rodape = el('tabela-rodape');
+    if (!rodape) return;
+    if (total <= LIMITE_SECOES_VISIVEIS) { rodape.style.display = 'none'; return; }
+    rodape.style.display = 'flex';
+    el('tabela-rodape-texto').textContent = `Mostrando ${mostrando} de ${total} seções`;
+    el('btn-ver-todas').textContent = secoesExpandido ? 'Mostrar menos' : 'Ver todas as seções';
   }
 
   function atualizarResumoSelecao() {
@@ -932,6 +1095,10 @@
     if (avisoSync) avisoSync.style.display = (!selecionadas.size && acaoAtiva === 'sync') ? 'block' : 'none';
   }
 
+  function horaAgora() {
+    return new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  }
+
   async function carregarStatus() {
     const res = await fetch('/api/status');
     const data = await res.json();
@@ -940,6 +1107,8 @@
     renderStats();
     renderTabela();
     atualizarResumoSelecao();
+    const horaEl = el('catalogo-sync-hora');
+    if (horaEl) horaEl.textContent = `Última atualização: hoje às ${horaAgora()}`;
   }
 
   // ─── Abas de ação ─────────────────────────────────────────────────
@@ -959,10 +1128,43 @@
 
   let statusTimeoutId = null;
   let rodandoAnterior = false;
+  // Resumo "Última execução" do card Execução parado (2026-08-11) — só
+  // client-side, calculado a partir do que o SSE já manda (tipo + a última
+  // linha "[N/M]" que o scraper escreve no log). Não persiste entre F5 e
+  // não tem "produtos cadastrados" pra ações que não imprimem [N/M] — nesse
+  // caso o resumo mostra só quando/duração. Ver comentário no HTML.
+  let execucaoInicio = null;
+  let ultimoProgressoObservado = null;
+  let ultimaExecucao = null;
+
+  function formatarDuracao(ms) {
+    const totalSeg = Math.round(ms / 1000);
+    const h = Math.floor(totalSeg / 3600);
+    const m = Math.floor((totalSeg % 3600) / 60);
+    const s = totalSeg % 60;
+    const pad = (n) => String(n).padStart(2, '0');
+    return h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+  }
+
+  function atualizarResumoExecucaoIdle() {
+    const grid = el('execucao-resumo-grid');
+    if (!grid) return;
+    if (!ultimaExecucao) { grid.style.display = 'none'; return; }
+    grid.style.display = 'grid';
+    el('resumo-quando').textContent = `Hoje às ${ultimaExecucao.terminadoEm.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+    el('resumo-itens').textContent = ultimaExecucao.progresso ? `${ultimaExecucao.progresso.feito}/${ultimaExecucao.progresso.total}` : '–';
+    el('resumo-duracao').textContent = formatarDuracao(ultimaExecucao.duracaoMs);
+  }
 
   function aplicarEstadoExecucao(payload) {
+    const estavaRodando = rodando;
     rodando = !!payload.rodando;
     aplicarBotoesDesabilitados();
+
+    if (rodando && !estavaRodando) {
+      execucaoInicio = { tipo: payload.tipo, inicio: Date.now() };
+      ultimoProgressoObservado = null;
+    }
     // 2026-08-07 — só mostra "Cancelar/destravar" quando tem algo rodando
     // de verdade (ver /api/cancelar em server.js); nos outros estados fica
     // escondido pra não confundir com um botão de uso normal.
@@ -987,6 +1189,17 @@
         statusEl.className = 'status-line';
       }, 6000);
       carregarStatus(); // ação terminou — atualiza os números da tabela/resumo
+
+      if (execucaoInicio) {
+        ultimaExecucao = {
+          tipo: execucaoInicio.tipo,
+          terminadoEm: new Date(),
+          duracaoMs: Date.now() - execucaoInicio.inicio,
+          progresso: ultimoProgressoObservado,
+        };
+        execucaoInicio = null;
+        atualizarResumoExecucaoIdle();
+      }
     } else {
       statusEl.innerHTML = `<span class="status-dot"></span> Nada rodando agora.`;
       statusEl.className = 'status-line';
@@ -1013,9 +1226,16 @@
       el('progresso-bar-fill').style.width = `${pct}%`;
       el('progresso-label').textContent = `${feito}/${total} (${pct}%)`;
       progressoWrap.classList.add('show');
+      ultimoProgressoObservado = { feito, total };
     } else if (!rodando) {
       progressoWrap.classList.remove('show');
     }
+
+    // Card "Execução" — esconde o estado "parado" (ícone+resumo) enquanto
+    // tem algo rodando ou com erro ativo, pra não competir visualmente com
+    // status-line/log logo abaixo.
+    const idleEl = el('execucao-idle');
+    if (idleEl) idleEl.style.display = (!rodando && !payload.erro) ? 'block' : 'none';
 
     if (payload.texto) {
       const logEl = el('log');
@@ -1055,6 +1275,7 @@
   // ─── Eventos ────────────────────────────────────────────────────
   el('busca-secao').addEventListener('input', (ev) => {
     filtroTexto = ev.target.value.trim().toLowerCase();
+    secoesExpandido = false;
     renderTabela();
   });
 
@@ -1062,13 +1283,25 @@
     const chip = ev.target.closest('.chip');
     if (!chip) return;
     filtroRapido = chip.dataset.filtro;
+    secoesExpandido = false;
     document.querySelectorAll('.chip').forEach((c) => c.classList.toggle('active', c === chip));
+    renderTabela();
+  });
+
+  el('btn-ver-todas').addEventListener('click', () => {
+    secoesExpandido = !secoesExpandido;
     renderTabela();
   });
 
   el('acao-tabs').addEventListener('click', (ev) => {
     const tab = ev.target.closest('.acao-tab');
     if (tab) trocarAba(tab.dataset.tab);
+  });
+
+  el('btn-atualizar-catalogo').addEventListener('click', () => {
+    const btn = el('btn-atualizar-catalogo');
+    btn.classList.add('girando');
+    carregarStatus().finally(() => setTimeout(() => btn.classList.remove('girando'), 700));
   });
 
   document.addEventListener('click', (ev) => {

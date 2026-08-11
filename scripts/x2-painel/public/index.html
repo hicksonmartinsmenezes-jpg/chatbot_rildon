@@ -586,7 +586,11 @@
             <span class="catalogo-sync-hora" id="catalogo-sync-hora"></span>
           </h2>
 
-          <div class="selecao-resumo">
+          <!-- Ocultos a pedido do usuário (2026-08-11) — "por enquanto que nem
+               selecionei sessões ainda". #resumo-selecao-n continua sendo
+               atualizado por atualizarResumoSelecao() por baixo, então é só
+               tirar o display:none pra voltar a aparecer com o número certo. -->
+          <div class="selecao-resumo" style="display:none;">
             <span><strong id="resumo-selecao-n">0</strong> seção(ões) selecionada(s)</span>
           </div>
 

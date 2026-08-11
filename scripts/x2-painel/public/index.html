@@ -669,11 +669,6 @@
           <span class="banner-texto">X2_USUARIO/X2_SENHA não configurados no arquivo .env — rotinas agendadas vão falhar no login automático até isso ser preenchido (ver .env.example). Sem essas credenciais, o botão "Testar agora" também vai falhar.</span>
         </div>
 
-        <div class="info-banner">
-          <span class="banner-icon">ℹ️</span>
-          <span class="banner-texto">Login automático + navegação sozinha já validados ao vivo (funcionam pra Estoque, Sync/Diff Estoque e Painel de Produtos). Ainda vale rodar <strong>"Testar agora"</strong> numa rotina recém-criada antes de contar com o agendamento — e lembre que este servidor precisa continuar aberto (pode minimizar): rotinas não rodam com o painel fechado.</span>
-        </div>
-
         <div class="stats-row cols-4" id="rotinas-stats-row">
           <div class="stat-card">
             <div class="valor" id="rotinas-stat-ativas">0</div>
@@ -768,11 +763,6 @@
       </div><!-- /top-painel rotinas -->
 
       <div class="top-painel" data-top-painel="estoque">
-        <div class="info-banner">
-          <span class="banner-icon">ℹ️</span>
-          <span class="banner-texto">Baixa e guarda o CSV do Relatório de Estoque (Logística) direto do X2 — validado ao vivo, com checagem automática de que a tabela terminou de carregar antes de exportar (evita CSV incompleto). O catálogo de fotos e o painel do bot já usam esses dados (preço, custo, estoque) pra "Preço de Venda Zerado", "Sem Custo Médio" e o badge de estoque no Catálogo.</span>
-        </div>
-
         <div class="layout">
           <div class="card">
             <h2>Exportar agora</h2>
@@ -813,11 +803,6 @@
       </div><!-- /top-painel estoque -->
 
       <div class="top-painel" data-top-painel="lancamentos">
-        <div class="info-banner" id="lancamentos-aviso">
-          <span class="banner-icon">ℹ️</span>
-          <span class="banner-texto">Um produto só vira "lançamento" se ele NÃO aparecia em nenhum export de estoque anterior. A captura de CSVs começou em 2026-08-06/07 — não tem como detectar lançamentos de datas anteriores a essa, porque não existe snapshot de estoque de antes disso pra comparar.</span>
-        </div>
-
         <!-- PEDIDO DO USUÁRIO (2026-08-11, "vamos dar uma melhorada"): antes
              o formulário de Período (2 campos + botão) e a tabela (5
              colunas, descrição pode ser bem longa) dividiam espaço 1.65fr/1fr
@@ -858,11 +843,6 @@
       </div><!-- /top-painel lancamentos -->
 
       <div class="top-painel" data-top-painel="qualidade">
-        <div class="info-banner">
-          <span class="banner-icon">ℹ️</span>
-          <span class="banner-texto">Cada captura é um RETRATO do estado atual — sobrescreve a anterior (não acumula histórico das listas em si; só os totais entram no histórico do snapshot). "Itens Inativos" e "Sem Foto/Arquivo" vêm do X2 (pode levar 1-2 min); "Preço de Venda Zerado" e "Sem Custo Médio" saem do CSV de estoque mais recente (na hora).</span>
-        </div>
-
         <div class="toolbar" style="margin-bottom:16px;">
           <button class="primary" data-action="qualidade-capturar-agora">Capturar agora</button>
           <span class="toolbar-sep"></span>
@@ -875,11 +855,6 @@
       </div><!-- /top-painel qualidade -->
 
       <div class="top-painel" data-top-painel="alertas">
-        <div class="info-banner">
-          <span class="banner-icon">ℹ️</span>
-          <span class="banner-texto">Dois alertas automáticos por WhatsApp: "Cortes de Produtos" (estoque baixo — perda de faturamento real, já aconteceu) e "Produtos Parados" (Curva C — sem venda há muito tempo, ainda com estoque). Pra rodar sozinho todo dia/semana, configure uma Rotina na aba Rotinas (tipos "Cortes de Produtos"/"Produtos Parados") apontando pro número em ALERTA_WHATSAPP_NUMERO (.env). Aqui só mostra a última captura e deixa rodar na hora.</span>
-        </div>
-
         <div class="layout">
           <div class="card">
             <h2>📦 Cortes de Produtos <span class="contador" id="alertas-cortes-contador">–</span></h2>

@@ -146,11 +146,12 @@
      precisam da largura toda de um .form-field em coluna, então ficam lado
      a lado com o botão alinhado pela base. */
   .lancamentos-filtro-barra { display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: center; justify-content: space-between; }
-  .lancamentos-filtro-campos { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
-  .lancamentos-filtro-barra .form-field { margin-bottom: 0; width: 190px; }
+  .lancamentos-filtro-campos { display: flex; flex-wrap: wrap; gap: 18px; align-items: center; }
+  .lancamentos-filtro-campos .form-field { display: flex; align-items: center; gap: 8px; margin-bottom: 0; width: auto; white-space: nowrap; }
+  .lancamentos-filtro-campos .form-field .search-input { width: 150px; }
   .lancamentos-filtro-barra .primary { height: 38px; white-space: nowrap; }
   .lancamentos-filtro-barra p.descricao { margin: 0; max-width: 340px; text-align: right; }
-  @media (max-width: 640px) { .lancamentos-filtro-barra .form-field { width: 100%; } .lancamentos-filtro-barra p.descricao { text-align: left; max-width: none; } }
+  @media (max-width: 640px) { .lancamentos-filtro-campos { width: 100%; } .lancamentos-filtro-campos .form-field { width: 100%; } .lancamentos-filtro-campos .form-field .search-input { width: 100%; } .lancamentos-filtro-barra p.descricao { text-align: left; max-width: none; } }
 
   /* ─── Busca + chips de filtro ─────────────────────────────────── */
   .search-input {

@@ -589,11 +589,10 @@
           <div class="acao-tabs" id="acao-tabs">
             <span class="acao-tab active" data-tab="baixar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M21 15l-5-5-9 9"/></svg>Atualizar Fotos</span>
             <span class="acao-tab" data-tab="sync"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>Cadastrar produtos</span>
-            <span class="acao-tab" data-tab="zip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8"/><path d="M10 13h4"/></svg>Montar zip</span>
-            <span class="acao-tab" data-tab="exportar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>Exportar</span>
           </div>
 
           <div class="acao-painel active" data-painel="baixar">
+            <p class="hint-sub">Baixa as fotos e já publica na busca do Catálogo do bot as seções que ficarem 100% completas — não precisa de nenhum passo extra.</p>
             <label><input type="checkbox" id="opt-retry-sem-foto"> Tentar de novo os "sem foto"/placeholder</label>
             <label><input type="checkbox" id="opt-reiniciar"> Reiniciar do zero (apaga progresso salvo)</label>
             <label>Limite por seção <input type="number" id="opt-limit" min="1" placeholder="sem limite"></label>
@@ -607,14 +606,6 @@
             <label><input type="checkbox" id="opt-forcar-remocao"> Apagar mesmo se sumir muita coisa de uma vez de uma seção só</label>
             <p class="hint-sub">Por padrão, se mais de 30% dos produtos de uma seção "sumirem" numa busca só, o painel NÃO apaga automaticamente — provavelmente é falha na busca, não descontinuação de verdade. Só marque isso se tiver certeza que é uma remoção em massa real.</p>
             <button class="primary-blue full" data-action="sync">Cadastrar produtos novos</button>
-          </div>
-
-          <div class="acao-painel" data-painel="zip">
-            <button class="primary-green full" data-action="zip">Montar zip das selecionadas</button>
-          </div>
-
-          <div class="acao-painel" data-painel="exportar">
-            <button class="full" data-action="exportar">Exportar das selecionadas</button>
           </div>
         </div>
 
@@ -1076,7 +1067,7 @@
   // ─── Estado de execução (via SSE) ──────────────────────────────────
   function aplicarBotoesDesabilitados() {
     document.querySelectorAll('[data-action]').forEach((b) => {
-      if (['baixar', 'sync', 'zip', 'exportar'].includes(b.dataset.action)) b.disabled = rodando;
+      if (['baixar', 'sync'].includes(b.dataset.action)) b.disabled = rodando;
     });
   }
 
@@ -1288,8 +1279,6 @@
       });
       return;
     }
-    if (btn.dataset.action === 'zip') { dispararAcao('zip', {}); return; }
-    if (btn.dataset.action === 'exportar') { dispararAcao('exportar', {}); return; }
   });
 
   el('btn-confirmar').addEventListener('click', async () => {

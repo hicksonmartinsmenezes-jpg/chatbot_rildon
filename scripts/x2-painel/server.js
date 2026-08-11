@@ -227,6 +227,25 @@ async function rodarAcao(tipo, opcoes, { origemRotina } = {}) {
           confirmar: modoAutomatico ? undefined : confirmarFactory(),
           modoAutomatico,
         });
+        // PEDIDO DO USUÁRIO (2026-08-11): "achei que quando eu clicasse em
+        // atualizar fotos ele já baixasse e lançasse automaticamente no
+        // sistema" — até aqui, "Montar zip" era um botão SEPARADO que
+        // precisava ser clicado depois pra foto baixada virar foto
+        // PUBLICADA (visível na busca do Catálogo do bot). Confuso — o
+        // usuário não sabia que esse 2º passo existia. Agora "Atualizar
+        // Fotos" já tenta montar o zip de cada seção selecionada logo em
+        // seguida. montarZipFinal() é seguro de chamar sempre: se a seção
+        // ainda não estiver 100% baixada, ela só loga um aviso e não faz
+        // nada (não sobrescreve nem quebra o zip existente) — ver
+        // montarZipFinal() em x2-fotos-scraper.js.
+        console.log('\n▶ Publicando (montando zip) as seções que já ficaram 100% completas...');
+        for (const slug of opcoes.secoes) {
+          try {
+            await montarZipFinal(slug);
+          } catch (e) {
+            console.error(`Erro ao montar zip de "${slug}": ${e.message}`);
+          }
+        }
       } else if (tipo === 'sync') {
         await sync.rodar(opcoes.secoes, {
           channel: 'chrome',

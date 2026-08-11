@@ -32,7 +32,7 @@
     --radius: 16px;
     --radius-sm: 10px;
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, .35);
-    --sidebar-w: 76px;
+    --sidebar-w: 92px;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
@@ -71,17 +71,6 @@
     margin-bottom: 28px;
     flex: none;
   }
-  .sidebar-footer {
-    margin-top: auto;
-    display: flex; flex-direction: column; align-items: center;
-    gap: 6px;
-    font-size: 9.5px;
-    color: var(--muted);
-    text-align: center;
-    line-height: 1.4;
-    padding-top: 16px;
-  }
-  .sidebar-footer .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
 
   .main-content { flex: 1; min-width: 0; padding: 34px 40px 56px; max-width: 1440px; }
 
@@ -125,6 +114,14 @@
   .layout { display: grid; grid-template-columns: 1.65fr 1fr; gap: 18px; align-items: start; margin-bottom: 18px; }
   @media (max-width: 980px) { .layout { grid-template-columns: 1fr; } }
 
+  /* Barra de filtro compacta e horizontal (Lançamentos) — os campos não
+     precisam da largura toda de um .form-field em coluna, então ficam lado
+     a lado com o botão alinhado pela base. */
+  .lancamentos-filtro-barra { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
+  .lancamentos-filtro-barra .form-field { margin-bottom: 0; width: 190px; }
+  .lancamentos-filtro-barra .primary { height: 38px; white-space: nowrap; }
+  @media (max-width: 640px) { .lancamentos-filtro-barra .form-field { width: 100%; } }
+
   /* ─── Busca + chips de filtro ─────────────────────────────────── */
   .search-input {
     width: 100%;
@@ -165,7 +162,7 @@
   tr:hover td { background: var(--surface-2); }
   tr.selecionada td { background: rgba(255,255,255,.06); }
   tr.selecionada:hover td { background: rgba(255,255,255,.09); }
-  .table-wrap { max-height: 460px; overflow-y: auto; border-radius: var(--radius-sm); }
+  .table-wrap { max-height: 460px; overflow-y: auto; overflow-x: auto; border-radius: var(--radius-sm); }
   .table-empty { padding: 34px 10px; text-align: center; color: var(--muted); font-size: 13px; }
   .skeleton { color: var(--muted); font-size: 12.5px; padding: 10px 4px; }
 
@@ -314,21 +311,31 @@
      antes — só a posição (vertical, na sidebar) e a aparência (ícone)
      mudaram. O clique continua funcionando igual (delegação por
      .closest('.top-tab')). ──────────────────────────────────────── */
-  .top-tabs { display: flex; flex-direction: column; gap: 6px; width: 100%; align-items: center; }
+  .top-tabs { display: flex; flex-direction: column; gap: 4px; width: 100%; align-items: stretch; padding: 0 8px; }
   .top-tab {
-    width: 46px; height: 46px;
-    border-radius: 12px;
-    display: flex; align-items: center; justify-content: center;
+    width: 100%;
+    padding: 9px 4px 8px;
+    border-radius: 10px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 4px;
     color: var(--muted);
     cursor: pointer;
-    transition: background .12s, color .12s;
+    transition: background .12s, color .12s, border-color .12s;
+    border-left: 2px solid transparent;
   }
-  .top-tab svg { width: 20px; height: 20px; }
+  .top-tab svg { width: 19px; height: 19px; flex: none; }
+  .top-tab-label { font-size: 9.5px; font-weight: 700; letter-spacing: .01em; line-height: 1.15; text-align: center; white-space: nowrap; }
   .top-tab:hover { background: var(--surface-2); color: var(--text); }
-  .top-tab.active { background: var(--surface-2); color: #fff; }
+  .top-tab.active { background: var(--surface-2); color: #fff; border-left-color: #fff; }
   .top-painel { display: none; }
   .top-painel.active { display: block; }
 
+  /* PEDIDO DO USUÁRIO (2026-08-11, "vamos dar uma melhorada"): antes o
+     emoji ficava solto no início do texto corrido, sem separação visual —
+     um parágrafo denso de aviso parecia um bloco só, difícil de escanear
+     rápido. `.banner-icon` isola o emoji numa coluna própria (flex), o
+     texto some fica ao lado como bloco separado — mesma informação, mais
+     fácil de bater o olho e decidir se vale ler tudo. */
   .aviso-banner {
     background: var(--amber-soft);
     border: 1px solid rgba(245, 185, 66, .35);
@@ -338,7 +345,12 @@
     font-size: 12.5px;
     color: var(--amber);
     line-height: 1.55;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
   }
+  .aviso-banner .banner-icon, .info-banner .banner-icon { flex: none; font-size: 15px; line-height: 1.4; }
+  .aviso-banner .banner-texto, .info-banner .banner-texto { flex: 1; min-width: 0; }
 
   /* 2026-08-10: alguns ".aviso-banner" eram só CONTEXTO (como um cálculo
      funciona, uma limitação conhecida) sem nada de errado ou pendente —
@@ -355,6 +367,9 @@
     font-size: 12.5px;
     color: var(--text-2);
     line-height: 1.55;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
   }
 
   /* Aviso menor, pra dentro de um card (ex: "selecione uma seção antes") —
@@ -410,30 +425,38 @@
     <aside class="sidebar">
       <div class="sidebar-logo" title="Painel Fotos X2">X2</div>
 
+      <!-- PEDIDO DO USUÁRIO (2026-08-11, "vamos dar uma melhorada"): antes só
+           tinha ícone + tooltip nativo (title=) no hover, sem rótulo visível
+           — fácil perder de vista qual aba tava aberta ou confundir ícone
+           parecido. Agora cada aba tem um rótulo curto embaixo do ícone,
+           sempre visível (title= continua no elemento pro tooltip nativo
+           mostrar o nome completo, ex: "Qualidade Cadastral" mesmo o rótulo
+           curto sendo só "Qualidade"). -->
       <div class="top-tabs" id="top-tabs">
         <span class="top-tab active" data-top-tab="fotos" title="Fotos">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M21 15l-5-5-9 9"/></svg>
+          <span class="top-tab-label">Fotos</span>
         </span>
         <span class="top-tab" data-top-tab="rotinas" title="Rotinas">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+          <span class="top-tab-label">Rotinas</span>
         </span>
         <span class="top-tab" data-top-tab="estoque" title="Estoque">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>
+          <span class="top-tab-label">Estoque</span>
         </span>
         <span class="top-tab" data-top-tab="lancamentos" title="Lançamentos">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M17 7h4v4"/></svg>
+          <span class="top-tab-label">Lançam.</span>
         </span>
         <span class="top-tab" data-top-tab="qualidade" title="Qualidade Cadastral">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>
+          <span class="top-tab-label">Qualidade</span>
         </span>
         <span class="top-tab" data-top-tab="alertas" title="Alertas WhatsApp">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          <span class="top-tab-label">Alertas</span>
         </span>
-      </div>
-
-      <div class="sidebar-footer">
-        <span class="dot"></span>
-        <span>Servidor<br>online</span>
       </div>
     </aside>
 
@@ -557,11 +580,13 @@
       <div class="top-painel" data-top-painel="rotinas">
 
         <div class="aviso-banner" id="rotinas-aviso-credenciais" style="display:none;">
-          ⚠️ X2_USUARIO/X2_SENHA não configurados no arquivo .env — rotinas agendadas vão falhar no login automático até isso ser preenchido (ver .env.example). Sem essas credenciais, o botão "Testar agora" também vai falhar.
+          <span class="banner-icon">⚠️</span>
+          <span class="banner-texto">X2_USUARIO/X2_SENHA não configurados no arquivo .env — rotinas agendadas vão falhar no login automático até isso ser preenchido (ver .env.example). Sem essas credenciais, o botão "Testar agora" também vai falhar.</span>
         </div>
 
         <div class="info-banner">
-          ℹ️ Login automático + navegação sozinha já validados ao vivo (funcionam pra Estoque, Sync/Diff Estoque e Painel de Produtos). Ainda vale rodar <strong>"Testar agora"</strong> numa rotina recém-criada antes de contar com o agendamento — e lembre que este servidor precisa continuar aberto (pode minimizar): rotinas não rodam com o painel fechado.
+          <span class="banner-icon">ℹ️</span>
+          <span class="banner-texto">Login automático + navegação sozinha já validados ao vivo (funcionam pra Estoque, Sync/Diff Estoque e Painel de Produtos). Ainda vale rodar <strong>"Testar agora"</strong> numa rotina recém-criada antes de contar com o agendamento — e lembre que este servidor precisa continuar aberto (pode minimizar): rotinas não rodam com o painel fechado.</span>
         </div>
 
         <div class="stats-row cols-4" id="rotinas-stats-row">
@@ -659,7 +684,8 @@
 
       <div class="top-painel" data-top-painel="estoque">
         <div class="info-banner">
-          ℹ️ Baixa e guarda o CSV do Relatório de Estoque (Logística) direto do X2 — validado ao vivo, com checagem automática de que a tabela terminou de carregar antes de exportar (evita CSV incompleto). O catálogo de fotos e o painel do bot já usam esses dados (preço, custo, estoque) pra "Preço de Venda Zerado", "Sem Custo Médio" e o badge de estoque no Catálogo.
+          <span class="banner-icon">ℹ️</span>
+          <span class="banner-texto">Baixa e guarda o CSV do Relatório de Estoque (Logística) direto do X2 — validado ao vivo, com checagem automática de que a tabela terminou de carregar antes de exportar (evita CSV incompleto). O catálogo de fotos e o painel do bot já usam esses dados (preço, custo, estoque) pra "Preço de Venda Zerado", "Sem Custo Médio" e o badge de estoque no Catálogo.</span>
         </div>
 
         <div class="layout">
@@ -703,45 +729,53 @@
 
       <div class="top-painel" data-top-painel="lancamentos">
         <div class="info-banner" id="lancamentos-aviso">
-          ℹ️ Um produto só vira "lançamento" se ele NÃO aparecia em nenhum export de estoque anterior. A captura de CSVs começou em 2026-08-06/07 — não tem como detectar lançamentos de datas anteriores a essa, porque não existe snapshot de estoque de antes disso pra comparar.
+          <span class="banner-icon">ℹ️</span>
+          <span class="banner-texto">Um produto só vira "lançamento" se ele NÃO aparecia em nenhum export de estoque anterior. A captura de CSVs começou em 2026-08-06/07 — não tem como detectar lançamentos de datas anteriores a essa, porque não existe snapshot de estoque de antes disso pra comparar.</span>
         </div>
 
-        <div class="layout">
-          <div class="card">
-            <h2>Período</h2>
+        <!-- PEDIDO DO USUÁRIO (2026-08-11, "vamos dar uma melhorada"): antes
+             o formulário de Período (2 campos + botão) e a tabela (5
+             colunas, descrição pode ser bem longa) dividiam espaço 1.65fr/1fr
+             no grid ".layout" — o formulário pequeno ganhava a coluna LARGA
+             e a tabela grande ficava espremida na coluna estreita, forçando
+             scroll horizontal o tempo todo. Agora o filtro fica numa barra
+             compacta em cima e a tabela usa a largura inteira embaixo. -->
+        <div class="card" style="margin-bottom:18px;">
+          <div class="lancamentos-filtro-barra">
             <label class="form-field">De
               <input type="date" class="search-input" id="lancamentos-desde">
             </label>
             <label class="form-field">Até
               <input type="date" class="search-input" id="lancamentos-ate">
             </label>
-            <button class="primary full" data-action="lancamentos-buscar">Buscar lançamentos</button>
-            <p class="descricao" id="lancamentos-info" style="margin-top:14px;"></p>
+            <button class="primary" data-action="lancamentos-buscar">Buscar lançamentos</button>
           </div>
+          <p class="descricao" id="lancamentos-info" style="margin-top:12px;"></p>
+        </div>
 
-          <div class="card">
-            <h2>Produtos novos <span class="contador" id="contador-lancamentos">0</span></h2>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Código</th>
-                    <th>Cód. Fornecedor</th>
-                    <th>Descrição</th>
-                    <th>Visto pela 1ª vez em</th>
-                    <th title="Preço de venda no varejo, conforme o CSV daquele dia.">Preço varejo</th>
-                  </tr>
-                </thead>
-                <tbody id="tabela-lancamentos"><tr><td colspan="5" class="table-empty">Escolha um período e clique em "Buscar lançamentos".</td></tr></tbody>
-              </table>
-            </div>
+        <div class="card">
+          <h2>Produtos novos <span class="contador" id="contador-lancamentos">0</span></h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Código</th>
+                  <th>Cód. Fornecedor</th>
+                  <th>Descrição</th>
+                  <th>Visto pela 1ª vez em</th>
+                  <th title="Preço de venda no varejo, conforme o CSV daquele dia.">Preço varejo</th>
+                </tr>
+              </thead>
+              <tbody id="tabela-lancamentos"><tr><td colspan="5" class="table-empty">Escolha um período e clique em "Buscar lançamentos".</td></tr></tbody>
+            </table>
           </div>
         </div>
       </div><!-- /top-painel lancamentos -->
 
       <div class="top-painel" data-top-painel="qualidade">
         <div class="info-banner">
-          ℹ️ Cada captura é um RETRATO do estado atual — sobrescreve a anterior (não acumula histórico das listas em si; só os totais entram no histórico do snapshot). "Itens Inativos" e "Sem Foto/Arquivo" vêm do X2 (pode levar 1-2 min); "Preço de Venda Zerado" e "Sem Custo Médio" saem do CSV de estoque mais recente (na hora).
+          <span class="banner-icon">ℹ️</span>
+          <span class="banner-texto">Cada captura é um RETRATO do estado atual — sobrescreve a anterior (não acumula histórico das listas em si; só os totais entram no histórico do snapshot). "Itens Inativos" e "Sem Foto/Arquivo" vêm do X2 (pode levar 1-2 min); "Preço de Venda Zerado" e "Sem Custo Médio" saem do CSV de estoque mais recente (na hora).</span>
         </div>
 
         <div class="toolbar" style="margin-bottom:16px;">
@@ -757,7 +791,8 @@
 
       <div class="top-painel" data-top-painel="alertas">
         <div class="info-banner">
-          ℹ️ Dois alertas automáticos por WhatsApp: "Cortes de Produtos" (estoque baixo — perda de faturamento real, já aconteceu) e "Produtos Parados" (Curva C — sem venda há muito tempo, ainda com estoque). Pra rodar sozinho todo dia/semana, configure uma Rotina na aba Rotinas (tipos "Cortes de Produtos"/"Produtos Parados") apontando pro número em ALERTA_WHATSAPP_NUMERO (.env). Aqui só mostra a última captura e deixa rodar na hora.
+          <span class="banner-icon">ℹ️</span>
+          <span class="banner-texto">Dois alertas automáticos por WhatsApp: "Cortes de Produtos" (estoque baixo — perda de faturamento real, já aconteceu) e "Produtos Parados" (Curva C — sem venda há muito tempo, ainda com estoque). Pra rodar sozinho todo dia/semana, configure uma Rotina na aba Rotinas (tipos "Cortes de Produtos"/"Produtos Parados") apontando pro número em ALERTA_WHATSAPP_NUMERO (.env). Aqui só mostra a última captura e deixa rodar na hora.</span>
         </div>
 
         <div class="layout">
@@ -1106,11 +1141,26 @@
     alertas: 'Alertas automáticos de WhatsApp: Cortes de Produtos (estoque baixo, perda de faturamento real) e Produtos Parados (Curva C, sem venda há muito tempo).',
   };
 
+  // PEDIDO DO USUÁRIO (2026-08-11, "vamos dar uma melhorada"): o <h1> ficava
+  // fixo em "Painel Fotos X2" em TODAS as abas (só o subtítulo trocava) —
+  // confuso abrir Alertas ou Rotinas e o título continuar dizendo "Fotos".
+  // Agora o título também acompanha a aba ativa.
+  const TITULO_POR_ABA = {
+    fotos: 'Painel Fotos X2',
+    rotinas: 'Rotinas',
+    estoque: 'Estoque',
+    lancamentos: 'Lançamentos',
+    qualidade: 'Qualidade Cadastral',
+    alertas: 'Alertas WhatsApp',
+  };
+
   el('top-tabs').addEventListener('click', (ev) => {
     const tab = ev.target.closest('.top-tab');
     if (!tab) return;
     document.querySelectorAll('.top-tab').forEach((t) => t.classList.toggle('active', t === tab));
     document.querySelectorAll('.top-painel').forEach((p) => p.classList.toggle('active', p.dataset.topPainel === tab.dataset.topTab));
+    const titulo = TITULO_POR_ABA[tab.dataset.topTab];
+    if (titulo) document.querySelector('h1').textContent = titulo;
     const subtitulo = SUBTITULO_POR_ABA[tab.dataset.topTab];
     if (subtitulo) document.querySelector('.subtitle').textContent = subtitulo;
     if (tab.dataset.topTab === 'rotinas') carregarRotinas();
@@ -1496,6 +1546,42 @@
     document.querySelectorAll('.qualidade-painel').forEach((p) => p.classList.toggle('active', p.dataset.qualidadePainel === chave));
   }
 
+  // PEDIDO DO USUÁRIO (2026-08-11, "vamos dar uma melhorada por favor"):
+  // achado ao vivo durante a auditoria de design — "Itens Inativos" mostra
+  // valor de código/barras deslocado 1 coluna pra esquerda e a coluna
+  // "Código - Descrição" sempre vazia. Causa raiz confirmada via
+  // /api/painel-produtos/qualidade-cadastral/itensInativos: o cabeçalho vem
+  // com 3 colunas (["", "Cod. Barras", "Código - Descrição"] — a 1ª vazia é
+  // provavelmente o checkbox "Ativar Produtos" dessa tela específica), mas
+  // cada linha de dado só tem 2 células (o scraper não captura nada pra
+  // aquela coluna de checkbox) — desalinha cabeçalho x dado em 1 posição.
+  // "Sem Foto/Arquivo" tem o problema oposto e inofensivo: cabeçalho com
+  // coluna vazia no FIM, que já bate em tamanho com os dados (também com
+  // célula vazia no fim) — só sobra uma coluna sem uso nenhum.
+  // Corrigido aqui na renderização (não no scraper Playwright, frágil e só
+  // validável ao vivo): alinha cabeçalho e dado pelo tamanho real da 1ª
+  // linha, cortando sobra vazia do INÍCIO (sem par nos dados) ou do FIM
+  // (com ou sem par) — nunca desalinha o resto das colunas.
+  function _alinharCabecalhoELinhas(headersOriginais, produtos) {
+    let headers = headersOriginais.slice();
+    if (produtos.length) {
+      const larguraLinha = produtos[0].length;
+      if (headers.length === larguraLinha + 1 && headers[0] === '') {
+        headers = headers.slice(1); // coluna extra sem dado (ex: checkbox) — remove do início
+      } else if (headers.length > larguraLinha) {
+        headers = headers.slice(0, larguraLinha); // sobra no fim sem dado — corta o excesso
+      }
+    }
+    // Cabeçalho vazio sobrando no fim = coluna sem uso nenhum — remove pra
+    // não deixar uma coluna sem rótulo e sem propósito visível.
+    while (headers.length && headers[headers.length - 1] === '') {
+      headers = headers.slice(0, -1);
+    }
+    const largura = headers.length;
+    const produtosAjustados = produtos.map((linha) => linha.slice(0, largura));
+    return { headers, produtos: produtosAjustados };
+  }
+
   async function _carregarUmaListaQualidade(chave) {
     const res = await fetch(`/api/painel-produtos/qualidade-cadastral/${chave}`);
     const tbody = el(`qualidade-tabela-${chave}`);
@@ -1518,8 +1604,7 @@
       return;
     }
     const data = await res.json();
-    const headers = data.headers || [];
-    const produtos = data.produtos || [];
+    const { headers, produtos } = _alinharCabecalhoELinhas(data.headers || [], data.produtos || []);
     qualidadeDados[chave] = { headers, produtos };
     qualidadeEstado[chave] = { filtro: '', pagina: 0 };
 

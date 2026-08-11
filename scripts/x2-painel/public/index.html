@@ -143,11 +143,15 @@
   .coluna-direita { display: flex; flex-direction: column; gap: 18px; }
 
   /* Barra compacta e horizontal (Lançamentos) — texto de status à esquerda,
-     botão "Rodar agora" à direita, centralizados na mesma linha. */
+     campos De/Até (opcionais — em branco usa a semana atual) + botão à
+     direita, centralizados na mesma linha. */
   .lancamentos-filtro-barra { display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: center; justify-content: space-between; }
+  .lancamentos-filtro-campos { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+  .lancamentos-filtro-campos .form-field { display: flex; align-items: center; gap: 8px; margin-bottom: 0; width: auto; white-space: nowrap; }
+  .lancamentos-filtro-campos .form-field .search-input { width: 150px; }
   .lancamentos-filtro-barra .primary { height: 38px; white-space: nowrap; }
   .lancamentos-filtro-barra p.descricao { margin: 0; }
-  @media (max-width: 640px) { .lancamentos-filtro-barra { align-items: flex-start; } }
+  @media (max-width: 640px) { .lancamentos-filtro-barra { align-items: flex-start; } .lancamentos-filtro-campos .form-field { width: 100%; } .lancamentos-filtro-campos .form-field .search-input { width: 100%; } }
 
   /* ─── Busca + chips de filtro ─────────────────────────────────── */
   .search-input {
@@ -824,7 +828,11 @@
         <div class="card" style="margin-bottom:18px;">
           <div class="lancamentos-filtro-barra">
             <p class="descricao" id="lancamentos-info" style="margin:0;">Nenhuma captura ainda.</p>
-            <button class="primary" data-action="lancamentos-x2-rodar">Buscar lançamentos no X2</button>
+            <div class="lancamentos-filtro-campos">
+              <label class="form-field">De <input type="date" class="search-input" id="lancamentos-x2-desde" title="Deixe em branco pra usar a semana atual (segunda a sábado)."></label>
+              <label class="form-field">Até <input type="date" class="search-input" id="lancamentos-x2-ate"></label>
+              <button class="primary" data-action="lancamentos-x2-rodar">Buscar lançamentos no X2</button>
+            </div>
           </div>
         </div>
 
@@ -1600,12 +1608,21 @@
     } catch (e) { /* painel segue funcionando sem isso */ }
   }
 
+  // yyyy-mm-dd (formato do <input type="date">) -> dd/mm/aaaa (formato que o X2 espera)
+  function _isoParaDataBr(iso) {
+    if (!iso) return undefined;
+    const [yyyy, mm, dd] = iso.split('-');
+    return `${dd}/${mm}/${yyyy}`;
+  }
+
   document.addEventListener('click', async (ev) => {
     if (!ev.target.closest('[data-action="lancamentos-x2-rodar"]')) return;
+    const dataInicioRecebimento = _isoParaDataBr(el('lancamentos-x2-desde').value);
+    const dataFimRecebimento = _isoParaDataBr(el('lancamentos-x2-ate').value);
     const res = await fetch('/api/acao', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tipo: 'lancamentos-x2', secoes: [], opcoes: { automatico: true } }),
+      body: JSON.stringify({ tipo: 'lancamentos-x2', secoes: [], opcoes: { automatico: true, dataInicioRecebimento, dataFimRecebimento } }),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));

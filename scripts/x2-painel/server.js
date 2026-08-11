@@ -328,6 +328,8 @@ async function rodarAcao(tipo, opcoes, { origemRotina } = {}) {
           channel: 'chrome',
           confirmar: modoAutomatico ? undefined : confirmarFactory(),
           modoAutomatico,
+          dataInicioRecebimento: opcoes.dataInicioRecebimento || undefined,
+          dataFimRecebimento: opcoes.dataFimRecebimento || undefined,
         });
       } else {
         throw new Error(`Ação desconhecida: ${tipo}`);

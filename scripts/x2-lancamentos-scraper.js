@@ -276,11 +276,29 @@ function _normalizarLancamentos(linhasCruas) {
   return Array.from(porCodigo.values());
 }
 
-async function capturarLancamentos(context, { modoAutomatico, hoje = new Date() } = {}) {
+/** dd/mm/aaaa -> Date. Retorna null se o texto não bater no formato (em vez
+ * de lançar erro) — deixa a chamada decidir se cai no default da semana. */
+function _parseDataBr(texto) {
+  const m = String(texto || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return null;
+  const [, dd, mm, yyyy] = m;
+  return new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+}
+
+async function capturarLancamentos(context, { modoAutomatico, hoje = new Date(), dataInicioRecebimento, dataFimRecebimento } = {}) {
   const page = context.pages()[0] || (await context.newPage());
   await abrirCatalogoProdutosCompras(page, { modoAutomatico });
 
-  const { segunda, sabado } = calcularSemanaRecebimento(hoje);
+  // PEDIDO DO USUÁRIO (2026-08-11, "testar a ferramenta... do sábado
+  // retrasado até essa segunda"): além do default (semana corrente), aceita
+  // um período explícito pra reprocessar/testar qualquer intervalo — mesmos
+  // campos do X2 (dt_inicio_recebimento/dt_fim_recebimento), só que
+  // passados de fora em vez de calculados.
+  const inicioCustom = _parseDataBr(dataInicioRecebimento);
+  const fimCustom = _parseDataBr(dataFimRecebimento);
+  const { segunda, sabado } = (inicioCustom && fimCustom)
+    ? { segunda: inicioCustom, sabado: fimCustom }
+    : calcularSemanaRecebimento(hoje);
 
   const filtros = await comRetry(
     () => configurarFiltrosLancamentos(page, { segunda, sabado }),
@@ -334,7 +352,7 @@ function carregarUltimaCaptura() {
   }
 }
 
-async function rodar({ channel, confirmar, modoAutomatico } = {}) {
+async function rodar({ channel, confirmar, modoAutomatico, dataInicioRecebimento, dataFimRecebimento } = {}) {
   const context = await abrirNavegador(channel);
   try {
     if (!modoAutomatico) {
@@ -350,7 +368,7 @@ async function rodar({ channel, confirmar, modoAutomatico } = {}) {
       }
     }
 
-    const snapshot = await capturarLancamentos(context, { modoAutomatico });
+    const snapshot = await capturarLancamentos(context, { modoAutomatico, dataInicioRecebimento, dataFimRecebimento });
     salvarCaptura(snapshot);
     console.log(`Captura salva: ${snapshot.produtos.length} produto(s) novo(s) — recebimento de ${snapshot.periodoRecebimento.de} a ${snapshot.periodoRecebimento.ate}.`);
     return snapshot;

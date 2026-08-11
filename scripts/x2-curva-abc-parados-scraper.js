@@ -138,7 +138,20 @@ async function abrirCurvaAbc(page, { modoAutomatico } = {}) {
  * Dispara 'input'/'change' via JS igual ao resto do projeto (clique
  * sintético em radio/checkbox às vezes não dispara o listener da tela — ver
  * `_selecionarTodasNaLinha` em x2-painel-produtos-snapshot.js pro mesmo
- * problema já resolvido assim). */
+ * problema já resolvido assim).
+ *
+ * ⚠️ PEDIDO DO USUÁRIO (2026-08-11): "sempre que tiver um campo de unidade,
+ * perceba sempre que tem 3 unidades, a matriz, a distribuidora e o
+ * ecommerce, preciso que sempre verifique os 3". Esta tela tem um grupo de
+ * checkboxes "Empresas" (as 3 unidades) — confirmado ao vivo que aparecem
+ * marcadas por padrão, mas o script nunca tinha VERIFICADO isso
+ * explicitamente, só confiava no default da tela (mesmo risco de qualquer
+ * filtro deixado de uma busca manual anterior na mesma aba — já é o motivo
+ * pelo qual x2-catalogo-sync.js reseta filtros toda vez). `marcarTodasEmpresas`
+ * abaixo garante as 3 marcadas, achando os checkboxes pelo texto do label
+ * (contém "RILDON", presente nas 3 opções) em vez de depender de um `name`
+ * de campo nunca confirmado/documentado pra esse grupo especificamente.
+ */
 async function configurarFiltrosParados(page, { diasHistorico = DIAS_HISTORICO_PADRAO } = {}) {
   const hoje = new Date();
   const inicio = new Date(hoje.getTime() - diasHistorico * 24 * 60 * 60 * 1000);
@@ -164,6 +177,22 @@ async function configurarFiltrosParados(page, { diasHistorico = DIAS_HISTORICO_P
       el.dispatchEvent(new Event('change', { bubbles: true }));
       return true;
     };
+    const marcarTodasEmpresas = () => {
+      const norm = (s) => String(s || '').normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '').toUpperCase().replace(/\s+/g, ' ').trim();
+      const boxes = Array.from(document.querySelectorAll('input[type="checkbox"]')).filter((b) => {
+        const label = b.closest('label') || b.parentElement;
+        return label && norm(label.textContent).includes('RILDON');
+      });
+      if (boxes.length < 3) return false; // esperamos Matriz + Distribuidora + Ecommerce
+      boxes.forEach((b) => {
+        if (!b.checked) {
+          b.checked = true;
+          b.dispatchEvent(new Event('click', { bubbles: true }));
+          b.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      });
+      return true;
+    };
 
     const ok = {
       dataIni: preencherData('dataIni', dataIniTexto),
@@ -172,6 +201,7 @@ async function configurarFiltrosParados(page, { diasHistorico = DIAS_HISTORICO_P
       exibirCurvaC: marcar('exibirCurva', 'C'),
       diasSemFaturamento: marcar('diasSemFaturamento'),
       qtdeEstoqueAtual: marcar('ckQtdeEstoqueAtual'),
+      empresas: marcarTodasEmpresas(),
     };
     return ok;
   }, { dataIniTexto: formatarDataBr(inicio), dataFimTexto: formatarDataBr(hoje) });

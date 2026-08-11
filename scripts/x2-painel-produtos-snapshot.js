@@ -251,6 +251,50 @@ async function abrirPainelProdutos(page, { modoAutomatico } = {}) {
     );
   }
   await page.waitForTimeout(1200);
+
+  // PEDIDO DO USUÁRIO (2026-08-11): "sempre que tiver um campo de unidade,
+  // perceba sempre que tem 3 unidades, a matriz, a distribuidora e o
+  // ecommerce, preciso que sempre verifique os 3". Confirmado pelo usuário
+  // ao vivo: o select "Unidade" desta tela TEM opção "Todas" (uma nota
+  // antiga no comentário de _selecionarTodasNaLinha, mais abaixo, dizia o
+  // contrário — não confiar nela, foi engano/suposição não confirmada).
+  // Sem isso, os contadores de Divergências/Situação e as listas de
+  // Qualidade Cadastral (Itens Inativos, Sem Foto/Arquivo etc.) capturados
+  // por este script podiam refletir só 1 das 3 unidades (o que quer que
+  // estivesse selecionado na tela), não o total da loja. Roda logo após
+  // clicar na aba "Painel" — é aqui que o select "Unidade" já existe,
+  // segundo a mesma nota antiga (antes de qualquer clique em badge).
+  await _selecionarUnidadeTodas(page);
+}
+
+/** Acha o select "Unidade" (Matriz/Distribuidora/Ecommerce) em qualquer
+ * frame e seleciona a opção "Todas" — desambigua de outros selects da tela
+ * exigindo que o texto próximo (linha/label) normalize contendo "UNIDADE".
+ * Falha alto (não segue silenciosamente) se não achar, porque estoque/
+ * contagem incompleta sem avisar é pior que parar a captura. */
+async function _selecionarUnidadeTodas(page) {
+  const { resultado } = await avaliarEmQualquerFrame(page, () => {
+    const norm = (s) => String(s || '').normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '').toUpperCase().replace(/\s+/g, ' ').trim();
+    const selects = Array.from(document.querySelectorAll('select'));
+    for (const sel of selects) {
+      const linha = sel.closest('tr') || sel.parentElement;
+      const rotulo = linha ? norm(linha.textContent) : '';
+      if (!rotulo.includes('UNIDADE')) continue;
+      const optTodas = Array.from(sel.options).find((o) => norm(o.textContent).includes('TODAS'));
+      if (!optTodas) continue;
+      sel.value = optTodas.value;
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+      return { ok: true };
+    }
+    return null;
+  });
+  if (!resultado || !resultado.ok) {
+    await salvarDiagnostico(page, 'sem-select-unidade');
+    throw new Error(
+      'Não achei um select "Unidade" com opção "Todas" em nenhum frame — precisa confirmar numa sessão ao vivo ' +
+      '(usuário confirmou que esse campo existe nesta tela). Diagnóstico salvo em debug-sem-select-unidade.png/.json.'
+    );
+  }
 }
 
 /** Salva screenshot + textos-folha de todos os frames pra debug (usado
@@ -894,6 +938,7 @@ module.exports = {
   capturarTodasListasQualidade,
   _scrapearTabelaResultado,
   _aguardarTabelaResultadoEstavel,
+  _selecionarUnidadeTodas,
   investigarBotaoImprimir,
   rodar,
 };

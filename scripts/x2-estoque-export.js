@@ -161,6 +161,20 @@ async function abrirRelatorioEstoque(page, { modoAutomatico } = {}) {
 // iframe principal — inferido por analogia com Compras > Catálogo de
 // Produtos (ver x2-catalogo-sync.js), NÃO confirmado ao vivo especificamente
 // pra esta tela.
+//
+// ⚠️ PEDIDO DO USUÁRIO (2026-08-11): "sempre que tiver um campo de unidade,
+// perceba sempre que tem 3 unidades, a matriz, a distribuidora e o
+// ecommerce, preciso que sempre verifique os 3". O X2 tem um campo "Unidade"
+// (Matriz / Distribuidora / Ecommerce) em várias telas, com uma opção
+// combinada "Todas" — confirmado pelo usuário que existe em todos os
+// painéis. Este script nunca tinha mexido nesse campo, então o export saía
+// com o que quer que estivesse selecionado na tela (ex: só Distribuidora,
+// perdendo estoque de Matriz/Ecommerce) — provável causa raiz de números
+// de estoque incompletos no badge do Catálogo. Corrigido igual ao padrão já
+// usado pro filtro "Estoque": acha o select por rótulo, seleciona a opção
+// cujo texto normalizado é/contém "TODAS". Falha alto (não segue em frente
+// silenciosamente) se não achar — estoque incompleto sem avisar é pior que
+// parar o export.
 async function configurarFiltros(page, { estoqueOpcao }) {
   const resultado = await page.evaluate(({ estoqueOpcao, OPCOES_ESTOQUE_VALIDAS }) => {
     function norm(s) {
@@ -183,6 +197,13 @@ async function configurarFiltros(page, { estoqueOpcao }) {
       }
       return null;
     }
+
+    const selUnidade = selectPorRotulo('Unidade');
+    if (!selUnidade) return { ok: false, erro: 'Não achei o campo "Unidade" no formulário — precisa confirmar numa sessão ao vivo (usuário confirmou que ele existe nesta tela).' };
+    const optTodas = Array.from(selUnidade.options).find((o) => norm(o.textContent).includes('TODAS'));
+    if (!optTodas) return { ok: false, erro: `Não achei uma opção "Todas" no select de Unidade (opções vistas: ${Array.from(selUnidade.options).map((o) => o.textContent.trim()).join(', ')}) — pode estar rodando com só 1 das 3 unidades.` };
+    selUnidade.value = optTodas.value;
+    selUnidade.dispatchEvent(new Event('change', { bubbles: true }));
 
     if (estoqueOpcao) {
       if (!OPCOES_ESTOQUE_VALIDAS.includes(estoqueOpcao)) return { ok: false, erro: `Opção de estoque inválida: "${estoqueOpcao}".` };

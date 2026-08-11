@@ -547,7 +547,11 @@
             <span class="chip" data-filtro="suspeitas">Fotos suspeitas</span>
           </div>
 
-          <div class="toolbar">
+          <!-- Ocultos a pedido do usuário (2026-08-11) — "por enquanto que nem
+               selecionei nada ainda". Continuam funcionando por baixo (data-action
+               ainda existe, delegado no listener global) — é só reaparecer aqui se
+               fizer falta de novo, sem precisar reescrever nada. -->
+          <div class="toolbar" style="display:none;">
             <button class="small" data-action="selecionar-visiveis">Selecionar visíveis</button>
             <button class="small ghost" data-action="limpar-selecao">Limpar seleção</button>
           </div>

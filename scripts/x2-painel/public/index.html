@@ -541,9 +541,6 @@
 
     <main class="main-content">
 
-      <h1>Catálogo</h1>
-      <p class="subtitle">Achar produtos novos, baixar e publicar fotos — tudo que alimenta o Catálogo do painel do bot, sempre em sincronia.</p>
-
       <div class="top-painel active" data-top-painel="fotos">
 
       <div class="catalogo-sync-row">
@@ -1363,43 +1360,14 @@
   });
 
   // ─── Abas de topo (Fotos / Rotinas / Estoque) ─────────────────────
-  // 2026-08-10: h1/subtítulo eram FIXOS ("Painel Fotos X2" + descrição
-  // genérica de tudo, incluindo um "(em breve) estoque" desatualizado —
-  // Estoque já existe faz tempo) em toda aba. Sem nenhum texto mudando
-  // com a navegação, a única pista de "onde eu estou" era o ícone aceso
-  // na sidebar (sem rótulo visível, só tooltip no hover). Agora o
-  // subtítulo troca por aba, sempre descrevendo o que ESSA tela faz.
-  const SUBTITULO_POR_ABA = {
-    fotos: 'Achar produtos novos, baixar e publicar fotos — tudo que alimenta o Catálogo do painel do bot, sempre em sincronia.',
-    rotinas: 'Agende qualquer ação (baixar fotos, sync, exportar estoque, snapshot do Painel de Produtos, diff estoque) pra rodar sozinha num horário fixo, sem precisar abrir o painel.',
-    estoque: 'Exporta o Relatório de Estoque (Logística) do X2 em CSV — alimenta preço, custo e disponibilidade no Catálogo do painel do bot e as listas de Qualidade Cadastral.',
-    lancamentos: 'Compara exports de estoque de datas diferentes pra achar produtos que apareceram pela 1ª vez no período escolhido.',
-    qualidade: 'Listas de produtos com pendência de cadastro no X2 — itens inativos, sem foto, sem preço de venda, sem custo médio, ou só cadastrados sem estoque nem preço.',
-    alertas: 'Alertas automáticos de WhatsApp: Cortes de Produtos (estoque baixo, perda de faturamento real) e Produtos Parados (Curva C, sem venda há muito tempo).',
-  };
-
-  // PEDIDO DO USUÁRIO (2026-08-11, "vamos dar uma melhorada"): o <h1> ficava
-  // fixo em "Painel Fotos X2" em TODAS as abas (só o subtítulo trocava) —
-  // confuso abrir Alertas ou Rotinas e o título continuar dizendo "Fotos".
-  // Agora o título também acompanha a aba ativa.
-  const TITULO_POR_ABA = {
-    fotos: 'Catálogo',
-    rotinas: 'Rotinas',
-    estoque: 'Estoque',
-    lancamentos: 'Lançamentos',
-    qualidade: 'Qualidade Cadastral',
-    alertas: 'Alertas WhatsApp',
-  };
-
+  // 2026-08-11: removido o <h1>/subtítulo fixo no topo do conteúdo (pedido
+  // do usuário — "aliás, de todos, acho que nem precisa disso"). A sidebar
+  // já mostra rótulo + tooltip por aba, então virou redundante.
   el('top-tabs').addEventListener('click', (ev) => {
     const tab = ev.target.closest('.top-tab');
     if (!tab) return;
     document.querySelectorAll('.top-tab').forEach((t) => t.classList.toggle('active', t === tab));
     document.querySelectorAll('.top-painel').forEach((p) => p.classList.toggle('active', p.dataset.topPainel === tab.dataset.topTab));
-    const titulo = TITULO_POR_ABA[tab.dataset.topTab];
-    if (titulo) document.querySelector('h1').textContent = titulo;
-    const subtitulo = SUBTITULO_POR_ABA[tab.dataset.topTab];
-    if (subtitulo) document.querySelector('.subtitle').textContent = subtitulo;
     if (tab.dataset.topTab === 'rotinas') carregarRotinas();
     if (tab.dataset.topTab === 'estoque') carregarEstoqueExports();
     if (tab.dataset.topTab === 'lancamentos') carregarLancamentos();

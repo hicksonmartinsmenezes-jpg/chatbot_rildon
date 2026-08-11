@@ -56,12 +56,20 @@ describe('x2-fotos-scraper.normalizar', () => {
 });
 
 describe('x2-fotos-scraper.SECOES', () => {
-  test('tem as 26 seções conhecidas do catálogo (ver README de catalogo-x2)', () => {
-    expect(Object.keys(scraper.SECOES)).toHaveLength(26);
+  // 26 seções de produto vendável (extração original de 2026-07-20) + Consumo
+  // (categoria interna de estoque, incluída em 2026-08-11 a pedido do
+  // usuário — reverte a exclusão original documentada no README de
+  // catalogo-x2). Imobilizado/Padrão continuam de fora.
+  test('tem as 27 seções conhecidas do catálogo (ver README de catalogo-x2)', () => {
+    expect(Object.keys(scraper.SECOES)).toHaveLength(27);
   });
 
   test('inclui a seção em andamento (componentes-eletricos) com o label certo', () => {
     expect(scraper.SECOES['componentes-eletricos']).toBe('COMPONENTES ELÉTRICOS');
+  });
+
+  test('inclui consumo (2026-08-11)', () => {
+    expect(scraper.SECOES['consumo']).toBe('CONSUMO');
   });
 });
 

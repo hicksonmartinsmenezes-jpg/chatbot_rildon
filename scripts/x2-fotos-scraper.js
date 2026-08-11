@@ -105,6 +105,14 @@ const SECOES = {
   'chave-ignicao-trava': 'CHAVE DE IGNIÇÃO E TRAVA',
   'chave-luz-seta-limpador': 'CHAVE DE LUZ, SETA, LIMPADOR',
   'componentes-eletricos': 'COMPONENTES ELÉTRICOS',
+  // PEDIDO DO USUÁRIO (2026-08-11): reverte a exclusão original de
+  // 2026-07-20 (ver README de src/config/catalogo-x2/) — "Consumo" era uma
+  // das 3 categorias internas de estoque (junto com Imobilizado e Padrão)
+  // deixadas de fora por não serem produto vendável. Decisão nova: incluir
+  // mesmo assim, pra novos itens dessa seção já entrarem categorizados
+  // automaticamente no sync. Imobilizado/Padrão continuam de fora — não
+  // foram pedidas.
+  'consumo': 'CONSUMO',
   'distribuidor': 'DISTRIBUIDOR',
   'engates-reboques': 'ENGATES E REBOQUES',
   'farois': 'FARÓIS',

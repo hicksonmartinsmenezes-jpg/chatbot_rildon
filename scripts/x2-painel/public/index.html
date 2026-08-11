@@ -522,38 +522,33 @@
           </div>
 
           <div class="acao-tabs" id="acao-tabs">
-            <span class="acao-tab active" data-tab="baixar">Baixar fotos</span>
-            <span class="acao-tab" data-tab="sync">Sync</span>
+            <span class="acao-tab active" data-tab="baixar">Atualizar Fotos</span>
+            <span class="acao-tab" data-tab="sync">Cadastrar produtos</span>
             <span class="acao-tab" data-tab="zip">Montar zip</span>
             <span class="acao-tab" data-tab="exportar">Exportar</span>
           </div>
 
           <div class="acao-painel active" data-painel="baixar">
-            <p class="descricao">Baixa as fotos das seções selecionadas direto do X2.</p>
             <label><input type="checkbox" id="opt-retry-sem-foto"> Tentar de novo os "sem foto"/placeholder</label>
             <label><input type="checkbox" id="opt-reiniciar"> Reiniciar do zero (apaga progresso salvo)</label>
             <label>Limite por seção <input type="number" id="opt-limit" min="1" placeholder="sem limite"></label>
-            <button class="primary full" data-action="baixar">Baixar fotos das selecionadas</button>
+            <button class="primary full" data-action="baixar">Atualizar fotos das selecionadas</button>
           </div>
 
           <div class="acao-painel" data-painel="sync">
-            <p class="descricao">Revarre do zero cada seção marcada na lista à esquerda e compara com o X2 — acha produtos novos <strong>e</strong> percebe quais sumiram de lá (prováveis descontinuados). Mais completo, mas mais lento do que precisar ser na maioria das vezes.</p>
-            <p class="descricao" style="margin-top:-8px;">Pra só pegar os produtos novos mais recentes de forma rápida, use <strong>"Sincronizar com o Catálogo"</strong> na aba Estoque — usa o CSV de estoque pra buscar só o que falta, sem revarrer tudo.</p>
-            <p class="aviso-inline" id="sync-aviso-selecao" style="display:none;">⚠️ Marque pelo menos 1 seção na lista à esquerda antes de clicar em "Procurar produtos novos".</p>
+            <p class="aviso-inline" id="sync-aviso-selecao" style="display:none;">⚠️ Marque pelo menos 1 seção na lista à esquerda antes de clicar em "Cadastrar produtos novos".</p>
             <label><input type="checkbox" id="opt-dry-run" checked> Só simular — mostra o que encontraria, sem gravar nada ainda</label>
             <label><input type="checkbox" id="opt-remover-desativados" checked> Se um código não aparecer mais no X2, apagar ele do catálogo (provável produto descontinuado)</label>
             <label><input type="checkbox" id="opt-forcar-remocao"> Apagar mesmo se sumir muita coisa de uma vez de uma seção só</label>
             <p class="hint-sub">Por padrão, se mais de 30% dos produtos de uma seção "sumirem" numa busca só, o painel NÃO apaga automaticamente — provavelmente é falha na busca, não descontinuação de verdade. Só marque isso se tiver certeza que é uma remoção em massa real.</p>
-            <button class="primary full" data-action="sync">Procurar produtos novos</button>
+            <button class="primary full" data-action="sync">Cadastrar produtos novos</button>
           </div>
 
           <div class="acao-painel" data-painel="zip">
-            <p class="descricao">Monta o .zip final — só funciona em seções 100% baixadas. É isso que fica visível na busca do Catálogo do painel do bot.</p>
             <button class="primary-green full" data-action="zip">Montar zip das selecionadas</button>
           </div>
 
           <div class="acao-painel" data-painel="exportar">
-            <p class="descricao">Copia as fotos soltas (sem compactar), pra revisão manual fora do painel.</p>
             <button class="full" data-action="exportar">Exportar das selecionadas</button>
           </div>
         </div>

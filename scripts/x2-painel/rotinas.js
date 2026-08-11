@@ -61,9 +61,9 @@ function salvarRotinas(lista) {
 // "cortes-produtos"/"produtos-parados" (2026-08-10, alertas de WhatsApp) não
 // usam `secoes` — exportam/capturam/diffam tudo de uma vez, não seção por
 // seção como baixar/sync.
-const TIPOS_SEM_SECOES = ['estoque', 'painel-produtos', 'diff-estoque', 'cortes-produtos', 'produtos-parados'];
+const TIPOS_SEM_SECOES = ['estoque', 'painel-produtos', 'diff-estoque', 'cortes-produtos', 'produtos-parados', 'lancamentos-x2'];
 
-const TIPOS_VALIDOS = ['baixar', 'sync', 'estoque', 'painel-produtos', 'diff-estoque', 'cortes-produtos', 'produtos-parados'];
+const TIPOS_VALIDOS = ['baixar', 'sync', 'estoque', 'painel-produtos', 'diff-estoque', 'cortes-produtos', 'produtos-parados', 'lancamentos-x2'];
 
 function validarRotina(dados) {
   const erros = [];

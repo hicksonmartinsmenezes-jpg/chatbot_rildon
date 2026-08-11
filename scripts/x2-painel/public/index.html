@@ -142,16 +142,12 @@
      depois de disparar uma ação). */
   .coluna-direita { display: flex; flex-direction: column; gap: 18px; }
 
-  /* Barra de filtro compacta e horizontal (Lançamentos) — os campos não
-     precisam da largura toda de um .form-field em coluna, então ficam lado
-     a lado com o botão alinhado pela base. */
+  /* Barra compacta e horizontal (Lançamentos) — texto de status à esquerda,
+     botão "Rodar agora" à direita, centralizados na mesma linha. */
   .lancamentos-filtro-barra { display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: center; justify-content: space-between; }
-  .lancamentos-filtro-campos { display: flex; flex-wrap: wrap; gap: 18px; align-items: center; }
-  .lancamentos-filtro-campos .form-field { display: flex; align-items: center; gap: 8px; margin-bottom: 0; width: auto; white-space: nowrap; }
-  .lancamentos-filtro-campos .form-field .search-input { width: 150px; }
   .lancamentos-filtro-barra .primary { height: 38px; white-space: nowrap; }
-  .lancamentos-filtro-barra p.descricao { margin: 0; max-width: 340px; text-align: right; }
-  @media (max-width: 640px) { .lancamentos-filtro-campos { width: 100%; } .lancamentos-filtro-campos .form-field { width: 100%; } .lancamentos-filtro-campos .form-field .search-input { width: 100%; } .lancamentos-filtro-barra p.descricao { text-align: left; max-width: none; } }
+  .lancamentos-filtro-barra p.descricao { margin: 0; }
+  @media (max-width: 640px) { .lancamentos-filtro-barra { align-items: flex-start; } }
 
   /* ─── Busca + chips de filtro ─────────────────────────────────── */
   .search-input {
@@ -731,6 +727,7 @@
                 <option value="diff-estoque">Sincronizar com o Catálogo (diff estoque)</option>
                 <option value="cortes-produtos">Alerta: Cortes de Produtos (estoque baixo)</option>
                 <option value="produtos-parados">Alerta: Produtos Parados (Curva ABC)</option>
+                <option value="lancamentos-x2">Lançamentos (Catálogo de Produtos X2)</option>
               </select>
             </label>
             <label class="form-field" id="rotina-secoes-wrap">Seções (Ctrl/Cmd+clique pra selecionar várias)
@@ -818,25 +815,16 @@
       </div><!-- /top-painel estoque -->
 
       <div class="top-painel" data-top-painel="lancamentos">
-        <!-- PEDIDO DO USUÁRIO (2026-08-11, "vamos dar uma melhorada"): antes
-             o formulário de Período (2 campos + botão) e a tabela (5
-             colunas, descrição pode ser bem longa) dividiam espaço 1.65fr/1fr
-             no grid ".layout" — o formulário pequeno ganhava a coluna LARGA
-             e a tabela grande ficava espremida na coluna estreita, forçando
-             scroll horizontal o tempo todo. Agora o filtro fica numa barra
-             compacta em cima e a tabela usa a largura inteira embaixo. -->
+        <!-- PEDIDO DO USUÁRIO (2026-08-11): antes deduzíamos "produto novo"
+             comparando CSVs de estoque dia a dia (só enxergava a partir de
+             06/08/2026). Agora busca direto na tela oficial do X2 (☰ >
+             Compras > Catálogo de Produtos, filtro "Apenas produtos com
+             primeira entrada") — mesma fonte que a equipe já usa toda
+             semana pro catálogo impresso. Ver x2-lancamentos-scraper.js. -->
         <div class="card" style="margin-bottom:18px;">
           <div class="lancamentos-filtro-barra">
-            <div class="lancamentos-filtro-campos">
-              <label class="form-field">De
-                <input type="date" class="search-input" id="lancamentos-desde">
-              </label>
-              <label class="form-field">Até
-                <input type="date" class="search-input" id="lancamentos-ate">
-              </label>
-              <button class="primary" data-action="lancamentos-buscar">Buscar lançamentos</button>
-            </div>
-            <p class="descricao" id="lancamentos-info"></p>
+            <p class="descricao" id="lancamentos-info" style="margin:0;">Nenhuma captura ainda.</p>
+            <button class="primary" data-action="lancamentos-x2-rodar">Buscar lançamentos no X2</button>
           </div>
         </div>
 
@@ -847,13 +835,13 @@
               <thead>
                 <tr>
                   <th>Código</th>
-                  <th>Cód. Fornecedor</th>
+                  <th>Cód. Fabricante</th>
                   <th>Descrição</th>
-                  <th>Visto pela 1ª vez em</th>
-                  <th title="Preço de venda no varejo, conforme o CSV daquele dia.">Preço varejo</th>
+                  <th>Seção</th>
+                  <th>Código de barras</th>
                 </tr>
               </thead>
-              <tbody id="tabela-lancamentos"><tr><td colspan="5" class="table-empty">Escolha um período e clique em "Buscar lançamentos".</td></tr></tbody>
+              <tbody id="tabela-lancamentos"><tr><td colspan="5" class="table-empty">Clique em "Buscar lançamentos no X2" pra trazer a semana atual.</td></tr></tbody>
             </table>
           </div>
         </div>
@@ -1311,7 +1299,7 @@
     document.querySelectorAll('.top-painel').forEach((p) => p.classList.toggle('active', p.dataset.topPainel === tab.dataset.topTab));
     if (tab.dataset.topTab === 'rotinas') carregarRotinas();
     if (tab.dataset.topTab === 'estoque') carregarEstoqueExports();
-    if (tab.dataset.topTab === 'lancamentos') carregarLancamentos();
+    if (tab.dataset.topTab === 'lancamentos') carregarLancamentosX2();
     if (tab.dataset.topTab === 'qualidade') carregarQualidadeCadastral();
     if (tab.dataset.topTab === 'alertas') carregarAlertas();
   });
@@ -1386,8 +1374,8 @@
             </label>
           </td>
           <td>${r.nome}</td>
-          <td>${{ baixar: 'Baixar fotos', sync: 'Sync', estoque: 'Exportar estoque', 'painel-produtos': 'Snapshot Painel', 'diff-estoque': 'Diff Estoque', 'cortes-produtos': 'Alerta: Cortes', 'produtos-parados': 'Alerta: Parados' }[r.tipo] || r.tipo}</td>
-          <td title="${labelsSecoes.join(', ')}">${r.tipo === 'estoque' ? (r.opcoes && r.opcoes.estoqueOpcao || 'Com e sem estoque') : r.tipo === 'painel-produtos' ? 'Divergências/Situação' : r.tipo === 'cortes-produtos' ? 'Perda por falta de estoque' : r.tipo === 'produtos-parados' ? 'Curva C sem venda' : (secoesTexto || '—')}</td>
+          <td>${{ baixar: 'Baixar fotos', sync: 'Sync', estoque: 'Exportar estoque', 'painel-produtos': 'Snapshot Painel', 'diff-estoque': 'Diff Estoque', 'cortes-produtos': 'Alerta: Cortes', 'produtos-parados': 'Alerta: Parados', 'lancamentos-x2': 'Lançamentos X2' }[r.tipo] || r.tipo}</td>
+          <td title="${labelsSecoes.join(', ')}">${r.tipo === 'estoque' ? (r.opcoes && r.opcoes.estoqueOpcao || 'Com e sem estoque') : r.tipo === 'painel-produtos' ? 'Divergências/Situação' : r.tipo === 'cortes-produtos' ? 'Perda por falta de estoque' : r.tipo === 'produtos-parados' ? 'Curva C sem venda' : r.tipo === 'lancamentos-x2' ? 'Primeira entrada da semana' : (secoesTexto || '—')}</td>
           <td>${quando}</td>
           <td>${r.ativa ? formatarDataHora(r.proximaExecucao) : '—'}</td>
           <td>${resultadoBadge} <span class="cell-slug">${formatarDataHora(r.ultimaExecucao)}</span></td>
@@ -1417,7 +1405,7 @@
   el('rotina-tipo').addEventListener('change', () => {
     const tipo = el('rotina-tipo').value;
     const ehEstoque = tipo === 'estoque';
-    const semSecoes = tipo === 'estoque' || tipo === 'painel-produtos' || tipo === 'diff-estoque';
+    const semSecoes = tipo === 'estoque' || tipo === 'painel-produtos' || tipo === 'diff-estoque' || tipo === 'cortes-produtos' || tipo === 'produtos-parados' || tipo === 'lancamentos-x2';
     el('rotina-secoes-wrap').style.display = semSecoes ? 'none' : 'block';
     el('rotina-estoque-opcao-wrap').style.display = ehEstoque ? 'block' : 'none';
   });
@@ -1427,7 +1415,7 @@
       const nome = el('rotina-nome').value.trim();
       const tipo = el('rotina-tipo').value;
       const ehEstoque = tipo === 'estoque';
-      const semSecoes = tipo === 'estoque' || tipo === 'painel-produtos' || tipo === 'diff-estoque' || tipo === 'cortes-produtos' || tipo === 'produtos-parados';
+      const semSecoes = tipo === 'estoque' || tipo === 'painel-produtos' || tipo === 'diff-estoque' || tipo === 'cortes-produtos' || tipo === 'produtos-parados' || tipo === 'lancamentos-x2';
       const secoesEscolhidas = semSecoes ? [] : Array.from(el('rotina-secoes').selectedOptions).map((o) => o.value);
       const frequencia = el('rotina-frequencia').value;
       const diaSemana = Number(el('rotina-dia-semana').value);
@@ -1577,61 +1565,55 @@
     el('top-tabs').querySelector('[data-top-tab="fotos"]').click();
   });
 
-  // ─── Lançamentos (2026-08-07) — produtos novos por período, detectados
-  // por diff entre snapshots do CSV de estoque (ver scripts/x2-painel/
-  // lancamentos.js). Datas em branco = sem limite naquela ponta.
-  function formatarPrecoBRL(valor) {
-    if (valor === null || valor === undefined) return '—';
-    return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-  }
-
-  async function carregarLancamentos() {
-    const desde = el('lancamentos-desde').value || undefined;
-    const ate = el('lancamentos-ate').value || undefined;
-    const params = new URLSearchParams();
-    if (desde) params.set('desde', desde);
-    if (ate) params.set('ate', ate);
-
+  // ─── Lançamentos via X2 (2026-08-11) — "Apenas produtos com primeira
+  // entrada" na semana corrente (segunda a sábado), lido direto de ☰ >
+  // Compras > Catálogo de Produtos — ver x2-lancamentos-scraper.js pros
+  // seletores confirmados ao vivo. Mesmo padrão de carregamento dos
+  // Alertas de WhatsApp: só busca a ÚLTIMA captura salva; "Rodar agora"
+  // dispara a ação de verdade (abre o X2 e busca) via /api/acao.
+  async function carregarLancamentosX2() {
     const tbody = el('tabela-lancamentos');
-    tbody.innerHTML = '<tr><td colspan="5" class="skeleton">Carregando...</td></tr>';
-
-    const res = await fetch(`/api/lancamentos?${params.toString()}`);
-    const data = await res.json();
-    if (!res.ok) {
-      tbody.innerHTML = `<tr><td colspan="5" class="table-empty">${data.error || 'Erro ao buscar lançamentos.'}</td></tr>`;
-      return;
-    }
-
-    function dataDoNomeArquivo(nome) {
-      const m = nome && nome.match(/estoque-(\d{4})-(\d{2})-(\d{2})/);
-      return m ? `${m[3]}/${m[2]}/${m[1]}` : '—';
-    }
-    const info = data.totalArquivos > 0
-      ? `${data.totalArquivos} export(s) de estoque no histórico — 1º em ${dataDoNomeArquivo(data.primeiroArquivo)}, último em ${dataDoNomeArquivo(data.ultimoArquivo)}.`
-      : '';
-    el('lancamentos-info').textContent = data.aviso || info;
-
-    const lista = data.lancamentos || [];
-    el('contador-lancamentos').textContent = lista.length;
-
-    if (!lista.length) {
-      tbody.innerHTML = '<tr><td colspan="5" class="table-empty">Nenhum produto novo encontrado nesse período.</td></tr>';
-      return;
-    }
-
-    tbody.innerHTML = lista.map((p) => `
-      <tr>
-        <td>${p.codigo}</td>
-        <td>${p.codFornecedor || '—'}</td>
-        <td>${p.descricao || '—'}</td>
-        <td>${formatarDataHora(p.primeiraVez)}</td>
-        <td>${formatarPrecoBRL(p.precoVendaVarejo)}</td>
-      </tr>
-    `).join('');
+    try {
+      const res = await fetch('/api/lancamentos-x2/ultima-captura');
+      if (!res.ok) {
+        el('lancamentos-info').textContent = 'Nenhuma captura ainda.';
+        el('contador-lancamentos').textContent = '0';
+        tbody.innerHTML = '<tr><td colspan="5" class="table-empty">Clique em "Buscar lançamentos no X2" pra trazer a semana atual.</td></tr>';
+        return;
+      }
+      const captura = await res.json();
+      const { de, ate } = captura.periodoRecebimento || {};
+      el('lancamentos-info').textContent = `${formatarDataHora(captura.capturadoEm)} — recebimento de ${de} a ${ate}.`;
+      const lista = captura.produtos || [];
+      el('contador-lancamentos').textContent = lista.length;
+      tbody.innerHTML = lista.length
+        ? lista.map((p) => `
+          <tr>
+            <td>${p.codigo}</td>
+            <td>${p.referenciaFabricante || '—'}</td>
+            <td>${p.descricaoComercial || p.descricaoCurta || '—'}</td>
+            <td>${p.secao || '—'}</td>
+            <td>${p.codigoBarras || '—'}</td>
+          </tr>
+        `).join('')
+        : '<tr><td colspan="5" class="table-empty">Nenhum produto com primeira entrada nesse período.</td></tr>';
+    } catch (e) { /* painel segue funcionando sem isso */ }
   }
 
-  document.addEventListener('click', (ev) => {
-    if (ev.target.closest('[data-action="lancamentos-buscar"]')) carregarLancamentos();
+  document.addEventListener('click', async (ev) => {
+    if (!ev.target.closest('[data-action="lancamentos-x2-rodar"]')) return;
+    const res = await fetch('/api/acao', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tipo: 'lancamentos-x2', secoes: [], opcoes: { automatico: true } }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || 'Erro ao iniciar a busca.');
+      return;
+    }
+    // acompanha o progresso na aba Catálogo (mesmo mecanismo de SSE das outras ações)
+    el('top-tabs').querySelector('[data-top-tab="fotos"]').click();
   });
 
   // ─── Qualidade Cadastral (2026-08-07, reformulado em abas 2026-08-10) —

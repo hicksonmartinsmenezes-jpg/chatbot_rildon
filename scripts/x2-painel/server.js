@@ -56,6 +56,7 @@ const estoqueExport = require('../x2-estoque-export');
 const painelProdutosSnapshot = require('../x2-painel-produtos-snapshot');
 const cortesProdutos = require('../x2-cortes-produtos-scraper');
 const curvaAbcParados = require('../x2-curva-abc-parados-scraper');
+const lancamentosX2 = require('../x2-lancamentos-scraper');
 const qualidadeApenasCadastrados = require('./qualidade-apenas-cadastrados');
 const { listarEntradas } = require('../../src/utils/zip-reader');
 const rotinasStore = require('./rotinas');
@@ -315,6 +316,19 @@ async function rodarAcao(tipo, opcoes, { origemRotina } = {}) {
           semAlerta: !!opcoes.semAlerta,
           numeroAlerta: opcoes.numeroAlerta || undefined,
         });
+      } else if (tipo === 'lancamentos-x2') {
+        // PEDIDO DO USUÁRIO (2026-08-11): a aba Lançamentos deduzia "produto
+        // novo" comparando CSVs de estoque (ver x2-painel/lancamentos.js) —
+        // o usuário mandou o procedimento manual que a equipe já usa toda
+        // semana e achamos a tela oficial do X2 que responde isso de
+        // verdade (☰ > Compras > Catálogo de Produtos, filtro "Apenas
+        // produtos com primeira entrada"). Ver x2-lancamentos-scraper.js
+        // pros seletores confirmados ao vivo.
+        await lancamentosX2.rodar({
+          channel: 'chrome',
+          confirmar: modoAutomatico ? undefined : confirmarFactory(),
+          modoAutomatico,
+        });
       } else {
         throw new Error(`Ação desconhecida: ${tipo}`);
       }
@@ -461,6 +475,15 @@ app.get('/api/alertas/produtos-parados/ultima-captura', (req, res) => {
 });
 app.get('/api/alertas/produtos-parados/historico', (req, res) => {
   res.json({ historico: curvaAbcParados.carregarHistorico() });
+});
+
+// ─── Lançamentos via X2 (2026-08-11) — ver x2-lancamentos-scraper.js.
+// Mesmo padrão de "só serve a última captura salva" dos alertas acima; o
+// disparo em si acontece via /api/acao (tipo "lancamentos-x2").
+app.get('/api/lancamentos-x2/ultima-captura', (req, res) => {
+  const captura = lancamentosX2.carregarUltimaCaptura();
+  if (!captura) return res.status(404).json({ error: 'Nenhuma captura ainda — clique em "Buscar lançamentos no X2" primeiro.' });
+  res.json(captura);
 });
 
 // ─── Qualidade cadastral (2026-08-07) — listas de Itens Inativos, Sem

@@ -547,11 +547,9 @@
             <span class="chip" data-filtro="suspeitas">Fotos suspeitas</span>
           </div>
 
-          <!-- Ocultos a pedido do usuário (2026-08-11) — "por enquanto que nem
-               selecionei nada ainda". Continuam funcionando por baixo (data-action
-               ainda existe, delegado no listener global) — é só reaparecer aqui se
-               fizer falta de novo, sem precisar reescrever nada. -->
-          <div class="toolbar" style="display:none;">
+          <!-- Dinâmico (2026-08-11): fica oculto até marcar a 1ª seção, aí
+               aparece sozinho — controlado em atualizarResumoSelecao(). -->
+          <div class="toolbar" id="selecao-toolbar" style="display:none;">
             <button class="small" data-action="selecionar-visiveis">Selecionar visíveis</button>
             <button class="small ghost" data-action="limpar-selecao">Limpar seleção</button>
           </div>
@@ -586,11 +584,9 @@
             <span class="catalogo-sync-hora" id="catalogo-sync-hora"></span>
           </h2>
 
-          <!-- Ocultos a pedido do usuário (2026-08-11) — "por enquanto que nem
-               selecionei sessões ainda". #resumo-selecao-n continua sendo
-               atualizado por atualizarResumoSelecao() por baixo, então é só
-               tirar o display:none pra voltar a aparecer com o número certo. -->
-          <div class="selecao-resumo" style="display:none;">
+          <!-- Dinâmico (2026-08-11): mesma lógica do toolbar acima — some
+               quando não tem nada marcado, volta assim que seleciona algo. -->
+          <div class="selecao-resumo" id="selecao-resumo" style="display:none;">
             <span><strong id="resumo-selecao-n">0</strong> seção(ões) selecionada(s)</span>
           </div>
 
@@ -1046,6 +1042,12 @@
     // e só descobrir pelo alert() de erro depois.
     const avisoSync = el('sync-aviso-selecao');
     if (avisoSync) avisoSync.style.display = (!selecionadas.size && acaoAtiva === 'sync') ? 'block' : 'none';
+    // Toolbar (Selecionar visíveis/Limpar seleção) e a barra "N selecionada(s)"
+    // só fazem sentido depois que já tem algo marcado — ficam ocultos até lá.
+    const toolbar = el('selecao-toolbar');
+    if (toolbar) toolbar.style.display = selecionadas.size ? 'flex' : 'none';
+    const resumo = el('selecao-resumo');
+    if (resumo) resumo.style.display = selecionadas.size ? 'flex' : 'none';
   }
 
   function horaAgora() {

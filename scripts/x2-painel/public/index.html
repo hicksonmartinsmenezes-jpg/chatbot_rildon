@@ -768,18 +768,10 @@
 
       <div class="top-painel" data-top-painel="estoque">
         <div class="layout">
-          <div class="card">
-            <h2>Exportar agora</h2>
-            <label class="form-field">Opção de estoque
-              <select class="search-input" id="estoque-opcao">
-                <option value="Com e sem estoque">Com e sem estoque</option>
-                <option value="Apenas com estoque">Apenas com estoque</option>
-                <option value="Apenas sem estoque">Apenas sem estoque</option>
-              </select>
-            </label>
-            <button class="primary full" data-action="estoque-baixar-agora">Baixar CSV agora</button>
-          </div>
 
+          <!-- ── Coluna esquerda: histórico (mesmo padrão da aba Catálogo:
+               tabela/dado à esquerda na coluna larga, ações empilhadas à
+               direita na coluna estreita) ── -->
           <div class="card">
             <h2>Exports anteriores <span class="contador" id="contador-estoque-exports">0</span></h2>
             <div class="table-wrap">
@@ -792,17 +784,33 @@
             </div>
           </div>
 
-          <div class="card">
-            <h2>Sincronizar com o Catálogo</h2>
-            <p class="descricao">Compara os códigos do CSV de estoque com os 26 arquivos do Catálogo de fotos e busca no X2 SÓ os que faltam (1 por código, sem escanear as seções inteiras) — mais rápido e mais leve que rodar "Sync" com todas as seções marcadas.</p>
-            <label class="form-field">Qual CSV usar
-              <select class="search-input" id="diff-estoque-csv">
-                <option value="">Mais recente (automático)</option>
-              </select>
-            </label>
-            <label><input type="checkbox" id="diff-estoque-dry-run" checked> Só mostrar (--dry-run, não grava nada)</label>
-            <button class="primary full" data-action="diff-estoque-rodar">Buscar códigos novos e sincronizar</button>
+          <!-- ── Coluna direita: ações ── -->
+          <div class="coluna-direita">
+            <div class="card">
+              <h2>Exportar agora</h2>
+              <label class="form-field">Opção de estoque
+                <select class="search-input" id="estoque-opcao">
+                  <option value="Com e sem estoque">Com e sem estoque</option>
+                  <option value="Apenas com estoque">Apenas com estoque</option>
+                  <option value="Apenas sem estoque">Apenas sem estoque</option>
+                </select>
+              </label>
+              <button class="primary full" data-action="estoque-baixar-agora">Baixar CSV agora</button>
+            </div>
+
+            <div class="card">
+              <h2>Sincronizar com o Catálogo</h2>
+              <p class="descricao">Compara os códigos do CSV de estoque com os 26 arquivos do Catálogo de fotos e busca no X2 SÓ os que faltam (1 por código, sem escanear as seções inteiras) — mais rápido e mais leve que rodar "Sync" com todas as seções marcadas.</p>
+              <label class="form-field">Qual CSV usar
+                <select class="search-input" id="diff-estoque-csv">
+                  <option value="">Mais recente (automático)</option>
+                </select>
+              </label>
+              <label><input type="checkbox" id="diff-estoque-dry-run" checked> Só mostrar (--dry-run, não grava nada)</label>
+              <button class="primary full" data-action="diff-estoque-rodar">Buscar códigos novos e sincronizar</button>
+            </div>
           </div>
+
         </div>
       </div><!-- /top-painel estoque -->
 

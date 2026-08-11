@@ -488,6 +488,43 @@ app.get('/api/lancamentos-x2/ultima-captura', (req, res) => {
   res.json(captura);
 });
 
+// PEDIDO DO USUÁRIO (2026-08-11): "a ideia é pegar esses lançamentos e gerar
+// um arquivo... pra ficar guardado pra utilizar quando necessário" — cada
+// captura já salva uma planilha irmã do .json (ver salvarCaptura em
+// x2-lancamentos-scraper.js); aqui só listamos esses arquivos, mesmo padrão
+// de /api/estoque/exports.
+app.get('/api/lancamentos-x2/exports', (req, res) => {
+  res.json({ exports: lancamentosX2.carregarExports() });
+});
+
+// ⚠️ Corrigido 2026-08-11 (passou por 3 formatos: CSV cru, CSV com célula de
+// período, agora .xlsx de verdade) — baixar o arquivo estático (servido
+// direto do disco) travava o download no formato de quando aquela captura
+// foi salva; se o formato mudasse depois, capturas antigas continuavam
+// baixando desatualizadas pra sempre, mesmo reiniciando o servidor. Agora
+// gera a planilha NA HORA a partir do .json (fonte de verdade) com
+// produtosParaXlsxBuffer() atual, então nunca fica desatualizado de novo.
+// PEDIDO DO USUÁRIO (2026-08-11): "consegue padronizar sempre assim" —
+// mandou o .csv aberto e resalvo como .xlsx no Excel (célula de período
+// MESCLADA A1:B1 + larguras de coluna ajustadas). Célula mesclada não existe
+// em CSV puro — só dá pra fazer gerando um .xlsx de verdade (lib exceljs).
+app.get('/api/lancamentos-x2/xlsx/:nomeBase', async (req, res) => {
+  const { nomeBase } = req.params;
+  if (!/^captura-\d{2}-\d{2}-\d{4}_a_\d{2}-\d{2}-\d{4}$/.test(nomeBase)) {
+    return res.status(400).json({ error: 'Nome de captura inválido.' });
+  }
+  const snapshot = lancamentosX2.carregarCapturaPorNomeBase(nomeBase);
+  if (!snapshot) return res.status(404).json({ error: 'Captura não encontrada.' });
+  try {
+    const buffer = await lancamentosX2.produtosParaXlsxBuffer(snapshot.produtos, snapshot.periodoRecebimento);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${nomeBase}.xlsx"`);
+    res.send(Buffer.from(buffer));
+  } catch (e) {
+    res.status(500).json({ error: `Erro ao gerar planilha: ${e.message}` });
+  }
+});
+
 // ─── Qualidade cadastral (2026-08-07) — listas de Itens Inativos, Sem
 // Foto/Arquivo, Preço de Venda Zerado, Sem Custo Médio. Capturadas junto
 // com o snapshot normal (tipo "painel-produtos", ver rodarAcao acima);

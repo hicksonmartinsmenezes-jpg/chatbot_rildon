@@ -143,8 +143,8 @@
   .coluna-direita { display: flex; flex-direction: column; gap: 18px; }
 
   /* Barra compacta e horizontal (Lançamentos) — texto de status à esquerda,
-     campos De/Até (opcionais — em branco usa a semana atual) + botão à
-     direita, centralizados na mesma linha. */
+     campos De/Até (opcionais — em branco usa a última semana completa,
+     segunda a sábado) + botão à direita, centralizados na mesma linha. */
   .lancamentos-filtro-barra { display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: center; justify-content: space-between; }
   .lancamentos-filtro-campos { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
   .lancamentos-filtro-campos .form-field { display: flex; align-items: center; gap: 8px; margin-bottom: 0; width: auto; white-space: nowrap; }
@@ -193,6 +193,8 @@
      refresh manual removido a pedido do usuário (2026-08-11). */
   .acao-header { justify-content: space-between; }
   .catalogo-sync-hora { font-size: 11.5px; color: var(--muted); font-weight: 400; }
+  .link-csv { font-size: 12px; font-weight: 600; color: var(--blue); text-decoration: none; }
+  .link-csv:hover { text-decoration: underline; }
 
   /* Checkbox com cor de destaque consistente em todo o painel. */
   input[type="checkbox"] { accent-color: var(--blue); width: 15px; height: 15px; cursor: pointer; }
@@ -829,27 +831,45 @@
           <div class="lancamentos-filtro-barra">
             <p class="descricao" id="lancamentos-info" style="margin:0;">Nenhuma captura ainda.</p>
             <div class="lancamentos-filtro-campos">
-              <label class="form-field">De <input type="date" class="search-input" id="lancamentos-x2-desde" title="Deixe em branco pra usar a semana atual (segunda a sábado)."></label>
+              <label class="form-field">De <input type="date" class="search-input" id="lancamentos-x2-desde" title="Deixe em branco pra usar a última semana completa (segunda a sábado)."></label>
               <label class="form-field">Até <input type="date" class="search-input" id="lancamentos-x2-ate"></label>
               <button class="primary" data-action="lancamentos-x2-rodar">Buscar lançamentos no X2</button>
             </div>
           </div>
         </div>
 
-        <div class="card">
-          <h2>Produtos novos <span class="contador" id="contador-lancamentos">0</span></h2>
+        <div class="card" style="margin-bottom:18px;">
+          <h2 class="acao-header">
+            <span>Produtos novos <span class="contador" id="contador-lancamentos">0</span></span>
+            <a href="#" id="lancamentos-csv-link" class="link-csv" download style="display:none;">Baixar planilha desta captura</a>
+          </h2>
           <div class="table-wrap">
             <table>
               <thead>
                 <tr>
                   <th>Código</th>
-                  <th>Cód. Fabricante</th>
                   <th>Descrição</th>
-                  <th>Seção</th>
-                  <th>Código de barras</th>
                 </tr>
               </thead>
-              <tbody id="tabela-lancamentos"><tr><td colspan="5" class="table-empty">Clique em "Buscar lançamentos no X2" pra trazer a semana atual.</td></tr></tbody>
+              <tbody id="tabela-lancamentos"><tr><td colspan="2" class="table-empty">Clique em "Buscar lançamentos no X2" pra trazer a última semana completa.</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- PEDIDO DO USUÁRIO (2026-08-11): "a ideia é pegar esses lançamentos
+             e gerar um arquivo... pra ficar guardado pra utilizar quando
+             necessário" — cada captura já grava um .csv irmão, nunca
+             sobrescrito (uma linha por período pesquisado); aqui só listamos
+             pra baixar de novo depois, mesmo padrão de "Exports anteriores"
+             da aba Estoque. -->
+        <div class="card">
+          <h2>Lançamentos anteriores <span class="contador" id="contador-lancamentos-exports">0</span></h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Período</th><th>Produtos</th><th>Tamanho</th><th>Capturado em</th><th></th></tr>
+              </thead>
+              <tbody id="tabela-lancamentos-exports"><tr><td colspan="5" class="skeleton">Carregando...</td></tr></tbody>
             </table>
           </div>
         </div>
@@ -1574,18 +1594,21 @@
   });
 
   // ─── Lançamentos via X2 (2026-08-11) — "Apenas produtos com primeira
-  // entrada" na semana corrente (segunda a sábado), lido direto de ☰ >
+  // entrada" na última semana completa (segunda a sábado, nunca a semana em
+  // andamento), lido direto de ☰ >
   // Compras > Catálogo de Produtos — ver x2-lancamentos-scraper.js pros
   // seletores confirmados ao vivo. Mesmo padrão de carregamento dos
   // Alertas de WhatsApp: só busca a ÚLTIMA captura salva; "Rodar agora"
   // dispara a ação de verdade (abre o X2 e busca) via /api/acao.
   async function carregarLancamentosX2() {
     const tbody = el('tabela-lancamentos');
+    const linkCsv = el('lancamentos-csv-link');
     try {
       const res = await fetch('/api/lancamentos-x2/ultima-captura');
       if (!res.ok) {
         el('lancamentos-info').textContent = 'Nenhuma captura ainda.';
         el('contador-lancamentos').textContent = '0';
+        linkCsv.style.display = 'none';
         tbody.innerHTML = '<tr><td colspan="5" class="table-empty">Clique em "Buscar lançamentos no X2" pra trazer a semana atual.</td></tr>';
         return;
       }
@@ -1594,17 +1617,52 @@
       el('lancamentos-info').textContent = `${formatarDataHora(captura.capturadoEm)} — recebimento de ${de} a ${ate}.`;
       const lista = captura.produtos || [];
       el('contador-lancamentos').textContent = lista.length;
+      if (captura.nomeBase && lista.length) {
+        linkCsv.href = `/api/lancamentos-x2/xlsx/${encodeURIComponent(captura.nomeBase)}`;
+        linkCsv.style.display = '';
+      } else {
+        linkCsv.style.display = 'none';
+      }
+      // PEDIDO DO USUÁRIO (2026-08-11): "código de barra e seção... e código
+      // de fabricante já aparece junto a descrição" — tabela na tela só
+      // mostra Código + Descrição (que já inclui fabricante/cód. fabricante
+      // dentro do texto); o CSV baixado continua com todos os campos, pra
+      // quem precisar do detalhe completo.
       tbody.innerHTML = lista.length
         ? lista.map((p) => `
           <tr>
             <td>${p.codigo}</td>
-            <td>${p.referenciaFabricante || '—'}</td>
             <td>${p.descricaoComercial || p.descricaoCurta || '—'}</td>
-            <td>${p.secao || '—'}</td>
-            <td>${p.codigoBarras || '—'}</td>
           </tr>
         `).join('')
-        : '<tr><td colspan="5" class="table-empty">Nenhum produto com primeira entrada nesse período.</td></tr>';
+        : '<tr><td colspan="2" class="table-empty">Nenhum produto com primeira entrada nesse período.</td></tr>';
+    } catch (e) { /* painel segue funcionando sem isso */ }
+    carregarLancamentosExports();
+  }
+
+  async function carregarLancamentosExports() {
+    const tbody = el('tabela-lancamentos-exports');
+    try {
+      const res = await fetch('/api/lancamentos-x2/exports');
+      const data = await res.json();
+      const exports = data.exports || [];
+      el('contador-lancamentos-exports').textContent = exports.length;
+      if (!exports.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="table-empty">Nenhum export ainda.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = exports.map((e) => {
+        const { de, ate } = e.periodoRecebimento || {};
+        return `
+          <tr>
+            <td>${de || '—'} a ${ate || '—'}</td>
+            <td>${e.quantidade}</td>
+            <td>${formatarBytes(e.bytes)}</td>
+            <td>${formatarDataHora(e.capturadoEm)}</td>
+            <td><a href="/api/lancamentos-x2/xlsx/${encodeURIComponent(e.nomeBase)}" download>Baixar</a></td>
+          </tr>
+        `;
+      }).join('');
     } catch (e) { /* painel segue funcionando sem isso */ }
   }
 

@@ -69,8 +69,8 @@
  * ─── Uso ────────────────────────────────────────────────────────────────
  *   node scripts/x2-lancamentos-scraper.js
  *
- * Por padrão captura a semana corrente (segunda a sábado — se hoje ainda não
- * chegou no sábado, traz o que já entrou até agora). Cada execução SALVA em
+ * Por padrão captura a ÚLTIMA SEMANA COMPLETA (segunda a sábado, nunca a
+ * semana em andamento — ver calcularSemanaRecebimento). Cada execução SALVA em
  * `~/.x2-rildon-scraper/lancamentos-x2/captura-<segunda>_a_<sabado>.json` e
  * ATUALIZA `ultima-captura.json` — não sobrescreve semanas antigas, então dá
  * pra manter histórico de verdade (diferente da limitação de
@@ -82,6 +82,7 @@
 const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
+const ExcelJS = require('exceljs');
 
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
@@ -115,14 +116,24 @@ function formatarDataBr(data) {
   return `${dd}/${mm}/${yyyy}`;
 }
 
-/** Segunda a sábado da semana corrente (ou da que acabou de passar, se hoje
- * for domingo) — mesma regra do procedimento manual ("Última Segunda-Feira"
- * / "Último Sábado"). `dia`: 0=domingo..6=sábado. */
+/** Segunda a sábado da ÚLTIMA SEMANA COMPLETA (nunca a semana corrente,
+ * mesmo que ela já esteja quase no fim) — mesma regra do procedimento
+ * manual ("Última Segunda-Feira" / "Último Sábado"), ex.: 20 a 25/07.
+ *
+ * ⚠️ Corrigido 2026-08-11: a versão anterior calculava a semana CORRENTE
+ * (segunda desta semana até sábado desta semana), que na maioria dos dias
+ * ainda nem tinha acontecido inteira (sábado no futuro) — usuário percebeu
+ * que o padrão natural do processo manual é sempre olhar pra trás, pra
+ * última semana já fechada, não pra semana em andamento. Regra nova: acha a
+ * segunda-feira desta semana e SEMPRE volta mais 7 dias, exceto quando hoje
+ * é domingo (aí a semana que acabou de terminar ontem, sábado, já é a
+ * última semana completa, sem precisar voltar mais). `dia`: 0=domingo..6=sábado. */
 function calcularSemanaRecebimento(hoje = new Date()) {
   const dia = hoje.getDay();
   const diasDesdeSegunda = (dia + 6) % 7;
   const segunda = new Date(hoje);
   segunda.setDate(hoje.getDate() - diasDesdeSegunda);
+  if (dia !== 0) segunda.setDate(segunda.getDate() - 7); // só domingo já aponta pra semana completa; qualquer outro dia, a "corrente" ainda não terminou
   const sabado = new Date(segunda);
   sabado.setDate(segunda.getDate() + 5);
   return { segunda, sabado };
@@ -166,9 +177,24 @@ async function abrirCatalogoProdutosCompras(page, { modoAutomatico } = {}) {
 }
 
 /** Preenche os critérios de pesquisa — nomes de campo REAIS confirmados ao
- * vivo (ver cabeçalho do arquivo). */
+ * vivo (ver cabeçalho do arquivo).
+ *
+ * ⚠️ BUG REAL corrigido 2026-08-11 (achado no 1º teste supervisionado, com
+ * login manual confirmado e ainda assim "faltando: todos os campos"): o
+ * formulário mora em `window.frames[1]` (ver cabeçalho), não no frame
+ * principal — mas `avaliarEmQualquerFrame` para no PRIMEIRO frame cujo
+ * avaliador devolve algo truthy, e o objeto `ok` (com todos os campos
+ * `false`) É truthy mesmo quando NENHUM campo foi achado. Resultado: parava
+ * no frame principal (sem o formulário) e nunca chegava no frame certo.
+ * Print do usuário confirmou a tela certa aberta, só com os campos vazios —
+ * bateu exatamente com essa teoria. Fix: usa `id_empresa` (select da
+ * Unidade, sempre presente nesse formulário) como âncora — se não existir
+ * nesse frame, devolve `null` (falsy) pra `avaliarEmQualquerFrame` seguir
+ * pro próximo frame em vez de desistir. */
 async function configurarFiltrosLancamentos(page, { segunda, sabado } = {}) {
   const { resultado } = await avaliarEmQualquerFrame(page, ({ dtIniRec, dtFimRec }) => {
+    if (!document.querySelector('[name="id_empresa"]')) return null; // frame errado — tenta o próximo
+
     const setVal = (name, val) => {
       const el = document.querySelector(`[name="${name}"]`);
       if (!el) return false;
@@ -290,7 +316,7 @@ async function capturarLancamentos(context, { modoAutomatico, hoje = new Date(),
   await abrirCatalogoProdutosCompras(page, { modoAutomatico });
 
   // PEDIDO DO USUÁRIO (2026-08-11, "testar a ferramenta... do sábado
-  // retrasado até essa segunda"): além do default (semana corrente), aceita
+  // retrasado até essa segunda"): além do default (última semana completa), aceita
   // um período explícito pra reprocessar/testar qualquer intervalo — mesmos
   // campos do X2 (dt_inicio_recebimento/dt_fim_recebimento), só que
   // passados de fora em vez de calculados.
@@ -331,25 +357,136 @@ async function capturarLancamentos(context, { modoAutomatico, hoje = new Date(),
   };
 }
 
-function nomeArquivoCaptura(snapshot) {
+function nomeBaseCaptura(snapshot) {
   const de = snapshot.periodoRecebimento.de.replace(/\//g, '-');
   const ate = snapshot.periodoRecebimento.ate.replace(/\//g, '-');
-  return path.join(LANCAMENTOS_DIR, `captura-${de}_a_${ate}.json`);
+  return `captura-${de}_a_${ate}`;
 }
 
-function salvarCaptura(snapshot) {
+function nomeArquivoCaptura(snapshot) {
+  return path.join(LANCAMENTOS_DIR, `${nomeBaseCaptura(snapshot)}.json`);
+}
+
+function nomeArquivoXlsx(snapshot) {
+  return path.join(LANCAMENTOS_DIR, `${nomeBaseCaptura(snapshot)}.xlsx`);
+}
+
+// PEDIDO DO USUÁRIO (2026-08-11): "a ideia é pegar esses lançamentos e gerar
+// um arquivo... pra ficar guardado pra utilizar quando necessário" — depois
+// de validar a ferramenta contra 2 semanas reais (bateu 35/36 códigos, a
+// diferença foi erro humano no processo manual antigo, não bug daqui), o
+// pedido agora é ter um arquivo de verdade pra guardar/compartilhar.
+// Passou por 2 formatos antes deste: CSV cru (';' + BOM), depois CSV com uma
+// linha de período acima do cabeçalho. Usuário testou abrindo no Excel e
+// resalvando como .xlsx (mandou o arquivo de exemplo) — resultado: célula
+// de período MESCLADA A1:B1 (célula única de verdade, não só texto
+// "vazando" pra coluna B como um CSV faz) e colunas com largura ajustada.
+// Isso não dá pra fazer num .csv (não existe célula mesclada em texto
+// plano) — por isso agora gera .xlsx de verdade, com a lib exceljs, em vez
+// de fingir formatação num arquivo de texto.
+async function produtosParaXlsxBuffer(produtos, periodoRecebimento) {
+  const workbook = new ExcelJS.Workbook();
+  const planilha = workbook.addWorksheet('Lançamentos');
+  planilha.getColumn(1).width = 12;
+  planilha.getColumn(2).width = 75;
+
+  planilha.mergeCells('A1:B1');
+  planilha.getCell('A1').value = periodoRecebimento
+    ? `Período de recebimento: ${periodoRecebimento.de} a ${periodoRecebimento.ate}`
+    : '';
+
+  planilha.getCell('A2').value = 'Código';
+  planilha.getCell('B2').value = 'Descrição';
+
+  let linha = 3;
+  for (const p of produtos || []) {
+    planilha.getCell(`A${linha}`).value = p.codigo;
+    planilha.getCell(`B${linha}`).value = p.descricaoComercial || p.descricaoCurta || '';
+    linha++;
+  }
+
+  return workbook.xlsx.writeBuffer();
+}
+
+async function salvarCaptura(snapshot) {
   garantirPastas();
   fs.writeFileSync(nomeArquivoCaptura(snapshot), JSON.stringify(snapshot, null, 2));
+  const buffer = await produtosParaXlsxBuffer(snapshot.produtos, snapshot.periodoRecebimento);
+  fs.writeFileSync(nomeArquivoXlsx(snapshot), buffer);
   fs.writeFileSync(ULTIMA_CAPTURA_PATH, JSON.stringify(snapshot, null, 2));
 }
 
 function carregarUltimaCaptura() {
   if (!fs.existsSync(ULTIMA_CAPTURA_PATH)) return null;
   try {
-    return JSON.parse(fs.readFileSync(ULTIMA_CAPTURA_PATH, 'utf8'));
+    const snapshot = JSON.parse(fs.readFileSync(ULTIMA_CAPTURA_PATH, 'utf8'));
+    snapshot.nomeBase = nomeBaseCaptura(snapshot);
+    snapshot.arquivoXlsx = `${snapshot.nomeBase}.xlsx`;
+    return snapshot;
   } catch {
     return null;
   }
+}
+
+// ⚠️ Corrigido 2026-08-11: baixar o arquivo salvo em disco (era servido
+// estático) vinha do jeito que ele foi gravado NA HORA DA CAPTURA — se o
+// formato mudasse depois (mudou 3x seguidas: CSV cru, CSV com período,
+// agora .xlsx de verdade), toda captura antiga continuava baixando
+// desatualizada pra sempre, mesmo reiniciando o servidor, porque reiniciar
+// só troca o CÓDIGO, não regrava os arquivos já salvos. Por isso o download
+// agora (ver rota /api/lancamentos-x2/xlsx/:nomeBase em server.js) gera a
+// planilha NA HORA a partir do .json (a fonte de verdade), sempre com
+// produtosParaXlsxBuffer() atual — nunca fica desatualizado de novo.
+function carregarCapturaPorNomeBase(nomeBase) {
+  const caminhoJson = path.join(LANCAMENTOS_DIR, `${nomeBase}.json`);
+  if (!fs.existsSync(caminhoJson)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(caminhoJson, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+// Lista todas as capturas já feitas (uma por período de recebimento — nunca
+// sobrescrevem umas às outras, diferente de ultima-captura.json) pra
+// alimentar o card "Lançamentos anteriores" no painel — mesmo padrão de
+// carregarExports() de x2-estoque-export.js, mas com metadados do período em
+// vez de só nome/tamanho/data, porque aqui o período É o dado relevante.
+//
+// PEDIDO DO USUÁRIO (2026-08-11): ordenar por PERÍODO (data de início da
+// captura), do mais recente pro mais antigo — não por "quando eu cliquei
+// pra capturar" (capturadoEm), porque durante os testes eu capturei períodos
+// fora de ordem cronológica (ex.: testei 01/07-12/07 DEPOIS de já ter
+// capturado 20/07-25/07), o que deixava a lista com períodos embaralhados.
+function carregarExports() {
+  garantirPastas();
+  return fs.readdirSync(LANCAMENTOS_DIR)
+    .filter((f) => f.startsWith('captura-') && f.endsWith('.json'))
+    .map((f) => {
+      try {
+        const snapshot = JSON.parse(fs.readFileSync(path.join(LANCAMENTOS_DIR, f), 'utf8'));
+        const nomeBase = nomeBaseCaptura(snapshot);
+        const caminhoXlsx = nomeArquivoXlsx(snapshot);
+        return {
+          nomeBase,
+          arquivoXlsx: `${nomeBase}.xlsx`,
+          periodoRecebimento: snapshot.periodoRecebimento,
+          periodoInicio: _parseDataBr(snapshot.periodoRecebimento && snapshot.periodoRecebimento.de),
+          capturadoEm: snapshot.capturadoEm,
+          quantidade: (snapshot.produtos || []).length,
+          bytes: fs.existsSync(caminhoXlsx) ? fs.statSync(caminhoXlsx).size : 0,
+        };
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      const ta = a.periodoInicio ? a.periodoInicio.getTime() : 0;
+      const tb = b.periodoInicio ? b.periodoInicio.getTime() : 0;
+      return tb - ta;
+    })
+    .map(({ periodoInicio, ...resto }) => resto); // campo auxiliar só pra ordenar — não precisa ir pro JSON de resposta
 }
 
 async function rodar({ channel, confirmar, modoAutomatico, dataInicioRecebimento, dataFimRecebimento } = {}) {
@@ -369,7 +506,7 @@ async function rodar({ channel, confirmar, modoAutomatico, dataInicioRecebimento
     }
 
     const snapshot = await capturarLancamentos(context, { modoAutomatico, dataInicioRecebimento, dataFimRecebimento });
-    salvarCaptura(snapshot);
+    await salvarCaptura(snapshot);
     console.log(`Captura salva: ${snapshot.produtos.length} produto(s) novo(s) — recebimento de ${snapshot.periodoRecebimento.de} a ${snapshot.periodoRecebimento.ate}.`);
     return snapshot;
   } finally {
@@ -396,7 +533,10 @@ module.exports = {
   abrirCatalogoProdutosCompras,
   configurarFiltrosLancamentos,
   capturarLancamentos,
+  produtosParaXlsxBuffer,
   salvarCaptura,
   carregarUltimaCaptura,
+  carregarExports,
+  carregarCapturaPorNomeBase,
   rodar,
 };

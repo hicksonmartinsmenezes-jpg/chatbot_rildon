@@ -118,18 +118,18 @@
      ícone colorido + barra de acento embaixo + subtexto contextual. Opt-in
      via classe extra pra não mudar o visual dos stat-card simples de
      outras abas (Rotinas etc.) que reusam a mesma base .stat-card. */
+  /* Cores por categoria (azul/roxo/verde/âmbar/vermelho) removidas a
+     pedido do usuário (2026-08-11) — ícone, barra de acento, borda e
+     número ficam neutros em cinza pra todos os cards, sem depender da
+     classe acento-*/alerta/risco (mantidas no HTML só pra não reescrever
+     o JS, mas sem efeito visual de cor aqui — por isso os overrides
+     abaixo repetem a mesma especificidade das regras base .alerta/.risco
+     pra vencer por ordem de declaração). */
   .stat-card--rico { position: relative; overflow: hidden; padding-bottom: 18px; border-left-color: var(--border); text-align: center; }
   .stat-card--rico::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--border-strong); }
-  .stat-card--rico.acento-azul::after { background: var(--blue); }
-  .stat-card--rico.acento-azul .stat-icone { background: var(--blue-soft); color: var(--blue); }
-  .stat-card--rico.acento-roxo::after { background: var(--purple); }
-  .stat-card--rico.acento-roxo .stat-icone { background: var(--purple-soft); color: var(--purple); }
-  .stat-card--rico.acento-verde::after { background: var(--green); }
-  .stat-card--rico.acento-verde .stat-icone { background: var(--green-soft); color: var(--green); }
-  .stat-card--rico.alerta::after { background: var(--amber); }
-  .stat-card--rico.risco::after { background: var(--red); }
+  .stat-card--rico.alerta, .stat-card--rico.risco { border-left-color: var(--border); }
   .stat-card--rico.alerta .valor, .stat-card--rico.risco .valor { color: var(--text); }
-  .stat-icone { width: 34px; height: 34px; border-radius: 6px; display: flex; align-items: center; justify-content: center; margin: 0 0 9px; flex: none; }
+  .stat-icone { width: 34px; height: 34px; border-radius: 6px; display: flex; align-items: center; justify-content: center; margin: 0 0 9px; flex: none; background: var(--surface-2); color: var(--text-2); }
   .stat-icone svg { width: 17px; height: 17px; }
 
   /* ─── Layout principal: Seções (esq.) + Ação (dir.) ──────────── */
@@ -197,10 +197,6 @@
 
   /* Checkbox com cor de destaque consistente em todo o painel. */
   input[type="checkbox"] { accent-color: var(--blue); width: 15px; height: 15px; cursor: pointer; }
-
-  /* Mini barra de progresso na coluna "Publicados" da tabela de Seções. */
-  .mini-progresso { height: 4px; width: 70px; background: var(--surface-3); border-radius: 999px; margin-top: 6px; overflow: hidden; }
-  .mini-progresso-fill { height: 100%; background: var(--blue); border-radius: 999px; }
 
   /* Paginação simples da tabela de Seções — mostra as N primeiras e deixa
      expandir sob pedido, em vez de tabela rolável enorme sempre cheia. */
@@ -1019,7 +1015,6 @@
       const badgePequenas = s.pequenas > 0
         ? `<span class="badge badge-red">${s.pequenas} suspeita(s)</span>`
         : '<span class="badge badge-muted">0</span>';
-      const pctPublicado = s.produtos > 0 ? Math.min(100, Math.round((s.publicados / s.produtos) * 100)) : 0;
       const selecionada = selecionadas.has(s.slug);
       return `
         <tr class="${selecionada ? 'selecionada' : ''}">
@@ -1027,7 +1022,7 @@
           <td>${s.label}<div class="cell-slug">${s.slug}</div></td>
           <td>${s.produtos}</td>
           <td>${s.baixados}/${s.produtos}</td>
-          <td>${badgePublicado}<div class="mini-progresso"><div class="mini-progresso-fill" style="width:${pctPublicado}%"></div></div></td>
+          <td>${badgePublicado}</td>
           <td>${badgePequenas}</td>
         </tr>
       `;

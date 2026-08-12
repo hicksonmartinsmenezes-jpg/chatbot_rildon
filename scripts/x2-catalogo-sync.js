@@ -248,6 +248,8 @@ async function garantirTelaCatalogoAberta(context, { confirmar, modoAutomatico }
 // significar de verdade "não existe mais", não "excluído por um filtro
 // esquecido de uma busca manual anterior".
 async function buscarSecao(page, labelSecao) {
+  const textoAntes = await extrairTextoResultado(page).catch(() => '');
+
   await page.evaluate((labelAlvo) => {
     function norm(s) {
       return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
@@ -291,9 +293,27 @@ async function buscarSecao(page, labelSecao) {
   // Polling EXTERNO do Playwright (numérico) — não setTimeout dentro da
   // página. Mesma lição aprendida no x2-fotos-scraper.js: funciona mesmo
   // com a janela em segundo plano.
+  //
+  // ⚠️ BUG REAL corrigido 2026-08-12 (achado ao vivo: uma rodada --todas
+  // contaminou 13 arquivos de seção em cascata — cada seção "herdava"
+  // produtos da seção ANTERIOR do loop). Causa: este waitForFunction só
+  // checava "o cabeçalho de resultado existe na tela", não se é o
+  // resultado da busca ATUAL. Se a seção seguinte processasse rápido
+  // demais (troca de <select> + pesquisar() ainda não tinha re-renderizado
+  // o iframe), a promise resolvia IMEDIATAMENTE vendo o cabeçalho que a
+  // busca ANTERIOR tinha deixado na tela — extrairTextoResultado então lia
+  // os produtos da seção errada, e sincronizarSecao gravava tudo isso como
+  // "novos" no <seção-atual>.json. Mesma causa raiz e mesmo fix já
+  // aplicado em buscarPorCodigo() em 2026-08-10 (ver comentário lá): tira
+  // um retrato do texto ANTES de disparar a busca, só considera pronto
+  // quando o texto MUDA desse retrato E contém o cabeçalho esperado.
   await page.waitForFunction(
-    (cabecalho) => document.querySelector('iframe[name="principal"]').contentDocument.body.innerText.includes(cabecalho),
-    CABECALHO_RESULTADO,
+    ({ cabecalho, anterior }) => {
+      const texto = document.querySelector('iframe[name="principal"]').contentDocument.body.innerText;
+      if (texto === anterior) return false;
+      return texto.includes(cabecalho);
+    },
+    { cabecalho: CABECALHO_RESULTADO, anterior: textoAntes },
     { timeout: 30000, polling: 500 }
   );
 }

@@ -225,10 +225,55 @@ async function garantirTelaCatalogoAberta(context, { confirmar, modoAutomatico }
     throw new Error('Modo automático: cliquei pelo menu (☰ > Compras > Catálogo de Produtos) mas o formulário não apareceu — precisa de uma sessão supervisionada pra confirmar/ajustar os seletores usados na navegação.');
   }
 
+  // ⚠️ BUG REAL corrigido 2026-08-12 (reportado ao vivo pelo usuário: "meu
+  // cadastrar produtos não está logando sozinho como em atualizar fotos").
+  // Até aqui, o modo MANUAL (clique direto no painel, sem ser via Rotina —
+  // ou seja, modoAutomatico=false) nunca tentava login nem navegação
+  // automática, só imprimia instruções e esperava o usuário fazer TUDO à
+  // mão (login + abrir Compras > Catálogo de Produtos). Isso destoava de
+  // garantirPopupAberto() em x2-fotos-scraper.js (usado por "Atualizar
+  // Fotos"), que desde 2026-08-06 já tenta login automático E navegação
+  // por menu mesmo em modo manual — só o clique final no botão "Catálogo
+  // de Produtos" fica de verdade bloqueado pro robô (ver comentário lá) e
+  // precisa ser humano. Replicado aqui o mesmo comportamento: login
+  // automático (se tiver X2_USUARIO/X2_SENHA no .env) + navegação por menu
+  // (☰ > Compras > link do Catálogo de Produtos, mesmos seletores do bloco
+  // modoAutomatico acima) — se qualquer passo falhar, cai pro fluxo 100%
+  // manual de sempre sem travar, só ajusta a mensagem exibida.
+  const pareceLoginManual = /login/i.test(page.url()) || (await page.locator('input[type="password"]').count().catch(() => 0)) > 0;
+  if (pareceLoginManual) {
+    try {
+      const { tentarLoginAutomatico } = require('./x2-fotos-scraper');
+      await tentarLoginAutomatico(page);
+      console.log('Login automático ok.');
+    } catch (e) {
+      console.log(`(login automático não deu: ${e.message} — faça login manualmente)`);
+    }
+  }
+
+  let chegouNaTelaManual = false;
+  try {
+    await page.waitForTimeout(500);
+    await page.locator('a').first().click({ timeout: 8000 });
+    await page.waitForTimeout(500);
+    await page.locator('a:has-text("Compras")').first().click({ timeout: 8000 });
+    await page.waitForTimeout(500);
+    await page.locator('a[href*="catalogo_produto/catalogo_pesquisa.jsp"]').first().click({ timeout: 8000 });
+    await page.waitForTimeout(1200);
+    if (await telaTemFormulario(page)) return page;
+    chegouNaTelaManual = false; // clicou mas a tela não é a certa — cai pro manual mesmo
+  } catch (e) {
+    console.log(`(navegação automática até a tela não deu: ${e.message} — vá até lá manualmente)`);
+  }
+
   console.log('\n==============================================================');
-  console.log('Faça login se precisar (a sessão fica salva).');
-  console.log('Depois vá em: Compras > "Catálogo de Produtos"');
-  console.log('(botão de primeiro nível, ao lado de "Gestão de Produtos" e "Curva ABC").');
+  if (chegouNaTelaManual) {
+    console.log('Já cheguei em Compras > Catálogo de Produtos.');
+  } else {
+    console.log('Faça login se precisar (a sessão fica salva).');
+    console.log('Depois vá em: Compras > "Catálogo de Produtos"');
+    console.log('(botão de primeiro nível, ao lado de "Gestão de Produtos" e "Curva ABC").');
+  }
   console.log('==============================================================\n');
 
   if (confirmar) {
@@ -316,6 +361,21 @@ async function buscarSecao(page, labelSecao) {
     { cabecalho: CABECALHO_RESULTADO, anterior: textoAntes },
     { timeout: 30000, polling: 500 }
   );
+
+  // Estabilização (achado ao vivo 2026-08-12 testando o fix acima): o
+  // cabeçalho pode aparecer no DOM ANTES de todas as linhas de produto
+  // terminarem de carregar (tabela populada aos poucos) — sem isso, o
+  // texto extraído logo depois do waitForFunction acima pega só uma fração
+  // das linhas, e o resto vira "não encontrado" por engano (mesmo efeito
+  // prático do bug de cima, causa diferente). Espera o texto PARAR de
+  // crescer (até 10x500ms) antes de considerar a busca pronta.
+  let textoEstavel = null;
+  for (let i = 0; i < 10; i++) {
+    const atual = await extrairTextoResultado(page);
+    if (atual === textoEstavel) break;
+    textoEstavel = atual;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
 }
 
 // PEDIDO DO USUÁRIO (2026-08-10): "com a lista csv que eu extraio, não

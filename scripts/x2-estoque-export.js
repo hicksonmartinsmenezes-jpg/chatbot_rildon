@@ -65,6 +65,7 @@ const os = require('os');
 const readline = require('readline');
 const { execFile } = require('child_process');
 const { chromium } = require('playwright');
+const { avaliarEmQualquerFrame, comRetry } = require('./x2-nav-helpers');
 
 // Sem isso, X2_USUARIO/X2_SENHA (usados no login automático) só carregavam
 // quando este script rodava DENTRO do server.js (que já dá o require de
@@ -157,36 +158,44 @@ async function abrirRelatorioEstoque(page, { modoAutomatico } = {}) {
 }
 
 // Ajusta o filtro "Estoque" (Com e sem / Apenas com / Apenas sem) e garante
-// "Seção" = Todos (já é o padrão da tela, mas confirma). Roda dentro do
-// iframe principal — inferido por analogia com Compras > Catálogo de
-// Produtos (ver x2-catalogo-sync.js), NÃO confirmado ao vivo especificamente
-// pra esta tela.
+// "Seção" = Todos (já é o padrão da tela, mas confirma).
 //
-// ⚠️ PEDIDO DO USUÁRIO (2026-08-11): "sempre que tiver um campo de unidade,
-// perceba sempre que tem 3 unidades, a matriz, a distribuidora e o
-// ecommerce, preciso que sempre verifique os 3". O X2 tem um campo "Unidade"
-// (Matriz / Distribuidora / Ecommerce) em várias telas, com uma opção
-// combinada "Todas" — confirmado pelo usuário que existe em todos os
-// painéis. Este script nunca tinha mexido nesse campo, então o export saía
-// com o que quer que estivesse selecionado na tela (ex: só Distribuidora,
-// perdendo estoque de Matriz/Ecommerce) — provável causa raiz de números
-// de estoque incompletos no badge do Catálogo. Corrigido igual ao padrão já
-// usado pro filtro "Estoque": acha o select por rótulo, seleciona a opção
-// cujo texto normalizado é/contém "TODAS". Falha alto (não segue em frente
-// silenciosamente) se não achar — estoque incompleto sem avisar é pior que
-// parar o export.
+// ⚠️ BUG REAL corrigido 2026-08-12, em 2 etapas (achado num teste completo do
+// painel: a rotina "Atualizar Estoque Diário" tinha falhado nessa mesma
+// manhã, export ficou 1 dia desatualizado):
+//
+// 1ª causa (real, mas não era a raiz): esta função assumia que o formulário
+// sempre mora em `iframe[name="principal"]` e ia direto no `contentDocument`
+// dele. Trocado por `avaliarEmQualquerFrame` (de x2-nav-helpers.js), que
+// procura em TODOS os frames — mesmo padrão já usado em
+// configurarFiltrosLancamentos (x2-lancamentos-scraper.js, 2026-08-11).
+//
+// 2ª causa (a raiz de verdade — só apareceu depois do fix acima, com um
+// diagnóstico que lista URL da página + de cada frame): o frame certo
+// (estoque_produto.jsp) SEMPRE esteve presente. O problema nunca foi
+// navegação/frame — é que essa tela específica NÃO TEM campo "Unidade".
+// Um dump ao vivo de todos os <select> do formulário (2026-08-12) confirmou:
+// só existem Fornecedor, Fabricante, CST ICMS/PIS/COFINS, Seção, Linha,
+// Sub-linha, Estoque e Custo — nenhum "Unidade". O PEDIDO DO USUÁRIO de
+// 2026-08-11 ("sempre que tiver um campo de unidade... verifique os 3") foi
+// aplicado aqui por analogia com outras telas do X2 que TÊM esse campo, sem
+// confirmar ao vivo se ESTA tela também tinha — daí a rotina quebrar 100%
+// das vezes desde então. Fix: trata "Unidade" como OPCIONAL nesta tela — se
+// achar, seleciona "Todas" (mantém a intenção do pedido do usuário pras
+// telas que têm o campo); se não achar, segue sem erro (não tem como um
+// export sair "incompleto por unidade" numa tela que não tem esse filtro pra
+// começo de conversa, então não faz sentido falhar alto por causa dele
+// aqui). A âncora de frame agora é o select "Estoque" (ou "Seção" se
+// `estoqueOpcao` não foi passado) — campos confirmados sempre presentes
+// nessa tela pelo mesmo dump.
 async function configurarFiltros(page, { estoqueOpcao }) {
-  const resultado = await page.evaluate(({ estoqueOpcao, OPCOES_ESTOQUE_VALIDAS }) => {
+  const buscar = () => avaliarEmQualquerFrame(page, ({ estoqueOpcao, OPCOES_ESTOQUE_VALIDAS }) => {
     function norm(s) {
       return String(s || '').normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '').toUpperCase().replace(/\s+/g, ' ').trim();
     }
-    const frame = document.querySelector('iframe[name="principal"]');
-    if (!frame || !frame.contentDocument) return { ok: false, erro: 'iframe "principal" não encontrado — a tela pode usar outro nome de frame, precisa confirmar ao vivo.' };
-    const doc = frame.contentDocument;
-
     function selectPorRotulo(textoRotulo) {
       const alvo = norm(textoRotulo);
-      const candidatos = Array.from(doc.querySelectorAll('td, label, span, div')).filter(
+      const candidatos = Array.from(document.querySelectorAll('td, label, span, div')).filter(
         (el) => norm(el.textContent).startsWith(alvo) && el.textContent.trim().length < 40 && el.children.length === 0
       );
       for (const el of candidatos) {
@@ -198,27 +207,44 @@ async function configurarFiltros(page, { estoqueOpcao }) {
       return null;
     }
 
+    const selEstoque = selectPorRotulo('Estoque');
+    const anchor = selEstoque || selectPorRotulo('Seção');
+    if (!anchor) return null; // frame errado — avaliarEmQualquerFrame tenta o próximo
+
+    // Opcional (ver comentário acima) — esta tela pode não ter esse campo.
     const selUnidade = selectPorRotulo('Unidade');
-    if (!selUnidade) return { ok: false, erro: 'Não achei o campo "Unidade" no formulário — precisa confirmar numa sessão ao vivo (usuário confirmou que ele existe nesta tela).' };
-    const optTodas = Array.from(selUnidade.options).find((o) => norm(o.textContent).includes('TODAS'));
-    if (!optTodas) return { ok: false, erro: `Não achei uma opção "Todas" no select de Unidade (opções vistas: ${Array.from(selUnidade.options).map((o) => o.textContent.trim()).join(', ')}) — pode estar rodando com só 1 das 3 unidades.` };
-    selUnidade.value = optTodas.value;
-    selUnidade.dispatchEvent(new Event('change', { bubbles: true }));
+    let unidadeAjustada = false;
+    if (selUnidade) {
+      const optTodas = Array.from(selUnidade.options).find((o) => norm(o.textContent).includes('TODAS'));
+      if (optTodas) {
+        selUnidade.value = optTodas.value;
+        selUnidade.dispatchEvent(new Event('change', { bubbles: true }));
+        unidadeAjustada = true;
+      }
+    }
 
     if (estoqueOpcao) {
       if (!OPCOES_ESTOQUE_VALIDAS.includes(estoqueOpcao)) return { ok: false, erro: `Opção de estoque inválida: "${estoqueOpcao}".` };
-      const sel = selectPorRotulo('Estoque');
-      if (!sel) return { ok: false, erro: 'Não achei o campo "Estoque" no formulário — precisa confirmar numa sessão ao vivo.' };
-      const opt = Array.from(sel.options).find((o) => norm(o.textContent) === norm(estoqueOpcao));
-      if (!opt) return { ok: false, erro: `Opção "${estoqueOpcao}" não encontrada no select de Estoque (opções vistas: ${Array.from(sel.options).map((o) => o.textContent.trim()).join(', ')}).` };
-      sel.value = opt.value;
-      sel.dispatchEvent(new Event('change', { bubbles: true }));
+      if (!selEstoque) return { ok: false, erro: 'Não achei o campo "Estoque" no formulário (frame certo, âncora foi "Seção") — precisa confirmar numa sessão ao vivo.' };
+      const opt = Array.from(selEstoque.options).find((o) => norm(o.textContent) === norm(estoqueOpcao));
+      if (!opt) return { ok: false, erro: `Opção "${estoqueOpcao}" não encontrada no select de Estoque (opções vistas: ${Array.from(selEstoque.options).map((o) => o.textContent.trim()).join(', ')}).` };
+      selEstoque.value = opt.value;
+      selEstoque.dispatchEvent(new Event('change', { bubbles: true }));
     }
 
-    return { ok: true };
+    return { ok: true, unidadeEncontrada: !!selUnidade, unidadeAjustada };
   }, { estoqueOpcao, OPCOES_ESTOQUE_VALIDAS });
 
+  const { resultado } = await comRetry(buscar, (r) => r && r.resultado, { tentativas: 6, esperaMs: 1200 });
+
+  if (!resultado) {
+    const frames = page.frames().map((f, i) => `[${i}] ${f.url() || '(sem url)'}`).join(' | ');
+    throw new Error(`Não achei os campos "Estoque"/"Seção" em nenhum frame da tela, mesmo tentando 6x (~7s) — a tela de Relatório de Estoque pode não ter carregado. Página: ${page.url()}. Frames: ${frames || '(nenhum frame)'}.`);
+  }
   if (!resultado.ok) throw new Error(resultado.erro);
+  if (!resultado.unidadeEncontrada) {
+    console.log('(campo "Unidade" não existe nesta tela — confirmado 2026-08-12, não é erro; export cobre tudo que a tela mostra por padrão.)');
+  }
 }
 
 // Clica um botão/link pelo TEXTO visível, dentro do iframe principal —

@@ -500,7 +500,7 @@ function calcularDiferenca(existentes, encontrados) {
 // --sem-remover (precisa confirmar de propósito com --forcar-remocao).
 const LIMITE_REMOCAO_SUSPEITA = 0.3; // 30% do catálogo da seção
 
-async function sincronizarSecao(page, secaoSlug, { dryRun, semRemover, forcarRemocao } = {}) {
+async function sincronizarSecao(page, secaoSlug, { dryRun, semRemover, forcarRemocao, deveParar } = {}) {
   const labelSecao = SECOES[secaoSlug];
   if (!labelSecao) {
     throw new Error(`Seção desconhecida: "${secaoSlug}". Opções: ${Object.keys(SECOES).join(', ')}`);
@@ -540,8 +540,17 @@ async function sincronizarSecao(page, secaoSlug, { dryRun, semRemover, forcarRem
   }
 
   let listaFinal = [...produtosExistentes];
+  let novosAplicados = 0;
 
   for (const produto of novos) {
+    // Mesmo fix de cancelamento real do x2-fotos-scraper.js (2026-08-13,
+    // usuário relatou "mesmo com Cancelado ainda está baixando"): checa a
+    // flag a cada produto novo processado, não só no ponto de espera de
+    // confirmação humana.
+    if (deveParar && deveParar()) {
+      console.log(`\n⏹ Cancelado pelo usuário — parando com ${novosAplicados} de ${novos.length} produto(s) novo(s) já adicionados nesta seção.`);
+      break;
+    }
     const descricaoDetalhada = await extrairDescricaoDetalhada(page, produto.codigo);
     listaFinal.push({
       codigo: produto.codigo,
@@ -554,6 +563,7 @@ async function sincronizarSecao(page, secaoSlug, { dryRun, semRemover, forcarRem
       // ainda — null é tratado pelo resto do sistema como "sem ficha".
       ficha: null,
     });
+    novosAplicados++;
     console.log(`  + ${produto.codigo} — ${produto.nome}`);
   }
 
@@ -579,11 +589,11 @@ async function sincronizarSecao(page, secaoSlug, { dryRun, semRemover, forcarRem
     fs.copyFileSync(jsonPath, backupPath);
     fs.writeFileSync(jsonPath, JSON.stringify(listaFinal, null, 2));
     console.log(`Backup do JSON antigo: ${backupPath}`);
-    console.log(`Gravado: ${jsonPath} agora tem ${listaFinal.length} produtos (+${novos.length}${removidosAplicados ? `, -${removidosAplicados}` : ''}).`);
-    if (novos.length) console.log('Lembre de rodar o x2-fotos-scraper.js pra esses códigos novos ganharem foto.');
+    console.log(`Gravado: ${jsonPath} agora tem ${listaFinal.length} produtos (+${novosAplicados}${removidosAplicados ? `, -${removidosAplicados}` : ''}).`);
+    if (novosAplicados) console.log('Lembre de rodar o x2-fotos-scraper.js pra esses códigos novos ganharem foto.');
   }
 
-  return { secaoSlug, novos: novos.length, removidos: dryRun ? removidos.length : removidosAplicados, total: listaFinal.length };
+  return { secaoSlug, novos: dryRun ? novos.length : novosAplicados, removidos: dryRun ? removidos.length : removidosAplicados, total: listaFinal.length };
 }
 
 // Mapa label X2 ("ALTERNADOR") -> slug do nosso catálogo ("alternador"),
@@ -604,12 +614,18 @@ const LABEL_PARA_SLUG = Object.fromEntries(
 // "não encontrado" nessa busca pontual não prova que o produto foi
 // descontinuado — pode ser erro de digitação, item sem cadastro completo
 // no X2, etc. — fica só num aviso pro usuário decidir).
-async function sincronizarPorCodigos(page, codigos, { dryRun } = {}) {
+async function sincronizarPorCodigos(page, codigos, { dryRun, deveParar } = {}) {
   const porSecao = new Map(); // slug -> [produto, ...]
   const naoEncontrados = [];
   const semSecaoReconhecida = [];
 
   for (const codigo of codigos) {
+    // Cancelamento real (2026-08-13, ver comentário em sincronizarSecao) —
+    // esse loop pode ter dezenas de códigos (1 busca no X2 por código).
+    if (deveParar && deveParar()) {
+      console.log(`\n⏹ Cancelado pelo usuário — parando (códigos restantes desta rodada não foram buscados no X2).`);
+      break;
+    }
     await buscarPorCodigo(page, codigo);
     const texto = await extrairTextoResultado(page);
     const encontrados = parsearProdutos(texto).filter((p) => p.codigo === String(codigo).trim());
@@ -720,14 +736,20 @@ async function _forcarReloadCatalogo() {
   }
 }
 
-async function rodar(slugs, { channel, dryRun, semRemover, forcarRemocao, confirmar, modoAutomatico }) {
+async function rodar(slugs, { channel, dryRun, semRemover, forcarRemocao, confirmar, modoAutomatico, deveParar }) {
   const context = await abrirNavegador(channel);
   const resumo = [];
   try {
     const page = await garantirTelaCatalogoAberta(context, { confirmar, modoAutomatico });
     for (const secaoSlug of slugs) {
+      // Cancelamento real (2026-08-13, ver comentário em sincronizarSecao) —
+      // checa entre seções também.
+      if (deveParar && deveParar()) {
+        console.log(`\n⏹ Cancelado pelo usuário — parando antes de "${secaoSlug}" (${slugs.length - resumo.length} seção(ões) não processada(s) nesta rodada).`);
+        break;
+      }
       try {
-        resumo.push(await sincronizarSecao(page, secaoSlug, { dryRun, semRemover, forcarRemocao }));
+        resumo.push(await sincronizarSecao(page, secaoSlug, { dryRun, semRemover, forcarRemocao, deveParar }));
       } catch (e) {
         console.error(`\nErro na seção ${secaoSlug}: ${e.message} — pulando pra próxima.`);
         resumo.push({ secaoSlug, erro: e.message });
@@ -760,7 +782,7 @@ async function rodar(slugs, { channel, dryRun, semRemover, forcarRemocao, confir
 // passado em --diff-estoque=<caminho>), calcula quais códigos existem no
 // estoque real mas ainda não estão em nenhum <seção>.json, e busca só
 // ESSES no X2 — sem escanear as 26 seções inteiras.
-async function rodarDiffEstoque({ caminhoCsv, channel, dryRun, confirmar, modoAutomatico }) {
+async function rodarDiffEstoque({ caminhoCsv, channel, dryRun, confirmar, modoAutomatico, deveParar }) {
   let csvFinal = caminhoCsv;
   if (!csvFinal) {
     // Mesmo diretório usado por x2-estoque-export.js (~/.x2-rildon-scraper/estoque/).
@@ -782,7 +804,7 @@ async function rodarDiffEstoque({ caminhoCsv, channel, dryRun, confirmar, modoAu
   const context = await abrirNavegador(channel);
   try {
     const page = await garantirTelaCatalogoAberta(context, { confirmar, modoAutomatico });
-    const resultado = await sincronizarPorCodigos(page, faltando, { dryRun });
+    const resultado = await sincronizarPorCodigos(page, faltando, { dryRun, deveParar });
 
     console.log('\n=== Resumo ===');
     for (const g of resultado.gravados) console.log(`${g.slug}: +${g.adicionados} produto(s)`);

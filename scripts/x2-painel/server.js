@@ -150,6 +150,17 @@ const TIMEOUT_MAXIMO_MS = 20 * 60 * 1000; // 20 minutos — generoso (rodar toda
 
 function cancelarExecucaoAtual(motivo) {
   if (!execucao || !execucao.rodando) return false;
+  // BUG REAL corrigido (2026-08-13, usuário relatou "mesmo com Cancelado
+  // ainda está baixando fotos"): antes, essa função só rejeitava a Promise
+  // de confirmação (quando havia uma pendente) OU só destravava a UI (sem
+  // confirmação pendente) — nos dois casos, se o script já estava DENTRO de
+  // um loop item-a-item (ex: baixando fotos de uma seção de 1751 produtos),
+  // ele continuava rodando sozinho em segundo plano, só que o painel dizia
+  // "Cancelado". Marcar `execucao.cancelado = true` aqui, sempre, dá aos
+  // loops longos (ver `deveParar` em rodarAcao abaixo, checado a cada item
+  // em x2-fotos-scraper.js/x2-catalogo-sync.js) uma forma de perguntar "o
+  // usuário já cancelou?" e parar de verdade em poucos segundos.
+  execucao.cancelado = true;
   if (execucao.aguardando && execucao.aguardando.rejeitador) {
     // Rejeita a Promise que `confirmar()` estava esperando — a função que
     // deu await nisso (dentro de rodarMuitasSecoes/sync.rodar/etc.) recebe
@@ -191,8 +202,12 @@ async function rodarAcao(tipo, opcoes, { origemRotina } = {}) {
   // próprio X2, não login). Agora `opcoes.automatico` (mandado pelo
   // frontend) também liga o modo automático, não só origemRotina.
   const modoAutomatico = !!origemRotina || !!opcoes.automatico;
-  execucao = { tipo, terminal: new TerminalVirtual(), rodando: true, aguardando: null, erro: null, origemRotina: origemRotina || null };
+  execucao = { tipo, terminal: new TerminalVirtual(), rodando: true, aguardando: null, erro: null, origemRotina: origemRotina || null, cancelado: false };
   transmitir();
+
+  // Passado pra dentro dos loops item-a-item de x2-fotos-scraper.js e
+  // x2-catalogo-sync.js — ver comentário em cancelarExecucaoAtual().
+  const deveParar = () => !!(execucao && execucao.cancelado);
 
   // Redireciona console.log/console.error/process.stdout.write pro terminal
   // virtual ENQUANTO a ação roda — os scripts originais (x2-fotos-scraper.js,
@@ -227,6 +242,7 @@ async function rodarAcao(tipo, opcoes, { origemRotina } = {}) {
           reiniciar: !!opcoes.reiniciar,
           confirmar: modoAutomatico ? undefined : confirmarFactory(),
           modoAutomatico,
+          deveParar,
         });
         // PEDIDO DO USUÁRIO (2026-08-11): "achei que quando eu clicasse em
         // atualizar fotos ele já baixasse e lançasse automaticamente no
@@ -255,6 +271,7 @@ async function rodarAcao(tipo, opcoes, { origemRotina } = {}) {
           forcarRemocao: !!opcoes.forcarRemocao,
           confirmar: modoAutomatico ? undefined : confirmarFactory(),
           modoAutomatico,
+          deveParar,
         });
       } else if (tipo === 'zip') {
         for (const slug of opcoes.secoes) await montarZipFinal(slug);
@@ -292,6 +309,7 @@ async function rodarAcao(tipo, opcoes, { origemRotina } = {}) {
           dryRun: !!opcoes.dryRun,
           confirmar: modoAutomatico ? undefined : confirmarFactory(),
           modoAutomatico,
+          deveParar,
         });
       } else if (tipo === 'cortes-produtos') {
         // Alerta de estoque baixo (2026-08-10) — ver x2-cortes-produtos-scraper.js.

@@ -629,7 +629,7 @@ function calcularFila(codigos, progresso, { limit, retrySemFoto } = {}) {
 // Processa UMA seção usando um popup já aberto (não abre/fecha navegador —
 // isso permite encadear várias seções numa única sessão de navegador/login,
 // ver `rodarMuitasSecoes`).
-async function processarSecaoComPopup(popup, secaoSlug, { limit, retrySemFoto } = {}) {
+async function processarSecaoComPopup(popup, secaoSlug, { limit, retrySemFoto, deveParar } = {}) {
   const labelSecao = SECOES[secaoSlug];
   if (!labelSecao) {
     throw new Error(`Seção desconhecida: "${secaoSlug}". Opções: ${Object.keys(SECOES).join(', ')}`);
@@ -656,6 +656,20 @@ async function processarSecaoComPopup(popup, secaoSlug, { limit, retrySemFoto } 
   let ok = 0, placeholder = 0, semFoto = 0, erro = 0, pequenas = 0;
   const codigosComFotoPequena = [];
   for (const codigo of fila) {
+    // BUG REAL corrigido (2026-08-13, usuário relatou "mesmo com Cancelado
+    // ainda está baixando fotos"): antes, cancelar só destravava a UI
+    // (`execucao.rodando = false` em server.js) sem nunca checar dentro
+    // DESTE loop — a seção inteira (até 1751 produtos numa sessão real)
+    // continuava sendo processada sozinha em segundo plano, só que o
+    // painel dizia "Cancelado". `deveParar()` (passado por rodarAcao em
+    // server.js, liga com o botão Cancelar/destravar) é checado a cada
+    // item — o loop para de verdade em poucos segundos, não minutos.
+    // Seguro porque o progresso já é salvo item a item (comentário abaixo).
+    if (deveParar && deveParar()) {
+      const feito = ok + placeholder + semFoto + erro;
+      console.log(`\n\n⏹ Cancelado pelo usuário — parando em ${feito}/${fila.length} itens desta seção (progresso já salvo, pode continuar de onde parou rodando de novo).`);
+      break;
+    }
     let resultado;
     try {
       resultado = await processarUmProduto(popup, codigo, secaoSlug);
@@ -701,7 +715,7 @@ async function processarSecaoComPopup(popup, secaoSlug, { limit, retrySemFoto } 
   return { secaoSlug, totalFeitos, total: codigos.length, pulada: false };
 }
 
-async function rodarSecao(secaoSlug, { limit, channel, retrySemFoto, reiniciar, confirmar, modoAutomatico }) {
+async function rodarSecao(secaoSlug, { limit, channel, retrySemFoto, reiniciar, confirmar, modoAutomatico, deveParar }) {
   if (reiniciar) {
     console.log(`Reiniciando "${secaoSlug}" do zero (apagando progresso e staging salvos)...`);
     reiniciarSecao(secaoSlug);
@@ -709,7 +723,7 @@ async function rodarSecao(secaoSlug, { limit, channel, retrySemFoto, reiniciar, 
   const context = await abrirNavegador(channel);
   try {
     const popup = await garantirPopupAberto(context, { confirmar, modoAutomatico });
-    await processarSecaoComPopup(popup, secaoSlug, { limit, retrySemFoto });
+    await processarSecaoComPopup(popup, secaoSlug, { limit, retrySemFoto, deveParar });
   } finally {
     await context.close().catch(() => {});
   }
@@ -718,7 +732,7 @@ async function rodarSecao(secaoSlug, { limit, channel, retrySemFoto, reiniciar, 
 // Roda várias seções em UMA ÚNICA sessão de navegador — só pausa 1x pro
 // usuário logar/abrir o popup, depois processa seção por seção sozinho.
 // `limit`, se passado, se aplica a CADA seção (não ao total).
-async function rodarMuitasSecoes(slugs, { limit, channel, retrySemFoto, reiniciar, confirmar, modoAutomatico }) {
+async function rodarMuitasSecoes(slugs, { limit, channel, retrySemFoto, reiniciar, confirmar, modoAutomatico, deveParar }) {
   if (reiniciar) {
     console.log(`Reiniciando ${slugs.length} seção(ões) do zero (apagando progresso e staging salvos)...`);
     for (const s of slugs) reiniciarSecao(s);
@@ -728,8 +742,15 @@ async function rodarMuitasSecoes(slugs, { limit, channel, retrySemFoto, reinicia
   try {
     const popup = await garantirPopupAberto(context, { confirmar, modoAutomatico });
     for (const secaoSlug of slugs) {
+      // Mesmo `deveParar()` do comentário em processarSecaoComPopup — checa
+      // ENTRE seções também, pra não nem começar a próxima se o usuário já
+      // cancelou enquanto a anterior tava concluindo.
+      if (deveParar && deveParar()) {
+        console.log(`\n⏹ Cancelado pelo usuário — parando antes de "${secaoSlug}" (${slugs.length - resumo.length} seção(ões) não processada(s) nesta rodada).`);
+        break;
+      }
       try {
-        const r = await processarSecaoComPopup(popup, secaoSlug, { limit, retrySemFoto });
+        const r = await processarSecaoComPopup(popup, secaoSlug, { limit, retrySemFoto, deveParar });
         resumo.push(r);
       } catch (e) {
         console.error(`\nErro na seção ${secaoSlug}: ${e.message} — pulando pra próxima.`);

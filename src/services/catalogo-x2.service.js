@@ -118,6 +118,23 @@ function _normalizarFabricante(bruto) {
 }
 
 function _indexarProduto(p) {
+  // BUG REAL corrigido (2026-08-13, achado testando ao vivo busca por
+  // código original no painel: "F00M111601" devolvia card com estoque/
+  // preço certos mas SEM nome/seção/fabricante/aplicação nenhum). Causa:
+  // src/config/catalogo-x2/cod-fornecedor.json não é um arquivo de
+  // catálogo de produto — é uma lista de mapeamento {cod_fornecedor,
+  // codigo} usada só por catalogo-pdf.service.js, sem nome/seção/ficha
+  // nenhuma. Como ele mora na mesma pasta dos *.json de produto de
+  // verdade, o loop genérico de _carregarIndices() (readdirSync + filter
+  // ".json") também tentava indexar cada item dele como se fosse produto
+  // — sobrescrevendo em produtosPorCodigoIndex a entrada completa (vinda
+  // de alternador.json etc, carregado antes em ordem alfabética) por um
+  // stub vazio, pro mesmo código. Guarda dupla: exclusão explícita do
+  // arquivo em _carregarIndices() (fix principal) + este early-return
+  // aqui (defesa extra — nenhum registro de produto de verdade tem
+  // `nome` vazio, então não afeta indexação legítima nenhuma).
+  if (!p.nome) return;
+
   // BUG REAL corrigido (2026-08-13, achado testando ao vivo o reload do
   // catálogo): produtos com `ficha: null` (todo produto novo entra assim
   // desde 2026-07-28, decisão consciente — ver x2-catalogo-sync.js) eram
@@ -327,10 +344,16 @@ function _tokenBateAplicacao(token, aplicacaoPalavras) {
   return grupo.some(alias => aplicacaoPalavras.has(alias));
 }
 
+// Arquivos em catalogo-x2/ que NÃO são catálogo de produto (mapeamentos
+// auxiliares usados por outro serviço) — ver comentário longo em
+// _indexarProduto sobre o bug real que isso causou em 2026-08-13.
+const ARQUIVOS_NAO_PRODUTO = new Set(["cod-fornecedor.json"]);
+
 function _carregarIndices() {
   let arquivos;
   try {
-    arquivos = fs.readdirSync(DIR_CATALOGO).filter(f => f.endsWith(".json"));
+    arquivos = fs.readdirSync(DIR_CATALOGO)
+      .filter(f => f.endsWith(".json") && !ARQUIVOS_NAO_PRODUTO.has(f));
   } catch (e) {
     console.error("[catalogo-x2.service] pasta catalogo-x2 não encontrada:", e.message);
     return;

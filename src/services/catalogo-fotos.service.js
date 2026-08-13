@@ -92,4 +92,15 @@ function obterFoto(codigoProduto, indiceFoto = 0) {
   return { buffer, mimetype };
 }
 
-module.exports = { listarFotos, obterFoto };
+// PEDIDO DO USUÁRIO (2026-08-12): mesmo motivo de recarregarIndices() em
+// catalogo-x2.service.js — "Atualizar Fotos" rodando sozinha (agendada)
+// baixava fotos novas pro zip, mas esse índice (lazy, construído só na
+// 1ª chamada) nunca sabia que o zip mudou — ficava servindo o índice
+// velho até o bot reiniciar. Zera e reconstrói na hora (não lazy — devolve
+// já pronto pra quem chamou, igual carregarEstoque() em estoque.service.js).
+function recarregarIndice() {
+  indice = null;
+  return _garantirIndice();
+}
+
+module.exports = { listarFotos, obterFoto, recarregarIndice };

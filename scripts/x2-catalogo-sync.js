@@ -690,6 +690,36 @@ function codigosFaltandoNoCatalogo(caminhoCsv) {
   return [...codigosEstoque].filter((c) => !codigosCatalogo.has(c)).sort();
 }
 
+// PEDIDO DO USUÁRIO (2026-08-12): "seria algum ganho [recarregar o catálogo
+// do painel de atendimento sem reiniciar o bot]?" — mesmo padrão de
+// _forcarReloadCacheEstoque() em x2-estoque-export.js (Bearer API_TOKEN,
+// best-effort — se falhar, os JSONs já foram gravados em disco corretamente,
+// só o painel de atendimento continua com o índice velho até reiniciar; não
+// é motivo pra derrubar a sincronização). Chama o endpoint novo
+// (POST /api/catalogo/produtos/recarregar, ver catalogo.controller.js).
+async function _forcarReloadCatalogo() {
+  const apiToken = process.env.API_TOKEN;
+  if (!apiToken || apiToken === 'troque_por_um_token_com_64_caracteres_ou_mais') {
+    console.log('(API_TOKEN não configurado no .env — não deu pra recarregar o catálogo do painel de atendimento na hora; precisa reiniciar o bot Rildon pra essas mudanças aparecerem na busca.)');
+    return;
+  }
+  try {
+    const { BASE_URL } = require('./x2-whatsapp-alerta');
+    const resposta = await fetch(`${BASE_URL}/api/catalogo/produtos/recarregar`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiToken}` },
+    });
+    const corpo = await resposta.json().catch(() => ({}));
+    if (!resposta.ok) {
+      console.log(`(reload do catálogo recusado pelo bot Rildon: HTTP ${resposta.status} — ${corpo.error || 'sem detalhe'}. Reinicie o bot pra essas mudanças aparecerem na busca.)`);
+      return;
+    }
+    console.log('Catálogo do painel de atendimento recarregado na hora — não precisa reiniciar o bot.');
+  } catch (e) {
+    console.log(`(não consegui chamar o bot Rildon pra recarregar o catálogo: ${e.message}. Reinicie o bot pra essas mudanças aparecerem na busca.)`);
+  }
+}
+
 async function rodar(slugs, { channel, dryRun, semRemover, forcarRemocao, confirmar, modoAutomatico }) {
   const context = await abrirNavegador(channel);
   const resumo = [];
@@ -719,6 +749,9 @@ async function rodar(slugs, { channel, dryRun, semRemover, forcarRemocao, confir
   console.log(`\nTotal novos: ${totalNovos}. Total removidos${dryRun ? ' (simulado, --dry-run)' : ''}: ${totalRemovidos}.`);
   if (totalNovos && !dryRun) {
     console.log('Rode o x2-fotos-scraper.js (ou o menu) pra baixar as fotos desses códigos novos.');
+  }
+  if (!dryRun && (totalNovos || totalRemovidos)) {
+    await _forcarReloadCatalogo();
   }
 }
 
@@ -756,7 +789,10 @@ async function rodarDiffEstoque({ caminhoCsv, channel, dryRun, confirmar, modoAu
     if (resultado.naoEncontrados.length) console.log(`Não encontrados no X2: ${resultado.naoEncontrados.join(', ')}`);
     if (resultado.semSecaoReconhecida.length) console.log(`Seção não reconhecida (precisa checar manualmente): ${resultado.semSecaoReconhecida.map((s) => s.codigo).join(', ')}`);
     const totalAdicionado = resultado.gravados.reduce((a, g) => a + g.adicionados, 0);
-    if (totalAdicionado && !dryRun) console.log('\nLembre de rodar o x2-fotos-scraper.js pra esses códigos novos ganharem foto.');
+    if (totalAdicionado && !dryRun) {
+      console.log('\nLembre de rodar o x2-fotos-scraper.js pra esses códigos novos ganharem foto.');
+      await _forcarReloadCatalogo();
+    }
   } finally {
     await context.close().catch(() => {});
   }

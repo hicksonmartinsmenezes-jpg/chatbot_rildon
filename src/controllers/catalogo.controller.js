@@ -1,6 +1,6 @@
 const logger = require("../utils/logger");
-const { listarFotos, obterFoto } = require("../services/catalogo-fotos.service");
-const { buscarProdutosPainel, buscarPorCodigo, listarFabricantes } = require("../services/catalogo-x2.service");
+const { listarFotos, obterFoto, recarregarIndice: recarregarIndiceFotos } = require("../services/catalogo-fotos.service");
+const { buscarProdutosPainel, buscarPorCodigo, listarFabricantes, recarregarIndices: recarregarIndicesProdutos } = require("../services/catalogo-x2.service");
 const { listarSecoes, listarLinhasPorSecao } = require("../services/catalogo.service");
 const { gerarPdfCatalogo } = require("../services/catalogo-pdf.service");
 const { carregarEstoque, statusCache } = require("../services/estoque.service");
@@ -236,11 +236,34 @@ async function recarregarEstoqueHandler(req, res) {
   }
 }
 
+// POST /api/catalogo/produtos/recarregar — pedido do usuário (2026-08-12):
+// mesmo raciocínio de recarregarEstoqueHandler acima, mas pro catálogo de
+// produtos + índice de fotos. Sem isso, "Cadastrar produtos novos" e
+// "Atualizar Fotos" rodando sozinhas (agendadas) atualizavam os arquivos em
+// disco mas o atendimento só via o resultado depois de alguém reiniciar o
+// bot manualmente — a automação ficava pela metade. Chamado pelo próprio
+// pipeline (scripts/x2-catalogo-sync.js e scripts/x2-fotos-scraper.js) via
+// API_TOKEN logo depois de uma rodada real (não-dry-run) terminar. Recarrega
+// os dois índices (produtos E fotos) numa chamada só — as duas rotinas
+// tocam nos dois (produto novo geralmente ainda não tem foto até rodar
+// "Atualizar Fotos" depois, mas não custa manter os dois sempre em sincronia).
+async function recarregarCatalogoHandler(req, res) {
+  try {
+    recarregarIndicesProdutos();
+    const idx = recarregarIndiceFotos();
+    res.json({ ok: true, produtosComFoto: idx.size });
+  } catch (err) {
+    logger.error("❌ Erro ao recarregar catálogo/fotos:", err.message);
+    res.status(500).json({ error: "Erro ao recarregar catálogo." });
+  }
+}
+
 module.exports = {
   listarFotosHandler,
   servirFotoHandler,
   buscarProdutosHandler,
   recarregarEstoqueHandler,
+  recarregarCatalogoHandler,
   listarSecoesHandler,
   listarLinhasHandler,
   listarFabricantesHandler,

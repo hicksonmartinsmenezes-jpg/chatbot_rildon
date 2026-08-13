@@ -753,6 +753,39 @@ async function rodarMuitasSecoes(slugs, { limit, channel, retrySemFoto, reinicia
   }
 }
 
+// PEDIDO DO USUÁRIO (2026-08-12): "seria algum ganho [recarregar o catálogo
+// do painel de atendimento sem reiniciar o bot]?" — mesmo padrão de
+// _forcarReloadCacheEstoque() em x2-estoque-export.js e
+// _forcarReloadCatalogo() em x2-catalogo-sync.js (Bearer API_TOKEN,
+// best-effort — se falhar, o zip já foi gravado em disco corretamente, só o
+// painel de atendimento continua com o índice de fotos velho até reiniciar;
+// não é motivo pra derrubar o script). Chama o endpoint
+// POST /api/catalogo/produtos/recarregar (ver catalogo.controller.js) —
+// mesma rota usada por x2-catalogo-sync.js, recarrega produtos E fotos numa
+// chamada só, então não tem problema chamar dos dois lugares.
+async function _forcarReloadCatalogo() {
+  const apiToken = process.env.API_TOKEN;
+  if (!apiToken || apiToken === 'troque_por_um_token_com_64_caracteres_ou_mais') {
+    console.log('(API_TOKEN não configurado no .env — não deu pra recarregar o catálogo do painel de atendimento na hora; precisa reiniciar o bot Rildon pra essas fotos aparecerem na busca.)');
+    return;
+  }
+  try {
+    const { BASE_URL } = require('./x2-whatsapp-alerta');
+    const resposta = await fetch(`${BASE_URL}/api/catalogo/produtos/recarregar`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiToken}` },
+    });
+    const corpo = await resposta.json().catch(() => ({}));
+    if (!resposta.ok) {
+      console.log(`(reload do catálogo recusado pelo bot Rildon: HTTP ${resposta.status} — ${corpo.error || 'sem detalhe'}. Reinicie o bot pra essas fotos aparecerem na busca.)`);
+      return;
+    }
+    console.log('Catálogo do painel de atendimento recarregado na hora — não precisa reiniciar o bot.');
+  } catch (e) {
+    console.log(`(não consegui chamar o bot Rildon pra recarregar o catálogo: ${e.message}. Reinicie o bot pra essas fotos aparecerem na busca.)`);
+  }
+}
+
 async function montarZipFinal(secaoSlug) {
   const labelSecao = SECOES[secaoSlug];
   if (!labelSecao) {
@@ -799,6 +832,7 @@ async function montarZipFinal(secaoSlug) {
     console.log(`Backup do zip antigo: ${backup}`);
   }
   fs.writeFileSync(destino, zipBuf);
+  await _forcarReloadCatalogo();
 
   console.log(`\nZip final gerado: ${destino}`);
   console.log(`${entradas.length} fotos, de ${codigos.length - semFotoCount - placeholderCount - erroCount} produtos com foto real.`);

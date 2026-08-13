@@ -10,6 +10,7 @@ const {
   buscarPorCodigoHandler,
   exportarPdfHandler,
   recarregarEstoqueHandler,
+  recarregarCatalogoHandler,
 } = require("../controllers/catalogo.controller");
 
 // Painel "Catálogo de Produtos" (pedido do usuário, 2026-07-21): busca por
@@ -33,6 +34,10 @@ router.get("/catalogo/exportar-pdf", exportarPdfHandler);
 // — chamado pelo pipeline scripts/x2-estoque-export.js via API_TOKEN logo
 // após o import no banco, pra não esperar o setInterval de 30min.
 router.post("/catalogo/estoque/recarregar", recarregarEstoqueHandler);
+// Força o reload dos índices de produtos + fotos em memória (ver comentário
+// no handler) — chamado por scripts/x2-catalogo-sync.js e
+// scripts/x2-fotos-scraper.js via API_TOKEN logo após uma rodada real.
+router.post("/catalogo/produtos/recarregar", recarregarCatalogoHandler);
 
 // Lista as fotos disponíveis de um produto do catálogo X2 (só metadados —
 // nome de arquivo e índice, sem os bytes).

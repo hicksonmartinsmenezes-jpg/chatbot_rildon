@@ -343,17 +343,12 @@ function _carregarIndices() {
   );
 }
 
-_carregarIndices();
-
 // Só entram no dropdown de filtro os fabricantes com um mínimo de produtos
 // (>=5) — corta ruído residual do parsing (ex: valores que passaram pelo
 // filtro de ruído mas são só ocorrências raras/erros de digitação isolados)
 // sem esconder marcas reais pequenas da loja.
 const FABRICANTE_MIN_OCORRENCIAS = 5;
-const fabricantesDisponiveis = [...fabricanteCount.entries()]
-  .filter(([, contagem]) => contagem >= FABRICANTE_MIN_OCORRENCIAS)
-  .map(([nome]) => nome)
-  .sort((a, b) => a.localeCompare(b, "pt-BR"));
+let fabricantesDisponiveis = [];
 
 // Palavras que vêm dos nomes das 26 seções (ex: "motor", "partida",
 // "alternador", "injecao", "eletronica") — nunca servem de sinal de
@@ -362,11 +357,45 @@ const fabricantesDisponiveis = [...fabricanteCount.entries()]
 // mecânico, de caminhão a carro de passeio). Achado ao vivo em 2026-07-21:
 // "motor de partida pro corolla 2015" bateu num motor de ônibus só porque
 // "motor" aparecia no texto de aplicação — sem nenhuma relação com Corolla.
-const PALAVRAS_CATEGORIA = new Set(
-  [...secoesConhecidas.values()].flatMap(secao => _normalizar(secao).split(" "))
-    .filter(w => w.length >= 3)
-    .map(w => w.toLowerCase())
-);
+let PALAVRAS_CATEGORIA = new Set();
+
+// PEDIDO DO USUÁRIO (2026-08-12): "seria algum ganho [recarregar catálogo/
+// fotos sem reiniciar o bot, igual estoque]?" — até aqui _carregarIndices()
+// só rodava uma vez no require() do módulo; uma rotina "Cadastrar produtos
+// novos"/"Atualizar Fotos" rodando sozinha (agendada) deixava o resultado
+// preso em disco sem efeito nenhum na busca real até alguém reiniciar o
+// bot manualmente — a automação ficava pela metade. `recarregarIndices()`
+// limpa e repopula os MESMOS objetos Map/Array module-level (não recria
+// referências novas — funções que já capturaram esses bindings continuam
+// funcionando sem mudança nenhuma) e recalcula os dois derivados
+// (fabricantesDisponiveis/PALAVRAS_CATEGORIA), que antes só eram montados
+// uma vez logo após o load inicial. Mesmo padrão de recarregarEstoqueHandler
+// em catalogo.controller.js.
+function recarregarIndices() {
+  equivalenteIndex.clear();
+  referenciaIndex.clear();
+  produtosPorCodigoIndex.clear();
+  produtosComAplicacao.length = 0;
+  todosProdutos.length = 0;
+  secoesConhecidas.clear();
+  fabricanteCount.clear();
+  totalProdutosIndexados = 0;
+
+  _carregarIndices();
+
+  fabricantesDisponiveis = [...fabricanteCount.entries()]
+    .filter(([, contagem]) => contagem >= FABRICANTE_MIN_OCORRENCIAS)
+    .map(([nome]) => nome)
+    .sort((a, b) => a.localeCompare(b, "pt-BR"));
+
+  PALAVRAS_CATEGORIA = new Set(
+    [...secoesConhecidas.values()].flatMap(secao => _normalizar(secao).split(" "))
+      .filter(w => w.length >= 3)
+      .map(w => w.toLowerCase())
+  );
+}
+
+recarregarIndices();
 
 // ─── Fabricante da peça (Task #250-252, pedido do usuário em 2026-07-23) ──
 function listarFabricantes() {
@@ -721,4 +750,5 @@ module.exports = {
   buscarProdutosPainel,
   buscarPorCodigo,
   listarFabricantes,
+  recarregarIndices,
 };

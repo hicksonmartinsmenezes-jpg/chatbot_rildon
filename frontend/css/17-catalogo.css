@@ -664,6 +664,60 @@
   font-size: 8px;
 }
 
+/* ─── Prévia de códigos originais/equivalentes (pedido do usuário,
+   2026-08-13) — antes ficavam escondidos atrás do clique em "Ver
+   referências" lá embaixo; agora os 3 primeiros aparecem direto aqui,
+   perto do nome/fabricante. Clicável (abre o painel completo). ─────── */
+.catalogo-card-equiv-previa {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 5px 9px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--primary) 32%, var(--cat-line));
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.catalogo-card-equiv-previa:hover {
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  border-color: var(--primary);
+}
+
+.catalogo-card-equiv-previa i {
+  color: var(--primary);
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
+.catalogo-equiv-previa-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--cat-text-dim);
+  letter-spacing: 0.01em;
+  flex-shrink: 0;
+}
+
+.catalogo-equiv-previa-chip {
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: var(--cat-bg-1);
+  border: 1px solid var(--cat-line);
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--cat-text-dim);
+}
+
+.catalogo-equiv-previa-mais {
+  font-size: 10.5px;
+  font-weight: 800;
+  color: var(--primary);
+}
+
 .catalogo-card-aplicacao {
   margin: 5px 0 0;
   font-size: 12.5px;
@@ -734,13 +788,22 @@
    Só aparece quando o produto tem dado do Relatório de Estoque do X2
    (~5.200 dos 17.400 produtos) — sem dado nenhum, não mostra nada (não dá
    pra afirmar "sem estoque" sem ter consultado). */
+/* Reorganizado (pedido do usuário, 2026-08-13): antes o preço era um texto
+   corrido pequeno e cinza na mesma linha do badge de estoque, disputando
+   espaço e quebrando de forma inconsistente. Agora os dois blocos vivem
+   lado a lado, cada um com sua própria área — badge de estoque à esquerda,
+   preços (rótulo + valor em destaque) à direita, num cartãozinho próprio. */
 .catalogo-card-estoque {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   flex-wrap: wrap;
   gap: 8px;
   margin-top: auto;
-  padding-top: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--cat-bg-0);
+  border: 1px solid var(--cat-line);
 }
 
 .catalogo-badge-estoque-ok {
@@ -756,9 +819,30 @@
 }
 
 .catalogo-card-precos {
-  font-size: 11.5px;
-  color: var(--text-secondary, #94a3b8);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.catalogo-preco-linha {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.catalogo-preco-label {
+  font-size: 10px;
   font-weight: 600;
+  color: var(--cat-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.catalogo-preco-valor {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--green);
 }
 
 /* ─── "Ver referências" (pedido do usuário, 2026-07-30) ───────────

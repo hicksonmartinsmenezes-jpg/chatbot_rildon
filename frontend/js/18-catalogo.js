@@ -421,6 +421,38 @@ function _catalogoRefChipHTML(det) {
   `;
 }
 
+// Prévia de códigos originais/equivalentes sempre visível no card (pedido
+// do usuário, 2026-08-13): antes esses códigos só apareciam escondidos
+// atrás do clique em "Ver referências" lá embaixo — o atendente não tinha
+// como saber, só olhando a lista, se uma peça tinha equivalente sem abrir
+// cada card. Mostra os 3 primeiros direto; clicar abre o mesmo painel
+// completo de _catalogoReferenciasHTML (aciona o botão .catalogo-ref-btn
+// de verdade, então o texto do botão e o estado expandido continuam
+// corretos).
+const CATALOGO_EQUIV_PREVIA_MAX = 3;
+
+function _catalogoEquivalentesPreviaHTML(produto) {
+  const equivalentes = Array.isArray(produto.equivalentes) ? produto.equivalentes : [];
+  if (!equivalentes.length) return "";
+
+  const previa = equivalentes.slice(0, CATALOGO_EQUIV_PREVIA_MAX);
+  const resto = equivalentes.length - previa.length;
+  const chips = previa.map(codigo => `<span class="catalogo-equiv-previa-chip">${safe(codigo)}</span>`).join("");
+
+  return `
+    <div
+      class="catalogo-card-equiv-previa"
+      onclick="event.stopPropagation(); this.closest('.catalogo-card')?.querySelector('.catalogo-ref-btn')?.click();"
+      title="Ver todos os códigos originais/equivalentes"
+    >
+      <i class="fa-solid fa-link"></i>
+      <span class="catalogo-equiv-previa-label">Códigos originais:</span>
+      ${chips}
+      ${resto > 0 ? `<span class="catalogo-equiv-previa-mais">+${resto}</span>` : ""}
+    </div>
+  `;
+}
+
 function _catalogoReferenciasHTML(produto) {
   const equivalentes = Array.isArray(produto.equivalentes) ? produto.equivalentes : [];
   if (!equivalentes.length) return "";
@@ -474,15 +506,22 @@ function _catalogoEstoqueHTML(estoque) {
     : "Sem estoque";
   const precoVarejo = _formatarPrecoBRL(estoque.precoVarejo);
   const precoAtacado = _formatarPrecoBRL(estoque.precoAtacado);
-  const precos = [
-    precoVarejo ? `Varejo: ${precoVarejo}` : null,
-    precoAtacado ? `Atacado: ${precoAtacado}` : null,
-  ].filter(Boolean).join(" · ");
+
+  // Reorganizado (pedido do usuário, 2026-08-13): antes preço era um texto
+  // corrido pequeno e cinza, disputando espaço com o badge de estoque na
+  // mesma linha (quebrava de forma inconsistente conforme o tamanho dos
+  // números). Agora vira um bloco próprio, com rótulo + valor em linhas
+  // separadas e valor em destaque — o badge de estoque continua do lado,
+  // mas cada um tem seu espaço.
+  const precoLinhas = [
+    precoVarejo ? `<div class="catalogo-preco-linha"><span class="catalogo-preco-label">Varejo</span><strong class="catalogo-preco-valor">${precoVarejo}</strong></div>` : "",
+    precoAtacado ? `<div class="catalogo-preco-linha"><span class="catalogo-preco-label">Atacado</span><strong class="catalogo-preco-valor">${precoAtacado}</strong></div>` : "",
+  ].join("");
 
   return `
     <div class="catalogo-card-estoque">
       <span class="catalogo-badge ${badgeClasse}"><i class="${badgeIcone}"></i> ${badgeTexto}</span>
-      ${precos ? `<span class="catalogo-card-precos">${precos}</span>` : ""}
+      ${precoLinhas ? `<div class="catalogo-card-precos">${precoLinhas}</div>` : ""}
     </div>
   `;
 }
@@ -536,6 +575,7 @@ function _catalogoCardHTML(produto, mostrarBadgeNeutro) {
         <h4 class="catalogo-card-nome">${safe(produto.nome)}</h4>
         ${produto.referencia ? `<span class="catalogo-card-ref">Ref: ${safe(produto.referencia)}</span>` : ""}
         ${produto.fabricante ? `<span class="catalogo-card-fabricante"><i class="fa-solid fa-industry"></i> ${safe(produto.fabricante)}</span>` : ""}
+        ${_catalogoEquivalentesPreviaHTML(produto)}
 
         <p class="catalogo-card-aplicacao catalogo-aplicacao-curta">${safe(aplicacaoCurta)}</p>
         <p class="catalogo-card-aplicacao catalogo-aplicacao-completa hidden">${safe(aplicacaoCompleta)}</p>

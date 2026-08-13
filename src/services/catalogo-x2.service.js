@@ -118,8 +118,20 @@ function _normalizarFabricante(bruto) {
 }
 
 function _indexarProduto(p) {
-  const ficha = p.ficha;
-  if (!ficha) return;
+  // BUG REAL corrigido (2026-08-13, achado testando ao vivo o reload do
+  // catálogo): produtos com `ficha: null` (todo produto novo entra assim
+  // desde 2026-07-28, decisão consciente — ver x2-catalogo-sync.js) eram
+  // pulados INTEIRAMENTE aqui, inclusive do `produtosPorCodigoIndex`
+  // (usado por buscarPorCodigo, que só precisa de `p.codigo` — nem usa
+  // ficha nenhuma). Isso contradizia a decisão documentada de que "o
+  // restante do sistema já trata isso como sem ficha disponível": na
+  // prática, 122 produtos (confirmado em 2026-08-13, todos os catálogo-x2/
+  // *.json) ficaram gravados no disco mas 100% invisíveis em qualquer busca
+  // do painel de atendimento desde que entraram. `ficha || {}` mantém o
+  // produto indexado (código, nome, seção/linha, navegação) e só deixa de
+  // preencher os campos que dependem da ficha (aplicação, equivalentes,
+  // referências cruzadas) — exatamente o comportamento pretendido.
+  const ficha = p.ficha || {};
 
   const fabricante = _normalizarFabricante(_extrairFabricante(p.nome));
   // Pedido do usuário (2026-07-30): painel precisa mostrar "Ver referências"

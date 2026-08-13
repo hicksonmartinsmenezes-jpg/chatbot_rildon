@@ -620,7 +620,15 @@ async function processarUmProduto(popup, codigo, secaoSlug) {
 function calcularFila(codigos, progresso, { limit, retrySemFoto } = {}) {
   const pendentes = codigos.filter((c) => {
     if (!progresso[c]) return true;
-    if (retrySemFoto && (progresso[c].status === 'sem_foto' || progresso[c].status === 'placeholder')) return true;
+    // BUG REAL corrigido (2026-08-13, achado analisando os 1209 erros de
+    // MECÂNICA — provável degradação de uma sessão de navegador longa
+    // demais, ver comentário em rodarMuitasSecoes): produto com
+    // status:"erro" ficava preso PRA SEMPRE — só "sem_foto"/"placeholder"
+    // entravam de novo na fila com retrySemFoto, nunca "erro". A única
+    // forma de tentar de novo era "Reiniciar do zero", que apaga TODO o
+    // progresso da seção (inclusive as fotos boas já baixadas) só pra
+    // reprocessar um punhado de erros. Agora "erro" entra no mesmo retry.
+    if (retrySemFoto && (progresso[c].status === 'sem_foto' || progresso[c].status === 'placeholder' || progresso[c].status === 'erro')) return true;
     return false;
   });
   return limit ? pendentes.slice(0, limit) : pendentes;
@@ -643,7 +651,7 @@ async function processarSecaoComPopup(popup, secaoSlug, { limit, retrySemFoto, d
   const fila = calcularFila(codigos, progresso, { limit, retrySemFoto });
 
   console.log(`\n=== Seção ${labelSecao} (${secaoSlug}) ===`);
-  console.log(`${codigos.length} produtos no total, ${Object.keys(progresso).length} já processados, ${fila.length} nesta execução${retrySemFoto ? ' (incluindo retry de sem_foto/placeholder)' : ''}.`);
+  console.log(`${codigos.length} produtos no total, ${Object.keys(progresso).length} já processados, ${fila.length} nesta execução${retrySemFoto ? ' (incluindo retry de sem_foto/placeholder/erro)' : ''}.`);
   if (!fila.length) {
     console.log('Nada pendente nesta seção.');
     return { secaoSlug, totalFeitos: Object.keys(progresso).length, total: codigos.length, pulada: true };

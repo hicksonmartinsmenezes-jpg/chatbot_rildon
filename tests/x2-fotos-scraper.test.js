@@ -96,7 +96,7 @@ describe('x2-fotos-scraper: checkpoint de progresso (fora do OneDrive)', () => {
   });
 });
 
-describe('x2-fotos-scraper.calcularFila — pedido do usuário 2026-07-28: "retry" de sem_foto/placeholder', () => {
+describe('x2-fotos-scraper.calcularFila — pedido do usuário 2026-07-28: "retry" de sem_foto/placeholder (estendido 2026-08-13 pra incluir "erro")', () => {
   const codigos = ['111', '222', '333', '444', '555'];
   const progresso = {
     111: { status: 'ok' },
@@ -110,11 +110,15 @@ describe('x2-fotos-scraper.calcularFila — pedido do usuário 2026-07-28: "retr
     expect(scraper.calcularFila(codigos, progresso)).toEqual(['555']);
   });
 
-  test('com retrySemFoto: nunca-processados + sem_foto + placeholder entram, mas "ok" e "erro" não', () => {
+  // BUG REAL corrigido em 2026-08-13 (achado analisando os 1209 erros de
+  // MECÂNICA): "erro" ficava preso pra sempre, só "sem_foto"/"placeholder"
+  // entravam de novo com retrySemFoto. Único jeito de tentar de novo era
+  // "Reiniciar do zero", que apaga TODO o progresso da seção. Agora "erro"
+  // entra no mesmo retry que "sem_foto"/"placeholder".
+  test('com retrySemFoto: nunca-processados + sem_foto + placeholder + erro entram, mas "ok" não', () => {
     const fila = scraper.calcularFila(codigos, progresso, { retrySemFoto: true });
-    expect(fila.sort()).toEqual(['222', '333', '555'].sort());
+    expect(fila.sort()).toEqual(['222', '333', '444', '555'].sort());
     expect(fila).not.toContain('111'); // já tem foto real (ok) — não reprocessa
-    expect(fila).not.toContain('444'); // erro técnico não é o que --retry-sem-foto promete cobrir
   });
 
   test('limit corta a fila (aplicado depois do filtro de retry)', () => {

@@ -681,10 +681,37 @@ function buscarPorVeiculo(mensagem, linhasCandidatas = [], { limite = 3 } = {}) 
 // 1 único token quando a mensagem inteira só tem 1 (e mesmo assim exige
 // >=6 caracteres, pra reduzir falso positivo de palavra curta/genérica tipo
 // "farol" batendo em produto errado da mesma categoria).
-function buscarPorNomeProduto(mensagem, { limite = 3 } = {}) {
+//
+// BUG REAL achado ao rodar os testes depois de ligar esta função no override
+// determinístico do ai.service.js (2026-08-14): mensagens SEM nome de peça
+// nenhum — só "peça" genérica + marca/modelo do carro, ex. "preciso de uma
+// peça pro meu fiat palio 2025" — bateram em produtos cujo campo NOME embute
+// a lista de aplicação (ex: "PALHETA ... FIAT:UNO, PALIO"). Os 2 tokens que
+// batiam (FIAT, PALIO) eram só o veículo que o cliente já tinha citado, não
+// nome de peça nenhuma — resultado: bot confirmava categoria errada (palheta
+// de limpador) pra um cliente que só falou "uma peça". Fix: (1) "peça" e
+// sinônimos genéricos não contam como token; (2) quando o chamador já
+// extraiu o veículo do cliente (parâmetro `veiculoTexto`), as palavras desse
+// veículo também são descontadas dos tokens válidos — só sobra o match se
+// houver alguma palavra que REALMENTE descreva a peça, não só o carro.
+const PALAVRAS_GENERICAS_PECA = new Set([
+  "peca", "pecas", "peco", "produto", "produtos", "coisa", "algo",
+  "componente", "acessorio", "item", "negocio", "troço", "troco",
+]);
+
+function buscarPorNomeProduto(mensagem, { limite = 3, veiculoTexto = null } = {}) {
   const msgNormalizada = _normalizar(mensagem);
+  const excluirVeiculo = veiculoTexto
+    ? new Set(_normalizar(veiculoTexto).split(" ").map(w => w.toLowerCase()))
+    : null;
   const tokens = msgNormalizada.split(" ")
-    .filter(t => t.length >= 3 && !STOPWORDS_VEICULO.has(t.toLowerCase()));
+    .filter(t => {
+      const tl = t.toLowerCase();
+      if (t.length < 3) return false;
+      if (STOPWORDS_VEICULO.has(tl) || PALAVRAS_GENERICAS_PECA.has(tl)) return false;
+      if (excluirVeiculo && excluirVeiculo.has(tl)) return false;
+      return true;
+    });
   if (!tokens.length) return [];
 
   const minNecessario = tokens.length >= 2 ? 2 : (tokens[0].length >= 6 ? 1 : 2);

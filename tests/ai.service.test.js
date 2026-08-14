@@ -87,7 +87,12 @@ describe("ai.service — provedor anthropic (Claude)", () => {
       }),
     });
 
-    const res = await perguntarIA("Vocês tem pastilha de freio pro Onix?", {});
+    // Mensagem neutra de propósito (sem citar peça/veículo): este teste é
+    // sobre a recomposição do prefill "{", não sobre confirmação de
+    // catálogo — usar uma mensagem que bate no catálogo real (17.520
+    // produtos, sem mock aqui) acopla este teste ao conteúdo dos dados e já
+    // quebrou quando buscarPorNomeProduto passou a existir (2026-08-14).
+    const res = await perguntarIA("Olá, tudo bem? Queria uma informação rápida", {});
 
     expect(res).toEqual({ resposta: "Temos sim, chega amanhã!", intencao: "vendas", veiculo: null, peca: null, pedidoExplicito: false });
   });

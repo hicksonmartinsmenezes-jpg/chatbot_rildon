@@ -863,7 +863,31 @@ async function perguntarIA(mensagem, { nomeCliente, historico = [], contexto = {
       const matchVeiculo = veiculo
         ? (buscarPorVeiculo(mensagem, matchesLinha, { limite: 1 })[0] || null)
         : null;
-      const matchConfirmado = matchCodigo || matchVeiculo;
+      // PEDIDO DO USUÁRIO (2026-08-14, depois de ver ao vivo respostas tipo
+      // "Trabalhamos com essa linha" mesmo com PRODUTO REAL CONFIRMA
+      // disponível no prompt): mesmo problema de sempre — o modelo pequeno/
+      // rápido (Groq free tier) ignora a instrução condicional e responde
+      // genérico mesmo tendo o nome exato do produto à disposição. Mesmo
+      // tratamento de matchCodigo/matchVeiculo acima: sobrescreve
+      // deterministicamente em vez de confiar na obediência do modelo.
+      // RISCO CONHECIDO (aceito pelo usuário, registrado aqui pra ajuste
+      // futuro se aparecer na prática): diferente de matchCodigo (exato) e
+      // matchVeiculo (cruza com aplicação/veículo já confirmado), este é
+      // por palavra solta no NOME do produto — pode confundir subcategoria
+      // (ex.: "amortecedor" pro Palio pode bater em "AMORTECEDOR DE MALA",
+      // não "AMORTECEDOR DE SUSPENSÃO", que é o que o cliente quer dizer na
+      // prática). Só entra quando não há match melhor (código/veículo) nem
+      // linha genérica confirmada — última prioridade, nunca sobrepõe um
+      // match mais preciso. `veiculoTexto: veiculo` desconta as palavras do
+      // veículo já extraído dos tokens válidos de match (fix 2026-08-14: ver
+      // comentário longo em buscarPorNomeProduto no catalogo-x2.service.js —
+      // sem isso, mensagem tipo "preciso de uma peça pro meu fiat palio
+      // 2025" batia em produto errado só por FIAT+PALIO aparecerem na lista
+      // de aplicação embutida no nome, sem nenhuma palavra de peça real).
+      const matchNomeProduto = (!matchCodigo && !matchVeiculo && !matchesLinha.length)
+        ? buscarPorNomeProduto(mensagem, { limite: 1, veiculoTexto: veiculo })[0]
+        : null;
+      const matchConfirmado = matchCodigo || matchVeiculo || matchNomeProduto;
       const respostaFinal = matchConfirmado
         ? `Sim, temos! 😊 ${matchConfirmado.nome} (ref. ${matchConfirmado.referencia || matchConfirmado.codigo}).`
         : resposta;

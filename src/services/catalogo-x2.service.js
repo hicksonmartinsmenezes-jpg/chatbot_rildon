@@ -172,6 +172,7 @@ function _indexarProduto(p) {
   const referenciasCruzadas = ficha.referenciasCruzadas && Object.keys(ficha.referenciasCruzadas).length
     ? ficha.referenciasCruzadas
     : null;
+  const nomeNormalizado = _normalizar(p.nome);
   const base = {
     codigo: p.codigo, nome: p.nome, secao: p.secao, linha: p.linha,
     referencia: ficha.referencia || null, fabricante,
@@ -191,7 +192,16 @@ function _indexarProduto(p) {
     // arquivo antes (ver GOL/GOLF em buscarPorVeiculo) — aqui apareceu de
     // novo ao testar: "bom dia" batia em "BOMB..." e "...DIANT..." por
     // conter "BOM"/"DIA" como substring. Set de palavras inteiras evita.
-    nomePalavras: new Set(_normalizar(p.nome).split(" ")),
+    nomePalavras: new Set(nomeNormalizado.split(" ")),
+    // PEDIDO DO USUÁRIO (2026-08-14): "gostaria que no meu painel de
+    // catálogo também tivesse opção de pesquisar por peça nome" — usado por
+    // buscarPorNomePainel (busca por SUBSTRING, diferente de nomePalavras
+    // acima que exige palavra INTEIRA — aqui o atendente busca de propósito
+    // por nome, então uma palavra parcial como "alternad" deve achar
+    // "ALTERNADOR" normalmente). Guardar a string já normalizada evita
+    // normalizar o nome de novo a cada busca (roda contra ~17.520 produtos
+    // por submit do formulário).
+    nomeNormalizado,
   };
   totalProdutosIndexados++;
 
@@ -758,6 +768,54 @@ function buscarPorNomeProduto(mensagem, { limite = 3, veiculoTexto = null } = {}
   return candidatos.slice(0, limite).map(c => c.p);
 }
 
+// ─── Busca por NOME da peça pro painel "Catálogo de Produtos" (pedido do
+// usuário, 2026-08-14): "gostaria que no meu painel de catálogo também
+// tivesse opção de pesquisar por peça nome" — 3ª forma de busca, ao lado de
+// "Busca por Veículo" e "Busca por Código". Diferente de buscarPorNomeProduto
+// (usado pelo BOT contra mensagem livre do cliente — filtra palavra
+// genérica/veículo pra não confirmar peça errada quando o cliente não citou
+// nome nenhum): aqui o atendente está deliberadamente pesquisando por nome, é
+// texto controlado, digitado com intenção — não precisa da mesma cautela.
+// Busca por SUBSTRING (palavra parcial já acha, ex: "alternad" acha
+// "ALTERNADOR") e exige TODAS as palavras digitadas presentes no nome, sem
+// stopword nem mínimo de tokens.
+function buscarPorNomePainel(nomeBusca, { limite = 200 } = {}) {
+  const termo = _normalizar(nomeBusca);
+  const palavras = termo.split(" ").filter(w => w.length >= 2);
+  if (!palavras.length) return { total: 0, produtos: [] };
+
+  const encontrados = todosProdutos.filter(p =>
+    p.nomeNormalizado && palavras.every(w => p.nomeNormalizado.includes(w))
+  );
+
+  // Nome mais curto primeiro: entre duas peças que batem nas mesmas
+  // palavras, a de nome mais enxuto tende a ser o resultado mais "exato"
+  // (nome longo geralmente é porque embute lista de aplicação/variação,
+  // ex: "PALHETA 26 VETOR P/CAMINHAO VOLVO FH12,NH12 94>,IVECO:..."), e
+  // depois ordem alfabética pra desempate estável.
+  encontrados.sort((a, b) => a.nome.length - b.nome.length || a.nome.localeCompare(b.nome, "pt-BR"));
+
+  const total = encontrados.length;
+  const produtos = encontrados.slice(0, limite).map(p => ({
+    codigo: p.codigo,
+    nome: p.nome,
+    secao: p.secao,
+    linha: p.linha,
+    referencia: p.referencia,
+    fabricante: p.fabricante,
+    aplicacao: p.aplicacao,
+    equivalentes: p.equivalentes || [],
+    equivalentesDetalhados: _detalharEquivalentes(p.equivalentes),
+    referenciasCruzadas: p.referenciasCruzadas || null,
+    barras: p.barras || null,
+    marcaCompativel: false,
+    anoCompativel: false,
+    estoque: _anexarEstoque(p.codigo),
+  }));
+
+  return { total, produtos };
+}
+
 // ─── Busca estruturada pro painel "Catálogo de Produtos" (atendente digita
 // marca/modelo/ano/categoria, sem depender de mensagem livre de cliente) ───
 //
@@ -912,6 +970,7 @@ module.exports = {
   buscarPorCodigoOriginal,
   buscarPorVeiculo,
   buscarPorNomeProduto,
+  buscarPorNomePainel,
   buscarProdutosPainel,
   buscarPorCodigo,
   listarFabricantes,

@@ -72,8 +72,10 @@
     "confirmDisableTwoFactor",
     "limparCatalogoForm",
     "limparCatalogoFormCodigo",
+    "limparCatalogoFormNome",
     "catalogoMostrarAbaVeiculo",
     "catalogoMostrarAbaCodigo",
+    "catalogoMostrarAbaNome",
     // Feature: enviar arquivo (foto/vídeo/doc) + responder mensagem
     // específica, igual WhatsApp (pedido do usuário, 2026-07-23).
     "openConversationFilePicker",

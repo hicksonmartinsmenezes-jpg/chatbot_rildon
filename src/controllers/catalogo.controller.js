@@ -1,6 +1,6 @@
 const logger = require("../utils/logger");
 const { listarFotos, obterFoto, recarregarIndice: recarregarIndiceFotos } = require("../services/catalogo-fotos.service");
-const { buscarProdutosPainel, buscarPorCodigo, listarFabricantes, recarregarIndices: recarregarIndicesProdutos } = require("../services/catalogo-x2.service");
+const { buscarProdutosPainel, buscarPorCodigo, buscarPorNomePainel, listarFabricantes, recarregarIndices: recarregarIndicesProdutos } = require("../services/catalogo-x2.service");
 const { listarSecoes, listarLinhasPorSecao } = require("../services/catalogo.service");
 const { gerarPdfCatalogo } = require("../services/catalogo-pdf.service");
 const { carregarEstoque, statusCache } = require("../services/estoque.service");
@@ -63,18 +63,23 @@ async function buscarProdutosHandler(req, res) {
 // GET /api/catalogo/exportar-pdf — "catálogo expresso" (pedido do usuário,
 // 2026-07-28): exporta em PDF, com foto, o resultado de uma busca do painel.
 // Aceita os mesmos critérios de /catalogo/buscar (marca/modelo/ano/categoria/
-// fabricante) OU um `codigo` isolado (mesmo modo de /catalogo/buscar-codigo).
+// fabricante), um `codigo` isolado (mesmo modo de /catalogo/buscar-codigo) OU
+// um `nome` isolado (mesmo modo de /catalogo/buscar-nome, 2026-08-14).
 // Diferente da tela, aqui NÃO aplica o teto de exibição de 200 — traz tudo
 // que bateu no filtro, até o teto de segurança MAX_EXPORT_PDF.
 async function exportarPdfHandler(req, res) {
   try {
     const codigo = String(req.query.codigo || "").trim();
+    const nome   = String(req.query.nome || "").trim();
     let produtos;
     let tituloBusca;
 
     if (codigo) {
       produtos = buscarPorCodigo(codigo, { limite: Infinity });
       tituloBusca = `Busca por código: ${codigo}`;
+    } else if (nome) {
+      produtos = buscarPorNomePainel(nome, { limite: Infinity }).produtos;
+      tituloBusca = `Busca por nome: ${nome}`;
     } else {
       const marca      = String(req.query.marca || "").trim();
       const modelo     = String(req.query.modelo || "").trim();
@@ -151,6 +156,28 @@ async function buscarPorCodigoHandler(req, res) {
   } catch (err) {
     logger.error("❌ Erro ao buscar produto por código:", err.message);
     res.status(500).json({ error: "Erro ao buscar produto por código." });
+  }
+}
+
+// GET /api/catalogo/buscar-nome?nome=X — 3ª forma de busca do painel
+// "Catálogo de Produtos" (pedido do usuário, 2026-08-14): "gostaria que no
+// meu painel de catálogo também tivesse opção de pesquisar por peça nome".
+// Diferente de /catalogo/buscar (marca/modelo/veículo) e /catalogo/
+// buscar-codigo (código exato): aqui o atendente digita o nome/descrição da
+// peça direto (ex: "correia dentada", "sensor de oxigenio"), sem precisar
+// saber veículo nem código nenhum — útil quando o cliente só sabe o nome da
+// peça que quer.
+async function buscarPorNomeHandler(req, res) {
+  try {
+    const nome = String(req.query.nome || "").trim();
+    if (!nome) {
+      return res.status(400).json({ error: "Informe o nome ou parte do nome da peça." });
+    }
+    const resultado = buscarPorNomePainel(nome);
+    res.json(resultado);
+  } catch (err) {
+    logger.error("❌ Erro ao buscar produto por nome:", err.message);
+    res.status(500).json({ error: "Erro ao buscar produto por nome." });
   }
 }
 
@@ -268,5 +295,6 @@ module.exports = {
   listarLinhasHandler,
   listarFabricantesHandler,
   buscarPorCodigoHandler,
+  buscarPorNomeHandler,
   exportarPdfHandler,
 };

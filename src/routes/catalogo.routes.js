@@ -8,6 +8,7 @@ const {
   listarLinhasHandler,
   listarFabricantesHandler,
   buscarPorCodigoHandler,
+  buscarPorNomeHandler,
   exportarPdfHandler,
   recarregarEstoqueHandler,
   recarregarCatalogoHandler,
@@ -26,6 +27,10 @@ router.get("/catalogo/linhas", listarLinhasHandler);
 // 2026-07-23).
 router.get("/catalogo/fabricantes", listarFabricantesHandler);
 router.get("/catalogo/buscar-codigo", buscarPorCodigoHandler);
+// Busca por nome/descrição da peça (pedido do usuário, 2026-08-14) — 3ª
+// forma de busca do painel, útil quando o cliente só sabe o nome da peça,
+// sem saber marca/modelo do veículo nem código nenhum.
+router.get("/catalogo/buscar-nome", buscarPorNomeHandler);
 // "Catálogo expresso" em PDF com foto (pedido do usuário, 2026-07-28): mesmos
 // critérios de /catalogo/buscar (ou um `codigo` isolado), mas sem o teto de
 // 200 da tela — traz tudo que bateu no filtro, até MAX_EXPORT_PDF.

@@ -142,28 +142,46 @@ async function exportarCatalogoPDF(btnEl) {
   }
 }
 
-// Duas sub-abas dentro do painel (Task #250-253): "Critérios de Pesquisa"
-// (marca/modelo/ano/seção/linha/fabricante) e "Busca por Código" (código
-// isolado, sem depender de veículo nenhum — cliente às vezes só tem o número
-// gravado na peça antiga). Só uma fica visível por vez, mesmo padrão visual
-// da tab strip estilo ERP já usado no painel.
-function catalogoMostrarAbaVeiculo() {
-  document.getElementById("catalogo-tab-veiculo")?.classList.add("active");
+// Três sub-abas dentro do painel (Task #250-253, + "Busca por Nome" pedida
+// pelo usuário em 2026-08-14): "Critérios de Pesquisa" (marca/modelo/ano/
+// seção/linha/fabricante), "Busca por Código" (código isolado, sem depender
+// de veículo nenhum — cliente às vezes só tem o número gravado na peça
+// antiga) e "Busca por Nome" (nome/descrição da peça, quando o cliente só
+// sabe dizer o nome). Só uma fica visível por vez, mesmo padrão visual da
+// tab strip estilo ERP já usado no painel.
+function _catalogoEsconderTodasAbas() {
+  document.getElementById("catalogo-tab-veiculo")?.classList.remove("active");
   document.getElementById("catalogo-tab-codigo")?.classList.remove("active");
-  document.getElementById("catalogo-form")?.classList.remove("hidden");
+  document.getElementById("catalogo-tab-nome")?.classList.remove("active");
+  document.getElementById("catalogo-form")?.classList.add("hidden");
   document.getElementById("catalogo-form-codigo")?.classList.add("hidden");
-  document.getElementById("catalogo-hint-veiculo")?.classList.remove("hidden");
+  document.getElementById("catalogo-form-nome")?.classList.add("hidden");
+  document.getElementById("catalogo-hint-veiculo")?.classList.add("hidden");
   document.getElementById("catalogo-hint-codigo")?.classList.add("hidden");
+  document.getElementById("catalogo-hint-nome")?.classList.add("hidden");
+}
+
+function catalogoMostrarAbaVeiculo() {
+  _catalogoEsconderTodasAbas();
+  document.getElementById("catalogo-tab-veiculo")?.classList.add("active");
+  document.getElementById("catalogo-form")?.classList.remove("hidden");
+  document.getElementById("catalogo-hint-veiculo")?.classList.remove("hidden");
 }
 
 function catalogoMostrarAbaCodigo() {
+  _catalogoEsconderTodasAbas();
   document.getElementById("catalogo-tab-codigo")?.classList.add("active");
-  document.getElementById("catalogo-tab-veiculo")?.classList.remove("active");
   document.getElementById("catalogo-form-codigo")?.classList.remove("hidden");
-  document.getElementById("catalogo-form")?.classList.add("hidden");
   document.getElementById("catalogo-hint-codigo")?.classList.remove("hidden");
-  document.getElementById("catalogo-hint-veiculo")?.classList.add("hidden");
   document.getElementById("catalogo-codigo-busca")?.focus();
+}
+
+function catalogoMostrarAbaNome() {
+  _catalogoEsconderTodasAbas();
+  document.getElementById("catalogo-tab-nome")?.classList.add("active");
+  document.getElementById("catalogo-form-nome")?.classList.remove("hidden");
+  document.getElementById("catalogo-hint-nome")?.classList.remove("hidden");
+  document.getElementById("catalogo-nome-busca")?.focus();
 }
 
 // Limpa os campos do formulário e volta o painel de resultados pro estado
@@ -199,6 +217,18 @@ function limparCatalogoFormCodigo() {
   const wrap = document.getElementById("catalogo-resultados");
   if (wrap) {
     wrap.innerHTML = _catalogoEmptyState("fa-barcode", "Informe o código de fabricante, referência ou código interno da peça.");
+  }
+  el?.focus();
+}
+
+// Limpa só a aba de busca por nome (aba separada, resultado independente).
+function limparCatalogoFormNome() {
+  const el = document.getElementById("catalogo-nome-busca");
+  if (el) el.value = "";
+
+  const wrap = document.getElementById("catalogo-resultados");
+  if (wrap) {
+    wrap.innerHTML = _catalogoEmptyState("fa-font", "Informe o nome ou parte do nome da peça (ex: correia dentada, alternador).");
   }
   el?.focus();
 }
@@ -741,6 +771,62 @@ async function buscarCatalogoPorCodigo(event) {
     const grid = `<div class="catalogo-grid">${produtos.map(p => _catalogoCardHTML(p, false)).join("")}</div>`;
     wrap.innerHTML = resumoBar + grid;
     wrap.dataset.exportQuery = `codigo=${encodeURIComponent(codigo)}`;
+  } catch (err) {
+    wrap.innerHTML = _catalogoEmptyState("fa-circle-exclamation", "Erro ao buscar peça. Tente novamente.", "catalogo-error-state");
+  }
+}
+
+// Busca isolada por nome/descrição da peça (pedido do usuário, 2026-08-14:
+// "gostaria que no meu painel de catálogo também tivesse opção de pesquisar
+// por peça nome") — aba separada, mesmo padrão de buscarCatalogoPorCodigo:
+// exata quanto à intenção do atendente, sem ranking de marca/ano (não há
+// veículo pra comparar aqui).
+async function buscarCatalogoPorNome(event) {
+  if (event) event.preventDefault();
+
+  const nome = document.getElementById("catalogo-nome-busca")?.value.trim() || "";
+  const wrap = document.getElementById("catalogo-resultados");
+  if (!wrap) return;
+
+  if (!nome) {
+    wrap.innerHTML = _catalogoEmptyState("fa-triangle-exclamation", "Informe o nome ou parte do nome da peça.", "catalogo-warn-state");
+    return;
+  }
+
+  wrap.innerHTML = _catalogoEmptyState("fa-spinner fa-spin", "Buscando...", "catalogo-loading-state");
+
+  try {
+    const res = await apiFetch(`/api/catalogo/buscar-nome?nome=${encodeURIComponent(nome)}`);
+
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      wrap.innerHTML = _catalogoEmptyState("fa-circle-exclamation", safe(errBody.error || "Erro ao buscar peça."), "catalogo-error-state");
+      return;
+    }
+
+    const data = await res.json();
+    const produtos = data.produtos || [];
+    const chipsHTML = `<div class="catalogo-chips"><span class="catalogo-chip"><i class="fa-solid fa-font"></i> ${safe(nome)}</span></div>`;
+
+    if (!produtos.length) {
+      wrap.innerHTML = `${chipsHTML}${_catalogoEmptyState("fa-box-open", "Nenhuma peça encontrada com esse nome.")}`;
+      return;
+    }
+
+    const totalTexto = `${data.total} peça${data.total === 1 ? "" : "s"} encontrada${data.total === 1 ? "" : "s"}`;
+    const recorte = data.total > produtos.length ? ` — mostrando as ${produtos.length} mais relevantes` : "";
+    const resumoBar = `
+      <div class="catalogo-resumo-bar">
+        ${chipsHTML}
+        <p class="catalogo-resumo">${totalTexto}${recorte}.</p>
+        ${_catalogoExportBtnHTML()}
+      </div>
+    `;
+    // mostrarBadgeNeutro=false: busca por nome não tem marca/ano pra
+    // comparar — o aviso "confirme com o cliente" não se aplica.
+    const grid = `<div class="catalogo-grid">${produtos.map(p => _catalogoCardHTML(p, false)).join("")}</div>`;
+    wrap.innerHTML = resumoBar + grid;
+    wrap.dataset.exportQuery = `nome=${encodeURIComponent(nome)}`;
   } catch (err) {
     wrap.innerHTML = _catalogoEmptyState("fa-circle-exclamation", "Erro ao buscar peça. Tente novamente.", "catalogo-error-state");
   }

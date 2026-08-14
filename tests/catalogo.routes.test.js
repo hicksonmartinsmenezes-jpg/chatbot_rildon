@@ -12,6 +12,7 @@ jest.mock("../src/services/catalogo-x2.service", () => ({
   buscarPorCodigoOriginal: jest.fn(),
   buscarPorVeiculo: jest.fn(),
   buscarPorCodigo: jest.fn(),
+  buscarPorNomePainel: jest.fn(),
   listarFabricantes: jest.fn(),
 }));
 jest.mock("../src/services/catalogo.service", () => ({
@@ -31,7 +32,7 @@ jest.mock("../src/services/estoque.service", () => ({
 const express = require("express");
 const request = require("supertest");
 
-const { buscarProdutosPainel, buscarPorCodigo, listarFabricantes } = require("../src/services/catalogo-x2.service");
+const { buscarProdutosPainel, buscarPorCodigo, buscarPorNomePainel, listarFabricantes } = require("../src/services/catalogo-x2.service");
 const { listarSecoes, listarLinhasPorSecao } = require("../src/services/catalogo.service");
 const { carregarEstoque, statusCache } = require("../src/services/estoque.service");
 const catalogoRoutes = require("../src/routes/catalogo.routes");
@@ -202,6 +203,40 @@ describe("GET /api/catalogo/buscar-codigo", () => {
   test("erro interno do service → 500 genérico", async () => {
     buscarPorCodigo.mockImplementation(() => { throw new Error("boom"); });
     const res = await request(buildApp()).get("/api/catalogo/buscar-codigo").query({ codigo: "REF1" });
+    expect(res.status).toBe(500);
+  });
+});
+
+// Pedido do usuário (2026-08-14): "gostaria que no meu painel de catálogo
+// também tivesse opção de pesquisar por peça nome" — 3ª forma de busca do
+// painel, ao lado de /catalogo/buscar (veículo) e /catalogo/buscar-codigo.
+describe("GET /api/catalogo/buscar-nome", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  test("sem nome → 400, não chama o service", async () => {
+    const res = await request(buildApp()).get("/api/catalogo/buscar-nome");
+    expect(res.status).toBe(400);
+    expect(buscarPorNomePainel).not.toHaveBeenCalled();
+  });
+
+  test("nome informado → 200 e repassa pro service", async () => {
+    buscarPorNomePainel.mockReturnValue({ total: 1, produtos: [{ codigo: "P1", nome: "ALTERNADOR TESTE" }] });
+    const res = await request(buildApp()).get("/api/catalogo/buscar-nome").query({ nome: "alternador" });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ total: 1, produtos: [{ codigo: "P1", nome: "ALTERNADOR TESTE" }] });
+    expect(buscarPorNomePainel).toHaveBeenCalledWith("alternador");
+  });
+
+  test("nome sem resultado → 200 com lista vazia (não é erro)", async () => {
+    buscarPorNomePainel.mockReturnValue({ total: 0, produtos: [] });
+    const res = await request(buildApp()).get("/api/catalogo/buscar-nome").query({ nome: "peça inexistente" });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ total: 0, produtos: [] });
+  });
+
+  test("erro interno do service → 500 genérico", async () => {
+    buscarPorNomePainel.mockImplementation(() => { throw new Error("boom"); });
+    const res = await request(buildApp()).get("/api/catalogo/buscar-nome").query({ nome: "alternador" });
     expect(res.status).toBe(500);
   });
 });

@@ -23,7 +23,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css">
   <!-- CSS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <link rel="stylesheet" href="dist/bundle.0c3b59c993.css">
+  <link rel="stylesheet" href="dist/bundle.1e6f00a54c.css">
   <!-- CSS_BUNDLE_END -->
 <style>
     /* Centraliza colunas da tabela de histórico */
@@ -2053,49 +2053,56 @@ Como podemos ajudar você hoje?
     <form id="catalogo-form" class="catalogo-erp-body" data-submit-action="buscarCatalogo">
       <div class="catalogo-erp-cols">
 
-        <fieldset class="catalogo-erp-box">
-          <legend>Dados do Veículo</legend>
+        <div class="catalogo-erp-box">
+          <div class="catalogo-box-header">
+            <span class="catalogo-box-icon catalogo-box-icon-blue"><i class="fa-solid fa-car"></i></span>
+            <span class="catalogo-box-title">Dados do Veículo</span>
+          </div>
 
           <div class="catalogo-erp-row">
-            <label for="catalogo-marca">Fabricante</label>
+            <label for="catalogo-marca"><i class="fa-solid fa-industry"></i> Fabricante</label>
             <input type="text" id="catalogo-marca" placeholder="Ex: Fiat, GM, Ford" autocomplete="off">
           </div>
 
           <div class="catalogo-erp-row">
-            <label for="catalogo-modelo">Modelo</label>
+            <label for="catalogo-modelo"><i class="fa-solid fa-car-side"></i> Modelo</label>
             <input type="text" id="catalogo-modelo" placeholder="Ex: Palio, Astra, Ka" autocomplete="off">
           </div>
 
           <div class="catalogo-erp-row">
-            <label for="catalogo-ano">Ano</label>
+            <label for="catalogo-ano"><i class="fa-solid fa-calendar-days"></i> Ano</label>
             <input type="number" id="catalogo-ano" placeholder="Ex: 2015" min="1950" autocomplete="off">
           </div>
-        </fieldset>
+        </div>
 
-        <fieldset class="catalogo-erp-box">
-          <legend>Localização do Produto <span class="catalogo-erp-optional">(opcional)</span></legend>
+        <div class="catalogo-erp-box">
+          <div class="catalogo-box-header">
+            <span class="catalogo-box-icon catalogo-box-icon-green"><i class="fa-solid fa-location-dot"></i></span>
+            <span class="catalogo-box-title">Localização do Produto</span>
+            <span class="catalogo-erp-optional">Opcional</span>
+          </div>
 
           <div class="catalogo-erp-row">
-            <label for="catalogo-secao">Seção</label>
+            <label for="catalogo-secao"><i class="fa-solid fa-table-cells"></i> Seção</label>
             <select id="catalogo-secao">
               <option value="">Todas</option>
             </select>
           </div>
 
           <div class="catalogo-erp-row">
-            <label for="catalogo-linha">Linha</label>
+            <label for="catalogo-linha"><i class="fa-solid fa-layer-group"></i> Linha</label>
             <select id="catalogo-linha" disabled>
               <option value="">Todas</option>
             </select>
           </div>
 
           <div class="catalogo-erp-row">
-            <label for="catalogo-fabricante">Fabricante</label>
+            <label for="catalogo-fabricante"><i class="fa-solid fa-industry"></i> Fabricante</label>
             <select id="catalogo-fabricante">
               <option value="">Todos</option>
             </select>
           </div>
-        </fieldset>
+        </div>
 
       </div>
 
@@ -2104,47 +2111,54 @@ Como podemos ajudar você hoje?
           <i class="fa-solid fa-magnifying-glass"></i> Pesquisar Produto
         </button>
         <button type="button" class="catalogo-erp-clear-btn" data-action="limparCatalogoForm">
-          <i class="fa-solid fa-eraser"></i> Limpar
+          <i class="fa-solid fa-rotate-left"></i> Limpar Filtros
         </button>
+        <span class="catalogo-actions-tip"><i class="fa-solid fa-circle-check"></i> Quanto mais campos preenchidos, mais precisa a busca</span>
       </div>
     </form>
 
     <form id="catalogo-form-codigo" class="catalogo-erp-body hidden" data-submit-action="buscarCatalogoPorCodigo">
-      <fieldset class="catalogo-erp-box catalogo-erp-box-codigo">
-        <legend>Código de Fabricante / Referência</legend>
+      <div class="catalogo-erp-box catalogo-erp-box-codigo">
+        <div class="catalogo-box-header">
+          <span class="catalogo-box-icon catalogo-box-icon-blue"><i class="fa-solid fa-barcode"></i></span>
+          <span class="catalogo-box-title">Código de Fabricante / Referência</span>
+        </div>
 
         <div class="catalogo-erp-row">
-          <label for="catalogo-codigo-busca">Código</label>
+          <label for="catalogo-codigo-busca"><i class="fa-solid fa-hashtag"></i> Código</label>
           <input type="text" id="catalogo-codigo-busca" placeholder="Ex: MB1123, FI1002, 0986BF0201..." autocomplete="off">
         </div>
-      </fieldset>
+      </div>
 
       <div class="catalogo-erp-actions">
         <button type="submit" class="catalogo-erp-search-btn">
           <i class="fa-solid fa-magnifying-glass"></i> Pesquisar Produto
         </button>
         <button type="button" class="catalogo-erp-clear-btn" data-action="limparCatalogoFormCodigo">
-          <i class="fa-solid fa-eraser"></i> Limpar
+          <i class="fa-solid fa-rotate-left"></i> Limpar Filtros
         </button>
       </div>
     </form>
 
     <form id="catalogo-form-nome" class="catalogo-erp-body hidden" data-submit-action="buscarCatalogoPorNome">
-      <fieldset class="catalogo-erp-box catalogo-erp-box-codigo">
-        <legend>Nome / Descrição da Peça</legend>
+      <div class="catalogo-erp-box catalogo-erp-box-codigo">
+        <div class="catalogo-box-header">
+          <span class="catalogo-box-icon catalogo-box-icon-blue"><i class="fa-solid fa-font"></i></span>
+          <span class="catalogo-box-title">Nome / Descrição da Peça</span>
+        </div>
 
         <div class="catalogo-erp-row">
-          <label for="catalogo-nome-busca">Nome</label>
+          <label for="catalogo-nome-busca"><i class="fa-solid fa-magnifying-glass"></i> Nome</label>
           <input type="text" id="catalogo-nome-busca" placeholder="Ex: correia dentada, alternador, sensor de oxigênio..." autocomplete="off">
         </div>
-      </fieldset>
+      </div>
 
       <div class="catalogo-erp-actions">
         <button type="submit" class="catalogo-erp-search-btn">
           <i class="fa-solid fa-magnifying-glass"></i> Pesquisar Produto
         </button>
         <button type="button" class="catalogo-erp-clear-btn" data-action="limparCatalogoFormNome">
-          <i class="fa-solid fa-eraser"></i> Limpar
+          <i class="fa-solid fa-rotate-left"></i> Limpar Filtros
         </button>
       </div>
     </form>

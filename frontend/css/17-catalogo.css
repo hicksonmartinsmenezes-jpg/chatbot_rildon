@@ -136,10 +136,11 @@
 
 .catalogo-erp-tab.active i { opacity: 1; color: var(--primary); }
 
-/* Aba "Busca por Código" (Task #250-253) usa uma única caixa mais estreita —
-   não faz sentido reservar as 2 colunas de "Dados do Veículo/Localização". */
+/* Aba "Busca por Código" (Task #250-253) e "Busca por Nome" usam uma única
+   caixa mais estreita — não faz sentido reservar as 2 colunas de
+   "Dados do Veículo/Localização". */
 .catalogo-erp-box-codigo {
-  max-width: 440px;
+  max-width: 460px;
 }
 
 .catalogo-erp-body {
@@ -153,66 +154,102 @@
   gap: 18px;
 }
 
-/* fieldset/legend resetados e reconstruídos no estilo "box com cabeçalho" */
+/* ─── Cartão de busca (2026-08-14, mockup do usuário) ─────────────────────
+   Card branco/arredondado com cabeçalho de ícone circular colorido + título,
+   campos empilhados (label com ícone em cima, input embaixo) — troca do
+   antigo estilo fieldset/legend "ERP" horizontal. ─────────────────────── */
 .catalogo-erp-box {
   margin: 0;
-  padding: 4px 16px 16px;
-  border-radius: 12px;
+  padding: 18px 18px 16px;
+  border-radius: 16px;
   border: 1px solid var(--cat-line);
   background: linear-gradient(180deg, color-mix(in srgb, var(--cat-bg-1) 88%, #fff 2%), var(--cat-bg-1));
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 10px 24px -18px rgba(0, 0, 0, 0.6);
-  transition: border-color var(--transition-normal);
+  transition: border-color var(--transition-normal), box-shadow var(--transition-normal);
 }
 
 .catalogo-erp-box:focus-within {
   border-color: color-mix(in srgb, var(--primary) 45%, var(--cat-line));
 }
 
-.catalogo-erp-box legend {
-  padding: 3px 10px;
-  margin-left: 4px;
-  border-radius: var(--radius-full);
-  font-size: 11px;
+.catalogo-box-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--cat-line);
+}
+
+.catalogo-box-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.catalogo-box-icon-blue {
+  color: #2563eb;
+  background: color-mix(in srgb, #2563eb 15%, transparent);
+}
+
+.catalogo-box-icon-green {
+  color: #16a34a;
+  background: color-mix(in srgb, #16a34a 15%, transparent);
+}
+
+.catalogo-box-title {
+  font-size: 13.5px;
   font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--primary);
-  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  letter-spacing: -0.01em;
+  color: #f8fafc;
 }
 
 .catalogo-erp-optional {
-  font-weight: 600;
-  text-transform: none;
-  letter-spacing: normal;
-  color: var(--cat-text-dimmer);
-  opacity: 0.95;
+  margin-left: auto;
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  font-size: 10.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #16a34a;
+  background: color-mix(in srgb, #16a34a 15%, transparent);
+  flex-shrink: 0;
 }
 
 .catalogo-erp-row {
-  display: grid;
-  grid-template-columns: 96px 1fr;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 2px;
-  border-top: 1px solid var(--cat-line);
-  border-radius: 8px;
-  transition: background var(--transition-fast);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 0;
 }
 
-.catalogo-erp-row:first-of-type { border-top: none; }
-.catalogo-erp-row:hover { background: rgba(255, 255, 255, 0.015); }
-
 .catalogo-erp-row label {
-  font-size: 12.5px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--cat-text-dim);
   letter-spacing: 0.01em;
 }
 
+.catalogo-erp-row label i {
+  width: 16px;
+  text-align: center;
+  color: var(--cat-text-dimmer);
+  font-size: 11.5px;
+}
+
 .catalogo-erp-row input,
 .catalogo-erp-row select {
   width: 100%;
-  padding: 10px 13px;
+  padding: 11px 14px;
   border-radius: var(--radius-md);
   border: 1px solid var(--cat-line);
   background: var(--cat-bg-0);
@@ -225,6 +262,15 @@
     background var(--transition-fast);
 }
 
+.catalogo-erp-row select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238a93a6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding-right: 30px;
+  cursor: pointer;
+}
+
 .catalogo-erp-row input::placeholder { color: #4b5468; }
 
 .catalogo-erp-row input:hover,
@@ -234,7 +280,7 @@
 .catalogo-erp-row select:focus {
   outline: none;
   border-color: var(--primary);
-  background: color-mix(in srgb, var(--cat-bg-0) 92%, var(--primary) 3%);
+  background-color: color-mix(in srgb, var(--cat-bg-0) 92%, var(--primary) 3%);
   box-shadow: 0 0 0 3.5px color-mix(in srgb, var(--primary) 20%, transparent);
 }
 
@@ -245,7 +291,9 @@
 
 .catalogo-erp-actions {
   display: flex;
-  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 16px;
   margin-top: 18px;
 }
 
@@ -253,9 +301,9 @@
   display: inline-flex;
   align-items: center;
   gap: 9px;
-  padding: 12px 24px;
+  padding: 12px 26px;
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-full);
   background: linear-gradient(135deg, var(--primary) 0%, var(--primary-2) 100%);
   color: #fff;
   font-size: 13.5px;
@@ -278,10 +326,10 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 20px;
-  border-radius: var(--radius-md);
+  padding: 12px 22px;
+  border-radius: var(--radius-full);
   border: 1px solid var(--cat-line);
-  background: var(--cat-bg-0);
+  background: transparent;
   color: var(--cat-text-dim);
   font-size: 13px;
   font-weight: 700;
@@ -298,26 +346,39 @@
 
 .catalogo-erp-clear-btn:active { transform: translateY(0); }
 
+.catalogo-actions-tip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #16a34a;
+}
+
+.catalogo-actions-tip i { font-size: 12px; }
+
 .catalogo-hint {
   display: flex;
   align-items: center;
-  gap: 9px;
-  margin: 0;
-  padding: 12px 22px 18px;
-  color: var(--cat-text-dimmer);
+  gap: 10px;
+  margin: 0 22px 20px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--primary) 25%, var(--cat-line));
+  background: color-mix(in srgb, var(--primary) 10%, var(--cat-bg-2));
+  color: var(--cat-text-dim);
   font-size: 12.5px;
   line-height: 1.5;
-  background: var(--cat-bg-2);
 }
 
 .catalogo-hint i {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
-  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  background: color-mix(in srgb, var(--primary) 18%, transparent);
   color: var(--primary);
   font-size: 10.5px;
   flex-shrink: 0;
@@ -1005,7 +1066,6 @@
 /* ─── Responsivo ───────────────────────────────────────────────── */
 @media (max-width: 820px) {
   .catalogo-erp-cols { grid-template-columns: 1fr; }
-  .catalogo-erp-row { grid-template-columns: 84px 1fr; }
 }
 
 @media (max-width: 560px) {
@@ -1051,10 +1111,12 @@ body.light-theme .catalogo-erp-tab.active {
 
 body.light-theme .catalogo-erp-box {
   background: linear-gradient(180deg, #ffffff, #f8fafc);
-  box-shadow: none;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.6) inset,
+    0 10px 24px -18px rgba(15, 23, 42, 0.25);
 }
 
-body.light-theme .catalogo-erp-row:hover { background: rgba(15, 23, 42, 0.02); }
+body.light-theme .catalogo-box-title { color: #0f172a; }
 
 body.light-theme .catalogo-erp-row input,
 body.light-theme .catalogo-erp-row select {
@@ -1063,8 +1125,6 @@ body.light-theme .catalogo-erp-row select {
 }
 
 body.light-theme .catalogo-erp-row input::placeholder { color: #64748b; }
-
-body.light-theme .catalogo-erp-optional { color: #94a3b8; }
 
 body.light-theme .catalogo-erp-clear-btn {
   color: #475569;

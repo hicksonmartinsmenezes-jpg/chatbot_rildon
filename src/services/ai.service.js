@@ -3,7 +3,7 @@ const path    = require("path");
 const logger  = require("../utils/logger");
 const EMPRESA = require("../config/empresa");
 const { listarSecoes, buscarNoCatalogo } = require("./catalogo.service");
-const { buscarPorCodigoOriginal, buscarPorVeiculo } = require("./catalogo-x2.service");
+const { buscarPorCodigoOriginal, buscarPorVeiculo, buscarPorNomeProduto } = require("./catalogo-x2.service");
 
 // ─── Configuração de provedores ────────────────────────────────────────────────
 // Para trocar de provedor: altere AI_PROVIDER no .env para "groq", "gemini" ou "anthropic"
@@ -212,7 +212,7 @@ SEÇÕES REAIS DO CATÁLOGO DE ESTOQUE (categorias completas que a loja vende, u
 MARCAS: ${EMPRESA.marcas.join(", ")}.
 NÃO TRABALHAMOS: elétrica residencial/industrial (tomadas NBR, disjuntores prediais, eletrodutos).
 
-Se aparecer "CÓDIGO ORIGINAL CONFIRMA" ou "APLICAÇÃO CONFIRMA" abaixo: cite o nome+referência exatos do bloco, nunca a resposta genérica "várias marcas". Só com "CATÁLOGO CONFIRMA": confirme só a categoria.
+Se aparecer "CÓDIGO ORIGINAL CONFIRMA", "APLICAÇÃO CONFIRMA" ou "PRODUTO REAL CONFIRMA" abaixo: cite o nome+código/referência exatos do bloco, nunca a resposta genérica "várias marcas". Só com "CATÁLOGO CONFIRMA": confirme só a categoria.
 
 CONTATO: ${EMPRESA.telefone} | ${EMPRESA.endereco} | ${EMPRESA.horario.semana} | Sáb ${EMPRESA.horario.sabado}
 PAGAMENTO: ${EMPRESA.pagamento.join(", ")}.
@@ -277,6 +277,22 @@ IMPORTANTE sobre intenção "vendas": só quando "pedidoExplicito" for true o SI
     ? `\nAPLICAÇÃO CONFIRMA: ${matchesVeiculo.map(m => `${m.nome} (ref. ${m.referencia || m.codigo})`).join("; ")}.`
     : "";
 
+  // PEDIDO DO USUÁRIO (2026-08-14): "alimentar o bot com todo o banco de
+  // dados da loja" — catalogoConfirma acima só bate contra as 397 linhas
+  // genéricas cadastradas (ex: "Alternador Completo"); isso aqui cruza a
+  // mensagem direto contra o NOME REAL de qualquer um dos 17.520 produtos do
+  // catálogo X2 (ex: "ALTERNADOR 12V 90A *SUBST* - DELCO - DR101N10013"),
+  // cobrindo peça que o cliente descreve de um jeito que não bate exatamente
+  // com nenhuma linha cadastrada. Só quando catalogoConfirma NÃO achou nada
+  // — evita duplicar a mesma confirmação de duas formas diferentes no
+  // prompt. Igual a catalogoConfirma, é só CONTEXTO pra IA responder com
+  // confiança — não força a resposta final (diferente de matchCodigo/
+  // matchVeiculo abaixo, que são precisos o bastante pra isso).
+  const matchesNomeProduto = !matchesCatalogo.length ? buscarPorNomeProduto(mensagem, { limite: 2 }) : [];
+  const nomeProdutoConfirma = matchesNomeProduto.length
+    ? `\nPRODUTO REAL CONFIRMA: ${matchesNomeProduto.map(m => `${m.nome} (cod. ${m.codigo})`).join("; ")}.`
+    : "";
+
   // Cabeçalho dinâmico — nome do cliente e contexto de horário, gerado por chamada
   // Nunca armazenado em cache para não vazar entre usuários
   const cabecalho = [
@@ -288,6 +304,7 @@ IMPORTANTE sobre intenção "vendas": só quando "pedidoExplicito" for true o SI
     catalogoConfirma,
     codigoConfirma,
     veiculoConfirma,
+    nomeProdutoConfirma,
   ].filter(Boolean).join("");
 
   return cabecalho + _promptBaseCache.corpo;

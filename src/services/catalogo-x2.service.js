@@ -6,7 +6,7 @@
  * Por que existe: catalogo.service.js já dá à IA confirmação de Seção/Linha
  * ("a loja tem ALTERNADOR"), mas não sabe dizer se um alternador específico
  * SERVE pra um veículo, nem cruzar um código de peça original (OEM) com o
- * produto equivalente cadastrado. Este serviço expõe duas buscas de alta
+ * produto equivalente cadastrado. Este serviço expõe três buscas de alta
  * precisão sobre os ~17.400 produtos com ficha técnica parseada:
  *
  *   1. buscarPorCodigoOriginal(texto) — acha token(s) na mensagem que
@@ -23,6 +23,12 @@
  *      compatíveis) de cada produto daquela linha. Propositalmente exige
  *      >=2 tokens batendo (ou o único token, se só houver um) — 1 palavra
  *      solta bate por acaso demais pra ser confiável.
+ *   3. buscarPorNomeProduto(texto) — pedido do usuário em 2026-08-14
+ *      ("alimentar o bot com todo o banco de dados da loja"): cruza os
+ *      tokens da mensagem direto contra o NOME REAL de cada um dos 17.520
+ *      produtos (não só as 397 linhas genéricas de catalogo.service.js),
+ *      cobrindo peça descrita de um jeito que não bate exatamente com
+ *      nenhuma linha cadastrada. Mesma exigência de >=2 tokens batendo.
  *
  * Os índices são construídos uma única vez no load do módulo. Só os campos
  * necessários pra busca ficam em memória (não o array completo de cada
@@ -176,6 +182,16 @@ function _indexarProduto(p) {
     // Fornecedor). Já vinha no JSON bruto (p.barras), só não estava
     // indexado pra nenhum uso anterior.
     barras: p.barras || null,
+    // PEDIDO DO USUÁRIO (2026-08-14): "alimentar o bot com todo o banco de
+    // dados da loja" — usado por buscarPorNomeProduto pra confirmar peça
+    // pelo NOME REAL do produto (não só pelas 397 linhas genéricas de
+    // catalogo.service.js). Set de PALAVRAS INTEIRAS (não substring) —
+    // pré-computado aqui (não a cada mensagem, roda contra ~17.520
+    // produtos). Substring já causou falso positivo real neste mesmo
+    // arquivo antes (ver GOL/GOLF em buscarPorVeiculo) — aqui apareceu de
+    // novo ao testar: "bom dia" batia em "BOMB..." e "...DIANT..." por
+    // conter "BOM"/"DIA" como substring. Set de palavras inteiras evita.
+    nomePalavras: new Set(_normalizar(p.nome).split(" ")),
   };
   totalProdutosIndexados++;
 
@@ -647,6 +663,49 @@ function buscarPorVeiculo(mensagem, linhasCandidatas = [], { limite = 3 } = {}) 
   return encontrados;
 }
 
+// ─── Busca por nome real do produto (pedido do usuário, 2026-08-14: "preciso
+// que alimente o bot com todo o banco de dados da loja") ───────────────────
+// Antes desta função, o bot só confirmava a existência de uma peça de duas
+// formas: citando o CÓDIGO (buscarPorCodigoOriginal) ou citando o nome de uma
+// das 397 linhas/categorias GENÉRICAS pré-cadastradas em
+// catalogo.service.buscarNoCatalogo (ex: "Alternador Completo"). Se o
+// cliente descrevesse a peça de um jeito que não batesse EXATAMENTE com
+// nenhuma dessas 397 linhas, o bot não confirmava nada — mesmo que o produto
+// existisse, com nome próprio, entre os ~17.520 itens reais do catálogo X2.
+// Esta função cruza os tokens da mensagem direto contra o NOME REAL de cada
+// produto (ex: "ALTERNADOR 12V 90A *SUBST* - DELCO - DR101N10013"),
+// cobrindo esse buraco.
+// Mesma prudência de buscarPorVeiculo ("1 palavra solta bate por acaso
+// demais pra ser confiável" — ver comentário acima): exige >=2 tokens
+// distintos batendo no nome quando a mensagem tem 2+ tokens úteis; só aceita
+// 1 único token quando a mensagem inteira só tem 1 (e mesmo assim exige
+// >=6 caracteres, pra reduzir falso positivo de palavra curta/genérica tipo
+// "farol" batendo em produto errado da mesma categoria).
+function buscarPorNomeProduto(mensagem, { limite = 3 } = {}) {
+  const msgNormalizada = _normalizar(mensagem);
+  const tokens = msgNormalizada.split(" ")
+    .filter(t => t.length >= 3 && !STOPWORDS_VEICULO.has(t.toLowerCase()));
+  if (!tokens.length) return [];
+
+  const minNecessario = tokens.length >= 2 ? 2 : (tokens[0].length >= 6 ? 1 : 2);
+  if (minNecessario > tokens.length) return [];
+
+  const candidatos = [];
+  for (const p of todosProdutos) {
+    if (!p.nomePalavras) continue;
+    let matches = 0;
+    for (const t of tokens) {
+      if (p.nomePalavras.has(t)) matches++;
+    }
+    if (matches >= minNecessario) candidatos.push({ p, matches });
+  }
+  if (!candidatos.length) return [];
+
+  // Mais tokens batendo primeiro — match mais específico/confiável na frente.
+  candidatos.sort((a, b) => b.matches - a.matches);
+  return candidatos.slice(0, limite).map(c => c.p);
+}
+
 // ─── Busca estruturada pro painel "Catálogo de Produtos" (atendente digita
 // marca/modelo/ano/categoria, sem depender de mensagem livre de cliente) ───
 //
@@ -800,6 +859,7 @@ function buscarProdutosPainel({ marca = "", modelo = "", ano = null, categoria =
 module.exports = {
   buscarPorCodigoOriginal,
   buscarPorVeiculo,
+  buscarPorNomeProduto,
   buscarProdutosPainel,
   buscarPorCodigo,
   listarFabricantes,

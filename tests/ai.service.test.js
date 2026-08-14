@@ -485,6 +485,7 @@ describe("ai.service — override de catálogo só dispara com veículo confirma
       buscarPorVeiculo: jest.fn().mockReturnValue([
         { nome: "POLIA CITROEN XSARA 1.6 16V 2001> - VETOR", referencia: "VT7041", codigo: "999" }
       ]),
+      buscarPorNomeProduto: jest.fn().mockReturnValue([]),
     }));
     process.env.AI_PROVIDER = "anthropic";
     process.env.ANTHROPIC_API_KEY = "sk-ant-teste-123";
@@ -513,6 +514,7 @@ describe("ai.service — override de catálogo só dispara com veículo confirma
     jest.doMock("../src/services/catalogo-x2.service", () => ({
       buscarPorCodigoOriginal: jest.fn().mockReturnValue([]),
       buscarPorVeiculo: buscarPorVeiculoMock,
+      buscarPorNomeProduto: jest.fn().mockReturnValue([]),
     }));
     process.env.AI_PROVIDER = "anthropic";
     process.env.ANTHROPIC_API_KEY = "sk-ant-teste-123";

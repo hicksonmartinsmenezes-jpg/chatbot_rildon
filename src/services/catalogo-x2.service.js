@@ -10,9 +10,12 @@
  * precisão sobre os ~17.400 produtos com ficha técnica parseada:
  *
  *   1. buscarPorCodigoOriginal(texto) — acha token(s) na mensagem que
- *      parecem código de peça (OEM/fabricante) e retorna o(s) produto(s)
- *      cadastrados como equivalente daquele código. Match exato, sem
- *      ambiguidade — seguro pra afirmar com confiança.
+ *      parecem código de peça e retorna o(s) produto(s) cadastrados, cruzando
+ *      os 3 tipos de código que a loja usa: número original/OEM de terceiros
+ *      (equivalenteIndex), código de referência do próprio fabricante da
+ *      peça (referenciaIndex) e código interno da loja (produtosPorCodigo
+ *      Index) — pedido do usuário em 2026-08-14 pra o bot reconhecer os 3.
+ *      Match exato, sem ambiguidade — seguro pra afirmar com confiança.
  *   2. buscarPorVeiculo(mensagem, linhasCandidatas) — dado um recorte de
  *      linhas candidatas (normalmente já vindo de catalogo.service
  *      .buscarNoCatalogo, que garante a categoria certa), cruza os tokens
@@ -537,6 +540,20 @@ function buscarPorCodigo(codigoBruto, { limite = 30 } = {}) {
 }
 
 // ─── Busca por código original/equivalente (Task #216) ────────────────────
+// PEDIDO DO USUÁRIO (2026-08-14): "preciso que meu bot reconheça todos os
+// produtos cadastrados na loja pelo código do fabricante, código da loja e
+// número original". Antes desta mudança, esta função (a única chamada pelo
+// fluxo de atendimento ao CLIENTE via ai.service.js) só consultava
+// equivalenteIndex (número original/OEM de terceiros) e referenciaIndex
+// (código de referência do próprio fabricante da peça) — nunca
+// produtosPorCodigoIndex (código interno da loja, ex: "120991"). Resultado:
+// um cliente perguntando "tem o 120991?" não recebia confirmação nenhuma de
+// catálogo, mesmo o produto existindo. buscarPorCodigo() (abaixo) já
+// consultava os 3 índices, mas só é usada pelo painel administrativo (exige
+// 1 código já isolado, sem a extração de tokens de texto livre que o bot
+// precisa). Adicionado aqui o mesmo terceiro índice, mantendo a extração de
+// texto livre — agora os 3 tipos de código (loja/fabricante/original) são
+// reconhecidos no chat do cliente, iguais ao que o painel já reconhecia.
 function buscarPorCodigoOriginal(texto, { limite = 5 } = {}) {
   const candidatos = _extrairCodigosDoTexto(texto);
   if (!candidatos.length) return [];
@@ -544,9 +561,10 @@ function buscarPorCodigoOriginal(texto, { limite = 5 } = {}) {
   const encontrados = [];
   const vistos = new Set();
   for (const codigo of candidatos) {
-    const porEquivalente = equivalenteIndex.get(codigo) || [];
-    const porReferencia  = referenciaIndex.has(codigo) ? [referenciaIndex.get(codigo)] : [];
-    for (const item of [...porEquivalente, ...porReferencia]) {
+    const porEquivalente   = equivalenteIndex.get(codigo) || [];
+    const porReferencia    = referenciaIndex.has(codigo) ? [referenciaIndex.get(codigo)] : [];
+    const porCodigoInterno = produtosPorCodigoIndex.has(codigo) ? [produtosPorCodigoIndex.get(codigo)] : [];
+    for (const item of [...porEquivalente, ...porReferencia, ...porCodigoInterno]) {
       if (vistos.has(item.codigo)) continue;
       vistos.add(item.codigo);
       encontrados.push(item);

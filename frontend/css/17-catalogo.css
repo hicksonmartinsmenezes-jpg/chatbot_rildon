@@ -310,14 +310,12 @@
   font-weight: 800;
   letter-spacing: 0.01em;
   cursor: pointer;
-  box-shadow: 0 12px 26px -6px var(--cat-glow);
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast), filter var(--transition-fast);
+  transition: transform var(--transition-fast), filter var(--transition-fast);
 }
 
 .catalogo-erp-search-btn:hover {
   transform: translateY(-2px);
   filter: brightness(1.07);
-  box-shadow: 0 16px 32px -6px var(--cat-glow);
 }
 
 .catalogo-erp-search-btn:active { transform: translateY(0); filter: brightness(0.98); }

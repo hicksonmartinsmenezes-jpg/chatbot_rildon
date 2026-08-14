@@ -6,6 +6,7 @@ const { notificarAtendente, notificarSeDisponivel }         = require("../servic
 const { sanitizarTexto, normalizar, validarTamanho } = require("../utils/validators");
 const { perguntarIA, iaEmFalhaCritica }                      = require("../services/ai.service");
 const { getBotConfig }                                      = require("../services/botConfig.service");
+const { getSettings }                                        = require("../services/settings.service");
 const logger                                                = require("../utils/logger");
 const MSG                                                   = require("./messages");
 const pool                                                  = require("../database/postgres");
@@ -242,14 +243,77 @@ async function _consultarProtocolo(userId, message) {
 }
 
 // ── Função principal (com proteção global contra exceções) ────────────────────
+// PEDIDO DO USUÁRIO (2026-08-14): "preciso que o bot atenda até 3 mensagens
+// de clientes e encaminhe direto pra o atendente". Escolhas confirmadas via
+// AskUserQuestion: (1) a 3ª mensagem AINDA é respondida normalmente pelo
+// bot — só depois disso é que avisa e transfere; (2) o contador reseta por
+// TICKET/atendimento (novo ticket = conta do zero; ticket fechado e
+// reaberto depois também conta como novo); (3) vale pra QUALQUER intenção
+// (vendas, dúvida, chat) — não só consulta de peça.
+const LIMITE_MENSAGENS_BOT = parseInt(process.env.LIMITE_MENSAGENS_BOT || "3", 10);
+
 async function mainFlow({ userId, message }) {
   try {
-    return await _mainFlowInterno({ userId, message });
+    // Conta ANTES de processar — mensagem atual já entra na contagem.
+    const sessaoAntes = getSession(userId);
+    const contador = (sessaoAntes.contadorMsgsBot || 0) + 1;
+    await updateSession(userId, { contadorMsgsBot: contador });
+
+    const resposta = await _mainFlowInterno({ userId, message });
+
+    if (contador >= LIMITE_MENSAGENS_BOT) {
+      // Se o próprio fluxo interno já criou um ticket nesta rodada (vendas
+      // fechou orçamento, cliente pediu atendente explicitamente etc.),
+      // finalizarComTicket (session.service.js) já zerou contadorMsgsBot —
+      // não força uma 2ª transferência em cima da que já aconteceu.
+      const sessaoDepois = getSession(userId);
+      if ((sessaoDepois.contadorMsgsBot || 0) >= LIMITE_MENSAGENS_BOT) {
+        return await _forcarTransferenciaAtendente(userId, resposta, message, sessaoDepois);
+      }
+    }
+
+    return resposta;
   } catch (err) {
     logger.error(`[mainFlow] Erro inesperado para ${userId}: ${err.message}\n${err.stack}`);
     try { await clearSession(userId); } catch (err) { logger.warn(`[mainFlow] Erro ao limpar sessão: ${err.message}`); }
     return _msgFallback(null);
   }
+}
+
+// Encaminhamento automático ao bater o limite de mensagens (ver
+// LIMITE_MENSAGENS_BOT acima). Mesmo padrão de criação de ticket já usado
+// no fluxo manual "Falar com atendente" (sector "atendente" /
+// aguardando_motivo_atendente) — só que aqui não há "motivo" digitado pelo
+// cliente (é automático), então a descrição do ticket usa a última
+// mensagem recebida com uma marcação clara de que foi um encaminhamento
+// automático, pra o atendente já entender o contexto ao abrir o ticket.
+async function _forcarTransferenciaAtendente(userId, respostaAtual, ultimaMensagem, sessao) {
+  const nomeSalvo = sessao.customerName || sessao.nome || null;
+
+  const ticket = await _criarTicket({
+    userId,
+    type:         "atendente_humano",
+    sector:       "atendimento",
+    customerName: nomeSalvo || MSG.NAO_INFORMADO,
+    description:  `[Encaminhado automaticamente após ${LIMITE_MENSAGENS_BOT} mensagens] ${sanitizarTexto(ultimaMensagem)}`,
+  });
+
+  if (!ticket) {
+    // Falha ao criar o ticket não deve impedir a resposta normal do bot
+    // (mesma lógica defensiva de _criarTicket usada no resto do arquivo) —
+    // só não transfere desta vez; a mensagem seguinte tenta de novo.
+    logger.warn(`[mainFlow] Falha ao criar ticket de transferência automática (limite de mensagens) para ${userId}`);
+    return respostaAtual;
+  }
+
+  estaEmHorarioDeAtendimento() ? notificarAtendente(ticket) : notificarSeDisponivel(ticket);
+  await finalizarComTicket(userId, ticket);
+
+  const settings = await getSettings();
+  const mensagemTransferencia = settings.atendimento?.mensagemTransferencia
+    || "Vou encaminhar você para um atendente humano. Aguarde um momento, por favor.";
+
+  return `${respostaAtual}\n\n${mensagemTransferencia}\n🎫 Protocolo: *#${ticket.protocolo}*`;
 }
 
 async function _mainFlowInterno({ userId, message }) {

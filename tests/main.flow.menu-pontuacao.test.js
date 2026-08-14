@@ -57,14 +57,21 @@ describe("mainFlow — opções do menu principal com pontuação", () => {
   );
 
   // Opção 2 (renumerada de 3 após a remoção do Crediário, 2026-07-24) —
-  // mensagem estática, sem sector/sessão (ver messages.js MSG.outrosContatos).
+  // mensagem estática, sem sector/step (ver messages.js MSG.outrosContatos).
+  // ATUALIZADO (2026-08-14): "sem entrar em fluxo/sessão" continua valendo
+  // pra sector/step — mas agora TODA mensagem passa pelo contador
+  // contadorMsgsBot do limite de 3 mensagens (ver mainFlow, wrapper em
+  // main.flow.js), então updateSession passa a ser chamado aqui também,
+  // só que SEM sector/step — mantém o invariante original (esta opção não
+  // inicia fluxo nenhum), só não é mais 100% stateless.
   test.each(["2", "2.", "2)"])(
-    "'%s' → mostra a lista de Outros Contatos, sem entrar em fluxo/sessão",
+    "'%s' → mostra a lista de Outros Contatos, sem entrar em fluxo/sessão (só conta a mensagem)",
     async (mensagem) => {
       const resposta = await mainFlow({ userId: USER_ID, message: mensagem });
       expect(resposta).toContain("Outros Contatos");
       expect(resposta).toContain("Ouvidoria");
-      expect(sessionService.updateSession).not.toHaveBeenCalled();
+      expect(sessionService.updateSession).toHaveBeenCalledTimes(1);
+      expect(sessionService.updateSession).toHaveBeenCalledWith(USER_ID, { contadorMsgsBot: 1 });
     }
   );
 

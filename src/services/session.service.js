@@ -203,6 +203,17 @@ async function finalizarComTicket(userId, ticket) {
     // Pedido do usuário: flag de confirmação pendente ("digite sim ou 1")
     // do orçamento — limpa junto pra não sobreviver a um ticket já criado.
     aguardandoConfirmacaoOrcamento: undefined,
+    // PEDIDO DO USUÁRIO (2026-08-14): "atenda até 3 mensagens de clientes e
+    // encaminhe direto pra o atendente" — contadorMsgsBot (ver main.flow.js,
+    // mainFlow) conta mensagens do cliente respondidas pelo bot dentro do
+    // MESMO atendimento; zera aqui porque um ticket acabou de ser criado —
+    // é exatamente o limite "reseta por atendimento" escolhido pelo usuário
+    // (ticket fechado + reaberto depois também conta como novo, porque por
+    // essa mesma razão o contador já estava zerado desde a criação do
+    // ticket original). Isso também evita o mainFlow forçar uma 2ª
+    // transferência na mesma resposta quando o próprio fluxo (vendas,
+    // "falar com atendente" etc.) já criou um ticket nesta rodada.
+    contadorMsgsBot: 0,
     aiHistorico,
   }, { skipTimer: true });
 }

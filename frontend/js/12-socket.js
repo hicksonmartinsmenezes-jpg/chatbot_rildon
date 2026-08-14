@@ -344,7 +344,12 @@ socket.on("nova_mensagem", (data) => {
     showToast("💬 Nova mensagem recebida!");
     if (typeof pushNotification === "function") {
       const nome = data.contactName || formatPhone(data.userId);
-      pushNotification("message", `${nome}: ${(data.message || "").slice(0, 60)}`, data.userId);
+      // PEDIDO DO USUÁRIO (2026-08-14): notificação do SO não deve mostrar o
+      // rótulo interno "[imagem recebida]"/"[sticker recebido]" como se
+      // fosse o texto do cliente — troca por um rótulo amigável (ver
+      // mediaPlaceholderFriendlyLabel em conversations-utils.js).
+      const textoMsg = mediaPlaceholderFriendlyLabel(data.message) || data.message || "";
+      pushNotification("message", `${nome}: ${textoMsg.slice(0, 60)}`, data.userId);
     }
   }
 });

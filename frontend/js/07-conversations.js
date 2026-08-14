@@ -585,7 +585,14 @@ async function openConversation(userId, updateActive = true) {
       // uma linha do histórico não distingue com segurança o id da mensagem
       // do cliente do id da mensagem do próprio atendente, então citar uma
       // mensagem de mídia (sem texto) ou sem messageId ficaria ambíguo.
-      const podeResponder = Boolean(item.message && item.messageId);
+      //
+      // PEDIDO DO USUÁRIO (2026-08-14): não tratar o rótulo interno de mídia
+      // sem legenda ("[imagem recebida]", "[sticker recebido]" etc. — ver
+      // isMediaPlaceholderLabel em conversations-utils.js) como texto de
+      // verdade — nem pra exibir (a mídia já aparece no balão logo acima),
+      // nem pra oferecer resposta/citação em cima dele.
+      const ehPlaceholderMidia = isMediaPlaceholderLabel(item.message);
+      const podeResponder = Boolean(item.message && item.messageId && !ehPlaceholderMidia);
       const replyBtn = podeResponder
         ? `<button type="button" class="bubble-reply-btn" data-reply-msg-id="${escapeAttr(item.messageId)}" data-reply-text="${escapeAttr(item.message.slice(0, 300))}" title="Responder"><i class="fa-solid fa-reply"></i></button>`
         : "";
@@ -594,7 +601,7 @@ async function openConversation(userId, updateActive = true) {
           <div class="bubble client">
             ${replyBtn}
             ${renderMediaBubble(item)}
-            ${item.message ? `<p>${safe(item.message)}</p>` : ""}
+            ${item.message && !ehPlaceholderMidia ? `<p>${safe(item.message)}</p>` : ""}
             <small>${safe(shortTime(item.createdAt))}</small>
           </div>
         </div>

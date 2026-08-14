@@ -1,6 +1,40 @@
 // conversations-utils.js
 // Funções utilitárias puras usadas pela tela de conversas.
 
+// PEDIDO DO USUÁRIO (2026-08-14): "preciso que remova transcrições de
+// imagens e stickers como: [imagem recebida] [sticker recebido]". O backend
+// grava esse rótulo em `message` pra mídia sem legenda (whatsapp.js) — ele
+// nunca foi pensado pra aparecer como TEXTO pro atendente, só como um
+// marcador interno pra a linha nunca ficar vazia no histórico (ver
+// comentário em 07-conversations.js). Como a mídia real já aparece como
+// balão (renderMediaBubble — foto/áudio/vídeo/documento), mostrar esse
+// colchete como se fosse uma frase digitada pelo cliente é redundante e
+// confuso. Esta função reconhece os 5 rótulos que o backend realmente gera
+// (message-utils.js getMediaType: imagem/sticker/áudio/documento/vídeo) e
+// devolve um rótulo amigável pra lugares que precisam de um texto curto
+// (prévia da lista de conversas, notificação do SO) — ou null quando a
+// mensagem é texto de verdade, pra quem só precisa saber "isso é só o
+// marcador de mídia, não mostre como frase" (ex: bolha do chat, que já tem
+// a mídia visível ao lado).
+const _MEDIA_PLACEHOLDER_LABELS = {
+  "imagem recebida":    "📷 Foto",
+  "sticker recebido":   "🌟 Figurinha",
+  "áudio recebido":     "🎤 Áudio",
+  "documento recebido": "📎 Documento",
+  "vídeo recebido":     "🎬 Vídeo",
+};
+
+function mediaPlaceholderFriendlyLabel(msg) {
+  if (!msg) return null;
+  const m = /^\[(.+)\]$/.exec(msg.trim());
+  if (!m) return null;
+  return _MEDIA_PLACEHOLDER_LABELS[m[1].toLowerCase()] || null;
+}
+
+function isMediaPlaceholderLabel(msg) {
+  return mediaPlaceholderFriendlyLabel(msg) !== null;
+}
+
 function getLastHistoryItem(userId) {
   // Snapshot para evitar race se allHistory for substituído durante iteração
   const snap = allHistory;
@@ -11,7 +45,8 @@ function getLastHistoryItem(userId) {
 
 function lastMessage(userId) {
   const last   = getLastHistoryItem(userId);
-  const text   = last?.message || last?.response || "Sem mensagens";
+  const raw    = last?.message || last?.response || "Sem mensagens";
+  const text   = mediaPlaceholderFriendlyLabel(last?.message) || raw;
   const prefix = last?.response && !last?.message ? "Você: " : "";
   return cutText(`${prefix}${text}`, 52);
 }

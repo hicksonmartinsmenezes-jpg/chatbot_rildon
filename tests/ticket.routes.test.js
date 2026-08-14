@@ -135,6 +135,14 @@ function installFakePool(state) {
         t.assigned_to = null;
         t.assigned_to_name = null;
       }
+      // Migration 026: fechar grava closed_at, reabrir limpa — espelha
+      // updateStatus() (ticket.repository.js).
+      if (/closed_at = NOW\(\)/.test(sql)) {
+        t.closed_at = new Date().toISOString();
+      }
+      if (/closed_at = NULL/.test(sql)) {
+        t.closed_at = null;
+      }
       // Pedido do usuário (2026-07-24): reabertura manual (default,
       // resetSatisfaction:true) zera os campos de satisfação; reabertura
       // AUTOMÁTICA (reopenTicketIfClosed, resetSatisfaction:false) não
@@ -222,6 +230,13 @@ function installFakePool(state) {
 
     if (/WHERE DATE\(created_at AT TIME ZONE \$1\) = CURRENT_DATE/.test(sql)) {
       return { rows: [{ total: 0 }] };
+    }
+
+    // Migration 026: "Encerrados hoje" — countEncerradosNoPeriodo()
+    // (ticket.repository.js), conta por closed_at em vez de created_at.
+    if (/^SELECT COUNT\(\*\)::int AS encerrados/.test(sql)) {
+      const encerrados = state.tickets.filter(t => t.closed_at).length;
+      return { rows: [{ encerrados }] };
     }
 
     throw new Error("Query não mapeada no mock de ticket.routes.test.js: " + sql);

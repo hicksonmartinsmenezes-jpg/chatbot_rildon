@@ -1,0 +1,27 @@
+-- Migration 026: tickets.closed_at — instante real em que o ticket fechou
+-- Aplicar com: psql -U <user> -d <db> -f migrations/026_ticket_closed_at.sql
+--
+-- Pedido do usuário (2026-08-14): "métricas serão bem importantes daqui em
+-- diante, preciso que os números batam perfeitamente". O card "Encerrados
+-- hoje" do Dashboard contava tickets CRIADOS hoje que já estão
+-- resolvido/cancelado (baseado em created_at, única data que existia) — um
+-- ticket aberto ontem e fechado hoje ficava de fora da contagem, e um
+-- ticket criado hoje e fechado hoje contava certo só por coincidência.
+--
+-- closed_at é gravado em updateStatus() (ticket.repository.js) exatamente
+-- quando o status vira 'resolvido' ou 'cancelado', e limpo de novo (NULL)
+-- sempre que o ticket é reaberto (status volta pra 'aberto') — tanto
+-- reabertura manual quanto automática, já que as duas passam pela mesma
+-- query. "Encerrados hoje" agora conta por DATE(closed_at), não mais por
+-- DATE(created_at) + status atual.
+--
+-- Tickets já fechados ANTES desta migration ficam com closed_at NULL — não
+-- há como reconstruir esse instante retroativamente (updated_at não serve,
+-- é sobrescrito por qualquer mudança posterior). A métrica de "encerrados
+-- por dia" baseada em closed_at só passa a ter dado real a partir de
+-- tickets fechados DEPOIS desta migration.
+--
+-- Seguro de aplicar: só adiciona coluna nova, nullable, sem tocar em
+-- nenhuma linha existente.
+
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ;

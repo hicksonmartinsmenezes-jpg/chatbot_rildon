@@ -84,6 +84,14 @@ CREATE TABLE IF NOT EXISTS tickets (
   -- reabertura MANUAL (mesma regra da pesquisa de satisfação).
   assumed_at        TIMESTAMPTZ,
 
+  -- Migration 026: instante real em que o ticket fechou (status virou
+  -- resolvido/cancelado) — usado pro card "Encerrados hoje" do Dashboard.
+  -- Diferente de created_at (quando o ticket foi ABERTO): um ticket aberto
+  -- ontem e fechado hoje conta em "hoje" só por causa desta coluna. Setado
+  -- em updateStatus() (ticket.repository.js) ao fechar, limpo (NULL) de
+  -- novo sempre que o ticket é reaberto (manual ou automático).
+  closed_at         TIMESTAMPTZ,
+
   -- Pesquisa de satisfação (migration 015): enviada automaticamente quando
   -- o ticket é fechado (resolvido). satisfaction_asked_at marca "pesquisa
   -- pendente" até o cliente responder um número de 1 a 5 (ou expirar).

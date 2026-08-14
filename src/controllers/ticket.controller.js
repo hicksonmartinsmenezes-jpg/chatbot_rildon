@@ -17,6 +17,7 @@ const {
   clearReopenCooldown,
   foiReabertoManualmenteRecente,
   getTicketStats,
+  getTicketsEncerradosNoPeriodo,
   assignTicket,
   transferTicket
 } = require("../services/ticket.service");
@@ -129,10 +130,17 @@ async function getTickets(req, res) {
     const stats     = await getTicketStats({ dateStart, dateEnd });
     const liveStats = await getTicketStats({}); // sem filtro de data = estado atual real
 
-    // Estatísticas fixas de HOJE (fuso do negócio) — o card "Encerrados" do
-    // Dashboard reflete o dia, independente do filtro de data no topo.
+    // Estatísticas fixas de HOJE (fuso do negócio) — os cards "Total" e
+    // "Encerrados" do Dashboard refletem o dia, independente do filtro de
+    // data no topo (pedido do usuário, 2026-08-14).
     const hoje       = dataHojeISO();
     const todayStats = await getTicketStats({ dateStart: hoje, dateEnd: hoje });
+
+    // Migration 026: "Encerrados hoje" tem que contar por closed_at (quando
+    // o ticket FECHOU), não por created_at (quando foi ABERTO) — senão um
+    // ticket aberto ontem e resolvido hoje fica de fora. todayStats acima
+    // continua servindo pro "Total de atendimentos" (criados hoje).
+    const encerradosHoje = await getTicketsEncerradosNoPeriodo({ dateStart: hoje, dateEnd: hoje });
 
     // Pedido do usuário: quando um ticket é assumido/transferido/fechado por
     // OUTRO atendente enquanto eu já estava com a conversa aberta na tela,
@@ -143,7 +151,7 @@ async function getTickets(req, res) {
     // ou privilegiado) ou só quando o ticket for realmente meu/livre.
     const canManageAnyTicket = canUseFullConversationPanel(req.user);
 
-    res.json({ stats, liveStats, todayStats, total: tickets.length, tickets, hiddenActiveUserIds, canManageAnyTicket });
+    res.json({ stats, liveStats, todayStats, encerradosHoje, total: tickets.length, tickets, hiddenActiveUserIds, canManageAnyTicket });
   } catch (err) {
     logger.error(`[getTickets] ${err.message}`);
     res.status(500).json({ error: "Erro ao listar tickets." });

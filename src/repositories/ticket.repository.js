@@ -197,18 +197,26 @@ async function updateStatus(id, status, { resetSatisfaction = true } = {}) {
   // sem esse parâmetro, default true — comportamento de sempre).
   const reabrindo = status === "aberto";
   const zerarSatisfacao = reabrindo && resetSatisfaction;
+  const fechando = status === "resolvido" || status === "cancelado";
 
   // Migration 022: assumed_at (tempo até 1ª resposta) segue a MESMA regra
   // de zerarSatisfacao — reabertura manual é "atendimento novo de verdade"
   // (zera pra próxima assumida contar como uma nova 1ª resposta), reabertura
   // automática (mesma conversa continuando, dentro da janela de poucos
   // minutos) preserva o instante original.
+  //
+  // Migration 026: closed_at grava o instante REAL do fechamento (diferente
+  // de created_at, quando o ticket foi aberto) — sem isso "Encerrados hoje"
+  // no Dashboard só conseguia contar por created_at, perdendo ticket aberto
+  // num dia e fechado no seguinte. Sempre limpo (NULL) ao reabrir — manual
+  // ou automático, tanto faz — porque o ticket deixou de estar fechado.
   const result = await pool.query(
     `
     UPDATE tickets
     SET status = $1,
         updated_at = NOW()
-        ${reabrindo ? ", assigned_to = NULL, assigned_to_name = NULL" : ""}
+        ${reabrindo ? ", assigned_to = NULL, assigned_to_name = NULL, closed_at = NULL" : ""}
+        ${fechando ? ", closed_at = NOW()" : ""}
         ${zerarSatisfacao ? ", satisfaction_rating = NULL, satisfaction_asked_at = NULL, satisfaction_rated_at = NULL, assumed_at = NULL" : ""}
     WHERE ${idOrProtocolWhere(idStr, 2)}
     RETURNING *
@@ -331,6 +339,39 @@ async function stats({ dateStart, dateEnd } = {}) {
   return result.rows[0];
 }
 
+// Migration 026: conta tickets FECHADOS (closed_at) dentro do período —
+// diferente de stats(), que filtra por created_at. Usado pro card
+// "Encerrados hoje" do Dashboard: um ticket aberto ontem e resolvido hoje
+// deve contar em "hoje", o que só é possível filtrando pela data em que
+// ele REALMENTE fechou, não pela data em que foi criado. Consulta separada
+// (em vez de estender stats()) porque misturar as duas datas na mesma
+// query com um único WHERE geraria contagem errada — teria que restringir
+// created_at E closed_at ao mesmo tempo, quando o objetivo é justamente
+// contar independente de quando foi criado.
+async function countEncerradosNoPeriodo({ dateStart, dateEnd } = {}) {
+  const TZ = safeTZ();
+  const values = [];
+  const where = ["closed_at IS NOT NULL"];
+
+  if (dateStart) {
+    values.push(dateStart);
+    where.push(`DATE(closed_at AT TIME ZONE '${TZ}') >= $${values.length}::date`);
+  }
+
+  if (dateEnd) {
+    values.push(dateEnd);
+    where.push(`DATE(closed_at AT TIME ZONE '${TZ}') <= $${values.length}::date`);
+  }
+
+  const result = await pool.query(`
+    SELECT COUNT(*)::int AS encerrados
+    FROM tickets
+    WHERE ${where.join(" AND ")}
+  `, values);
+
+  return result.rows[0]?.encerrados ?? 0;
+}
+
 function mapTicket(row) {
   return {
     id: row.id,
@@ -348,6 +389,8 @@ function mapTicket(row) {
     updatedAt: row.updated_at,
     // Migration 022: instante da 1ª resposta humana (ver assign/updateStatus).
     assumedAt: row.assumed_at ?? null,
+    // Migration 026: instante real do fechamento (ver updateStatus).
+    closedAt: row.closed_at ?? null,
     // Pesquisa de satisfação (migration 015) — ver askSatisfaction/rateSatisfaction.
     satisfactionRating: row.satisfaction_rating ?? null,
     satisfactionAskedAt: row.satisfaction_asked_at ?? null,
@@ -511,6 +554,7 @@ module.exports = {
   assign,
   transfer,
   stats,
+  countEncerradosNoPeriodo,
   gerarProtocolo,
   askSatisfaction,
   hasSurveyAskedToday,

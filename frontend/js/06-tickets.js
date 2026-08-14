@@ -26,7 +26,7 @@ async function _loadTicketsCore() {
     if (!res) return;
     const data = await res.json();
 
-    updateStats(data.stats, data.tickets || [], data.liveStats, data.todayStats);
+    updateStats(data.stats, data.tickets || [], data.liveStats, data.todayStats, data.encerradosHoje);
 
     if (!firstLoadTickets && data.total > lastTicketTotal) showNewTicketAlert();
 
@@ -92,10 +92,15 @@ async function _executarMudarStatus(id, status) {
   });
 }
 
-function updateStats(stats, tickets = [], liveStats = null, todayStats = null) {
+function updateStats(stats, tickets = [], liveStats = null, todayStats = null, encerradosHoje = null) {
   if (!stats) return;
 
-  const total     = stats.total ?? 0;
+  // Pedido do usuário (2026-08-14): "Total de atendimentos" é sempre HOJE,
+  // fixo — não muda com o filtro de data do topo (mesmo padrão que
+  // Encerrados já seguia). todayStats vem do backend já filtrado por
+  // created_at = hoje (fuso do negócio), independente de dateStart/dateEnd.
+  const hojeBase  = todayStats || stats;
+  const total     = hojeBase.total ?? 0;
   const resolvido = stats.resolvido ?? stats.resolvidos ?? 0;
   const cancelado = stats.cancelado ?? stats.cancelados ?? 0;
 
@@ -104,15 +109,17 @@ function updateStats(stats, tickets = [], liveStats = null, todayStats = null) {
   const aberto    = live.aberto ?? live.abertos ?? 0;
   const andamento = live.em_andamento ?? 0;
 
-  // Encerrados reflete apenas HOJE (todayStats), coerente com o foco do Dashboard no dia.
-  const hoje         = todayStats || stats;
-  const encerradosHoje = (hoje.resolvido ?? 0) + (hoje.cancelado ?? 0);
+  // Migration 026: Encerrados hoje vem pronto do backend (encerradosHoje),
+  // contado por closed_at (quando o ticket REALMENTE fechou) — não mais
+  // aproximado por "criado hoje + status atual", que perdia ticket aberto
+  // num dia e fechado no seguinte.
+  const encerrados = encerradosHoje ?? ((hojeBase.resolvido ?? 0) + (hojeBase.cancelado ?? 0));
 
   setText("stat-total",    total);
   setText("stat-aberto",   aberto);    // Pendentes = aberto (todos, sem filtro de data)
   setText("stat-andamento",andamento); // Ativos    = em_andamento (todos)
   setText("stat-resolvido",resolvido);
-  setText("stat-encerrados",encerradosHoje);  // Encerrados = resolvido + cancelado, apenas de HOJE
+  setText("stat-encerrados",encerrados);  // Encerrados = fechados (closed_at) HOJE
   setText("stat-contatos", new Set((tickets || []).map(t => t.userId)).size);
 
   setText("op-aberto",    aberto);

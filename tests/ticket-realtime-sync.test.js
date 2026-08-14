@@ -76,6 +76,8 @@ function installFakePool(state) {
       if (!t) return { rows: [] };
       t.status = params[0];
       if (/assigned_to = NULL/.test(sql)) { t.assigned_to = null; t.assigned_to_name = null; }
+      if (/closed_at = NOW\(\)/.test(sql)) { t.closed_at = new Date().toISOString(); }
+      if (/closed_at = NULL/.test(sql)) { t.closed_at = null; }
       return { rows: [t] };
     }
     if (/^UPDATE tickets\s+SET assigned_to = \$1/.test(sql)) {
@@ -116,6 +118,9 @@ function installFakePool(state) {
     if (/COALESCE\(sector,'geral'\) AS setor/.test(sql)) return { rows: [] };
     if (/assigned_to_name AS nome/.test(sql)) return { rows: [] };
     if (/WHERE DATE\(created_at AT TIME ZONE \$1\) = CURRENT_DATE/.test(sql)) return { rows: [{ total: 0 }] };
+    if (/^SELECT COUNT\(\*\)::int AS encerrados/.test(sql)) {
+      return { rows: [{ encerrados: state.tickets.filter(t => t.closed_at).length }] };
+    }
 
     throw new Error("Query não mapeada: " + sql);
   });

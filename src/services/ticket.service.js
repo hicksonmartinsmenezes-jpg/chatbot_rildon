@@ -288,6 +288,13 @@ async function getTicketStats({ dateStart, dateEnd } = {}) {
   return ticketRepository.stats({ dateStart, dateEnd });
 }
 
+// Migration 026: quantos tickets FECHARAM no período (closed_at), não
+// quantos foram criados e já estão fechados (stats() acima, baseado em
+// created_at). Usado pro card "Encerrados hoje" do Dashboard.
+async function getTicketsEncerradosNoPeriodo({ dateStart, dateEnd } = {}) {
+  return ticketRepository.countEncerradosNoPeriodo({ dateStart, dateEnd });
+}
+
 async function getTicketsByCPF(cpf) {
   const cpfLimpo = String(cpf || "").replace(/\D/g, "");
   if (!cpfLimpo) return [];
@@ -555,6 +562,7 @@ module.exports = {
   assignTicket,
   transferTicket,
   getTicketStats,
+  getTicketsEncerradosNoPeriodo,
   getTicketsByCPF,
   parseSatisfactionRating,
   handleSatisfactionReply,

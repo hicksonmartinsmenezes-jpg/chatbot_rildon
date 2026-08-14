@@ -603,10 +603,23 @@ function buscarPorCodigoOriginal(texto, { limite = 5 } = {}) {
 // sinal de veículo — sem isso, "tem" bate como substring dentro de "TEMPRA"
 // e gera falso positivo (achado ao vivo em 2026-07-21: mensagem sobre
 // Ferrari retornou peça pra Fiat só por causa de "tem"/"pra").
+// BUG REAL relatado pelo usuário (2026-08-14, print de conversa real):
+// "Vocês trabalham com linha pesada, tipo caminhão Volvo?" — pergunta
+// GENÉRICA de categoria, sem citar peça nenhuma — confirmou "PALHETA 26
+// VETOR P/CAMINHAO VOLVO..." (um limpador de para-brisa) só porque
+// "CAMINHAO" e "VOLVO" batiam como substring dentro do NOME do produto
+// (que embute a lista de aplicação). Mesma causa raiz do bug de
+// "peça"/veículo já corrigido em buscarPorNomeProduto (ver
+// PALAVRAS_GENERICAS_PECA mais abaixo) — só que aqui o token problemático
+// era "CAMINHAO" (tipo de veículo genérico), que ficou de fora da lista
+// original por descuido: "carro"/"veiculo" já eram tratados como filler
+// óbvio demais pra identificar um veículo específico, mas "caminhao"/
+// "moto"/"onibus" (mesma categoria semântica) não estavam.
 const STOPWORDS_VEICULO = new Set([
   "tem", "tém", "têm", "pra", "pro", "para", "com", "uma", "um", "dos", "das",
   "que", "voce", "voces", "vcs", "tenho", "precis", "preciso", "gostaria",
   "meu", "minha", "carro", "veiculo", "modelo", "ano", "tipo", "aquele", "aquela",
+  "caminhao", "caminhoes", "moto", "motos", "onibus",
 ]);
 
 function buscarPorVeiculo(mensagem, linhasCandidatas = [], { limite = 3 } = {}) {
@@ -697,6 +710,18 @@ function buscarPorVeiculo(mensagem, linhasCandidatas = [], { limite = 3 } = {}) 
 const PALAVRAS_GENERICAS_PECA = new Set([
   "peca", "pecas", "peco", "produto", "produtos", "coisa", "algo",
   "componente", "acessorio", "item", "negocio", "troço", "troco",
+  // BUG REAL relatado pelo usuário (2026-08-14, print de conversa real):
+  // "Vocês trabalham com linha pesada, tipo caminhão Volvo?" — pergunta
+  // sobre o SEGMENTO/categoria que a loja atende (mesmo vocabulário do
+  // prompt da IA: "linha leve/pesada/agrícola", ver ai.service.js), não o
+  // nome de peça nenhuma — mas confirmou uma PALHETA (limpador de
+  // para-brisa) qualquer que por acaso tinha "VOLVO" na aplicação embutida
+  // no nome, porque "LINHA" também contava como token válido de match. Como
+  // "linha"/"pesada"/"leve"/"agrícola" descrevem o SEGMENTO que a loja
+  // vende (não uma peça específica), nunca devem contar como sinal de
+  // produto — mesmo raciocínio de "peça"/"produto" acima.
+  "linha", "linhas", "pesada", "pesado", "pesadas", "pesados",
+  "leve", "leves", "agricola", "agricolas",
 ]);
 
 function buscarPorNomeProduto(mensagem, { limite = 3, veiculoTexto = null } = {}) {

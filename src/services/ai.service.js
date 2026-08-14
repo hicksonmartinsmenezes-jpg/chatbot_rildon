@@ -896,7 +896,25 @@ async function perguntarIA(mensagem, { nomeCliente, historico = [], contexto = {
         ? `Sim, temos! 😊 ${matchConfirmado.nome} (ref. ${matchConfirmado.referencia || matchConfirmado.codigo}).`
         : resposta;
 
-      return { resposta: respostaFinal, intencao, veiculo, peca, pedidoExplicito };
+      // BUG REAL relatado pelo usuário (2026-08-14, print de "linha pesada
+      // tipo caminhão Scania?"): a IA classificou intencao="chat" (pergunta
+      // genérica, sem pedir uma peça específica por nome), mas o override
+      // acima MESMO ASSIM confirmou um produto real. main.flow.js decide
+      // qual bloco de continuação usar com base em "intencao" — "chat" cai
+      // no catch-all que agrupa a resposta com o MENU COMPLETO
+      // (menuCompacto), resultando numa mensagem estranha: confirmação de
+      // produto específica seguida de "1 - Orçamento... 2 - Outros
+      // Contatos...". Isso nunca faz sentido quando já confirmamos um
+      // produto de verdade — o caminho "vendas" (usado quando a IA já
+      // classifica certo) produz a continuação limpa "Deseja que eu já
+      // registre esse orçamento?". Fix: sempre que o override determinístico
+      // confirma um produto E a IA tinha classificado como "chat" (o
+      // catch-all incerto — nunca sobrescreve "atendente"/"gestao"/
+      // "suporte", que são pedidos explicitamente diferentes), promove pra
+      // "vendas" pra seguir o mesmo caminho limpo das outras confirmações.
+      const intencaoFinal = (matchConfirmado && intencao === "chat") ? "vendas" : intencao;
+
+      return { resposta: respostaFinal, intencao: intencaoFinal, veiculo, peca, pedidoExplicito };
 
     } catch (err) {
       if (err.name === "AbortError") {

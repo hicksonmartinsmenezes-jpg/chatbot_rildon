@@ -539,6 +539,67 @@ describe("ai.service — override de catálogo só dispara com veículo confirma
     expect(res.veiculo).toBe("Nissan Frontier 2012");
     expect(res.resposta).toBe("Sim, temos! 😊 ALTERNADOR NISSAN FRONTIER 2012 - BOSCH (ref. AL123).");
   });
+
+  // BUG REAL relatado pelo usuário (2026-08-14, print de conversa real):
+  // "Vocês trabalham com linha pesada, tipo caminhão Scania?" foi
+  // classificado pela IA como intencao="chat" (pergunta genérica), mas o
+  // override de nome de produto confirmou um item real. Sem o fix, a
+  // main.flow.js roteava por "chat" e colava um MENU COMPLETO logo depois
+  // da confirmação do produto — mistura sem sentido pro cliente. O fix faz
+  // perguntarIA promover intencao pra "vendas" sempre que o override
+  // confirma produto E a IA tinha dito "chat" (nunca mexe em "atendente"/
+  // "gestao"/"suporte", que são pedidos explicitamente diferentes).
+  test("override confirma produto + IA classifica 'chat' → promove intencao pra 'vendas' (evita menu colado na resposta)", async () => {
+    jest.resetModules();
+    jest.doMock("../src/services/catalogo-x2.service", () => ({
+      buscarPorCodigoOriginal: jest.fn().mockReturnValue([]),
+      buscarPorVeiculo: jest.fn().mockReturnValue([]),
+      buscarPorNomeProduto: jest.fn().mockReturnValue([
+        { nome: "PALHETA 24 VETOR P/CAMINHAO SCANIA", referencia: "PVC2474", codigo: "777" }
+      ]),
+    }));
+    process.env.AI_PROVIDER = "anthropic";
+    process.env.ANTHROPIC_API_KEY = "sk-ant-teste-123";
+    const { perguntarIA } = require("../src/services/ai.service");
+
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        content: [{ text: '"resposta":"Trabalhamos com várias marcas!","intencao":"chat","veiculo":null}' }],
+      }),
+    });
+
+    const res = await perguntarIA("Vocês trabalham com linha pesada, tipo caminhão Scania?", {});
+
+    expect(res.intencao).toBe("vendas");
+    expect(res.resposta).toBe("Sim, temos! 😊 PALHETA 24 VETOR P/CAMINHAO SCANIA (ref. PVC2474).");
+  });
+
+  test("sem override (nenhum produto confirmado) → intencao 'chat' da IA passa direto, sem promoção", async () => {
+    jest.resetModules();
+    jest.doMock("../src/services/catalogo-x2.service", () => ({
+      buscarPorCodigoOriginal: jest.fn().mockReturnValue([]),
+      buscarPorVeiculo: jest.fn().mockReturnValue([]),
+      buscarPorNomeProduto: jest.fn().mockReturnValue([]),
+    }));
+    process.env.AI_PROVIDER = "anthropic";
+    process.env.ANTHROPIC_API_KEY = "sk-ant-teste-123";
+    const { perguntarIA } = require("../src/services/ai.service");
+
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        content: [{ text: '"resposta":"Bom dia! Como posso ajudar?","intencao":"chat","veiculo":null}' }],
+      }),
+    });
+
+    const res = await perguntarIA("Bom dia", {});
+
+    expect(res.intencao).toBe("chat");
+    expect(res.resposta).toBe("Bom dia! Como posso ajudar?");
+  });
 });
 
 describe("ai.service — seleção de provedor via AI_PROVIDER", () => {

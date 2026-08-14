@@ -192,14 +192,10 @@
   flex-shrink: 0;
 }
 
-.catalogo-box-icon-blue {
-  color: #2563eb;
-  background: color-mix(in srgb, #2563eb 15%, transparent);
-}
-
+.catalogo-box-icon-blue,
 .catalogo-box-icon-green {
-  color: #16a34a;
-  background: color-mix(in srgb, #16a34a 15%, transparent);
+  color: var(--cat-text-dim);
+  background: color-mix(in srgb, var(--cat-text-dim) 15%, transparent);
 }
 
 .catalogo-box-title {
@@ -217,8 +213,8 @@
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #16a34a;
-  background: color-mix(in srgb, #16a34a 15%, transparent);
+  color: var(--cat-text-dim);
+  background: color-mix(in srgb, var(--cat-text-dim) 15%, transparent);
   flex-shrink: 0;
 }
 

@@ -169,7 +169,7 @@
 }
 
 .catalogo-erp-box:focus-within {
-  border-color: color-mix(in srgb, var(--primary) 45%, var(--cat-line));
+  border-color: color-mix(in srgb, var(--cat-text-dim) 50%, var(--cat-line));
 }
 
 .catalogo-box-header {
@@ -279,9 +279,7 @@
 .catalogo-erp-row input:focus,
 .catalogo-erp-row select:focus {
   outline: none;
-  border-color: var(--primary);
-  background-color: color-mix(in srgb, var(--cat-bg-0) 92%, var(--primary) 3%);
-  box-shadow: 0 0 0 3.5px color-mix(in srgb, var(--primary) 20%, transparent);
+  border-color: color-mix(in srgb, var(--cat-text-dim) 60%, var(--cat-line));
 }
 
 .catalogo-erp-row select:disabled {
@@ -343,17 +341,6 @@
 }
 
 .catalogo-erp-clear-btn:active { transform: translateY(0); }
-
-.catalogo-actions-tip {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #16a34a;
-}
-
-.catalogo-actions-tip i { font-size: 12px; }
 
 .catalogo-hint {
   display: flex;

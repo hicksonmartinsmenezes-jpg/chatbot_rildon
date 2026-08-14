@@ -269,6 +269,16 @@ async function patchTicket(req, res) {
       clearReopenCooldown(ticket.userId);
     }
 
+    // PEDIDO DO USUÁRIO (2026-08-14): "sempre que eu fechar algum
+    // atendimento pelo usuário administrador, independentemente, não
+    // solte pesquisa satisfatória" — fechamento feito pela conta admin
+    // (perfil "admin") nunca dispara a pesquisa, não importa o motivo do
+    // fechamento (teste, correção manual, ticket velho etc.). Checado
+    // ANTES das outras condições (skipSurvey/reabertura recente) — é um
+    // bloqueio incondicional pelo perfil de quem fechou, não mais uma
+    // exceção pontual daquelas.
+    const fechadoPeloAdmin = req.user?.perfil === "admin";
+
     // Só pra "resolvido", e só na transição real (ver nota acima) — evita
     // reenviar a pesquisa quando o ticket já estava resolvido. skipSurvey
     // (ver acima) permite fechar sem disparar a pesquisa, quando pedido
@@ -281,6 +291,7 @@ async function patchTicket(req, res) {
       status === "resolvido" &&
       !jaEstavaResolvido &&
       !skipSurvey &&
+      !fechadoPeloAdmin &&
       !(await foiReabertoManualmenteRecente(atual.id))
     ) {
       await enviarPesquisaSatisfacao(ticket);

@@ -87,6 +87,19 @@ function installFakePool(state) {
       t.satisfaction_asked_at = new Date().toISOString();
       return { rows: [t] };
     }
+    // BUG DE FIXTURE ACHADO (2026-08-14, ao adicionar o bloqueio de admin):
+    // hasSurveyAskedToday() (ticket.repository.js, feature de 30/07 — "só 1
+    // pesquisa por cliente ao dia") nunca tinha um handler aqui — toda
+    // chamada de enviarPesquisaSatisfacao caía no "Query não mapeada" e era
+    // engolida pelo catch best-effort, fazendo TODOS os testes deste
+    // arquivo falharem silenciosamente com "sendMessage não foi chamado",
+    // mesmo sem relação nenhuma com a mudança de admin. Simplificado: já que
+    // os testes daqui não avançam o relógio entre chamadas no mesmo dia,
+    // basta checar se já existe satisfaction_asked_at pra esse userId.
+    if (/^SELECT 1 FROM tickets\s+WHERE user_id = \$1\s+AND satisfaction_asked_at IS NOT NULL/.test(sql)) {
+      const t = state.tickets.find(x => x.user_id === params[0] && x.satisfaction_asked_at);
+      return { rows: t ? [{ "?column?": 1 }] : [] };
+    }
     if (/^SELECT \* FROM tickets\s*(WHERE|ORDER)/.test(sql) || sql.startsWith("SELECT * FROM tickets")) {
       return { rows: [...state.tickets] };
     }
@@ -105,7 +118,18 @@ function buildApp(currentUser) {
   return app;
 }
 
-const ADMIN = { id: "admin-1", nome: "Ana Admin", perfil: "admin", sector: "geral" };
+// PEDIDO DO USUÁRIO (2026-08-14): "sempre que eu fechar algum atendimento
+// pelo usuário administrador, independentemente, não solte pesquisa
+// satisfatória" — fechar como perfil "admin" agora NUNCA dispara a pesquisa
+// (ver fechadoPeloAdmin em ticket.controller.js), incondicionalmente. Os
+// testes deste arquivo testam a lógica de DEDUPLICAÇÃO em si (não reenviar
+// pra um ticket já fechado, respeitar a janela de reabertura etc.) — usar
+// um perfil "admin" aqui esconderia essa lógica atrás do novo bloqueio
+// incondicional (a pesquisa nunca sairia, dedup ou não). Por isso o ator
+// usado para fechar os tickets neste arquivo é "atendente", não "admin" — a
+// cobertura específica do bloqueio por admin fica no describe no final
+// deste arquivo.
+const ATENDENTE = { id: "at-1", nome: "Bruno Atendente", perfil: "atendente", sector: "vendas" };
 
 describe("patchTicket — não reenvia pesquisa de satisfação ao fechar um ticket já fechado", () => {
   let state;
@@ -117,7 +141,7 @@ describe("patchTicket — não reenvia pesquisa de satisfação ao fechar um tic
   });
 
   test("fechar 1x dispara a pesquisa 1x", async () => {
-    const app = buildApp(ADMIN);
+    const app = buildApp(ATENDENTE);
     const created = await request(app).post("/api/tickets")
       .send({ userId: "5511900000000@s.whatsapp.net", type: "orcamento" });
     const id = created.body.ticket.id;
@@ -131,7 +155,7 @@ describe("patchTicket — não reenvia pesquisa de satisfação ao fechar um tic
   // Cenário exato reportado: clicar "Resolvido" 2x seguidas (sem loading no
   // botão) no mesmo ticket — o cliente recebia a pesquisa de satisfação 2x.
   test("clicar 'fechar' 2x seguidas no mesmo ticket já resolvido NÃO reenvia a pesquisa", async () => {
-    const app = buildApp(ADMIN);
+    const app = buildApp(ATENDENTE);
     const created = await request(app).post("/api/tickets")
       .send({ userId: "5511900000001@s.whatsapp.net", type: "orcamento" });
     const id = created.body.ticket.id;
@@ -153,7 +177,7 @@ describe("patchTicket — não reenvia pesquisa de satisfação ao fechar um tic
   // sem esperar a 1ª terminar antes de iniciar a 2ª — só a reivindicação
   // atômica em askSatisfaction (ticket.repository.js) garante 1 envio só.
   test("2 requisições PATCH resolvido disparadas em paralelo (sem esperar uma terminar) → pesquisa só 1x", async () => {
-    const app = buildApp(ADMIN);
+    const app = buildApp(ATENDENTE);
     const created = await request(app).post("/api/tickets")
       .send({ userId: "5511900000099@s.whatsapp.net", type: "orcamento" });
     const id = created.body.ticket.id;
@@ -175,7 +199,7 @@ describe("patchTicket — não reenvia pesquisa de satisfação ao fechar um tic
   // (TICKET_REOPEN_WINDOW_MINUTOS, padrão 60min) agora NÃO reenvia — ver
   // foiReabertoManualmenteRecente() em ticket.service.js.
   test("fechar → reabrir → fechar de novo DENTRO da janela → NÃO reenvia a pesquisa", async () => {
-    const app = buildApp(ADMIN);
+    const app = buildApp(ATENDENTE);
     const created = await request(app).post("/api/tickets")
       .send({ userId: "5511900000002@s.whatsapp.net", type: "orcamento" });
     const id = created.body.ticket.id;
@@ -188,7 +212,7 @@ describe("patchTicket — não reenvia pesquisa de satisfação ao fechar um tic
   });
 
   test("fechar → reabrir → fechar de novo bem DEPOIS da janela (60min+) → dispara a pesquisa de novo (atendimento genuinamente novo)", async () => {
-    const app = buildApp(ADMIN);
+    const app = buildApp(ATENDENTE);
     const created = await request(app).post("/api/tickets")
       .send({ userId: "5511900000003@s.whatsapp.net", type: "orcamento" });
     const id = created.body.ticket.id;
@@ -204,5 +228,61 @@ describe("patchTicket — não reenvia pesquisa de satisfação ao fechar um tic
     } finally {
       nowSpy.mockRestore();
     }
+  });
+});
+
+// PEDIDO DO USUÁRIO (2026-08-14): "sempre que eu fechar algum atendimento
+// pelo usuário administrador, independentemente, não solte pesquisa
+// satisfatória". Bloqueio incondicional (ver fechadoPeloAdmin em
+// ticket.controller.js) — testado aqui em cenários que, com um atendente
+// comum, disparariam a pesquisa normalmente (ver describe acima), pra
+// confirmar que é o PERFIL de quem fecha que corta o envio, não outra
+// condição já existente (skipSurvey, dedup etc.).
+describe("patchTicket — fechar como perfil admin nunca dispara a pesquisa de satisfação", () => {
+  let state;
+  const ADMIN = { id: "admin-1", nome: "Ana Admin", perfil: "admin", sector: "geral" };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    state = buildState();
+    installFakePool(state);
+  });
+
+  test("1º fechamento do dia, sem skipSurvey, sem reabertura recente → mesmo assim NÃO envia", async () => {
+    const app = buildApp(ADMIN);
+    const created = await request(app).post("/api/tickets")
+      .send({ userId: "5511900000010@s.whatsapp.net", type: "orcamento" });
+    const id = created.body.ticket.id;
+
+    const res = await request(app).patch(`/api/tickets/${id}`).send({ status: "resolvido" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ticket.status).toBe("resolvido");
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  test("ticket criado por um atendente, mas fechado pelo admin → não envia (o perfil de quem FECHA que importa)", async () => {
+    const atendente = { id: "at-2", nome: "Carla", perfil: "atendente", sector: "vendas" };
+    const criado = await request(buildApp(atendente)).post("/api/tickets")
+      .send({ userId: "5511900000011@s.whatsapp.net", type: "orcamento" });
+    const id = criado.body.ticket.id;
+
+    const res = await request(buildApp(ADMIN)).patch(`/api/tickets/${id}`).send({ status: "resolvido" });
+
+    expect(res.status).toBe(200);
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  test("supervisor (perfil diferente de admin) fechando continua enviando normalmente — bloqueio é só pra 'admin'", async () => {
+    const supervisor = { id: "sup-1", nome: "Sued Supervisor", perfil: "supervisor", sector: "geral" };
+    const app = buildApp(supervisor);
+    const created = await request(app).post("/api/tickets")
+      .send({ userId: "5511900000012@s.whatsapp.net", type: "orcamento" });
+    const id = created.body.ticket.id;
+
+    const res = await request(app).patch(`/api/tickets/${id}`).send({ status: "resolvido" });
+
+    expect(res.status).toBe(200);
+    expect(sendMessage).toHaveBeenCalledTimes(1);
   });
 });

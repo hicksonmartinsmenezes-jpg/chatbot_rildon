@@ -159,6 +159,17 @@ function installFakePool(state) {
       return { rows: [t] };
     }
 
+    // BUG DE FIXTURE ACHADO (2026-08-14): hasSurveyAskedToday()
+    // (ticket.repository.js, feature "só 1 pesquisa por cliente ao dia" de
+    // 30/07) nunca tinha um handler aqui — caía em "Query não mapeada",
+    // engolida pelo catch best-effort de enviarPesquisaSatisfacao, fazendo
+    // vários testes de pesquisa de satisfação falharem silenciosamente sem
+    // relação nenhuma com o que estava sendo testado.
+    if (/^SELECT 1 FROM tickets\s+WHERE user_id = \$1\s+AND satisfaction_asked_at IS NOT NULL/.test(sql)) {
+      const t = state.tickets.find(x => x.user_id === params[0] && x.satisfaction_asked_at);
+      return { rows: t ? [{ "?column?": 1 }] : [] };
+    }
+
     if (/^UPDATE tickets\s+SET assigned_to = \$1/.test(sql)) {
       const t = findTicket(state, params[2]);
       if (!t || t.assigned_to) return { rows: [] };
@@ -668,14 +679,19 @@ describe("ticket.routes", () => {
   // e tests/message.service.test.js; aqui o foco é só o disparo do envio +
   // askSatisfaction() ao fechar, no mesmo padrão best-effort da saudação.
   describe("PATCH /tickets/:id — pesquisa de satisfação ao resolver", () => {
+    // PEDIDO DO USUÁRIO (2026-08-14): fechar como perfil "admin" agora NUNCA
+    // dispara a pesquisa, incondicionalmente (ver describe dedicado mais
+    // abaixo) — usar ADMIN aqui esconderia a lógica de dedup/skipSurvey/
+    // template-vazio sendo testada neste bloco atrás desse bloqueio. Fecha
+    // com ATENDENTE_VENDAS em vez disso.
     async function criarTicket(user) {
       const res = await request(buildApp(user)).post("/api/tickets").send({ userId: "u1", type: "orcamento" });
       return res.body.ticket;
     }
 
     test("fechar como resolvido envia a pesquisa e marca satisfaction_asked_at", async () => {
-      const ticket = await criarTicket(ADMIN);
-      const res = await request(buildApp(ADMIN))
+      const ticket = await criarTicket(ATENDENTE_VENDAS);
+      const res = await request(buildApp(ATENDENTE_VENDAS))
         .patch(`/api/tickets/${ticket.id}`)
         .send({ status: "resolvido" });
 
@@ -690,8 +706,8 @@ describe("ticket.routes", () => {
     });
 
     test("cancelar (não resolvido) NÃO envia pesquisa de satisfação", async () => {
-      const ticket = await criarTicket(ADMIN);
-      const res = await request(buildApp(ADMIN))
+      const ticket = await criarTicket(ATENDENTE_VENDAS);
+      const res = await request(buildApp(ATENDENTE_VENDAS))
         .patch(`/api/tickets/${ticket.id}`)
         .send({ status: "cancelado" });
 
@@ -704,8 +720,8 @@ describe("ticket.routes", () => {
         atendimento: { mensagemSaudacaoAtendente: "", mensagemPesquisaSatisfacao: "" }
       });
 
-      const ticket = await criarTicket(ADMIN);
-      const res = await request(buildApp(ADMIN))
+      const ticket = await criarTicket(ATENDENTE_VENDAS);
+      const res = await request(buildApp(ATENDENTE_VENDAS))
         .patch(`/api/tickets/${ticket.id}`)
         .send({ status: "resolvido" });
 
@@ -716,8 +732,8 @@ describe("ticket.routes", () => {
     test("falha ao enviar a pesquisa não impede o fechamento do ticket (best-effort)", async () => {
       whatsapp.sendMessage.mockRejectedValueOnce(new Error("WhatsApp indisponível"));
 
-      const ticket = await criarTicket(ADMIN);
-      const res = await request(buildApp(ADMIN))
+      const ticket = await criarTicket(ATENDENTE_VENDAS);
+      const res = await request(buildApp(ATENDENTE_VENDAS))
         .patch(`/api/tickets/${ticket.id}`)
         .send({ status: "resolvido" });
 
@@ -729,8 +745,8 @@ describe("ticket.routes", () => {
     // esquecidos em Pendentes — fechar em massa sem incomodar o cliente com
     // uma pesquisa fora de contexto, dias depois do atendimento real.
     test("fechar com skipSurvey:true → fecha normalmente mas NÃO envia a pesquisa", async () => {
-      const ticket = await criarTicket(ADMIN);
-      const res = await request(buildApp(ADMIN))
+      const ticket = await criarTicket(ATENDENTE_VENDAS);
+      const res = await request(buildApp(ATENDENTE_VENDAS))
         .patch(`/api/tickets/${ticket.id}`)
         .send({ status: "resolvido", skipSurvey: true });
 
@@ -740,12 +756,29 @@ describe("ticket.routes", () => {
     });
 
     test("skipSurvey ausente (comportamento padrão) → continua enviando a pesquisa normalmente", async () => {
-      const ticket = await criarTicket(ADMIN);
-      await request(buildApp(ADMIN))
+      const ticket = await criarTicket(ATENDENTE_VENDAS);
+      await request(buildApp(ATENDENTE_VENDAS))
         .patch(`/api/tickets/${ticket.id}`)
         .send({ status: "resolvido" });
 
       expect(whatsapp.sendMessage).toHaveBeenCalledWith("u1", expect.stringContaining("De 1 a 5"));
+    });
+
+    // PEDIDO DO USUÁRIO (2026-08-14): "sempre que eu fechar algum
+    // atendimento pelo usuário administrador, independentemente, não solte
+    // pesquisa satisfatória" — bloqueio incondicional pelo perfil de quem
+    // fecha, mesmo em condições que normalmente disparariam a pesquisa (1º
+    // fechamento do dia, sem skipSurvey, template preenchido — ver testes
+    // acima que passam nessas mesmas condições com ATENDENTE_VENDAS).
+    test("fechar como admin NÃO envia a pesquisa, mesmo sem skipSurvey", async () => {
+      const ticket = await criarTicket(ADMIN);
+      const res = await request(buildApp(ADMIN))
+        .patch(`/api/tickets/${ticket.id}`)
+        .send({ status: "resolvido" });
+
+      expect(res.status).toBe(200);
+      expect(res.body.ticket.status).toBe("resolvido");
+      expect(whatsapp.sendMessage).not.toHaveBeenCalled();
     });
   });
 
@@ -775,8 +808,11 @@ describe("ticket.routes", () => {
         expect.stringContaining("Me chamo")
       );
 
-      // Fecha → pesquisa enviada (1x).
-      await request(buildApp(ADMIN)).patch(`/api/tickets/${ticket.id}`).send({ status: "resolvido" });
+      // Fecha → pesquisa enviada (1x). Fechado por um atendente comum, não
+      // admin — desde 2026-08-14 fechar como "admin" nunca dispara a
+      // pesquisa (ver describe dedicado), o que esconderia o dedup sendo
+      // testado aqui.
+      await request(buildApp(ATENDENTE_VENDAS)).patch(`/api/tickets/${ticket.id}`).send({ status: "resolvido" });
       expect(whatsapp.sendMessage).toHaveBeenCalledWith(
         userId,
         expect.stringContaining("De 1 a 5")
@@ -802,7 +838,7 @@ describe("ticket.routes", () => {
 
       // Fecha de novo — NÃO deve reenviar a pesquisa (já foi enviada e
       // ainda não foi limpa, já que a reabertura foi automática).
-      await request(buildApp(ADMIN)).patch(`/api/tickets/${ticket.id}`).send({ status: "resolvido" });
+      await request(buildApp(ATENDENTE_VENDAS)).patch(`/api/tickets/${ticket.id}`).send({ status: "resolvido" });
       expect(whatsapp.sendMessage).not.toHaveBeenCalledWith(
         userId,
         expect.stringContaining("De 1 a 5")
@@ -821,7 +857,7 @@ describe("ticket.routes", () => {
       const ticket = await criarTicket(ADMIN, userId);
 
       await request(buildApp(ATENDENTE_VENDAS)).patch(`/api/tickets/${ticket.id}/assign`).send({});
-      await request(buildApp(ADMIN)).patch(`/api/tickets/${ticket.id}`).send({ status: "resolvido" });
+      await request(buildApp(ATENDENTE_VENDAS)).patch(`/api/tickets/${ticket.id}`).send({ status: "resolvido" });
       whatsapp.sendMessage.mockClear();
 
       // Reabertura MANUAL via PATCH (não via reopenTicketIfClosed) — o
@@ -842,7 +878,7 @@ describe("ticket.routes", () => {
       const ticket = await criarTicket(ADMIN, userId);
 
       await request(buildApp(ATENDENTE_VENDAS)).patch(`/api/tickets/${ticket.id}/assign`).send({});
-      await request(buildApp(ADMIN)).patch(`/api/tickets/${ticket.id}`).send({ status: "resolvido" });
+      await request(buildApp(ATENDENTE_VENDAS)).patch(`/api/tickets/${ticket.id}`).send({ status: "resolvido" });
       whatsapp.sendMessage.mockClear();
 
       await request(buildApp(ADMIN)).patch(`/api/tickets/${ticket.id}`).send({ status: "aberto" });

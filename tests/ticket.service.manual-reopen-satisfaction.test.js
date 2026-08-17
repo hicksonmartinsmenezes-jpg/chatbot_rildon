@@ -102,8 +102,15 @@ describe("foiReabertoManualmenteRecente — janela pra pular saudação/pesquisa
     ticketRepository.updateStatus.mockResolvedValue({ id: 999, status: "aberto" });
   });
 
-  test("ticket nunca reaberto manualmente → false", () => {
-    expect(foiReabertoManualmenteRecente(999)).toBe(false);
+  // BUG CORRIGIDO (Issue #7, 2026-08-17): foiReabertoManualmenteRecente() é
+  // async (consulta settings.service pra saber a janela configurada — ver
+  // _getReopenWindowMs() em ticket.service.js), então sempre retorna uma
+  // Promise. Os testes deste describe comparavam a Promise direto contra
+  // true/false sem "await" — passava "por acidente" no sandbox local (onde
+  // esta suíte nem chegava a rodar, por falta de Postgres real), mas falha
+  // sempre que executado de verdade (inclusive no CI, contra Postgres real).
+  test("ticket nunca reaberto manualmente → false", async () => {
+    expect(await foiReabertoManualmenteRecente(999)).toBe(false);
   });
 
   test("updateTicketStatus(id, 'aberto', ...) numa reabertura genuína (ticketAtual resolvido) marca o relógio — foiReabertoManualmenteRecente vira true logo em seguida", async () => {
@@ -111,7 +118,7 @@ describe("foiReabertoManualmenteRecente — janela pra pular saudação/pesquisa
       ticketAtual: { id: 999, status: "resolvido", satisfactionRatedAt: null },
     });
 
-    expect(foiReabertoManualmenteRecente(999)).toBe(true);
+    expect(await foiReabertoManualmenteRecente(999)).toBe(true);
   });
 
   test("ticket avaliado há DIAS (fora da janela de _deveManterSatisfacaoAoReabrir) — reabertura manual AINDA marca o relógio novo", async () => {
@@ -127,7 +134,7 @@ describe("foiReabertoManualmenteRecente — janela pra pular saudação/pesquisa
     // do describe acima, inalterado), mas o NOVO relógio de reabertura manual
     // (independente disso) já está ativo.
     expect(ticketRepository.updateStatus).toHaveBeenCalledWith(999, "aberto", { resetSatisfaction: true });
-    expect(foiReabertoManualmenteRecente(999)).toBe(true);
+    expect(await foiReabertoManualmenteRecente(999)).toBe(true);
   });
 
   test("status='aberto' mas ticketAtual JÁ estava aberto/em_andamento (não é uma reabertura de verdade) → não marca o relógio", async () => {
@@ -139,19 +146,19 @@ describe("foiReabertoManualmenteRecente — janela pra pular saudação/pesquisa
       ticketAtual: { id: 1000, status: "em_andamento" },
     });
 
-    expect(foiReabertoManualmenteRecente(1000)).toBe(false);
+    expect(await foiReabertoManualmenteRecente(1000)).toBe(false);
   });
 
   test("expira sozinho depois da janela (TICKET_REOPEN_WINDOW_MINUTOS, padrão 60min)", async () => {
     await updateTicketStatus(999, "aberto", {
       ticketAtual: { id: 999, status: "resolvido", satisfactionRatedAt: null },
     });
-    expect(foiReabertoManualmenteRecente(999)).toBe(true);
+    expect(await foiReabertoManualmenteRecente(999)).toBe(true);
 
     const realNow = Date.now();
     const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => realNow + 61 * 60 * 1000);
     try {
-      expect(foiReabertoManualmenteRecente(999)).toBe(false);
+      expect(await foiReabertoManualmenteRecente(999)).toBe(false);
     } finally {
       nowSpy.mockRestore();
     }

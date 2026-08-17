@@ -90,7 +90,17 @@ function refreshAll() {
     await Promise.allSettled([
       typeof loadTickets === 'function' ? loadTickets() : null,
       typeof loadHistory === 'function' ? loadHistory(false) : null,
-      currentTab === "conversations" && typeof loadConversations === 'function' ? loadConversations() : null,
+      // BUG CORRIGIDO (2026-08-17, "painel mostra 44 notificações porém só 1
+      // mensagem nova"): loadConversations() é quem reconcilia o contador de
+      // não-lidas (unreadMessages) contra o estado real de tickets — antes
+      // só rodava se a aba ativa já fosse "Conversas", então em quem abre o
+      // painel e fica só na Dashboard (o caso mais comum) o número nunca era
+      // corrigido: ficava mostrando o valor acumulado cru do localStorage
+      // até o dia em que alguém entrasse em Conversas por outro motivo.
+      // Silencioso (não mexe na lista visível se a aba não for essa) —
+      // roda em todo refreshAll: boot da sessão (13-main.js), clique em
+      // "Atualizar" e pós-login — pra badge da sidebar já nascer correto.
+      typeof loadConversations === 'function' ? loadConversations(true) : null,
       // Liberado para todos (não gated por perfil, ao contrário de loadSettings)
       typeof loadBotToggleStatus === 'function' ? loadBotToggleStatus() : null
     ].filter(Boolean));

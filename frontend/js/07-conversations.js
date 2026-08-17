@@ -171,25 +171,43 @@ async function _loadConversationsCore(silent = false) {
     }
     window.estaPendente = estaPendente; // usado por _scheduleConvReload em 12-socket.js
 
-    // BUG CORRIGIDO (relatado pelo usuário: "mensagens novas chegam mas não
-    // aparecem como notificação nem no ícone de quantas mensagens ele
-    // mandou" — em conversas já fechadas e reengajadas): esta limpeza de
-    // não-lidas partia da premissa de que "ticket ainda resolvido" só
-    // acontece quando NINGUÉM mandou mensagem nova (premissa válida antes
-    // do fix de estaPendente() acima). Com a janela de reopen
-    // (TICKET_REOPEN_WINDOW_MINUTOS), um ticket pode continuar "resolvido"
-    // PROPOSITALMENTE mesmo com mensagem nova de verdade do cliente (fora da
-    // janela) — essa limpeza rodava a cada poll/reload (a cada nova_mensagem
-    // recebida agenda um _scheduleConvReload, ver 12-socket.js) e zerava o
-    // contador quase imediatamente, apagando a notificação visual antes do
-    // atendente notar. Agora só zera quando o ticket está fechado E não é
-    // mais "pendente" (ninguém falou de novo) — usa estaPendente(), já
-    // corrigido para não contar a pesquisa de satisfação como atividade.
+    // BUG CORRIGIDO DE VEZ (relatado pelo usuário 2026-08-17: "painel mostra
+    // 44 notificações porém existe apenas uma única mensagem nova"):
+    // unreadMessages é um contador que só SOBE (nova_mensagem, 12-socket.js)
+    // e que antes só era zerado em 3 pontos específicos — abrir a conversa
+    // (openConversation), ticket fechar via socket, e o caso "resolvido +
+    // não pendente" aqui embaixo. Nenhum desses cobria o caso mais comum de
+    // acúmulo: um ticket que sai da janela de /api/tickets?limit=500 (fica
+    // "velho demais" pra aparecer na lista) ou nunca virou ticket e a
+    // mensagem já não é de hoje — esse uid nunca mais batia em NENHUM dos 3
+    // casos, então o número ficava ali pra sempre, persistido no
+    // localStorage, só crescendo dia após dia até virar um número sem
+    // relação nenhuma com o que está pendente de verdade.
+    //
+    // Correção definitiva: em vez de tentar prever caso a caso quando zerar,
+    // a cada carregamento o contador é reconciliado contra o universo de
+    // contatos que ainda fazem sentido — ticket meu genuinamente ativo
+    // (aberto, ou em_andamento e visível pra mim) OU contato que falou HOJE
+    // e ainda não tem ticket. Qualquer não-lida fora desse universo é lixo
+    // acumulado (ticket antigo já fechado/fora da janela carregada, ou
+    // ticket em_andamento de OUTRO atendente que ficou oculto pra mim) — é
+    // removida do contador, não só zerada. Como isso roda em todo reload
+    // (poll e cada nova_mensagem via _scheduleConvReload), o contador nunca
+    // mais consegue acumular lixo por mais que alguns segundos.
+    const universoNaoLidaValido = new Set();
+    for (const [uid, t] of Object.entries(ticketsByUser)) {
+      if ((t.status === "aberto" || t.status === "em_andamento") && !hiddenActiveUserIds.has(uid)) {
+        universoNaoLidaValido.add(uid);
+      }
+    }
+    for (const uid of Object.keys(lastMsgAtByUser)) {
+      if (new Date(lastMsgAtByUser[uid]).toDateString() === hoje) universoNaoLidaValido.add(uid);
+    }
     let _unreadLimpo = false;
     for (const uid of Object.keys(unreadMessages)) {
-      const t = ticketsByUser[uid];
-      if (t && (t.status === "resolvido" || t.status === "cancelado") && !estaPendente(uid) && unreadMessages[uid]) {
-        unreadMessages[uid] = 0;
+      if (!unreadMessages[uid]) continue;
+      if (!universoNaoLidaValido.has(uid)) {
+        delete unreadMessages[uid];
         _unreadLimpo = true;
       }
     }

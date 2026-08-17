@@ -118,6 +118,13 @@ function replaceBetweenMarkers(html, startMarker, endMarker, replacement) {
   return `${before}\n  ${replacement}\n  ${after}`;
 }
 
+// Budget com folga real sobre o tamanho atual (218.4 KB JS / 259.4 KB CSS
+// em 2026-08-17, minificado) — não é um teto "justo", é uma rede de
+// segurança contra crescimento descontrolado (ex: lib pesada importada por
+// engano). Se o build passar disso de propósito (nova feature grande),
+// suba o número aqui mesmo, no mesmo PR que justifica o aumento.
+const BUDGET_KB = { js: 400, css: 350 };
+
 async function build() {
   fs.mkdirSync(DIST_DIR, { recursive: true });
 
@@ -163,11 +170,18 @@ async function build() {
 
   fs.writeFileSync(INDEX_HTML, html);
 
-  const jsSizeKb = (Buffer.byteLength(jsResult.code) / 1024).toFixed(1);
-  const cssSizeKb = (Buffer.byteLength(cssResult.code) / 1024).toFixed(1);
-  console.log(`OK bundle JS:  dist/bundle.${jsHash}.js  (${jsSizeKb} KB, ${JS_FILES.length} arquivos)`);
-  console.log(`OK bundle CSS: dist/bundle.${cssHash}.css (${cssSizeKb} KB, ${CSS_FILES.length} arquivos)`);
+  const jsSizeKb = Buffer.byteLength(jsResult.code) / 1024;
+  const cssSizeKb = Buffer.byteLength(cssResult.code) / 1024;
+  console.log(`OK bundle JS:  dist/bundle.${jsHash}.js  (${jsSizeKb.toFixed(1)} KB, ${JS_FILES.length} arquivos)`);
+  console.log(`OK bundle CSS: dist/bundle.${cssHash}.css (${cssSizeKb.toFixed(1)} KB, ${CSS_FILES.length} arquivos)`);
   console.log('OK index.html atualizado.');
+
+  const overBudget = [];
+  if (jsSizeKb > BUDGET_KB.js) overBudget.push(`JS: ${jsSizeKb.toFixed(1)} KB > orçamento de ${BUDGET_KB.js} KB`);
+  if (cssSizeKb > BUDGET_KB.css) overBudget.push(`CSS: ${cssSizeKb.toFixed(1)} KB > orçamento de ${BUDGET_KB.css} KB`);
+  if (overBudget.length > 0) {
+    throw new Error(`Orçamento de tamanho do bundle estourado — ${overBudget.join('; ')}`);
+  }
 }
 
 build().catch(err => {

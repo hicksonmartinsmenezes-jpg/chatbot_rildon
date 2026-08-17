@@ -127,6 +127,7 @@ function _openModal(innerHtml) {
   }
 
   overlay.innerHTML = `<div class="_modal-box" role="dialog" aria-modal="true">${innerHtml}</div>`;
+  overlay.classList.remove("_modal-closing");
   overlay.classList.add("_modal-open");
 
   // Fecha ao clicar fora ou em botões marcados com data-modal-close, sem acumular listeners.
@@ -149,11 +150,18 @@ function _openModal(innerHtml) {
 function _closeModal() {
   const overlay = document.getElementById("_global-modal-overlay");
   if (overlay) {
-    overlay.classList.remove("_modal-open");
     if (window.__rildonModalClickHandler) {
       overlay.removeEventListener("click", window.__rildonModalClickHandler);
       window.__rildonModalClickHandler = null;
     }
+    // Saída animada de verdade em vez de sumir instantâneo: marca .closing
+    // (roda a keyframe de saída, ver _modal-out) e só remove ._modal-open
+    // (display:none) depois que a animação termina.
+    overlay.classList.add("_modal-closing");
+    setTimeout(() => {
+      overlay.classList.remove("_modal-open");
+      overlay.classList.remove("_modal-closing");
+    }, 160);
   }
   if (window.__rildonModalEscHandler) {
     document.removeEventListener("keydown", window.__rildonModalEscHandler);
@@ -174,8 +182,16 @@ function _closeModal() {
       z-index: 9999;
       align-items: center;
       justify-content: center;
+      opacity: 0;
+      animation: _overlay-in .16s var(--ease-out, ease) both;
     }
     #_global-modal-overlay._modal-open { display: flex; }
+    #_global-modal-overlay._modal-closing {
+      display: flex;
+      animation: _overlay-out .16s var(--ease-in, ease) both;
+    }
+    @keyframes _overlay-in  { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes _overlay-out { from { opacity: 1; } to { opacity: 0; } }
     ._modal-box {
       background: var(--color-bg, #1e2330);
       border: 1px solid rgba(255,255,255,.12);
@@ -183,11 +199,18 @@ function _closeModal() {
       width: min(420px, 92vw);
       overflow: hidden;
       box-shadow: 0 20px 60px rgba(0,0,0,.5);
-      animation: _modal-in .15s ease;
+      animation: _modal-in .2s var(--ease-out, ease) both;
+    }
+    #_global-modal-overlay._modal-closing ._modal-box {
+      animation: _modal-out .16s var(--ease-in, ease) both;
     }
     @keyframes _modal-in {
       from { opacity: 0; transform: scale(.96) translateY(-8px); }
       to   { opacity: 1; transform: scale(1)  translateY(0);     }
+    }
+    @keyframes _modal-out {
+      from { opacity: 1; transform: scale(1)   translateY(0);    }
+      to   { opacity: 0; transform: scale(.97) translateY(-6px); }
     }
     .modal-header {
       display: flex; align-items: center; justify-content: space-between;

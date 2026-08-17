@@ -1,16 +1,18 @@
 // 06-tickets.js
 
 // ─── Tickets ──────────────────────────────────────────────────────────────────
-async function loadTickets() {
-  return runExclusive("loadTickets", _loadTicketsCore);
+// silent=true → atualiza sem mostrar skeleton (evita flash em polling/socket
+// automático; mesmo padrão de loadConversations, ver 07-conversations.js)
+async function loadTickets(silent = false) {
+  return runExclusive("loadTickets", () => _loadTicketsCore(silent));
 }
 
-async function _loadTicketsCore() {
+async function _loadTicketsCore(silent = false) {
   const search    = document.getElementById("search")?.value || "";
   const status    = document.getElementById("filter-status")?.value || "";
   const container = document.getElementById("tickets-container");
 
-  if (container) container.innerHTML = `<p class="loading">Carregando atendimentos...</p>`;
+  if (!silent && container) container.innerHTML = renderSkeletonList(5);
 
   try {
     const dateStart = document.getElementById("date-start")?.value || "";
@@ -42,6 +44,7 @@ async function _loadTicketsCore() {
 
     container.innerHTML = data.tickets.map(renderTicketCard).join("");
     bindTicketActionDelegation();
+    if (!silent) applyStaggerIn(container);
   } catch (err) {
     if (container) container.innerHTML = `<p class="empty">❌ Erro ao carregar atendimentos.</p>`;
   }

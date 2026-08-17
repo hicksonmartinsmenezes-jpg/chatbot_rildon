@@ -75,6 +75,7 @@ const CSS_FILES = [
   'css/14-contacts.css',
   'css/16-metrics.css',
   'css/17-catalogo.css',
+  'css/19-motion.css',
   'css/15-light-theme.css', // tema claro deve ser o último (sobrescreve os demais)
   'supervisor.css',
 ];

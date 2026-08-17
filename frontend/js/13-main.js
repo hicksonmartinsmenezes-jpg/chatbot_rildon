@@ -37,7 +37,7 @@ function startPolling() {
   if (_pollId !== null) return _pollId;
   _pollId = setInterval(() => {
     if (!getCurrentUser()) return;
-    if (currentTab === "dashboard" || currentTab === "tickets") loadTickets();
+    if (currentTab === "dashboard" || currentTab === "tickets") loadTickets(true);
     if (currentTab === "history") loadHistory(true);
     if (currentTab === "conversations") loadConversations(true);
   }, 30000);
@@ -59,7 +59,7 @@ document.addEventListener("visibilitychange", () => {
   } else {
     // Ao voltar para a aba, força uma atualização imediata e reinicia o poll
     if (getCurrentUser()) {
-      if (currentTab === "dashboard" || currentTab === "tickets") loadTickets();
+      if (currentTab === "dashboard" || currentTab === "tickets") loadTickets(true);
       if (currentTab === "history") loadHistory(true);
       if (currentTab === "conversations") loadConversations(true);
     }

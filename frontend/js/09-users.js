@@ -21,7 +21,7 @@ async function loadPanelUsers({ silent = false } = {}) {
   const requestId = ++_panelUsersRequestId;
   if (_panelUsersLoading && silent) return;
   _panelUsersLoading = true;
-  if (!silent) list.innerHTML = `<p class="loading">Carregando usuários...</p>`;
+  if (!silent) list.innerHTML = renderSkeletonList(4);
 
   try {
     const res = await apiFetch(`${BASE}/api/users`);
@@ -94,6 +94,7 @@ function renderPanelUsers() {
     </div>
   `;
   }).join("");
+  applyStaggerIn(list);
 }
 
 async function createPanelUser() {

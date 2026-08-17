@@ -332,7 +332,7 @@ socket.on("nova_mensagem", (data) => {
 
   if (currentTab === "dashboard" || currentTab === "tickets") {
     clearTimeout(_ticketReloadTimer);
-    _ticketReloadTimer = setTimeout(() => loadTickets(), 400);
+    _ticketReloadTimer = setTimeout(() => loadTickets(true), 400);
   }
 
   if (currentTab === "metrics") {
@@ -423,7 +423,7 @@ socket.on("typing", data => {
 
     if ((currentTab === "dashboard" || currentTab === "tickets") && typeof loadTickets === "function") {
       clearTimeout(_ticketReloadTimer);
-      _ticketReloadTimer = setTimeout(() => loadTickets(), 400);
+      _ticketReloadTimer = setTimeout(() => loadTickets(true), 400);
     }
 
     if (currentTab === "metrics" && typeof loadMetricsCharts === "function") loadMetricsCharts();

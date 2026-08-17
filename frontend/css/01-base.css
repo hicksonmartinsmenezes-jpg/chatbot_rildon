@@ -32,10 +32,28 @@
   --blue:   #3b82f6;
   --purple: #7c3aed;
 
-  /* Transições padrão */
-  --transition-fast:   .18s ease;
-  --transition-normal: .22s ease;
-  --transition-slow:   .3s ease;
+  /* Curvas de easing (skill design-motion-principles — "bare ease" carece
+     de força, nunca comunica velocidade/chegada de verdade). ease-out:
+     chegada rápida + assentamento suave (entradas). ease-in: início suave
+     + saída rápida (saídas). ease-in-out: simétrica, pra estados que mudam
+     com o elemento já visível (hover, foco, toggle) — é o caso de uso real
+     de --transition-fast/normal/slow abaixo, por isso viraram ease-in-out
+     em vez de ease-out. */
+  --ease-out:    cubic-bezier(.16, 1, .3, 1);
+  --ease-in:     cubic-bezier(.7, 0, .84, 0);
+  --ease-in-out: cubic-bezier(.65, 0, .35, 1);
+
+  /* Transições padrão (mesmos nomes de sempre — só a curva mudou, então as
+     ~50 regras que já usam essas variáveis ganham a curva nova de graça) */
+  --transition-fast:   .16s var(--ease-in-out);
+  --transition-normal: .22s var(--ease-in-out);
+  --transition-slow:   .3s var(--ease-in-out);
+
+  /* Duração de entrada/saída pra animações de aparecer/sumir (modais,
+     dropdowns, itens de lista) — separado de transition-* porque essas
+     são @keyframes/animation, não transition de hover. */
+  --dur-enter: .24s;
+  --dur-exit:  .16s;
 
   /* Border-radius padrão */
   --radius-sm:  8px;

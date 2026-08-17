@@ -11,11 +11,11 @@ function openProfileModal() {
   document.getElementById("profile-phone").value = user.numero || "";
  document.getElementById("profile-photo-preview").src = safeUrl(user.foto, "/assets/default-avatar.png");
   updateTwoFactorStatusUI();
-  document.getElementById("profile-modal").classList.remove("hidden");
+  openWithMotion(document.getElementById("profile-modal"));
 }
 
 function closeProfileModal() {
-  document.getElementById("profile-modal").classList.add("hidden");
+  closeWithMotion(document.getElementById("profile-modal"));
 }
 
 async function previewProfilePhoto(event) {
@@ -155,14 +155,14 @@ function updateTwoFactorStatusUI() {
 }
 
 function closeTwoFactorModal() {
-  document.getElementById("twofa-modal")?.classList.add("hidden");
+  closeWithMotion(document.getElementById("twofa-modal"));
   document.querySelectorAll("#twofa-modal .twofa-step").forEach(el => el.classList.add("hidden"));
 }
 
 function _showTwoFactorStep(stepId) {
   document.querySelectorAll("#twofa-modal .twofa-step").forEach(el => el.classList.add("hidden"));
   document.getElementById(stepId)?.classList.remove("hidden");
-  document.getElementById("twofa-modal")?.classList.remove("hidden");
+  openWithMotion(document.getElementById("twofa-modal"));
 }
 
 async function startTwoFactorSetup() {

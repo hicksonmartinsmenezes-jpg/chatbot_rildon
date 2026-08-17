@@ -198,6 +198,8 @@ async function loadSettings() {
 }
 
 async function saveSettings() {
+  const saveBtn = document.querySelector('[data-action="saveSettings"]');
+  setButtonBusy(saveBtn, true, "Salvando...");
   try {
     const res = await apiFetch(`${BASE}/api/settings`, {
       method: "PUT",
@@ -213,6 +215,8 @@ async function saveSettings() {
     showToast("✅ Configurações salvas com sucesso!");
   } catch {
     showToast("❌ Erro ao salvar configurações.");
+  } finally {
+    setButtonBusy(saveBtn, false);
   }
 }
 

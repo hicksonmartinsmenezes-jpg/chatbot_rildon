@@ -12,7 +12,7 @@ function switchTab(tab, event) {
   if (event) event.preventDefault();
 
   if (tab === "metrics") {
-    const p = typeof loadTickets === "function" ? loadTickets() : Promise.resolve();
+    const p = typeof loadTickets === "function" ? loadTickets(true) : Promise.resolve();
     Promise.resolve(p).finally(() => { if (typeof loadMetricsCharts === "function") loadMetricsCharts(); });
   }
   if (tab === "channels") {
@@ -86,9 +86,21 @@ function switchTab(tab, event) {
 
 // ─── Atualização Geral ────────────────────────────────────────────────────────
 function refreshAll() {
+  // Feedback visual de progresso: gira o ícone e desabilita o botão enquanto
+  // a atualização está em voo (pedido do usuário: estados de progresso em
+  // elementos interativos). Botão só de ícone — sem texto "Processando...".
+  const refreshBtn = document.querySelector('[data-action="refreshAll"]');
+  if (refreshBtn) {
+    refreshBtn.disabled = true;
+    refreshBtn.setAttribute("aria-busy", "true");
+    refreshBtn.classList.add("is-refreshing");
+  }
   return runExclusive('refresh-all', async () => {
     await Promise.allSettled([
-      typeof loadTickets === 'function' ? loadTickets() : null,
+      // silent=true: refreshAll roda no boot, no clique em "Atualizar" e após
+      // login — sem isso, a lista de tickets piscava pro skeleton toda vez
+      // (mesmo território do bug do badge de não-lidas corrigido acima).
+      typeof loadTickets === 'function' ? loadTickets(true) : null,
       typeof loadHistory === 'function' ? loadHistory(false) : null,
       // BUG CORRIGIDO (2026-08-17, "painel mostra 44 notificações porém só 1
       // mensagem nova"): loadConversations() é quem reconcilia o contador de
@@ -104,6 +116,12 @@ function refreshAll() {
       // Liberado para todos (não gated por perfil, ao contrário de loadSettings)
       typeof loadBotToggleStatus === 'function' ? loadBotToggleStatus() : null
     ].filter(Boolean));
+  }).finally(() => {
+    if (refreshBtn) {
+      refreshBtn.disabled = false;
+      refreshBtn.removeAttribute("aria-busy");
+      refreshBtn.classList.remove("is-refreshing");
+    }
   });
 }
 

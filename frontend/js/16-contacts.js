@@ -84,7 +84,7 @@ async function loadContacts(silent = false) {
   if (!tbody) return;
   bindContactActionDelegation();
 
-  if (!silent) tbody.innerHTML = `<tr><td colspan="8" class="contacts-empty"><i class="fa-solid fa-spinner fa-spin"></i><br>Carregando...</td></tr>`;
+  if (!silent) tbody.innerHTML = renderSkeletonTableRows(8, 6);
 
   try {
     const params = new URLSearchParams({
@@ -102,6 +102,14 @@ async function loadContacts(silent = false) {
 
     _contactsTotal = data.total || 0;
     renderContactsTable(data.rows || []);
+    if (!silent) {
+      const table = tbody.closest("table");
+      if (table) {
+        table.classList.remove("table-fade-in");
+        void table.offsetWidth;
+        table.classList.add("table-fade-in");
+      }
+    }
     renderContactsFooter();
     updateContactsBulkBar();
     const countBadge = document.getElementById("contacts-count-badge");
@@ -388,11 +396,11 @@ async function openContactModal(id = null) {
     document.getElementById("contact-status").value = "ativo";
   }
 
-  overlay.classList.remove("hidden");
+  openWithMotion(overlay);
 }
 
 function closeContactModal() {
-  document.getElementById("contact-modal-overlay")?.classList.add("hidden");
+  closeWithMotion(document.getElementById("contact-modal-overlay"));
   _contactsEditingId = null;
 }
 
@@ -457,7 +465,7 @@ async function saveContact() {
   _contactsSaving = true;
 
   const saveBtn = document.querySelector("#contact-modal-overlay .send-btn[data-action='saveContact']");
-  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = "Salvando..."; }
+  setButtonBusy(saveBtn, true, "Salvando...");
 
   const payload = { nome, whatsapp: onlyDigits, estado, status, departamento, atendenteId, tags };
   const url     = _contactsEditingId ? `/api/contacts/${_contactsEditingId}` : "/api/contacts";
@@ -474,7 +482,7 @@ async function saveContact() {
     showToast("Erro: " + e.message, "error");
   } finally {
     _contactsSaving = false;
-    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = "Salvar"; }
+    setButtonBusy(saveBtn, false);
   }
 }
 
@@ -486,11 +494,11 @@ function confirmDeleteContact(id, nome) {
   if (!overlay) return;
   if (lbl) lbl.textContent = nome;
   overlay.dataset.deleteId = id;
-  overlay.classList.remove("hidden");
+  openWithMotion(overlay);
 }
 
 function closeDeleteContactModal() {
-  document.getElementById("contact-delete-overlay")?.classList.add("hidden");
+  closeWithMotion(document.getElementById("contact-delete-overlay"));
 }
 
 async function doDeleteContact() {

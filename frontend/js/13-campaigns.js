@@ -7,11 +7,13 @@ let _campaigns = []; // cache para clonar
 
 // ─── Carregar campanhas ───────────────────────────────────────────────────────
 
-async function loadCampaigns() {
-  return runExclusive("loadCampaigns", _loadCampaignsCore);
+// silent=true → evita flash de skeleton no poll automático (a cada 5s
+// enquanto alguma campanha está "sending")
+async function loadCampaigns(silent = false) {
+  return runExclusive("loadCampaigns", () => _loadCampaignsCore(silent));
 }
 
-async function _loadCampaignsCore() {
+async function _loadCampaignsCore(silent = false) {
   if (_campaignPollTimer) {
     clearTimeout(_campaignPollTimer);
     _campaignPollTimer = null;
@@ -23,7 +25,7 @@ async function _loadCampaignsCore() {
 
   loadCampaignStats();
   loadCampaignSchedules();
-  list.innerHTML = `<tr><td colspan="9" class="camp-empty"><i class="fa-solid fa-spinner fa-spin"></i> Carregando campanhas...</td></tr>`;
+  if (!silent) list.innerHTML = renderSkeletonTableRows(9, 4);
 
   try {
     const res  = await apiFetch("/api/broadcasts?limit=100");
@@ -33,9 +35,17 @@ async function _loadCampaignsCore() {
     _campaigns = Array.isArray(data) ? data : [];
 
     _renderCampaignList();
+    if (!silent) {
+      const table = list.closest("table");
+      if (table) {
+        table.classList.remove("table-fade-in");
+        void table.offsetWidth;
+        table.classList.add("table-fade-in");
+      }
+    }
 
     if (_campaigns.some(c => c.status === "sending")) {
-      _campaignPollTimer = setTimeout(loadCampaigns, 5000);
+      _campaignPollTimer = setTimeout(() => loadCampaigns(true), 5000);
     }
 
   } catch (err) {
@@ -1078,7 +1088,7 @@ async function loadCampaignStats() {
 
 function openCampaignModal() {
   bindCampaignPickerDelegation();
-  document.getElementById("camp-modal-overlay")?.classList.remove("hidden");
+  openWithMotion(document.getElementById("camp-modal-overlay"));
   // toggleCustomRecipients já dispara searchCampContacts e updateCampaignAudienceCount internamente
   toggleCustomRecipients();
   toggleCampaignSendMode();
@@ -1087,7 +1097,7 @@ function openCampaignModal() {
 }
 
 function closeCampaignModal() {
-  document.getElementById("camp-modal-overlay")?.classList.add("hidden");
+  closeWithMotion(document.getElementById("camp-modal-overlay"));
 
   // Limpa formulário para próxima abertura
   ["campaign-title", "campaign-message"].forEach(id => {

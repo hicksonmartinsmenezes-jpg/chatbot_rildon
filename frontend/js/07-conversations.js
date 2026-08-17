@@ -59,7 +59,7 @@ async function _loadConversationsCore(silent = false) {
   const total  = document.getElementById("chat-total");
   const search = document.getElementById("search-conversations")?.value?.trim().toLowerCase() || "";
 
-  if (!silent && list) list.innerHTML = `<p class="loading chat-loading">Carregando...</p>`;
+  if (!silent && list) list.innerHTML = renderSkeletonList(6);
 
   try {
     const [histRes, ticketRes, hmRes] = await Promise.all([
@@ -341,6 +341,7 @@ async function _loadConversationsCore(silent = false) {
       `;
     }).join("");
     bindConversationListDelegation();
+    if (!silent) applyStaggerIn(list);
 
     // Reabre o painel da conversa selecionada sempre que ela ainda existe no
     // histórico (usersSeen = superset ANTES do filtro de aba/busca), não só
@@ -908,9 +909,16 @@ async function sendConversationMessage() {
 
   sendingConversationMessage = true;
 
-  // Desabilita botão de envio visualmente durante a requisição
+  // Desabilita botão de envio visualmente durante a requisição, com
+  // spinner no lugar do ícone (pedido do usuário: estado de progresso
+  // visível em elementos interativos).
   const sendBtn = document.getElementById("btn-send-conversation");
-  if (sendBtn) { sendBtn.disabled = true; sendBtn.style.opacity = "0.5"; }
+  const sendBtnIcon = sendBtn?.querySelector("i");
+  if (sendBtn) {
+    sendBtn.disabled = true;
+    sendBtn.setAttribute("aria-busy", "true");
+  }
+  if (sendBtnIcon) sendBtnIcon.className = "fa-solid fa-circle-notch fa-spin";
 
   const found = quickRepliesCache.find(reply =>
     reply.shortcut.toLowerCase() === message.toLowerCase()
@@ -969,7 +977,8 @@ async function sendConversationMessage() {
     if (input && !input.value.trim()) input.value = finalMessage;
   } finally {
     sendingConversationMessage = false;
-    if (sendBtn) { sendBtn.disabled = false; sendBtn.style.opacity = ""; }
+    if (sendBtn) { sendBtn.disabled = false; sendBtn.removeAttribute("aria-busy"); }
+    if (sendBtnIcon) sendBtnIcon.className = "fa-solid fa-paper-plane";
   }
 }
 
@@ -1054,7 +1063,9 @@ async function sendPendingMedia() {
 
   sendingConversationMessage = true;
   const sendBtn = document.getElementById("btn-send-conversation");
-  if (sendBtn) { sendBtn.disabled = true; sendBtn.style.opacity = "0.5"; }
+  const sendBtnIcon = sendBtn?.querySelector("i");
+  if (sendBtn) { sendBtn.disabled = true; sendBtn.setAttribute("aria-busy", "true"); }
+  if (sendBtnIcon) sendBtnIcon.className = "fa-solid fa-circle-notch fa-spin";
 
   try {
     const form = new FormData();
@@ -1091,7 +1102,8 @@ async function sendPendingMedia() {
     showToast(`❌ Erro ao enviar arquivo: ${err.message}`);
   } finally {
     sendingConversationMessage = false;
-    if (sendBtn) { sendBtn.disabled = false; sendBtn.style.opacity = ""; }
+    if (sendBtn) { sendBtn.disabled = false; sendBtn.removeAttribute("aria-busy"); }
+    if (sendBtnIcon) sendBtnIcon.className = "fa-solid fa-paper-plane";
   }
 }
 
@@ -1196,11 +1208,11 @@ function abrirChat(userId) {
   currentChatUser = userId;
   document.getElementById("chat-user").textContent = `Cliente: ${formatPhone(userId)}`;
   document.getElementById("chat-message").value    = "";
-  document.getElementById("chat-modal").classList.remove("hidden");
+  openWithMotion(document.getElementById("chat-modal"));
 }
 
 function fecharChat() {
-  document.getElementById("chat-modal").classList.add("hidden");
+  closeWithMotion(document.getElementById("chat-modal"));
 }
 
 let _sendingManual = false;
@@ -1395,7 +1407,7 @@ function toggleNotifDropdown() {
   if (isOpen) {
     closeNotifDropdown();
   } else {
-    dropdown.classList.remove("hidden");
+    openWithMotion(dropdown);
     btn?.setAttribute("aria-expanded", "true");
     // Limpa o dot ao abrir
     document.querySelector(".notification")?.classList.remove("has-alert");
@@ -1403,7 +1415,7 @@ function toggleNotifDropdown() {
 }
 
 function closeNotifDropdown() {
-  document.getElementById("notif-dropdown")?.classList.add("hidden");
+  closeWithMotion(document.getElementById("notif-dropdown"));
   document.getElementById("btn-notifications")?.setAttribute("aria-expanded", "false");
 }
 

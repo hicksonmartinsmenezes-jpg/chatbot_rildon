@@ -368,6 +368,102 @@ function resetTextareaHeight(el) {
   el.style.height = "auto";
 }
 
+// ─── Abertura/fechamento animado de overlays (modais, dropdowns) ─────────────
+// Substitui o toggle instantâneo de ".hidden" (display:none imediato, sem
+// saída) por um enter/exit de verdade via 19-motion.css
+// (.motion-overlay-in / .motion-overlay-out). Uso: chamar openWithMotion no
+// lugar de `el.classList.remove("hidden")`, e closeWithMotion no lugar de
+// `el.classList.add("hidden")`.
+function openWithMotion(el) {
+  if (!el) return;
+  el.classList.remove("motion-overlay-out");
+  el.classList.remove("hidden");
+  void el.offsetWidth; // força reflow pra reiniciar a animação
+  el.classList.add("motion-overlay-in");
+}
+
+function closeWithMotion(el, duration = 160) {
+  if (!el || el.classList.contains("hidden")) return;
+  el.classList.remove("motion-overlay-in");
+  void el.offsetWidth;
+  el.classList.add("motion-overlay-out");
+  setTimeout(() => {
+    el.classList.add("hidden");
+    el.classList.remove("motion-overlay-out");
+  }, duration);
+}
+
+// ─── Stagger de entrada em listas ─────────────────────────────────────────────
+// Aplica a animação de entrada (19-motion.css .stagger-in) só quando faz
+// sentido: primeiro carregamento real (saindo do skeleton), nunca em
+// polling silencioso — reforça a regra de frequência do motion (ação
+// repetitiva e automática não deve animar toda vez).
+function applyStaggerIn(container) {
+  if (!container) return;
+  container.classList.remove("stagger-in");
+  void container.offsetWidth;
+  container.classList.add("stagger-in");
+}
+
+// ─── Skeleton de lista genérico ───────────────────────────────────────────────
+// Gera N linhas de skeleton (avatar + 2 linhas de texto) pra substituir o
+// antigo "Carregando..." nas listas do painel.
+function renderSkeletonList(count = 5) {
+  let html = "";
+  for (let i = 0; i < count; i++) {
+    html += `
+      <div class="skeleton-list-item">
+        <div class="skeleton-avatar"></div>
+        <div class="skeleton-lines">
+          <div class="skeleton-line w-60"></div>
+          <div class="skeleton-line w-40"></div>
+        </div>
+      </div>`;
+  }
+  return html;
+}
+
+// ─── Skeleton de grid genérico (cards) ────────────────────────────────────────
+// Mesma ideia de renderSkeletonList, mas em grade de cards — usado no
+// Catálogo enquanto a busca de produtos está em voo.
+function renderSkeletonGrid(count = 8) {
+  let html = `<div class="catalogo-grid skeleton-grid">`;
+  for (let i = 0; i < count; i++) {
+    html += `<div class="skeleton-card"></div>`;
+  }
+  html += `</div>`;
+  return html;
+}
+
+// ─── Skeleton de tabela (linhas <tr>) ─────────────────────────────────────────
+// Pra tabelas (ex: Contatos) — <tr> não anima bem com transform em todos os
+// browsers, então aqui é só o shimmer estático (sem stagger de entrada).
+function renderSkeletonTableRows(cols, rows = 5) {
+  let html = "";
+  for (let r = 0; r < rows; r++) {
+    html += `<tr class="skeleton-tr">`;
+    for (let c = 0; c < cols; c++) {
+      html += `<td><div class="skeleton-row"></div></td>`;
+    }
+    html += `</tr>`;
+  }
+  return html;
+}
+
+// ─── Lazy image: fade-in ao carregar ──────────────────────────────────────────
+// Marca <img loading="lazy"> como carregada (CSS em 19-motion.css cuida do
+// fade). Chamar depois de inserir HTML com imagens lazy no DOM.
+function bindLazyImageFade(root = document) {
+  root.querySelectorAll('img[loading="lazy"]:not(.is-loaded)').forEach(img => {
+    if (img.complete && img.naturalWidth > 0) {
+      img.classList.add("is-loaded");
+      return;
+    }
+    img.addEventListener("load", () => img.classList.add("is-loaded"), { once: true });
+    img.addEventListener("error", () => img.classList.add("is-loaded"), { once: true });
+  });
+}
+
 // ─── Toggle genérico de visibilidade de senha ────────────────────────────────
 // Usado em qualquer campo de senha no painel (ex: cadastro de usuário)
 function togglePassword(inputId, btn) {

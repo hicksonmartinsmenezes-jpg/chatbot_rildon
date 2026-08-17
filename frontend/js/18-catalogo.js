@@ -625,6 +625,8 @@ function _catalogoCardHTML(produto, mostrarBadgeNeutro) {
 
 async function buscarCatalogo(event) {
   if (event) event.preventDefault();
+  const searchBtn = event?.target?.querySelector?.(".catalogo-erp-search-btn");
+  setButtonBusy(searchBtn, true, "Buscando...");
 
   const marca  = document.getElementById("catalogo-marca")?.value.trim()  || "";
   const modelo = document.getElementById("catalogo-modelo")?.value.trim() || "";
@@ -639,7 +641,9 @@ async function buscarCatalogo(event) {
   const fabricante = document.getElementById("catalogo-fabricante")?.value || "";
 
   const wrap = document.getElementById("catalogo-resultados");
-  if (!wrap) return;
+  if (!wrap) { setButtonBusy(searchBtn, false); return; }
+
+  try {
 
   // Modo navegação (pedido do usuário, 2026-07-22, estendido em 2026-07-23
   // pra fabricante): sem marca/modelo, uma Seção/Linha e/ou Fabricante já
@@ -665,7 +669,7 @@ async function buscarCatalogo(event) {
   }
 
   const modoNavegacao = !marca && !modelo; // só categoria/fabricante — não é busca por veículo
-  wrap.innerHTML = _catalogoEmptyState("fa-spinner fa-spin", "Buscando...", "catalogo-loading-state");
+  wrap.innerHTML = renderSkeletonGrid(8);
 
   const params = new URLSearchParams();
   if (marca)      params.set("marca", marca);
@@ -717,8 +721,14 @@ async function buscarCatalogo(event) {
     // usuário, 2026-07-28) — exporta TODOS os resultados do filtro, não só
     // os "produtos.length" mostrados na tela (ver MAX_EXPORT_PDF no backend).
     wrap.dataset.exportQuery = params.toString();
+    applyStaggerIn(wrap.querySelector(".catalogo-grid"));
+    bindLazyImageFade(wrap);
   } catch (err) {
     wrap.innerHTML = _catalogoEmptyState("fa-circle-exclamation", "Erro ao buscar peças. Tente novamente.", "catalogo-error-state");
+  }
+
+  } finally {
+    setButtonBusy(searchBtn, false);
   }
 }
 
@@ -728,17 +738,21 @@ async function buscarCatalogo(event) {
 // badges de marca/ano (não faz sentido comparar contra veículo nenhum aqui).
 async function buscarCatalogoPorCodigo(event) {
   if (event) event.preventDefault();
+  const searchBtn = event?.target?.querySelector?.(".catalogo-erp-search-btn");
+  setButtonBusy(searchBtn, true, "Buscando...");
 
   const codigo = document.getElementById("catalogo-codigo-busca")?.value.trim() || "";
   const wrap = document.getElementById("catalogo-resultados");
-  if (!wrap) return;
+  if (!wrap) { setButtonBusy(searchBtn, false); return; }
+
+  try {
 
   if (!codigo) {
     wrap.innerHTML = _catalogoEmptyState("fa-triangle-exclamation", "Informe o código de fabricante, referência ou código interno da peça.", "catalogo-warn-state");
     return;
   }
 
-  wrap.innerHTML = _catalogoEmptyState("fa-spinner fa-spin", "Buscando...", "catalogo-loading-state");
+  wrap.innerHTML = renderSkeletonGrid(8);
 
   try {
     const res = await apiFetch(`/api/catalogo/buscar-codigo?codigo=${encodeURIComponent(codigo)}`);
@@ -771,8 +785,14 @@ async function buscarCatalogoPorCodigo(event) {
     const grid = `<div class="catalogo-grid">${produtos.map(p => _catalogoCardHTML(p, false)).join("")}</div>`;
     wrap.innerHTML = resumoBar + grid;
     wrap.dataset.exportQuery = `codigo=${encodeURIComponent(codigo)}`;
+    applyStaggerIn(wrap.querySelector(".catalogo-grid"));
+    bindLazyImageFade(wrap);
   } catch (err) {
     wrap.innerHTML = _catalogoEmptyState("fa-circle-exclamation", "Erro ao buscar peça. Tente novamente.", "catalogo-error-state");
+  }
+
+  } finally {
+    setButtonBusy(searchBtn, false);
   }
 }
 
@@ -783,17 +803,21 @@ async function buscarCatalogoPorCodigo(event) {
 // veículo pra comparar aqui).
 async function buscarCatalogoPorNome(event) {
   if (event) event.preventDefault();
+  const searchBtn = event?.target?.querySelector?.(".catalogo-erp-search-btn");
+  setButtonBusy(searchBtn, true, "Buscando...");
 
   const nome = document.getElementById("catalogo-nome-busca")?.value.trim() || "";
   const wrap = document.getElementById("catalogo-resultados");
-  if (!wrap) return;
+  if (!wrap) { setButtonBusy(searchBtn, false); return; }
+
+  try {
 
   if (!nome) {
     wrap.innerHTML = _catalogoEmptyState("fa-triangle-exclamation", "Informe o nome ou parte do nome da peça.", "catalogo-warn-state");
     return;
   }
 
-  wrap.innerHTML = _catalogoEmptyState("fa-spinner fa-spin", "Buscando...", "catalogo-loading-state");
+  wrap.innerHTML = renderSkeletonGrid(8);
 
   try {
     const res = await apiFetch(`/api/catalogo/buscar-nome?nome=${encodeURIComponent(nome)}`);
@@ -827,7 +851,13 @@ async function buscarCatalogoPorNome(event) {
     const grid = `<div class="catalogo-grid">${produtos.map(p => _catalogoCardHTML(p, false)).join("")}</div>`;
     wrap.innerHTML = resumoBar + grid;
     wrap.dataset.exportQuery = `nome=${encodeURIComponent(nome)}`;
+    applyStaggerIn(wrap.querySelector(".catalogo-grid"));
+    bindLazyImageFade(wrap);
   } catch (err) {
     wrap.innerHTML = _catalogoEmptyState("fa-circle-exclamation", "Erro ao buscar peça. Tente novamente.", "catalogo-error-state");
+  }
+
+  } finally {
+    setButtonBusy(searchBtn, false);
   }
 }

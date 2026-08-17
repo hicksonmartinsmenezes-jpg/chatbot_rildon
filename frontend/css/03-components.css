@@ -311,9 +311,15 @@ button:active,
   font-weight: 600;
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.25);
   border-left: 4px solid #1D9E75; /* default: success */
-  transform: translateY(120px);
+  transform: translateY(16px);
   opacity: 0;
-  transition: 0.25s ease;
+  filter: blur(4px);
+  /* Saída mais rápida/sutil que a entrada (skill design-motion-principles:
+     exit sempre mais discreto que enter) — --dur-exit/--dur-enter em
+     01-base.css. */
+  transition: transform var(--dur-exit, .16s) var(--ease-in, ease),
+              opacity   var(--dur-exit, .16s) var(--ease-in, ease),
+              filter    var(--dur-exit, .16s) var(--ease-in, ease);
   z-index: 99999;
   max-width: 340px;
 }
@@ -321,6 +327,10 @@ button:active,
 .toast.show {
   transform: translateY(0);
   opacity: 1;
+  filter: blur(0);
+  transition: transform var(--dur-enter, .24s) var(--ease-out, ease),
+              opacity   var(--dur-enter, .24s) var(--ease-out, ease),
+              filter    var(--dur-enter, .24s) var(--ease-out, ease);
 }
 
 /* ─── Status do contato ────────────────── */

@@ -19,8 +19,20 @@
  *    supervisora monitorar "quem está em atendimento/quem não" e "quem
  *    atendeu mais" — campos "atendentes" (total atendido + em_andamento
  *    agora) e "horarioPico"/"porHora" (pra decidir escala). Os antigos
- *    "porStatus"/"porSetor"/"setorMaisMovimentado" foram removidos a pedido
- *    do usuário (a aba Métricas não mostra mais esses gráficos/card).
+ *    "porStatus"/"setorMaisMovimentado" foram removidos a pedido do usuário
+ *    nessa época; "porSetor" foi reintroduzido depois (2026-07-31, "atendimentos
+ *    por setor" no painel de Métricas), então volta a fazer parte da resposta.
+ *
+ * Nota (2026-08-17, Issue #7): metrics.service.js cresceu bastante desde a
+ * escrita original deste arquivo (tendência mês a mês, distribuição de
+ * notas, atendimentos por setor, novos contatos/leads — todos pedidos do
+ * usuário em 2026-07-31/2026-08-05). O mock de pool.query precisa cobrir as
+ * 11 queries que buscarMetricas() dispara em paralelo (Promise.all) — faltar
+ * uma faz a Promise.all inteira rejeitar (a query não mapeada joga um Error)
+ * e todo teste desta suíte cai com 500, mesmo os que não olham pro campo
+ * novo. Foi exatamente isso que aconteceu quando o CI passou a rodar contra
+ * Postgres de verdade e esta suíte não tinha sido atualizada junto com o
+ * service.
  */
 jest.mock("../src/database/postgres", () => ({ query: jest.fn() }));
 jest.mock("../src/services/activityLog.service", () => ({
@@ -71,8 +83,14 @@ function installFakePool() {
     if (/FROM users u/.test(sql) && /LEFT JOIN tickets t/.test(sql)) {
       return {
         rows: [
-          { id: "u-1", nome: "Bruno", total_atendidos: 12, em_atendimento: 1 },
-          { id: "u-2", nome: "Ana",   total_atendidos: 3,  em_atendimento: 0 },
+          {
+            id: "u-1", nome: "Bruno", total_atendidos: 12, em_atendimento: 1,
+            atendidos_hoje: 2, atendidos_semana: 5, atendidos_mes: 12
+          },
+          {
+            id: "u-2", nome: "Ana", total_atendidos: 3, em_atendimento: 0,
+            atendidos_hoje: 0, atendidos_semana: 1, atendidos_mes: 3
+          },
         ]
       };
     }
@@ -94,6 +112,31 @@ function installFakePool() {
           feedbackAt: "2026-07-21T12:00:00.000Z"
         }]
       };
+    }
+    // Tendência mês atual x mês anterior (pedido do usuário, 2026-07-31) —
+    // identificado pelo alias único mes_atual_total (não colide com o
+    // summary acima, que não tem "AS hoje" junto de "mes_atual_total").
+    if (/AS mes_atual_total/.test(sql)) {
+      return {
+        rows: [{
+          mes_atual_total: 10, mes_atual_resolvidos: 7, mes_atual_cancelados: 1,
+          mes_anterior_total: 8, mes_anterior_resolvidos: 5,
+          tempo_resolucao_atual_min: "45.0", tempo_resolucao_anterior_min: "50.0",
+          tempo_resposta_atual_min: "5.0", tempo_resposta_anterior_min: "6.0"
+        }]
+      };
+    }
+    // Distribuição de notas 1-5 (pedido do usuário, 2026-07-31).
+    if (/AS nota/.test(sql) && /GROUP BY satisfaction_rating/.test(sql)) {
+      return { rows: [{ nota: 5, total: 3 }, { nota: 1, total: 1 }] };
+    }
+    // Atendimentos por setor, últimos 30 dias (pedido do usuário, 2026-07-31).
+    if (/GROUP BY sector/.test(sql)) {
+      return { rows: [{ sector: "vendas", total: 6 }, { sector: null, total: 1 }] };
+    }
+    // Novos contatos/leads (pedido do usuário, 2026-08-05).
+    if (/FROM contacts/.test(sql)) {
+      return { rows: [{ total: 4 }] };
     }
 
     throw new Error("Query não mapeada no mock de metrics.routes.test.js: " + sql);
@@ -155,13 +198,24 @@ describe("GET /api/metrics", () => {
   // já atendido (histórico) e se tem ticket em_andamento agora. Status
   // online/offline em si é resolvido no frontend (window.onlineUsers via
   // socket), não faz parte desta resposta.
+  //
+  // BUG CORRIGIDO (2026-08-05, ver metrics.service.js): emAtendimento
+  // virava um booleano antes de chegar aqui, jogando fora a contagem real
+  // que a query já trazia (COUNT ... FILTER). Hoje é o número de tickets
+  // em_andamento mesmo — este teste esperava o formato antigo (true/false).
   test("resposta inclui atendentes (total atendido + em atendimento agora), ordenado por total_atendidos", async () => {
     const res = await request(buildApp(SUPERVISOR)).get("/api/metrics");
 
     expect(res.status).toBe(200);
     expect(res.body.atendentes).toEqual([
-      { id: "u-1", nome: "Bruno", totalAtendidos: 12, emAtendimento: true },
-      { id: "u-2", nome: "Ana",   totalAtendidos: 3,  emAtendimento: false },
+      {
+        id: "u-1", nome: "Bruno", totalAtendidos: 12, emAtendimento: 1,
+        atendidosHoje: 2, atendidosSemana: 5, atendidosMes: 12
+      },
+      {
+        id: "u-2", nome: "Ana", totalAtendidos: 3, emAtendimento: 0,
+        atendidosHoje: 0, atendidosSemana: 1, atendidosMes: 3
+      },
     ]);
   });
 

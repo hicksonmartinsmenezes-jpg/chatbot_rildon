@@ -187,10 +187,6 @@ function dispatch(state, text, params = []) {
     return { rows: [{ campaigns, sent, failed, total_recipients }] };
   }
 
-  if (/FROM history\s+WHERE user_id IS NOT NULL\s+GROUP BY user_id/.test(sql) && !/created_at >=/.test(sql)) {
-    return { rows: [{ user_id: "55999@s.whatsapp.net", contact_name: "Cliente Histórico" }] };
-  }
-
   if (/FROM history[\s\S]*created_at >= NOW\(\) - INTERVAL '30 days'/.test(sql)) {
     return { rows: [{ user_id: "55998@s.whatsapp.net", contact_name: "Cliente Recente" }] };
   }
@@ -199,6 +195,16 @@ function dispatch(state, text, params = []) {
     return { rows: [{ user_id: "55997@s.whatsapp.net", contact_name: "Cliente Com Ticket" }] };
   }
 
+  // BUG CORRIGIDO (Issue #7, 2026-08-17): "all_clients" e "contacts" (sem tag/
+  // atendente) viram a MESMA query textual desde 2026-08-05 ("all_clients"
+  // migrou de history para contacts direto, ver getBroadcastAudience em
+  // broadcast.service.js) — o mock antigo tinha um branch morto pra
+  // "FROM history WHERE ... GROUP BY user_id" (sem filtro de data) que
+  // nenhuma query real dispara mais, então "all_clients" caía sem querer
+  // neste branch de "contacts" só por coincidência de regex, retornando um
+  // userId de formato diferente do que o teste antigo esperava. userId RAW
+  // (sem @s.whatsapp.net) é o formato real de contacts.whatsapp — vira JID
+  // completo só depois, em createBroadcast()/normalizeUserId().
   if (/FROM contacts\s+WHERE/.test(sql)) {
     return { rows: [{ user_id: "55996", contact_name: "Contato Ativo" }] };
   }
@@ -395,9 +401,17 @@ describe("broadcast.service", () => {
       await expect(broadcastService.getBroadcastAudience("tipo-invalido")).rejects.toThrow(/inválido/);
     });
 
-    test("all_clients retorna contatos vindos do histórico", async () => {
+    // BUG CORRIGIDO (Issue #7, 2026-08-17): este teste ainda esperava o
+    // comportamento pré-2026-08-03, quando "all_clients" buscava em
+    // `history`. Desde então (pedido do usuário: contatos importados via
+    // bulk-tag-contacts.js nunca mandaram mensagem, ficavam de fora),
+    // "all_clients" busca direto em `contacts` — mesma fonte/formato de
+    // userId que o tipo "contacts" (RAW, sem "@s.whatsapp.net"; normalizado
+    // depois em createBroadcast()/normalizeUserId()). Título e asserção
+    // atualizados pra refletir a query real de hoje.
+    test("all_clients retorna contatos vindos de contacts (não mais de history, ver 2026-08-03)", async () => {
       const audience = await broadcastService.getBroadcastAudience("all_clients");
-      expect(audience[0]).toMatchObject({ userId: "55999@s.whatsapp.net" });
+      expect(audience[0]).toMatchObject({ userId: "55996" });
     });
 
     test("with_tickets retorna contatos vindos de tickets", async () => {

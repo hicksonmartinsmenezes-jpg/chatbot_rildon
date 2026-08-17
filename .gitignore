@@ -81,3 +81,6 @@ fotos/
 # iniciar o servidor (senão o painel "Catálogo de Produtos" e a busca por
 # veículo/código do bot ficam sem dado nenhum pra indexar).
 src/config/catalogo-x2/
+
+# Documentos/relatorios do projeto (nao sao codigo, organizados fora do repo)
+documentos-projeto/

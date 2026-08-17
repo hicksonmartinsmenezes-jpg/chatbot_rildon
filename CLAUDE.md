@@ -73,10 +73,69 @@ terminal dele. Todo PR deve deixar explícito no "Próximos passos":
   testes passaram".
 - Só então marcar a tarefa/Issue como pronta para review/merge.
 
+## Esteira de qualidade obrigatória antes de merge na main (a partir de 2026-08-17)
+
+Decisão do usuário (2026-08-17, Issue #6): nenhum código entra na `main`
+sem passar pelo CI do GitHub Actions (`.github/workflows/ci.yml` +
+`commitlint.yml`) e, quando a branch protection estiver ativa (ver
+Issue #6/PR da esteira), sem aprovação da PR. O CI cobre: sintaxe
+(`npm run check`), lint (`npm run lint`), testes unitários com Postgres
+real de verdade num serviço do próprio workflow (`npm run test:coverage`),
+teste de fluxo conversacional mockado (`npm run test:flow`), Knip (código e
+dependência morta — hoje informativo, ver `continue-on-error` em
+`ci.yml`), e orçamento de tamanho do bundle do frontend (`npm run
+build:frontend`, falha se passar do `BUDGET_KB` em
+`scripts/build-frontend.js`). `commitlint.yml` valida a mensagem dos
+commits do PR contra `commitlint.config.js` — aceita qualquer prefixo de
+área (`Catálogo:`, `Bot:`, ...), não força o vocabulário em inglês do
+Conventional Commits, pra não brigar com a convenção que o projeto já usa
+de forma consistente.
+
+Antes desta data o `ci.yml` **nunca rodou os testes de verdade** — faltava
+um serviço de Postgres no workflow, então todo run falhava com
+`ECONNREFUSED 127.0.0.1:5432` independente do código, há semanas. Corrigido
+no mesmo PR que criou esta seção. Se o CI voltar a ficar vermelho em toda
+PR sem relação óbvia com a mudança, esse é o primeiro lugar a suspeitar.
+
+## Princípios de arquitetura (checklist antes de abrir PR)
+
+Pedido do usuário (2026-08-17, Issue #6) — não são regras de lint
+automatizadas, são um checklist de julgamento pro agente aplicar antes de
+propor uma mudança:
+
+- **Evitar overengineering**: a escala real deste projeto é um container
+  Docker + Postgres, ~5 pessoas usando o painel. Preferir a solução mais
+  simples que resolve o problema pedido; abstração/camada nova precisa se
+  justificar pelo problema de HOJE, não por "pode ser útil um dia".
+- **Evitar bottleneck óbvio**: antes de subir uma query nova em rota
+  quente (tickets, conversas, catálogo), checar se tem índice
+  correspondente (`src/database/migrations/`) e se não itera em memória
+  algo que o Postgres resolveria melhor com `WHERE`/`JOIN`.
+- **Componentizar desde o início**: no frontend (scripts globais via
+  `<script>`, sem bundler de módulos — ver
+  `project-bot-rildon-frontend-bundle-gotcha` na memória), isso significa
+  função utilitária reaproveitável em vez de copiar/colar HTML/lógica
+  entre abas; no backend, service/repository por domínio, não lógica de
+  negócio dentro do controller.
+- **DRY com critério**: duplicação de 2 lugares não pede abstração nova
+  por si só — abstrair cedo demais cria acoplamento errado quando os dois
+  casos divergem depois. Esperar um 3º caso real antes de generalizar, a
+  não ser que a duplicação já esteja causando bug (ex: dois lugares que
+  precisam mudar junto e só um mudou — isso já aconteceu neste projeto,
+  ver `feedback-schema-assumptions-and-test-fixtures`).
+- **Não reconstruir o que já existe**: antes de escrever uma função nova,
+  procurar em `frontend/js/01-utils.js` (helpers de UI/motion),
+  `src/services/`, `src/database/migrations/README.md` (o que uma
+  migration nova precisaria refazer) e nas memórias do agente
+  (`MEMORY.md`) se esse problema já foi resolvido — este projeto tem
+  histórico de funções reimplementadas por não terem sido encontradas na
+  primeira busca.
+
 ---
 
 Convenções técnicas do projeto (arquitetura, testes, migrations) continuam
 descritas nos demais arquivos de referência do repositório
 (`README_MODULARIZACAO.md`, `RAIO_X_GERAL_V17.md`, `src/database/migrations/README.md`).
 Este arquivo cobre especificamente o processo de gestão de mudanças
-(Issue → PR), que passa a valer para todo agente, independente do modelo.
+(Issue → PR) e a esteira de qualidade, que passam a valer para todo agente,
+independente do modelo.

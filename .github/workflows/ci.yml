@@ -11,6 +11,34 @@ jobs:
     name: Lint de sintaxe + testes
     runs-on: ubuntu-latest
 
+    # Jest (npm test) toca um Postgres real via src/database/postgres.js —
+    # sem este serviço, "Testes (Jest)" falha sempre com ECONNREFUSED
+    # 127.0.0.1:5432, e o job inteiro fica vermelho independente de
+    # qualquer mudança de código (era exatamente o que estava acontecendo
+    # antes desta migration de CI).
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: chatbot_rildon
+          POSTGRES_PASSWORD: chatbot_rildon_ci
+          POSTGRES_DB: chatbot_rildon
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U chatbot_rildon"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_USER: chatbot_rildon
+      DB_PASSWORD: chatbot_rildon_ci
+      DB_NAME: chatbot_rildon
+      DB_SSL: "false"
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,8 +61,39 @@ jobs:
       - name: ESLint
         run: npm run lint
 
-      - name: Testes (Jest)
-        run: npm test
+      # schema.sql é a base "novas instalações" (já cobre migrations
+      # 001-022 e 026); "npm run migrate" aplica o que ainda não foi
+      # incorporado nela (023, 024, 025) e não quebra nada no restante —
+      # toda migration deste repositório usa IF NOT EXISTS / DO $$ IF
+      # EXISTS ... END$$ (auditado 001-026, 2026-08-17), então reaplicar
+      # o que já está em schema.sql é um no-op seguro. Isso também dobra
+      # como validação de que schema.sql + migrate.js juntos realmente
+      # produzem um banco novo utilizável, do jeito que uma instalação
+      # nova de verdade faria.
+      - name: Bootstrap do banco (schema.sql + migrations)
+        run: |
+          PGPASSWORD=chatbot_rildon_ci psql -h 127.0.0.1 -U chatbot_rildon -d chatbot_rildon -f src/database/schema.sql
+          npm run migrate
+
+      - name: Testes (Jest) + coverage
+        run: npm run test:coverage
 
       - name: Testes de fluxo conversacional (test-flow.js)
         run: npm run test:flow
+
+      # Knip aponta arquivo/export/dependência que nada mais usa. Rodando
+      # só em src/+scripts/ (frontend/ é script global sem require/import,
+      # fora do alcance de uma ferramenta de grafo de módulos — ver
+      # knip.json). "continue-on-error": este é o 1º run de verdade da
+      # ferramenta neste projeto — ainda não dá pra saber se a config atual
+      # tem falsos positivos. Fica avisando (aparece no resumo do job) sem
+      # travar merge até passar por uma rodada de ajuste real.
+      - name: Knip (código/dependência morta) — informativo por enquanto
+        run: npm run knip
+        continue-on-error: true
+
+      # Falha de verdade se o bundle crescer além do orçamento definido em
+      # scripts/build-frontend.js (BUDGET_KB) — pega dependência pesada
+      # importada sem querer antes de chegar em produção.
+      - name: Build do frontend (orçamento de tamanho de bundle)
+        run: npm run build:frontend

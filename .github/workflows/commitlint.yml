@@ -1,0 +1,30 @@
+name: Commitlint
+
+# Só faz sentido em pull_request: valida os commits que estão entrando na
+# branch de destino, usando o range base..head calculado pela própria
+# action — não mexe/reescreve o histórico já mergeado.
+on:
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  commitlint:
+    name: Valida mensagens de commit do PR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configura Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Instala dependências (reprodutível)
+        run: npm ci
+
+      - name: Commitlint (commits do PR contra commitlint.config.js)
+        uses: wagoid/commitlint-github-action@v6

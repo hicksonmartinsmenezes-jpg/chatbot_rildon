@@ -55,6 +55,23 @@ function handleAvatarImageError(img) {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
 
+// setText + feedback visual de "isso mudou" (skill design-motion-principles,
+// Issue #14): pop de escala curto, só quando o valor realmente muda — não
+// em todo polling/re-render com o mesmo número. Usado nos cards/badges
+// numéricos que trocam sozinhos em tempo real (Dashboard, Pendentes/Em
+// andamento, contador de não lidas), pra ficar visível sem precisar reler
+// o texto. Classe .value-pop fica em 19-motion.css (respeita reduced-motion).
+const setTextPop = (id, v) => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const next = String(v);
+  if (el.textContent === next) return;
+  el.textContent = next;
+  el.classList.remove("value-pop");
+  void el.offsetWidth; // força reflow pra poder reanimar em trocas seguidas
+  el.classList.add("value-pop");
+};
+
 function getContactName(userId) {
   return allHistory.find(h => h.userId === userId && h.contactName)?.contactName || "";
 }

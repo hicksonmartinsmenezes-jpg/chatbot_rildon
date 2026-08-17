@@ -236,12 +236,14 @@ async function _loadConversationsCore(silent = false) {
     const emAndamento = Object.values(ticketsByUser).filter(t => t.status === "em_andamento").length;
     const badgeP = document.getElementById("badge-pendentes");
     const badgeA = document.getElementById("badge-em_andamento");
+    // setTextPop (Issue #14): pop de escala só quando o número muda de
+    // verdade (evita animar a cada poll silencioso com o mesmo valor).
     if (badgeP) {
-      badgeP.textContent = pendentes;
+      setTextPop("badge-pendentes", pendentes);
       badgeP.style.display = pendentes > 0 ? "" : "none";
     }
     if (badgeA) {
-      badgeA.textContent = emAndamento;
+      setTextPop("badge-em_andamento", emAndamento);
       badgeA.style.display = emAndamento > 0 ? "" : "none";
     }
 
@@ -578,6 +580,19 @@ async function openConversation(userId, updateActive = true) {
   let lastDay = "";
   const html  = [];
 
+  // Feature (Issue #14): mensagem nova chegando numa conversa JÁ ABERTA
+  // ganha entrada suave (fade+slide), em vez de aparecer instantânea. Essa
+  // função reconstrói o innerHTML inteiro toda vez (inclusive quando o
+  // socket dispara por causa de UMA mensagem nova) — pra não reanimar a
+  // conversa inteira a cada mensagem (violaria o Frequency Gate), só as
+  // bolhas que passam do total que já existia antes deste render ganham a
+  // classe. Trocar de conversa (eraMesmaConversaJaAberta = false) não anima
+  // nada — só a continuação ao vivo de uma conversa já aberta.
+  const bubbleRowsAntes = eraMesmaConversaJaAberta
+    ? (messagesBoxAntes?.querySelectorAll(".bubble-row").length || 0)
+    : Infinity;
+  let bubbleIndex = 0;
+
   for (const item of messages) {
     const currentDay = dayLabel(item.createdAt);
     if (currentDay !== lastDay) {
@@ -615,8 +630,10 @@ async function openConversation(userId, updateActive = true) {
       const replyBtn = podeResponder
         ? `<button type="button" class="bubble-reply-btn" data-reply-msg-id="${escapeAttr(item.messageId)}" data-reply-text="${escapeAttr(item.message.slice(0, 300))}" title="Responder"><i class="fa-solid fa-reply"></i></button>`
         : "";
+      const isNewBubble = bubbleIndex >= bubbleRowsAntes;
+      bubbleIndex++;
       html.push(`
-        <div class="bubble-row client-row">
+        <div class="bubble-row client-row${isNewBubble ? " msg-enter" : ""}">
           <div class="bubble client">
             ${replyBtn}
             ${renderMediaBubble(item)}
@@ -634,8 +651,10 @@ async function openConversation(userId, updateActive = true) {
       const quoteStrip = item.quotedText
         ? `<div class="bubble-quote"><i class="fa-solid fa-reply"></i> ${safe(item.quotedText.slice(0, 160))}</div>`
         : "";
+      const isNewBubble = bubbleIndex >= bubbleRowsAntes;
+      bubbleIndex++;
       html.push(`
-        <div class="bubble-row bot-row">
+        <div class="bubble-row bot-row${isNewBubble ? " msg-enter" : ""}">
           <div class="bubble bot"${item.messageId ? ` data-msg-id="${escapeAttr(item.messageId)}"` : ""}>
             ${quoteStrip}
             ${renderMediaBubble(item)}
@@ -1435,7 +1454,8 @@ function updateSidebarUnreadBadge() {
   if (!badge) return;
   const totalUnread = Object.values(unreadMessages).reduce((sum, v) => sum + Number(v || 0), 0);
   if (totalUnread > 0) {
-    badge.textContent = totalUnread > 99 ? "99+" : totalUnread;
+    // setTextPop (Issue #14): pop de escala só quando o valor muda de fato.
+    setTextPop("sidebar-unread-count", totalUnread > 99 ? "99+" : totalUnread);
     badge.classList.remove("hidden");
   } else {
     badge.textContent = "0";

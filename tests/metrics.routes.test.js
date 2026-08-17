@@ -233,14 +233,16 @@ describe("GET /api/metrics", () => {
     expect(res.body.horarioPico).toEqual({ hora: 14, total: 7 });
   });
 
-  // PEDIDO DO USUÁRIO (2026-07-27): remover "setor destaque"/"por status"/
-  // "por setor" da aba Métricas — não fazem mais parte da resposta.
-  test("resposta NÃO inclui mais setorMaisMovimentado/porStatus/porSetor (removidos a pedido do usuário)", async () => {
+  // PEDIDO DO USUÁRIO (2026-07-27): "setor destaque"/"por status" removidos
+  // da aba Métricas nessa época — continuam fora da resposta. "porSetor" foi
+  // reintroduzido depois (2026-07-31, "atendimentos por setor"), então HOJE
+  // faz parte da resposta — teste e nome atualizados (Issue #7, 2026-08-17).
+  test("resposta NÃO inclui mais setorMaisMovimentado/porStatus, mas porSetor voltou a existir (2026-07-31)", async () => {
     const res = await request(buildApp(SUPERVISOR)).get("/api/metrics");
 
     expect(res.status).toBe(200);
     expect(res.body.setorMaisMovimentado).toBeUndefined();
     expect(res.body.porStatus).toBeUndefined();
-    expect(res.body.porSetor).toBeUndefined();
+    expect(res.body.porSetor).toEqual({ geral: 1, vendas: 6 });
   });
 });

@@ -265,7 +265,15 @@ describe("config/whatsapp — messages.upsert com foto", () => {
       JID,
       expect.objectContaining({ text: expect.stringContaining("Deseja que eu já registre um orçamento") })
     );
-    expect(updateSession).toHaveBeenCalledWith(JID, { aguardandoConfirmacaoOrcamento: true });
+    // BUG CORRIGIDO (Issue #15): quando a visão reconhece a peça, o texto
+    // reconhecido precisa ir pra sessão (veiculoSugerido/produtoSugerido) —
+    // sem isso, confirmar "sim" fazia o bot perguntar o veículo do zero,
+    // mesmo tendo acabado de exibi-lo nesta mesma mensagem.
+    expect(updateSession).toHaveBeenCalledWith(JID, {
+      aguardandoConfirmacaoOrcamento: true,
+      veiculoSugerido: "pastilha de freio dianteira",
+      produtoSugerido: "pastilha de freio dianteira",
+    });
   }, 10000);
 
   // Peça real de celular/incerta → analisarImagemPeca (PASSO 2 do prompt)

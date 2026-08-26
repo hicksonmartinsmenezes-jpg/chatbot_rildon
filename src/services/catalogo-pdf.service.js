@@ -712,10 +712,16 @@ function _desenharLinhaIndice(doc, textoLinha, numeroPagina, y, larguraTotal) {
   // direita (bem separados); agora os dois são medidos e desenhados como
   // um GRUPO único, centralizado dentro de larguraBlocoPg, com a linha de
   // base do "PG" (fonte menor) alinhada à base do número (fonte maior).
-  const gapPgNumero = 5;
+  // Ajuste fino (2026-08-26): pequeno espaço fixo entre "PG" e o número
+  // (antes os dois praticamente se tocavam) e número padronizado na mesma
+  // fonte do "PG" (TITULO_FONTE = Futura MD BT), em vez de Helvetica-Bold
+  // — evita a mistura de duas famílias tipográficas lado a lado e, por
+  // usarem a mesma fonte, o alinhamento vertical por proporção de tamanho
+  // fica consistente entre os dois.
+  const gapPgNumero = 4;
   doc.font(TITULO_FONTE).fontSize(INDICE_PG_LABEL_TAMANHO);
   const larguraPg = doc.widthOfString("PG");
-  doc.font("Helvetica-Bold").fontSize(INDICE_PG_NUMERO_TAMANHO);
+  doc.font(TITULO_FONTE).fontSize(INDICE_PG_NUMERO_TAMANHO);
   const larguraNumero = doc.widthOfString(String(numeroPagina));
   const larguraGrupo = larguraPg + gapPgNumero + larguraNumero;
   const xGrupo = xBlocoPg + (larguraBlocoPg - larguraGrupo) / 2;
@@ -724,7 +730,7 @@ function _desenharLinhaIndice(doc, textoLinha, numeroPagina, y, larguraTotal) {
 
   doc.fillColor(AZUL).font(TITULO_FONTE).fontSize(INDICE_PG_LABEL_TAMANHO)
     .text("PG", xGrupo, yPg, { lineBreak: false });
-  doc.fillColor(AZUL).font("Helvetica-Bold").fontSize(INDICE_PG_NUMERO_TAMANHO)
+  doc.fillColor(AZUL).font(TITULO_FONTE).fontSize(INDICE_PG_NUMERO_TAMANHO)
     .text(String(numeroPagina), xGrupo + larguraPg + gapPgNumero, yNumero, { lineBreak: false });
 
   doc.fillColor("#111827").font("Helvetica");

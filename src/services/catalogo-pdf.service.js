@@ -355,20 +355,17 @@ const INDICE_LINHA_ALTURA = 36;
 const A4_LARGURA = 595.28;
 const A4_ALTURA = 841.89;
 
-// Pedido do usuário (2026-08-26): cabeçalho da página de ÍNDICE "colado"
-// nas margens laterais (sem gap branco), no MESMO tamanho do cabeçalho
-// compartilhado (_desenharCabecalho/HEADER_HEIGHT, usado nas páginas de
-// conteúdo e nos outros modos de exportação) — padronizando a página de
-// índice com o resto do catálogo em vez de ter uma arte maior só ali.
-// Rodada anterior tinha ampliado (escala 1.35) pra "colar" nas margens;
-// revertido aqui porque a escala 1.35 já não era mais necessária pra
-// colar nas margens — em escala 1 (largura = largura da página) o efeito
-// "grudado" já acontece naturalmente, sem sangria nem distorção.
-// INDICE_CABECALHO_ESCALA mantida (em vez de reusar CABECALHO_IMG_ALTURA_REAL
-// direto) só pra não precisar reescrever _desenharCabecalhoIndice — a
-// técnica de zoom+center-crop abaixo continua válida, só que com escala
-// neutra (1) o "crop" não recorta nada.
-const INDICE_CABECALHO_ESCALA = 1;
+// Pedido do usuário (2026-08-26): cabeçalho da página de ÍNDICE um
+// pouquinho maior que o cabeçalho compartilhado (_desenharCabecalho,
+// usado nas páginas de conteúdo), mas "colado" nas margens laterais
+// (sem gap branco) — rodada anterior tinha zerado a escala (voltando ao
+// tamanho padrão); usuário pediu um aumento pequeno de novo, então
+// escala > 1 de novo (bem menor que a tentativa anterior de 1.35).
+// Técnica de zoom + center-crop: a arte é desenhada mais larga que a
+// página e centralizada horizontalmente — a borda da própria página
+// corta simetricamente os dois lados em x=0/x=w, "colando" nas margens
+// sem distorcer a arte original.
+const INDICE_CABECALHO_ESCALA = 1.08;
 const INDICE_CABECALHO_IMG_ALTURA_REAL = (A4_LARGURA * INDICE_CABECALHO_ESCALA) / CABECALHO_IMG_RATIO;
 const INDICE_CABECALHO_SANGRIA_TOPO = CABECALHO_SANGRIA_TOPO * INDICE_CABECALHO_ESCALA;
 const INDICE_HEADER_HEIGHT = INDICE_CABECALHO_IMG_ALTURA_REAL - INDICE_CABECALHO_SANGRIA_TOPO;
@@ -707,15 +704,20 @@ function _desenharLinhaIndice(doc, textoLinha, numeroPagina, y, larguraTotal) {
   const larguraNomeReal = Math.min(doc.widthOfString(nomeUpper), larguraNomeMax);
 
   // Pedido do usuário (2026-08-26): trocar o líder pontilhado por um "hr"
-  // cinza sólido — mesma cor/espessura/opacidade já usadas como divisória
-  // entre foto e texto em cada card (LINHA_DIVISORIA), padronizando o
-  // cinza do índice com o resto do catálogo em vez de um estilo novo.
-  const yLider = y + INDICE_LINHA_TAMANHO * 0.7;
-  const xLiderInicio = xEsquerda + larguraNomeReal + 8;
-  const xLiderFim = xBlocoPg - 8;
+  // cinza sólido — mesma cor/opacidade já usadas como divisória entre foto
+  // e texto em cada card (LINHA_DIVISORIA), padronizando o cinza do índice
+  // com o resto do catálogo em vez de um estilo novo.
+  // Ajuste fino (2026-08-26): descido um pouco (0.7 → 0.78 do tamanho da
+  // linha) pra ficar entre o pé do texto da Linha e o pé do bloco "PG nn",
+  // em vez de cortar no meio da altura do texto; espessura um pouco maior
+  // (0.6 → 0.9) e gap lateral reduzido (8 → 6) pra ficar um pouco mais
+  // comprido, como pedido ("aumente o pouco o tamanho do hr").
+  const yLider = y + INDICE_LINHA_TAMANHO * 0.78;
+  const xLiderInicio = xEsquerda + larguraNomeReal + 6;
+  const xLiderFim = xBlocoPg - 6;
   if (xLiderFim > xLiderInicio) {
     doc.moveTo(xLiderInicio, yLider).lineTo(xLiderFim, yLider)
-      .lineWidth(0.6).strokeColor(LINHA_DIVISORIA, 0.8).stroke();
+      .lineWidth(0.9).strokeColor(LINHA_DIVISORIA, 0.8).stroke();
   }
 
   // Pedido do usuário (2026-08-26): "centralize PG e números" — antes "PG"
@@ -741,8 +743,11 @@ function _desenharLinhaIndice(doc, textoLinha, numeroPagina, y, larguraTotal) {
 
   doc.font(TITULO_FONTE).fontSize(INDICE_PG_LABEL_TAMANHO);
   _textoComSombra(doc, "PG", xGrupo, yPg, AZUL, { lineBreak: false });
+  // Pedido do usuário (2026-08-26): "retire sombra de números" — só o
+  // número da página, sem sombra (o "PG" ao lado continua com sombra,
+  // igual ao resto do texto do índice).
   doc.font(TITULO_FONTE).fontSize(INDICE_PG_NUMERO_TAMANHO);
-  _textoComSombra(doc, String(numeroPagina), xGrupo + larguraPg + gapPgNumero, yNumero, AZUL, { lineBreak: false });
+  doc.fillColor(AZUL).text(String(numeroPagina), xGrupo + larguraPg + gapPgNumero, yNumero, { lineBreak: false });
 
   doc.fillColor("#111827").font("Helvetica");
 }

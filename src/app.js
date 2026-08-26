@@ -54,6 +54,16 @@ app.use(helmet({
       connectSrc:     ["'self'", "ws:", "wss:"],
       objectSrc:      ["'none'"],
       frameAncestors: ["'none'"],
+      // Issue #22 (2026-08-26): pré-visualização do "Catálogo Completo"
+      // embute o PDF gerado num <iframe src="blob:...">. Sem essa diretiva,
+      // frame-src cai no fallback de defaultSrc ("'self'"), que NÃO cobre
+      // blob: — o navegador bloqueia silenciosamente ("Este conteúdo está
+      // bloqueado", sem erro nenhum no console) e o iframe mostra o ícone de
+      // "documento quebrado" em vez do PDF. blob: é seguro aqui porque o
+      // Blob é criado no próprio browser a partir de uma resposta do nosso
+      // backend (fetch em /api/catalogo/exportar-pdf), nunca de conteúdo de
+      // terceiros.
+      frameSrc:       ["'self'", "blob:"],
       // CAUSA RAIZ REAL do ERR_SSL_PROTOCOL_ERROR em outros computadores
       // (2026-07-13): o Helmet, com useDefaults implícito (true), MESCLA
       // suas diretivas padrão às nossas — e uma delas é

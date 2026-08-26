@@ -23,7 +23,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css">
   <!-- CSS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <link rel="stylesheet" href="dist/bundle.d7cee4a622.css">
+  <link rel="stylesheet" href="dist/bundle.36601a545d.css">
   <!-- CSS_BUNDLE_END -->
 <style>
     /* Centraliza colunas da tabela de histórico */
@@ -2151,6 +2151,18 @@ Como podemos ajudar você hoje?
           <i class="fa-solid fa-file-pdf"></i> Gerar catálogo completo (PDF)
         </button>
       </div>
+
+      <!-- Pré-visualização automática (Issue #22, pedido do usuário 2026-08-26):
+           aparece sozinha assim que um fabricante é selecionado, sem precisar
+           clicar em "Gerar" — ver onCatalogoFabricanteCompletoChange em
+           18-catalogo.js. -->
+      <div id="catalogo-completo-preview" class="catalogo-completo-preview hidden">
+        <div class="catalogo-completo-preview-header">
+          <i class="fa-solid fa-eye"></i> Pré-visualização
+        </div>
+        <p id="catalogo-completo-preview-status" class="catalogo-completo-preview-status hidden"></p>
+        <iframe id="catalogo-completo-preview-frame" class="catalogo-completo-preview-frame" title="Pré-visualização do catálogo completo"></iframe>
+      </div>
     </div>
 
   </div>
@@ -2287,7 +2299,7 @@ Como podemos ajudar você hoje?
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1"></script>
 
   <!-- JS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <script src="dist/bundle.75cf596050.js"></script>
+  <script src="dist/bundle.ccc4419f44.js"></script>
   <!-- JS_BUNDLE_END -->
 
 

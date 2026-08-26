@@ -189,6 +189,7 @@ async function onCatalogoFabricanteCompletoChange() {
   if (!fabricante) {
     contagemEl?.classList.add("hidden");
     if (btn) btn.disabled = true;
+    _atualizarPreviewCatalogoCompleto("");
     return;
   }
 
@@ -208,10 +209,69 @@ async function onCatalogoFabricanteCompletoChange() {
         : "Nenhum produto encontrado pra esse fabricante.";
     }
     if (btn) btn.disabled = total === 0;
+    // Issue #22 (pedido do usuário, 2026-08-26): pré-visualização aparece
+    // sozinha assim que o fabricante é selecionado — sem esperar clique em
+    // "Gerar catálogo completo (PDF)".
+    _atualizarPreviewCatalogoCompleto(total > 0 ? fabricante : "");
   } catch (err) {
     if (contagemEl) contagemEl.textContent = "Erro ao contar produtos dessa marca.";
     if (btn) btn.disabled = true;
     console.warn("[catalogo] falha ao contar produtos do fabricante:", err.message);
+    _atualizarPreviewCatalogoCompleto("");
+  }
+}
+
+// Issue #22 (pedido do usuário, 2026-08-26): "preciso que a pré
+// visualização de como vai ficar o catalogo no painel de Catalogo Completo
+// fique visível embaixo". Reusa o MESMO endpoint /api/catalogo/exportar-pdf
+// já usado pelo botão de download (gerarCatalogoCompletoPDF) — a única
+// diferença é que aqui o blob vira `src` de um <iframe> em vez de acionar
+// um <a download>, então o navegador renderiza o PDF inline (visualizador
+// nativo) em vez de baixar o arquivo.
+// _catalogoCompletoPreviewUrl guarda a Object URL atual pra poder liberar
+// (URL.revokeObjectURL) antes de criar a próxima — sem isso, cada troca de
+// fabricante vazaria memória seguindo o blob anterior preso vivo.
+let _catalogoCompletoPreviewUrl = null;
+
+async function _atualizarPreviewCatalogoCompleto(fabricante) {
+  const wrap = document.getElementById("catalogo-completo-preview");
+  const frame = document.getElementById("catalogo-completo-preview-frame");
+  const statusEl = document.getElementById("catalogo-completo-preview-status");
+
+  if (_catalogoCompletoPreviewUrl) {
+    URL.revokeObjectURL(_catalogoCompletoPreviewUrl);
+    _catalogoCompletoPreviewUrl = null;
+  }
+
+  if (!fabricante) {
+    wrap?.classList.add("hidden");
+    if (frame) frame.src = "about:blank";
+    return;
+  }
+
+  wrap?.classList.remove("hidden");
+  if (frame) frame.src = "about:blank";
+  if (statusEl) {
+    statusEl.textContent = "Gerando pré-visualização... (pode levar alguns segundos)";
+    statusEl.classList.remove("hidden");
+  }
+
+  try {
+    const res = await fetch(`/api/catalogo/exportar-pdf?fabricante=${encodeURIComponent(fabricante)}`, { credentials: "include" });
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      throw new Error(errBody.error || "Erro ao gerar pré-visualização.");
+    }
+    const blob = await res.blob();
+    _catalogoCompletoPreviewUrl = URL.createObjectURL(blob);
+    if (frame) frame.src = _catalogoCompletoPreviewUrl;
+    if (statusEl) statusEl.classList.add("hidden");
+  } catch (err) {
+    if (statusEl) {
+      statusEl.textContent = err.message || "Não foi possível carregar a pré-visualização.";
+      statusEl.classList.remove("hidden");
+    }
+    console.warn("[catalogo] falha ao carregar preview do catálogo completo:", err.message);
   }
 }
 

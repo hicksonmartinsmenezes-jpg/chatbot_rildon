@@ -317,6 +317,48 @@ const TITULO_TAMANHO = 17;
 // uma dessas peças mudar de novo no futuro.
 const AREA_TOPO_Y = HEADER_HEIGHT + TITULO_GAP_TOPO + TITULO_TAMANHO + TITULO_GAP_CARDS;
 
+// --- Modo "Catálogo Completo" (Issue #21, pedido do usuário 2026-08-26) ---
+// Grade separada da grade padrão (COLS/ROWS_POR_PAGINA acima, ajustada em
+// 2026-07-31 pra "caber o máximo de itens possíveis" — pedido de outro
+// contexto). O usuário mandou como referência o catálogo 3-RHO.pdf e depois
+// confirmou com dois prints recortados com guias de medição do CorelDRAW
+// visíveis: grade 4 colunas × 5 linhas = 20 produtos/página, mais espaçosa
+// que a 5×6 do resto do sistema. Só o modo "Catálogo Completo" (por
+// fabricante, sem marca/modelo/categoria) usa essa densidade — os outros
+// modos de exportação continuam com COLS/ROWS_POR_PAGINA, sem mudança.
+const COLS_COMPLETO = 4;
+const ROWS_POR_PAGINA_COMPLETO = 5;
+
+// Tamanhos de fonte do índice — pedido explícito do usuário (2026-08-26):
+// "Indice deixa 36pt, pg deixa 12pt... Linhas deixa 17 pt" (17pt é o mesmo
+// TITULO_TAMANHO já usado nos títulos de seção — reaproveitado, não é
+// coincidência).
+const INDICE_TITULO_TAMANHO = 36;
+const INDICE_LINHA_TAMANHO = TITULO_TAMANHO;
+const INDICE_PG_LABEL_TAMANHO = 12;
+// Não especificado pelo usuário — escolha própria de proporção visual (maior
+// que o label "PG" pra destacar o número, sem ter sido medido/pedido na
+// referência) só pra dar hierarquia ao número da página.
+const INDICE_PG_NUMERO_TAMANHO = 18;
+// Altura de cada linha do índice (nome + líder pontilhado + "PG nn") —
+// estimada a partir do INDICE_LINHA_TAMANHO + respiro; as imagens que o
+// usuário mandou confirmaram a ESTRUTURA da linha, não uma régua de altura
+// exata, então esse valor é uma estimativa própria, ajustável se o resultado
+// impresso ficar apertado/solto demais.
+const INDICE_LINHA_ALTURA = 36;
+// Início da área de conteúdo da página de índice — mesma fórmula de
+// AREA_TOPO_Y acima, só que com o título maior (INDICE_TITULO_TAMANHO em vez
+// de TITULO_TAMANHO), pra não desalinhar com o tamanho de fonte pedido.
+const AREA_TOPO_Y_INDICE = HEADER_HEIGHT + TITULO_GAP_TOPO + INDICE_TITULO_TAMANHO + TITULO_GAP_CARDS;
+// Tamanho de página "A4" que o pdfkit usa (595.28 × 841.89pt) — o mesmo
+// doc.page.height que o resto do arquivo lê de `doc.page` depois do 1º
+// addPage(). Usado SÓ no pré-cálculo de paginação do índice em
+// gerarPdfCatalogoCompleto, que precisa rodar ANTES de existir uma página de
+// verdade (pdfkit renderiza sequencialmente, sem "olhar adiante" pra saber
+// em que página cada Linha vai cair).
+const A4_LARGURA = 595.28;
+const A4_ALTURA = 841.89;
+
 // Pedido do usuário (2026-07-30): remover o fundo cinza clarinho atrás da
 // foto (existia desde 2026-07-28 pra dar contraste com fotos de fundo
 // branco) — perguntei explicitamente branco/azul-clarinho/cinza mais forte
@@ -401,6 +443,75 @@ function _desenharCardVidro(doc, x, y, w, h) {
   doc.fillOpacity(1).strokeOpacity(1);
 }
 
+// Extraído de gerarPdfCatalogo (2026-08-26, Issue #21) pra ser reusado
+// também por gerarPdfCatalogoCompleto — mesma matemática de sempre (foto
+// preenche 100% do espaço que sobra depois de descontar o bloco fixo de
+// texto), só parametrizada por cols/rows em vez de usar COLS/ROWS_POR_PAGINA
+// direto, pra caber tanto a grade 5×6 padrão quanto a 4×5 do modo completo
+// sem duplicar a função.
+function _geometriaGrid(doc, cols, rows) {
+  const larguraUtil = doc.page.width - PAGE_MARGIN * 2;
+  const cardWidth = (larguraUtil - (cols - 1) * GAP) / cols;
+  const photoBoxWidth = cardWidth - PAD_CARD * 2;
+  const areaTopoY = AREA_TOPO_Y;
+  const areaFimY = doc.page.height - FOOTER_HEIGHT - 8;
+  const alturaDisponivel = areaFimY - areaTopoY;
+  const cardHeightMax = (alturaDisponivel - (rows - 1) * GAP) / rows;
+  const alturaFixaTexto = PAD_CARD + GAP_FOTO_DIVISORIA + GAP_DIVISORIA_TEXTO + CODIGO_ALTURA + GAP_CODIGO_NOME + NOME_ALTURA + PAD_CARD;
+  const photoBoxHeight = cardHeightMax - alturaFixaTexto;
+  const cardHeight = cardHeightMax;
+  return { cardWidth, cardHeight, photoBoxWidth, photoBoxHeight, areaTopoY, areaFimY };
+}
+
+// Extraído de gerarPdfCatalogo (2026-08-26, Issue #21) — desenha um card de
+// produto completo (moldura + foto + divisória + código + nome) em x/y
+// dados, sem saber nada sobre grade/paginação. Reusado por gerarPdfCatalogo
+// (grade 5×6) e gerarPdfCatalogoCompleto (grade 4×5) — comportamento
+// idêntico ao que já existia antes da extração, só parametrizado.
+function _desenharCard(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth, photoBoxHeight) {
+  _desenharCardVidro(doc, x, y, cardWidth, cardHeight);
+
+  const xFoto = x + PAD_CARD;
+  const yFoto = y + PAD_CARD;
+
+  try {
+    const foto = obterFoto(produto.codigo, 0);
+    if (foto && (foto.mimetype === "image/jpeg" || foto.mimetype === "image/png")) {
+      doc.image(foto.buffer, xFoto, yFoto, { fit: [photoBoxWidth, photoBoxHeight], align: "center", valign: "center" });
+    } else {
+      doc.font("Helvetica").fontSize(7).fillColor("#9ca3af")
+        .text("sem foto", xFoto, yFoto + photoBoxHeight / 2 - 5, { width: photoBoxWidth, align: "center" });
+    }
+  } catch {
+    doc.font("Helvetica").fontSize(7).fillColor("#9ca3af")
+      .text("sem foto", xFoto, yFoto + photoBoxHeight / 2 - 5, { width: photoBoxWidth, align: "center" });
+  }
+  doc.fillColor("#111827").font("Helvetica");
+
+  const yDivisoria = yFoto + photoBoxHeight + GAP_FOTO_DIVISORIA;
+  doc.moveTo(x + PAD_CARD, yDivisoria).lineTo(x + cardWidth - PAD_CARD, yDivisoria)
+    .lineWidth(0.6).strokeColor(LINHA_DIVISORIA, 0.8).stroke();
+
+  const yCodigo = yDivisoria + GAP_DIVISORIA_TEXTO;
+  doc.fillColor(AZUL).font("Helvetica-Bold").fontSize(CODIGO_FONTE)
+    .text(_rotuloProduto(produto), x + PAD_CARD, yCodigo, {
+      width: cardWidth - PAD_CARD * 2,
+      height: CODIGO_ALTURA,
+      ellipsis: true,
+    });
+
+  const yNome = yCodigo + CODIGO_ALTURA + GAP_CODIGO_NOME;
+  doc.fillColor("#111827").font("Helvetica-Bold").fontSize(NOME_FONTE)
+    .text(String(produto.nome || "").toUpperCase(), x + PAD_CARD, yNome, {
+      width: cardWidth - PAD_CARD * 2,
+      height: NOME_ALTURA,
+      ellipsis: true,
+      lineGap: 0.5,
+    });
+
+  doc.font("Helvetica");
+}
+
 function _desenharCabecalho(doc, tituloBusca) {
   const w = doc.page.width;
 
@@ -483,6 +594,89 @@ function _desenharRodape(doc, numeroPagina) {
   doc.fillColor("#111827").font("Helvetica");
 }
 
+// Agrupa produtos por Linha (Issue #21) — usa p.linha, caindo pra p.secao e
+// depois "Outros" se nenhum dos dois vier preenchido. Já são campos
+// indexados em catalogo-x2.service.js, nenhum dado novo precisou ser
+// buscado. Ordenado alfabeticamente (pt-BR) pelo nome da Linha — mesma
+// ordem em que vai aparecer no índice e no corpo do PDF.
+function _agruparPorLinha(produtos) {
+  const grupos = new Map();
+  produtos.forEach((produto) => {
+    const chave = String(produto.linha || produto.secao || "Outros").trim() || "Outros";
+    if (!grupos.has(chave)) grupos.set(chave, []);
+    grupos.get(chave).push(produto);
+  });
+  return Array.from(grupos.entries())
+    .map(([linha, itens]) => ({ linha, itens }))
+    .sort((a, b) => a.linha.localeCompare(b.linha, "pt-BR"));
+}
+
+// Cabeçalho da(s) página(s) de índice — mesma arte de _desenharCabecalho,
+// só com o título fixo "ÍNDICE" em INDICE_TITULO_TAMANHO (36pt, pedido do
+// usuário) em vez do nome da busca em TITULO_TAMANHO (17pt).
+function _desenharCabecalhoIndice(doc) {
+  const w = doc.page.width;
+  doc.image(CABECALHO_IMG, 0, -CABECALHO_SANGRIA_TOPO, { width: w, height: CABECALHO_IMG_ALTURA_REAL });
+
+  const tituloTexto = "ÍNDICE";
+  const tituloX = PAGE_MARGIN;
+  const tituloY = HEADER_HEIGHT + TITULO_GAP_TOPO;
+  const tituloLargura = w - PAGE_MARGIN * 2;
+
+  doc.fillColor("#000000", 0.35).font(TITULO_FONTE).fontSize(INDICE_TITULO_TAMANHO)
+    .text(tituloTexto, tituloX + 1.5, tituloY + 1.5, { width: tituloLargura });
+  doc.fillOpacity(1);
+
+  doc.fillColor(VERMELHO_CATEGORIA).font(TITULO_FONTE).fontSize(INDICE_TITULO_TAMANHO)
+    .text(tituloTexto, tituloX, tituloY, { width: tituloLargura });
+
+  doc.fillColor("#111827").font("Helvetica");
+}
+
+// Desenha uma linha do índice: nome da Linha (vermelho, Futura itálico,
+// 17pt) à esquerda, líder pontilhado, e bloco "PG nn" (azul) à direita —
+// estrutura confirmada pelos dois prints com guias de medição que o usuário
+// mandou. `larguraTotal` é a largura útil da página (sem as margens).
+function _desenharLinhaIndice(doc, textoLinha, numeroPagina, y, larguraTotal) {
+  const xEsquerda = PAGE_MARGIN;
+  const larguraBlocoPg = 70; // reserva fixa pro bloco "PG nn" à direita
+  const xBlocoPg = xEsquerda + larguraTotal - larguraBlocoPg;
+  const larguraNomeMax = xBlocoPg - xEsquerda - 16;
+
+  const nomeUpper = String(textoLinha || "").toUpperCase();
+
+  doc.fillColor(VERMELHO_CATEGORIA).font(TITULO_FONTE).fontSize(INDICE_LINHA_TAMANHO)
+    .text(nomeUpper, xEsquerda, y, {
+      width: larguraNomeMax,
+      height: INDICE_LINHA_TAMANHO + 4,
+      ellipsis: true,
+      lineBreak: false,
+    });
+
+  doc.font(TITULO_FONTE).fontSize(INDICE_LINHA_TAMANHO);
+  const larguraNomeReal = Math.min(doc.widthOfString(nomeUpper), larguraNomeMax);
+
+  // Líder pontilhado entre o fim do nome e o bloco "PG nn".
+  const yLider = y + INDICE_LINHA_TAMANHO * 0.7;
+  const xLiderInicio = xEsquerda + larguraNomeReal + 8;
+  const xLiderFim = xBlocoPg - 8;
+  if (xLiderFim > xLiderInicio) {
+    doc.save();
+    doc.dash(1.5, { space: 2.5 });
+    doc.moveTo(xLiderInicio, yLider).lineTo(xLiderFim, yLider)
+      .lineWidth(0.75).strokeColor("#9ca3af").stroke();
+    doc.undash();
+    doc.restore();
+  }
+
+  doc.fillColor(AZUL).font(TITULO_FONTE).fontSize(INDICE_PG_LABEL_TAMANHO)
+    .text("PG", xBlocoPg, y + 6, { width: larguraBlocoPg, align: "left", lineBreak: false });
+  doc.fillColor(AZUL).font("Helvetica-Bold").fontSize(INDICE_PG_NUMERO_TAMANHO)
+    .text(String(numeroPagina), xBlocoPg, y, { width: larguraBlocoPg, align: "right", lineBreak: false });
+
+  doc.fillColor("#111827").font("Helvetica");
+}
+
 /**
  * Gera o PDF e faz stream direto pro destino (a `res` do Express — quem
  * chama já seta os headers de Content-Type/Content-Disposition antes).
@@ -507,37 +701,19 @@ function gerarPdfCatalogo(produtos, tituloBusca, destino) {
 
   novaPagina();
 
-  const larguraUtil = doc.page.width - PAGE_MARGIN * 2;
-  const cardWidth = (larguraUtil - (COLS - 1) * GAP) / COLS;
-  const photoBoxWidth = cardWidth - PAD_CARD * 2;
-  const areaTopoY = AREA_TOPO_Y;
-  const areaFimY = doc.page.height - FOOTER_HEIGHT - 8;
-
-  // Pedido do usuário (2026-07-28): preencher o espaço em branco que sobrava
-  // no fim da página aumentando as caixas das fotos, em vez de deixar vão
-  // morto. Em vez de uma altura de foto fixa, calculamos o card de trás pra
-  // frente: quanto de altura total cabe em ROWS_POR_PAGINA linhas dentro do
-  // espaço disponível, subtraímos tudo que é fixo (respiros + linha
-  // divisória + código + nome) e o que sobra vira a altura da foto — ou
-  // seja, a foto SEMPRE ocupa 100% do espaço que sobrar, sem vão embaixo.
-  //
-  // 2026-07-30: o código voltou a ter uma faixa de texto própria abaixo da
-  // foto (era uma CAIXA sobreposta na foto, ver _desenharCaixaCodigo — não
-  // usada mais aqui) — CODIGO_ALTURA volta a entrar nessa conta.
-  const alturaDisponivel = areaFimY - areaTopoY;
-  const cardHeightMax = (alturaDisponivel - (ROWS_POR_PAGINA - 1) * GAP) / ROWS_POR_PAGINA;
-  // GAP_FOTO_DIVISORIA = respiro antes da linha divisória; GAP_DIVISORIA_TEXTO
-  // = respiro dela até o código; GAP_CODIGO_NOME = respiro entre código e nome.
-  const alturaFixaTexto = PAD_CARD + GAP_FOTO_DIVISORIA + GAP_DIVISORIA_TEXTO + CODIGO_ALTURA + GAP_CODIGO_NOME + NOME_ALTURA + PAD_CARD;
-  const photoBoxHeight = cardHeightMax - alturaFixaTexto;
-  const cardHeight = cardHeightMax;
+  // 2026-08-26 (Issue #21): matemática de grade extraída pra _geometriaGrid
+  // (reusada também por gerarPdfCatalogoCompleto) — mesmo cálculo de
+  // sempre, só que agora numa função parametrizada por cols/rows em vez de
+  // usar COLS/ROWS_POR_PAGINA direto aqui dentro.
+  const { cardWidth, cardHeight, photoBoxWidth, photoBoxHeight, areaFimY } =
+    _geometriaGrid(doc, COLS, ROWS_POR_PAGINA);
 
   let col = 0;
   let linhaY = doc.y;
 
   produtos.forEach((produto) => {
-    // Epsilon de 0.5pt: como cardHeightMax é calculado pra preencher
-    // EXATAMENTE o espaço disponível (ver comentário acima), a soma
+    // Epsilon de 0.5pt: como cardHeight é calculado pra preencher
+    // EXATAMENTE o espaço disponível (ver _geometriaGrid), a soma
     // acumulada de ROWS_POR_PAGINA linhas bate matematicamente igual a
     // areaFimY — mas ponto flutuante às vezes fecha com um resto de
     // ~1e-13, e sem essa margem isso já disparou uma quebra de página
@@ -552,61 +728,7 @@ function gerarPdfCatalogo(produtos, tituloBusca, destino) {
     const x = PAGE_MARGIN + col * (cardWidth + GAP);
     const y = linhaY;
 
-    _desenharCardVidro(doc, x, y, cardWidth, cardHeight);
-
-    const xFoto = x + PAD_CARD;
-    const yFoto = y + PAD_CARD;
-
-    // Pedido do usuário (2026-07-30): removido o fundo cinza clarinho atrás
-    // da foto (existia desde 2026-07-28) — perguntei branco/azul-clarinho/
-    // cinza mais forte e o usuário escolheu branco (ou seja, sem nenhuma cor
-    // de fundo aqui, só o branco do card por baixo).
-    try {
-      const foto = obterFoto(produto.codigo, 0);
-      if (foto && (foto.mimetype === "image/jpeg" || foto.mimetype === "image/png")) {
-        doc.image(foto.buffer, xFoto, yFoto, { fit: [photoBoxWidth, photoBoxHeight], align: "center", valign: "center" });
-      } else {
-        doc.font("Helvetica").fontSize(7).fillColor("#9ca3af")
-          .text("sem foto", xFoto, yFoto + photoBoxHeight / 2 - 5, { width: photoBoxWidth, align: "center" });
-      }
-    } catch {
-      doc.font("Helvetica").fontSize(7).fillColor("#9ca3af")
-        .text("sem foto", xFoto, yFoto + photoBoxHeight / 2 - 5, { width: photoBoxWidth, align: "center" });
-    }
-    doc.fillColor("#111827").font("Helvetica");
-
-    // Linha divisória sutil separando foto de texto (pedido do usuário:
-    // deixar as informações mais organizadas).
-    const yDivisoria = yFoto + photoBoxHeight + GAP_FOTO_DIVISORIA;
-    doc.moveTo(x + PAD_CARD, yDivisoria).lineTo(x + cardWidth - PAD_CARD, yDivisoria)
-      .lineWidth(0.6).strokeColor(LINHA_DIVISORIA, 0.8).stroke();
-
-    // Pedido do usuário (2026-07-30): "remova o código na parte de cima com
-    // o background azul, vamos deixar o código junto à descrição e desça um
-    // pouco mais" — tira a caixa/badge de cima da foto (v4, 2026-07-29) e
-    // volta o código pra baixo, junto do nome, como texto azul (mesmo
-    // formato da v2/v3 original), com mais respiro em relação à divisória.
-    const yCodigo = yDivisoria + GAP_DIVISORIA_TEXTO;
-    doc.fillColor(AZUL).font("Helvetica-Bold").fontSize(CODIGO_FONTE)
-      .text(_rotuloProduto(produto), x + PAD_CARD, yCodigo, {
-        width: cardWidth - PAD_CARD * 2,
-        height: CODIGO_ALTURA,
-        ellipsis: true,
-      });
-
-    // Nome (preto, negrito, maiúsculo, ~2 linhas com reticências) — 8pt
-    // (pedido do usuário 2026-07-30: diminuir um pouco; era 9pt). Logo
-    // abaixo do código, com um respiro pequeno entre os dois.
-    const yNome = yCodigo + CODIGO_ALTURA + GAP_CODIGO_NOME;
-    doc.fillColor("#111827").font("Helvetica-Bold").fontSize(NOME_FONTE)
-      .text(String(produto.nome || "").toUpperCase(), x + PAD_CARD, yNome, {
-        width: cardWidth - PAD_CARD * 2,
-        height: NOME_ALTURA,
-        ellipsis: true,
-        lineGap: 0.5,
-      });
-
-    doc.font("Helvetica");
+    _desenharCard(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth, photoBoxHeight);
 
     col += 1;
     if (col >= COLS) {
@@ -618,4 +740,103 @@ function gerarPdfCatalogo(produtos, tituloBusca, destino) {
   doc.end();
 }
 
-module.exports = { gerarPdfCatalogo };
+/**
+ * Gera o PDF do modo "Catálogo Completo" (Issue #21, pedido do usuário
+ * 2026-08-26): TODO o catálogo de um fabricante, dividido por Linha, com
+ * página(s) de ÍNDICE/sumário no início — réplica do modelo de referência
+ * (3-RHO.pdf) que o usuário mandou, confirmada por dois prints com guias de
+ * medição do CorelDRAW: grade 4 colunas × 5 linhas = 20 produtos/página,
+ * título do índice 36pt, linha do índice 17pt na mesma Futura Md BT Bold
+ * Italic dos títulos de seção, "PG" 12pt.
+ *
+ * Função separada de gerarPdfCatalogo (mantida intacta pros outros modos de
+ * exportação — busca por veículo/código/nome/seleção manual, grade 5×6) —
+ * só o dispatch do controller (catalogo.controller.js) decide qual das duas
+ * chamar, com base no modo detectado (fabricante isolado, sem marca/modelo/
+ * categoria).
+ *
+ * A paginação do índice é pré-calculada matematicamente ANTES de desenhar
+ * qualquer página — pdfkit renderiza sequencialmente, sem "olhar adiante",
+ * então não dá pra descobrir em que página cada Linha começa desenhando
+ * primeiro e só depois escrevendo o número. Ver A4_LARGURA/A4_ALTURA no
+ * topo do arquivo.
+ */
+function gerarPdfCatalogoCompleto(produtos, fabricante, destino) {
+  const doc = new PDFDocument({ size: "A4", margin: 0, autoFirstPage: false, bufferPages: true });
+  doc.pipe(destino);
+  doc.registerFont(TITULO_FONTE, TITULO_FONTE_ARQUIVO);
+
+  const grupos = _agruparPorLinha(produtos);
+  const itensPorPagina = COLS_COMPLETO * ROWS_POR_PAGINA_COMPLETO;
+
+  // --- Pré-cálculo da paginação do índice (ver comentário acima) ---
+  const larguraUtilIndice = A4_LARGURA - PAGE_MARGIN * 2;
+  const areaFimYIndice = A4_ALTURA - FOOTER_HEIGHT - 8;
+  const alturaDisponivelIndice = areaFimYIndice - AREA_TOPO_Y_INDICE;
+  const linhasPorPaginaIndice = Math.max(1, Math.floor(alturaDisponivelIndice / INDICE_LINHA_ALTURA));
+  const paginasIndice = Math.max(1, Math.ceil(grupos.length / linhasPorPaginaIndice));
+
+  let paginaAtual = paginasIndice + 1;
+  const paginaInicialPorGrupo = grupos.map((grupo) => {
+    const inicio = paginaAtual;
+    paginaAtual += Math.ceil(grupo.itens.length / itensPorPagina);
+    return inicio;
+  });
+
+  let pagina = 0;
+
+  // --- Páginas de índice ---
+  for (let p = 0; p < paginasIndice; p += 1) {
+    doc.addPage();
+    pagina += 1;
+    _desenharCabecalhoIndice(doc);
+    _desenharRodape(doc, pagina);
+
+    const offset = p * linhasPorPaginaIndice;
+    const linhasDestaPagina = grupos.slice(offset, offset + linhasPorPaginaIndice);
+    let y = AREA_TOPO_Y_INDICE;
+    linhasDestaPagina.forEach((grupo, i) => {
+      _desenharLinhaIndice(doc, grupo.linha, paginaInicialPorGrupo[offset + i], y, larguraUtilIndice);
+      y += INDICE_LINHA_ALTURA;
+    });
+  }
+
+  // --- Páginas de conteúdo, uma seção por Linha ---
+  grupos.forEach((grupo) => {
+    let col = 0;
+    let linhaY = 0;
+    let geometria = null;
+
+    function novaPaginaGrupo() {
+      doc.addPage();
+      pagina += 1;
+      _desenharCabecalho(doc, grupo.linha);
+      _desenharRodape(doc, pagina);
+      geometria = _geometriaGrid(doc, COLS_COMPLETO, ROWS_POR_PAGINA_COMPLETO);
+      linhaY = geometria.areaTopoY;
+    }
+
+    novaPaginaGrupo();
+
+    grupo.itens.forEach((produto) => {
+      if (col === 0 && linhaY + geometria.cardHeight > geometria.areaFimY + 0.5) {
+        novaPaginaGrupo();
+      }
+
+      const x = PAGE_MARGIN + col * (geometria.cardWidth + GAP);
+      const y = linhaY;
+
+      _desenharCard(doc, produto, x, y, geometria.cardWidth, geometria.cardHeight, geometria.photoBoxWidth, geometria.photoBoxHeight);
+
+      col += 1;
+      if (col >= COLS_COMPLETO) {
+        col = 0;
+        linhaY += geometria.cardHeight + GAP;
+      }
+    });
+  });
+
+  doc.end();
+}
+
+module.exports = { gerarPdfCatalogo, gerarPdfCatalogoCompleto };

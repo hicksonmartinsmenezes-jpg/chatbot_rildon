@@ -2,7 +2,7 @@ const logger = require("../utils/logger");
 const { listarFotos, obterFoto, recarregarIndice: recarregarIndiceFotos } = require("../services/catalogo-fotos.service");
 const { buscarProdutosPainel, buscarPorCodigo, buscarPorNomePainel, listarFabricantes, recarregarIndices: recarregarIndicesProdutos } = require("../services/catalogo-x2.service");
 const { listarSecoes, listarLinhasPorSecao } = require("../services/catalogo.service");
-const { gerarPdfCatalogo } = require("../services/catalogo-pdf.service");
+const { gerarPdfCatalogo, gerarPdfCatalogoCompleto } = require("../services/catalogo-pdf.service");
 const { carregarEstoque, statusCache } = require("../services/estoque.service");
 
 // Código de produto do X2 é sempre numérico (ex: "111430") — validação
@@ -80,6 +80,13 @@ async function exportarPdfHandler(req, res) {
     const nome   = String(req.query.nome || "").trim();
     let produtos;
     let tituloBusca;
+    // Issue #21 (2026-08-26): "Catálogo Completo" — fabricante isolado, sem
+    // marca/modelo/categoria — dispara o layout com índice/sumário dividido
+    // por Linha (gerarPdfCatalogoCompleto) em vez do PDF "expresso" comum
+    // (gerarPdfCatalogo). Os outros modos (veículo/código/nome/seleção
+    // manual via marca+modelo+categoria) continuam exatamente como estavam.
+    let modoCompleto = false;
+    let fabricanteCompleto = "";
 
     if (codigo) {
       produtos = buscarPorCodigo(codigo, { limite: Infinity });
@@ -111,6 +118,9 @@ async function exportarPdfHandler(req, res) {
       const resultado = buscarProdutosPainel({ marca, modelo, ano, categoria, fabricante, limite: Infinity });
       produtos = resultado.produtos;
 
+      modoCompleto = !marca && !modelo && !categoria && !!fabricante;
+      fabricanteCompleto = fabricante;
+
       const partes = [marca, modelo, anoStr, categoria, fabricante].filter(Boolean);
       tituloBusca = partes.length ? partes.join(" · ") : "Catálogo completo";
     }
@@ -125,8 +135,13 @@ async function exportarPdfHandler(req, res) {
     }
 
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="catalogo-expresso-${Date.now()}.pdf"`);
-    gerarPdfCatalogo(produtos, tituloBusca, res);
+    if (modoCompleto) {
+      res.setHeader("Content-Disposition", `attachment; filename="catalogo-completo-${Date.now()}.pdf"`);
+      gerarPdfCatalogoCompleto(produtos, fabricanteCompleto, res);
+    } else {
+      res.setHeader("Content-Disposition", `attachment; filename="catalogo-expresso-${Date.now()}.pdf"`);
+      gerarPdfCatalogo(produtos, tituloBusca, res);
+    }
   } catch (err) {
     logger.error("❌ Erro ao exportar catálogo em PDF:", err.message);
     if (!res.headersSent) res.status(500).json({ error: "Erro ao gerar PDF do catálogo." });

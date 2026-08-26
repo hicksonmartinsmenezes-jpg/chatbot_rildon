@@ -623,12 +623,14 @@ function _desenharCabecalhoIndice(doc) {
   const tituloY = HEADER_HEIGHT + TITULO_GAP_TOPO;
   const tituloLargura = w - PAGE_MARGIN * 2;
 
+  // Pedido do usuário (2026-08-26): título "ÍNDICE" centralizado na página
+  // (só ele — o resto do cabeçalho/linhas do índice continua como estava).
   doc.fillColor("#000000", 0.35).font(TITULO_FONTE).fontSize(INDICE_TITULO_TAMANHO)
-    .text(tituloTexto, tituloX + 1.5, tituloY + 1.5, { width: tituloLargura });
+    .text(tituloTexto, tituloX + 1.5, tituloY + 1.5, { width: tituloLargura, align: "center" });
   doc.fillOpacity(1);
 
   doc.fillColor(VERMELHO_CATEGORIA).font(TITULO_FONTE).fontSize(INDICE_TITULO_TAMANHO)
-    .text(tituloTexto, tituloX, tituloY, { width: tituloLargura });
+    .text(tituloTexto, tituloX, tituloY, { width: tituloLargura, align: "center" });
 
   doc.fillColor("#111827").font("Helvetica");
 }

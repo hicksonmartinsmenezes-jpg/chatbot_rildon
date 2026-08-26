@@ -9,6 +9,25 @@
 
 let _catalogoSecoesCarregadas = false;
 let _catalogoFabricantesCarregados = false;
+// Cache da lista crua de fabricantes (2026-08-26, aba "Catálogo Completo")
+// — reusada tanto pelo dropdown de filtro (catalogo-fabricante) quanto pelo
+// novo dropdown da aba de exportação completa (catalogo-fabricante-completo),
+// pra não duplicar a chamada a /api/catalogo/fabricantes.
+let _catalogoFabricantesLista = null;
+
+async function _catalogoBuscarFabricantesLista() {
+  if (_catalogoFabricantesLista) return _catalogoFabricantesLista;
+  try {
+    const res = await apiFetch("/api/catalogo/fabricantes");
+    if (!res.ok) return [];
+    const data = await res.json();
+    _catalogoFabricantesLista = Array.isArray(data.fabricantes) ? data.fabricantes : [];
+    return _catalogoFabricantesLista;
+  } catch (err) {
+    console.warn("[catalogo] falha ao carregar fabricantes:", err.message);
+    return [];
+  }
+}
 
 // Carrega as 26 categorias reais uma única vez, pra popular o dropdown
 // "Seção" (estilo "Localização do Produto" do ERP da loja).
@@ -36,19 +55,30 @@ async function loadCatalogoSecoes() {
 // pra não poluir o dropdown com ruído de parsing.
 async function loadCatalogoFabricantes() {
   if (_catalogoFabricantesCarregados) return;
-  try {
-    const res = await apiFetch("/api/catalogo/fabricantes");
-    if (!res.ok) return;
-    const data = await res.json();
-    const select = document.getElementById("catalogo-fabricante");
-    if (select && Array.isArray(data.fabricantes)) {
-      select.innerHTML = '<option value="">Todos</option>' +
-        data.fabricantes.map(f => `<option value="${safe(f)}">${safe(f)}</option>`).join("");
-    }
-    _catalogoFabricantesCarregados = true;
-  } catch (err) {
-    console.warn("[catalogo] falha ao carregar fabricantes:", err.message);
+  const fabricantes = await _catalogoBuscarFabricantesLista();
+  const select = document.getElementById("catalogo-fabricante");
+  if (select && fabricantes.length) {
+    select.innerHTML = '<option value="">Todos</option>' +
+      fabricantes.map(f => `<option value="${safe(f)}">${safe(f)}</option>`).join("");
   }
+  _catalogoFabricantesCarregados = true;
+}
+
+// Aba "Catálogo Completo" (pedido do usuário, 2026-08-26): dropdown
+// separado, sem opção "Todos" — aqui o atendente precisa escolher UM
+// fabricante específico pra gerar o PDF do catálogo inteiro dele, não faz
+// sentido "todos os fabricantes" numa exportação só.
+let _catalogoFabricantesCompletoCarregados = false;
+
+async function loadCatalogoFabricantesCompleto() {
+  if (_catalogoFabricantesCompletoCarregados) return;
+  const fabricantes = await _catalogoBuscarFabricantesLista();
+  const select = document.getElementById("catalogo-fabricante-completo");
+  if (select && fabricantes.length) {
+    select.innerHTML = '<option value="">Selecione um fabricante...</option>' +
+      fabricantes.map(f => `<option value="${safe(f)}">${safe(f)}</option>`).join("");
+  }
+  _catalogoFabricantesCompletoCarregados = true;
 }
 
 // Dropdown dependente: só habilita "Linha" depois que uma Seção é escolhida
@@ -142,6 +172,82 @@ async function exportarCatalogoPDF(btnEl) {
   }
 }
 
+// Aba "Catálogo Completo" (pedido do usuário, 2026-08-26): "aqui eu
+// selecionaria qual fabricante queremos o catálogo inteiro e colocamos em
+// pdf". Ao trocar o fabricante, mostra quantas peças ele tem ANTES de
+// gerar o PDF (reusa GET /api/catalogo/buscar em modo navegação — mesmo
+// endpoint do dropdown "Localização do Produto", só com fabricante
+// isolado — `total` já vem certo mesmo com o `produtos` array limitado a
+// 200 pela API, ver buscarProdutosPainel). Isso evita o atendente clicar
+// "gerar PDF" às cegas sem saber se são 10 ou 900 peças.
+async function onCatalogoFabricanteCompletoChange() {
+  const select = document.getElementById("catalogo-fabricante-completo");
+  const contagemEl = document.getElementById("catalogo-completo-contagem");
+  const btn = document.getElementById("catalogo-completo-gerar-btn");
+  const fabricante = select?.value || "";
+
+  if (!fabricante) {
+    contagemEl?.classList.add("hidden");
+    if (btn) btn.disabled = true;
+    return;
+  }
+
+  if (contagemEl) {
+    contagemEl.classList.remove("hidden");
+    contagemEl.textContent = "Contando produtos...";
+  }
+  if (btn) btn.disabled = true;
+
+  try {
+    const res = await apiFetch(`/api/catalogo/buscar?fabricante=${encodeURIComponent(fabricante)}`);
+    const data = res.ok ? await res.json() : { total: 0 };
+    const total = Number(data.total) || 0;
+    if (contagemEl) {
+      contagemEl.textContent = total
+        ? `${total} produto${total === 1 ? "" : "s"} encontrado${total === 1 ? "" : "s"} dessa marca.`
+        : "Nenhum produto encontrado pra esse fabricante.";
+    }
+    if (btn) btn.disabled = total === 0;
+  } catch (err) {
+    if (contagemEl) contagemEl.textContent = "Erro ao contar produtos dessa marca.";
+    if (btn) btn.disabled = true;
+    console.warn("[catalogo] falha ao contar produtos do fabricante:", err.message);
+  }
+}
+
+async function gerarCatalogoCompletoPDF(btnEl) {
+  const fabricante = document.getElementById("catalogo-fabricante-completo")?.value || "";
+  if (!fabricante) return;
+
+  const original = btnEl?.innerHTML;
+  if (btnEl) {
+    btnEl.disabled = true;
+    btnEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Gerando PDF...';
+  }
+
+  try {
+    const res = await fetch(`/api/catalogo/exportar-pdf?fabricante=${encodeURIComponent(fabricante)}`, { credentials: "include" });
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      throw new Error(errBody.error || "Erro ao gerar PDF do catálogo completo.");
+    }
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = `catalogo-completo-${fabricante.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    showToast?.(err.message || "Erro ao gerar catálogo completo em PDF.", "error");
+  } finally {
+    if (btnEl) {
+      btnEl.disabled = false;
+      btnEl.innerHTML = original;
+    }
+  }
+}
+
 // Três sub-abas dentro do painel (Task #250-253, + "Busca por Nome" pedida
 // pelo usuário em 2026-08-14): "Critérios de Pesquisa" (marca/modelo/ano/
 // seção/linha/fabricante), "Busca por Código" (código isolado, sem depender
@@ -153,9 +259,11 @@ function _catalogoEsconderTodasAbas() {
   document.getElementById("catalogo-tab-veiculo")?.classList.remove("active");
   document.getElementById("catalogo-tab-codigo")?.classList.remove("active");
   document.getElementById("catalogo-tab-nome")?.classList.remove("active");
+  document.getElementById("catalogo-tab-completo")?.classList.remove("active");
   document.getElementById("catalogo-form")?.classList.add("hidden");
   document.getElementById("catalogo-form-codigo")?.classList.add("hidden");
   document.getElementById("catalogo-form-nome")?.classList.add("hidden");
+  document.getElementById("catalogo-form-completo")?.classList.add("hidden");
   document.getElementById("catalogo-hint-veiculo")?.classList.add("hidden");
   document.getElementById("catalogo-hint-codigo")?.classList.add("hidden");
   document.getElementById("catalogo-hint-nome")?.classList.add("hidden");
@@ -166,6 +274,7 @@ function catalogoMostrarAbaVeiculo() {
   document.getElementById("catalogo-tab-veiculo")?.classList.add("active");
   document.getElementById("catalogo-form")?.classList.remove("hidden");
   document.getElementById("catalogo-hint-veiculo")?.classList.remove("hidden");
+  document.getElementById("catalogo-resultados")?.classList.remove("hidden");
 }
 
 function catalogoMostrarAbaCodigo() {
@@ -174,6 +283,7 @@ function catalogoMostrarAbaCodigo() {
   document.getElementById("catalogo-form-codigo")?.classList.remove("hidden");
   document.getElementById("catalogo-hint-codigo")?.classList.remove("hidden");
   document.getElementById("catalogo-codigo-busca")?.focus();
+  document.getElementById("catalogo-resultados")?.classList.remove("hidden");
 }
 
 function catalogoMostrarAbaNome() {
@@ -182,6 +292,19 @@ function catalogoMostrarAbaNome() {
   document.getElementById("catalogo-form-nome")?.classList.remove("hidden");
   document.getElementById("catalogo-hint-nome")?.classList.remove("hidden");
   document.getElementById("catalogo-nome-busca")?.focus();
+  document.getElementById("catalogo-resultados")?.classList.remove("hidden");
+}
+
+// Aba "Catálogo Completo" (pedido do usuário, 2026-08-26): não usa a grid
+// de resultados (#catalogo-resultados) — é só um dropdown de Fabricante +
+// botão de gerar o PDF do catálogo inteiro dele, então a área de resultados
+// fica escondida enquanto essa aba está ativa.
+function catalogoMostrarAbaCompleto() {
+  _catalogoEsconderTodasAbas();
+  document.getElementById("catalogo-tab-completo")?.classList.add("active");
+  document.getElementById("catalogo-form-completo")?.classList.remove("hidden");
+  document.getElementById("catalogo-resultados")?.classList.add("hidden");
+  loadCatalogoFabricantesCompleto();
 }
 
 // Limpa os campos do formulário e volta o painel de resultados pro estado

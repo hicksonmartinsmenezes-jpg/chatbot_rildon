@@ -314,6 +314,22 @@
 
 .catalogo-erp-search-btn:active { transform: translateY(0); filter: brightness(0.98); }
 
+.catalogo-erp-search-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  filter: none;
+}
+
+/* Aba "Catálogo Completo" (2026-08-26): texto de contagem de produtos do
+   fabricante escolhido, exibido antes de gerar o PDF. */
+.catalogo-completo-contagem {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--cat-text-dim);
+}
+
 .catalogo-erp-clear-btn {
   display: inline-flex;
   align-items: center;

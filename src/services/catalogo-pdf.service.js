@@ -298,10 +298,15 @@ const CAIXA_CODIGO_PAD_H = 4;
 const CAIXA_CODIGO_PAD_V = 3;
 
 // Pedido do usuário (2026-07-28): título da seção ("AMORTECEDORES" etc.) em
-// "Futura Md BT" 17pt. Fonte ainda não recebida (ver comentário em
-// _desenharCabecalho) — usando Helvetica-Bold como placeholder até o
-// usuário mandar o arquivo .ttf/.otf real.
-const TITULO_FONTE = "Helvetica-Bold";
+// "Futura Md BT" 17pt. Fonte recebida em 2026-08-26 (arquivo .ttf enviado
+// pelo usuário, peso Bold Italic — único peso disponível; o desenho de
+// referência que o usuário mandou junto (3-RHO.pdf) já usa esse mesmo
+// peso itálico em todos os títulos, então não há necessidade de um peso
+// reto/regular aqui). Registrada como fonte nomeada no pdfkit
+// (doc.registerFont) — TITULO_FONTE_ARQUIVO é o caminho do arquivo,
+// TITULO_FONTE é o nome interno usado depois em doc.font(TITULO_FONTE).
+const TITULO_FONTE_ARQUIVO = path.join(__dirname, "../assets/fonts/Futura-Md-BT-Bold-Italic.ttf");
+const TITULO_FONTE = "FuturaMdBT-BoldItalic";
 const TITULO_TAMANHO = 17;
 
 // Onde o topo dos cards começa: fim da arte do cabeçalho + respiro antes do
@@ -418,13 +423,9 @@ function _desenharCabecalho(doc, tituloBusca) {
   // texto extra não é mais necessário.
 
   // Pedido do usuário (2026-07-28): título da seção em "Futura Md BT" 17pt.
-  // Essa fonte não é uma das 14 padrão do PDF (Helvetica/Times/Courier) —
-  // pdfkit só usa ela se eu tiver o arquivo .ttf/.otf pra registrar
-  // (doc.registerFont). Ainda não recebi o arquivo (procurei de novo em
-  // 2026-07-30, continua não existindo no projeto nem nos uploads), então
-  // uso Helvetica-Bold como substituto temporário (mesmo peso visual, sem
-  // itálico — a Futura não é itálica). Troca pra registerFont(caminho) assim
-  // que o usuário mandar o arquivo da fonte.
+  // Fonte registrada no doc via doc.registerFont em gerarPdfCatalogo (uma
+  // vez por documento, antes da 1ª página) — ver TITULO_FONTE_ARQUIVO/
+  // TITULO_FONTE no topo do arquivo.
   const tituloTexto = String(tituloBusca || "").toUpperCase();
   const tituloX = PAGE_MARGIN;
   // Pedido do usuário (2026-07-30, 2ª rodada): título começa SÓ DEPOIS que a
@@ -490,6 +491,9 @@ function _desenharRodape(doc, numeroPagina) {
 function gerarPdfCatalogo(produtos, tituloBusca, destino) {
   const doc = new PDFDocument({ size: "A4", margin: 0, autoFirstPage: false, bufferPages: true });
   doc.pipe(destino);
+  // Registrada uma vez por documento — precisa vir antes de qualquer
+  // doc.font(TITULO_FONTE) (ver _desenharCabecalho).
+  doc.registerFont(TITULO_FONTE, TITULO_FONTE_ARQUIVO);
 
   let pagina = 0;
 

@@ -19,7 +19,14 @@ const ANO_MINIMO = 1950;
 // milhares de produtos) geraria um arquivo gigante e lento de montar. Esse
 // teto é só uma trava técnica de segurança; se bater nele, a resposta pede
 // pra refinar a busca (marca/modelo/seção mais específica).
-const MAX_EXPORT_PDF = 500;
+//
+// 2026-08-26 (pedido do usuário, Issue #20): levantado de 500 pra 1000 — o novo modo "Catálogo Completo" (exportar
+// TODO o catálogo de um fabricante, sem filtrar por marca/modelo) esbarrava
+// nesse teto pra 4 dos 105 fabricantes cadastrados (medido em 2026-08-26:
+// RAINHA 863, WEGA 664, GAUSS 615, PRADOLUX 586 produtos — o maior valor
+// real hoje é 863). 1000 cobre todos com folga sem abrir mão da trava de
+// segurança contra um filtro genérico demais.
+const MAX_EXPORT_PDF = 1000;
 
 // GET /api/catalogo/buscar — painel "Catálogo de Produtos" (Task #240-243,
 // pedido do usuário em 2026-07-21): atendente digita marca/modelo/ano (e

@@ -76,6 +76,7 @@
     "catalogoMostrarAbaVeiculo",
     "catalogoMostrarAbaCodigo",
     "catalogoMostrarAbaNome",
+    "catalogoMostrarAbaCompleto",
     // Feature: enviar arquivo (foto/vídeo/doc) + responder mensagem
     // específica, igual WhatsApp (pedido do usuário, 2026-07-23).
     "openConversationFilePicker",

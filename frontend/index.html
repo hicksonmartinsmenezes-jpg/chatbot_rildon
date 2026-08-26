@@ -23,7 +23,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css">
   <!-- CSS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <link rel="stylesheet" href="dist/bundle.c82a9b1369.css">
+  <link rel="stylesheet" href="dist/bundle.d7cee4a622.css">
   <!-- CSS_BUNDLE_END -->
 <style>
     /* Centraliza colunas da tabela de histórico */
@@ -2012,6 +2012,9 @@ Como podemos ajudar você hoje?
       <span class="catalogo-erp-tab" data-action="catalogoMostrarAbaNome" id="catalogo-tab-nome">
         <i class="fa-solid fa-font"></i> Busca por Nome
       </span>
+      <span class="catalogo-erp-tab" data-action="catalogoMostrarAbaCompleto" id="catalogo-tab-completo">
+        <i class="fa-solid fa-file-pdf"></i> Catálogo Completo
+      </span>
     </div>
 
     <form id="catalogo-form" class="catalogo-erp-body" data-submit-action="buscarCatalogo">
@@ -2125,6 +2128,30 @@ Como podemos ajudar você hoje?
         </button>
       </div>
     </form>
+
+    <div id="catalogo-form-completo" class="catalogo-erp-body hidden">
+      <div class="catalogo-erp-box catalogo-erp-box-codigo">
+        <div class="catalogo-box-header">
+          <span class="catalogo-box-icon catalogo-box-icon-blue"><i class="fa-solid fa-industry"></i></span>
+          <span class="catalogo-box-title">Catálogo Completo por Fabricante</span>
+        </div>
+
+        <div class="catalogo-erp-row">
+          <label for="catalogo-fabricante-completo"><i class="fa-solid fa-industry"></i> Fabricante</label>
+          <select id="catalogo-fabricante-completo" onchange="onCatalogoFabricanteCompletoChange()">
+            <option value="">Selecione um fabricante...</option>
+          </select>
+        </div>
+
+        <p id="catalogo-completo-contagem" class="catalogo-completo-contagem hidden"></p>
+      </div>
+
+      <div class="catalogo-erp-actions">
+        <button type="button" class="catalogo-erp-search-btn" id="catalogo-completo-gerar-btn" onclick="gerarCatalogoCompletoPDF(this)" disabled>
+          <i class="fa-solid fa-file-pdf"></i> Gerar catálogo completo (PDF)
+        </button>
+      </div>
+    </div>
 
   </div>
 
@@ -2260,7 +2287,7 @@ Como podemos ajudar você hoje?
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1"></script>
 
   <!-- JS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <script src="dist/bundle.8f1b831975.js"></script>
+  <script src="dist/bundle.75cf596050.js"></script>
   <!-- JS_BUNDLE_END -->
 
 

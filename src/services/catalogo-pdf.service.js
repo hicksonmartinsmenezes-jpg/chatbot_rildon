@@ -259,6 +259,20 @@ const GAP_CODIGO_NOME = 2; // era 3 — reduzido em 2026-07-31, mesmo motivo aci
 // dois lugares, mesmo motivo do resto deste bloco.
 const GAP_FOTO_DIVISORIA = 3;
 
+// Bloco de "aplicação organizada" (Issue #23, pedido do usuário 2026-08-26)
+// — texto de veículo/máquina compatível, já reorganizado pela IA (ver
+// catalogo-aplicacao-ia.service.js), exibido abaixo do nome do produto. SÓ
+// no modo "Catálogo Completo" (comAplicacao=true em _geometriaGrid/
+// _desenharCard) — o catálogo expresso comum não ganha esse bloco, mantém
+// a grade mais densa (5×6) sem mudança. Altura reservada é FIXA (entra em
+// alturaFixaTexto abaixo) independente de o produto ter ou não aplicação
+// organizada em cache — isso mantém a foto do mesmo tamanho em toda a
+// grade, evitando cards desalinhados entre si numa mesma linha.
+const APLICACAO_FONTE = 5.5;
+const APLICACAO_ALTURA = 13; // ~2 linhas nesse tamanho
+const APLICACAO_GAP = 3;     // respiro entre o nome e esse bloco
+const APLICACAO_COR = "#4b5563";
+
 // Cor do texto do código — pedido do usuário (2026-07-30): "azul oceano/
 // petróleo", rgb(0, 96, 151), mais sóbrio que o azul do painel usado antes.
 const AZUL = "#006097";
@@ -472,7 +486,7 @@ function _desenharCardVidro(doc, x, y, w, h) {
 // texto), só parametrizada por cols/rows em vez de usar COLS/ROWS_POR_PAGINA
 // direto, pra caber tanto a grade 5×6 padrão quanto a 4×5 do modo completo
 // sem duplicar a função.
-function _geometriaGrid(doc, cols, rows) {
+function _geometriaGrid(doc, cols, rows, comAplicacao = false) {
   const larguraUtil = doc.page.width - PAGE_MARGIN * 2;
   const cardWidth = (larguraUtil - (cols - 1) * GAP) / cols;
   const photoBoxWidth = cardWidth - PAD_CARD * 2;
@@ -480,7 +494,13 @@ function _geometriaGrid(doc, cols, rows) {
   const areaFimY = doc.page.height - FOOTER_HEIGHT - 8;
   const alturaDisponivel = areaFimY - areaTopoY;
   const cardHeightMax = (alturaDisponivel - (rows - 1) * GAP) / rows;
-  const alturaFixaTexto = PAD_CARD + GAP_FOTO_DIVISORIA + GAP_DIVISORIA_TEXTO + CODIGO_ALTURA + GAP_CODIGO_NOME + NOME_ALTURA + PAD_CARD;
+  // Issue #23: bloco extra de "aplicação organizada" (só no Catálogo
+  // Completo, comAplicacao=true) soma altura fixa reservada — a foto
+  // encolhe um pouco pra abrir espaço, igual ao princípio já usado pro
+  // resto do bloco de texto (código+nome) desde a v3.
+  const alturaFixaTexto = PAD_CARD + GAP_FOTO_DIVISORIA + GAP_DIVISORIA_TEXTO + CODIGO_ALTURA + GAP_CODIGO_NOME + NOME_ALTURA
+    + (comAplicacao ? APLICACAO_GAP + APLICACAO_ALTURA : 0)
+    + PAD_CARD;
   const photoBoxHeight = cardHeightMax - alturaFixaTexto;
   const cardHeight = cardHeightMax;
   return { cardWidth, cardHeight, photoBoxWidth, photoBoxHeight, areaTopoY, areaFimY };
@@ -491,7 +511,7 @@ function _geometriaGrid(doc, cols, rows) {
 // dados, sem saber nada sobre grade/paginação. Reusado por gerarPdfCatalogo
 // (grade 5×6) e gerarPdfCatalogoCompleto (grade 4×5) — comportamento
 // idêntico ao que já existia antes da extração, só parametrizado.
-function _desenharCard(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth, photoBoxHeight) {
+function _desenharCard(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth, photoBoxHeight, comAplicacao = false) {
   _desenharCardVidro(doc, x, y, cardWidth, cardHeight);
 
   const xFoto = x + PAD_CARD;
@@ -531,6 +551,22 @@ function _desenharCard(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth,
       ellipsis: true,
       lineGap: 0.5,
     });
+
+  // Issue #23 (2026-08-26): bloco de aplicação já organizada pela IA (ver
+  // catalogo-aplicacao-ia.service.js) — só desenha texto se
+  // `produto.aplicacaoOrganizada` já estiver preenchido (cache hit); sem
+  // isso, o espaço reservado por APLICACAO_ALTURA em _geometriaGrid fica
+  // simplesmente em branco (nunca quebra o layout, nunca mostra "undefined").
+  if (comAplicacao && produto.aplicacaoOrganizada) {
+    const yAplicacao = yNome + NOME_ALTURA + APLICACAO_GAP;
+    doc.fillColor(APLICACAO_COR).font("Helvetica").fontSize(APLICACAO_FONTE)
+      .text(produto.aplicacaoOrganizada, x + PAD_CARD, yAplicacao, {
+        width: cardWidth - PAD_CARD * 2,
+        height: APLICACAO_ALTURA,
+        ellipsis: true,
+        lineGap: 0.5,
+      });
+  }
 
   doc.font("Helvetica");
 }
@@ -887,7 +923,7 @@ function gerarPdfCatalogoCompleto(produtos, fabricante, destino) {
       pagina += 1;
       _desenharCabecalho(doc, grupo.linha);
       _desenharRodape(doc, pagina);
-      geometria = _geometriaGrid(doc, COLS_COMPLETO, ROWS_POR_PAGINA_COMPLETO);
+      geometria = _geometriaGrid(doc, COLS_COMPLETO, ROWS_POR_PAGINA_COMPLETO, true);
       linhaY = geometria.areaTopoY;
     }
 
@@ -901,7 +937,7 @@ function gerarPdfCatalogoCompleto(produtos, fabricante, destino) {
       const x = PAGE_MARGIN + col * (geometria.cardWidth + GAP);
       const y = linhaY;
 
-      _desenharCard(doc, produto, x, y, geometria.cardWidth, geometria.cardHeight, geometria.photoBoxWidth, geometria.photoBoxHeight);
+      _desenharCard(doc, produto, x, y, geometria.cardWidth, geometria.cardHeight, geometria.photoBoxWidth, geometria.photoBoxHeight, true);
 
       col += 1;
       if (col >= COLS_COMPLETO) {

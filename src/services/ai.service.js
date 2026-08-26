@@ -639,6 +639,174 @@ async function analisarImagemPeca(base64, mimeType) {
   }
 }
 
+// ─── Reorganização de "aplicação" (Issue #23, pedido do usuário 2026-08-26) ────
+// O texto de aplicação (veículo/máquina compatível) de cada produto vem CRU do
+// X2, sem estrutura fixa (ex: "Escort, Uno, Duna, MWM, Universal, Ford, Jonh
+// Deere, MB") — ver catalogo-x2.service.js, campo `ficha.aplicacao`. O usuário
+// mandou um "prompt universal" de organização de dados técnicos (fabricante:
+// modelos, specs — agrupar "diversos", indicar faixas de ano quando existirem)
+// e pediu pra aplicar isso no texto de cada produto ao gerar o Catálogo
+// Completo em PDF. Função ISOLADA (não reaproveita perguntarIA) porque:
+//   1. Precisa de um system prompt totalmente diferente do chat (aqui é uma
+//      tarefa de reformatação de texto, não uma conversa de atendimento).
+//   2. Resposta é TEXTO LIVRE, não o JSON estruturado que o chat espera —
+//      _chamarGroq/_chamarGemini/_chamarAnthropic acima forçam response_format
+//      json_object/prefill "{", que não fazem sentido aqui.
+//   3. Roda em LOTE, offline (script CLI) ou best-effort limitado (controller
+//      do catálogo) — nunca deve competir pela MESMA fila/intervalo do chat ao
+//      vivo (mesmo padrão já usado por visão/transcrição acima: fila própria).
+// Reaproveita a config de PROVIDER (mesma conta/chave já configurada em
+// AI_PROVIDER) e o circuit breaker de falta de crédito (iaEmFalhaCritica) —
+// sem sentido ter um 2º circuito pra detectar o mesmo erro de conta.
+const PROMPT_APLICACAO_SISTEMA =
+  "Você organiza texto de APLICAÇÃO (veículo/máquina/equipamento compatível) " +
+  "de peças técnicas (automotivas, agrícolas, industriais) pro catálogo de uma " +
+  "loja. O texto de entrada vem cru, sem estrutura fixa, direto do sistema do " +
+  "fornecedor. Reorganize seguindo estas regras:\n" +
+  "1. Identifique os FABRICANTES (marca do veículo/máquina/motor) e separe-os " +
+  "com ponto e vírgula.\n" +
+  "2. Agrupe os MODELOS/séries de cada fabricante logo após o nome dele, " +
+  "separados por vírgula.\n" +
+  "3. Quando o texto já disser algo genérico (ex: \"universal\", \"diversos\", " +
+  "\"todos os modelos\"), mantenha esse termo em vez de listar modelo por " +
+  "modelo.\n" +
+  "4. Preserve faixas de ano, códigos e especificações técnicas (voltagem, " +
+  "amperagem, motor etc.) SE já estiverem no texto original — nunca invente " +
+  "informação que não está lá.\n" +
+  "5. Formato de saída: \"FABRICANTE: Modelo1, Modelo2 (specs); OUTRO " +
+  "FABRICANTE: ModeloA, ModeloB\".\n" +
+  "Responda APENAS com o texto reorganizado — sem aspas, sem markdown, sem " +
+  "explicação antes ou depois. Se o texto de entrada já estiver curto e " +
+  "claro, apenas normalize pontuação/capitalização, sem inventar nada.";
+
+const APLICACAO_MAX_TOKENS = 300;
+const APLICACAO_TEMPERATURE = 0.2; // baixa — tarefa de reformatação, não criativa
+
+async function _chamarGroqTexto(systemPrompt, userText, apiKey) {
+  return _fetchComTimeout(
+    PROVIDER.url,
+    {
+      method:  "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model:       PROVIDER.model,
+        messages:    [{ role: "system", content: systemPrompt }, { role: "user", content: userText }],
+        temperature: APLICACAO_TEMPERATURE,
+        max_tokens:  APLICACAO_MAX_TOKENS,
+      }),
+    },
+    REQUEST_TIMEOUT
+  );
+}
+
+async function _chamarGeminiTexto(systemPrompt, userText, apiKey) {
+  return _fetchComTimeout(
+    `${PROVIDER.url}?key=${apiKey}`,
+    {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ role: "user", parts: [{ text: userText }] }],
+        generationConfig: { temperature: APLICACAO_TEMPERATURE, maxOutputTokens: APLICACAO_MAX_TOKENS },
+      }),
+    },
+    REQUEST_TIMEOUT
+  );
+}
+
+async function _chamarAnthropicTexto(systemPrompt, userText, apiKey) {
+  return _fetchComTimeout(
+    PROVIDER.url,
+    {
+      method:  "POST",
+      headers: {
+        "content-type":      "application/json",
+        "x-api-key":         apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model:       PROVIDER.model,
+        system:      systemPrompt,
+        messages:    [{ role: "user", content: userText }],
+        temperature: APLICACAO_TEMPERATURE,
+        max_tokens:  APLICACAO_MAX_TOKENS,
+      }),
+    },
+    REQUEST_TIMEOUT
+  );
+}
+
+// Fila própria (mesmo padrão de _agendarRequisicaoVisao/_agendarTranscricao) —
+// isolada da fila do chat ao vivo, mas ainda respeita PROVIDER.intervalMs (a
+// mesma chave/conta de API, então o limite real do provedor é o mesmo).
+let _ultimaRequisicaoAplicacao = 0;
+let _filaAplicacaoPromise      = Promise.resolve();
+
+function _agendarRequisicaoAplicacao() {
+  _filaAplicacaoPromise = _filaAplicacaoPromise
+    .then(() => {
+      const espera = Math.max(0, _ultimaRequisicaoAplicacao + PROVIDER.intervalMs - Date.now());
+      return new Promise(r => setTimeout(r, espera));
+    })
+    .catch(() => {});
+  return _filaAplicacaoPromise;
+}
+
+// Reorganiza UM texto de aplicação isolado. Sem retry (diferente de
+// perguntarIA) — de propósito: isso roda em LOTE (dezenas/centenas de
+// textos únicos por fabricante), então uma falha isolada custa só aquele
+// item (quem chama trata null como "sem versão organizada ainda", cai no
+// texto cru ou omite o bloco no PDF — nunca quebra a geração). Retry aqui
+// multiplicaria o tempo total do lote inteiro por pouco ganho.
+async function organizarAplicacaoIA(textoAplicacao) {
+  const texto = String(textoAplicacao || "").trim();
+  if (!texto) return null;
+
+  const apiKey = PROVIDER.getKey();
+  if (!apiKey || apiKey === "cole_sua_chave_aqui") return null;
+  if (iaEmFalhaCritica()) return null;
+
+  try {
+    await _agendarRequisicaoAplicacao();
+    _ultimaRequisicaoAplicacao = Date.now();
+
+    const res = PROVIDER_NAME === "gemini"
+      ? await _chamarGeminiTexto(PROMPT_APLICACAO_SISTEMA, texto, apiKey)
+      : PROVIDER_NAME === "anthropic"
+      ? await _chamarAnthropicTexto(PROMPT_APLICACAO_SISTEMA, texto, apiKey)
+      : await _chamarGroqTexto(PROMPT_APLICACAO_SISTEMA, texto, apiKey);
+
+    if (!res.ok) {
+      const corpoErro = await res.text().catch(() => "");
+      const semCredito = res.status === 400 && /credit balance is too low/i.test(corpoErro);
+      if (semCredito) {
+        _semCreditoAte = Date.now() + CIRCUIT_BREAKER_MS;
+        logger.error(`[IA-Aplicação] Sem crédito na API (provedor: ${PROVIDER_NAME}) — pausando chamadas por ${CIRCUIT_BREAKER_MS / 1000}s.`);
+      } else {
+        logger.warn(`[IA-Aplicação] Erro ${res.status}: ${corpoErro.slice(0, 200)}`);
+      }
+      return null;
+    }
+
+    const data = await res.json();
+    // NÃO reusa _extrairTextoResposta: pro provedor "anthropic" essa função
+    // recompõe o prefixo "{" do truque de prefill JSON usado só pelo chat
+    // (ver _chamarAnthropic acima) — aqui a resposta é texto livre, sem
+    // prefill nenhum, então extrai direto da forma nativa de cada provedor.
+    const texto2 = PROVIDER_NAME === "anthropic"
+      ? data?.content?.[0]?.text
+      : PROVIDER_NAME === "gemini"
+      ? data?.candidates?.[0]?.content?.parts?.[0]?.text
+      : data?.choices?.[0]?.message?.content;
+    const organizado = texto2?.trim().replace(/^["']|["']$/g, "");
+    return organizado || null;
+  } catch (err) {
+    logger.warn(`[IA-Aplicação] Falha ao organizar texto: ${err.message}`);
+    return null;
+  }
+}
+
 // ─── Transcrição de áudio (Groq Whisper) ───────────────────────────────────────
 // Pedido do usuário: cliente manda um ÁUDIO de voz (comum no WhatsApp) falando
 // sobre a peça/veículo, e o bot só respondia "ainda não consigo processar
@@ -930,4 +1098,4 @@ async function perguntarIA(mensagem, { nomeCliente, historico = [], contexto = {
   return null;
 }
 
-module.exports = { perguntarIA, analisarImagemPeca, suportaVisao, transcreverAudio, suportaAudio, iaEmFalhaCritica };
+module.exports = { perguntarIA, analisarImagemPeca, suportaVisao, transcreverAudio, suportaAudio, iaEmFalhaCritica, organizarAplicacaoIA };

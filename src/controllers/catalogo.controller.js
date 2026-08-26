@@ -4,6 +4,19 @@ const { buscarProdutosPainel, buscarPorCodigo, buscarPorNomePainel, listarFabric
 const { listarSecoes, listarLinhasPorSecao } = require("../services/catalogo.service");
 const { gerarPdfCatalogo, gerarPdfCatalogoCompleto } = require("../services/catalogo-pdf.service");
 const { carregarEstoque, statusCache } = require("../services/estoque.service");
+const { anexarAplicacoesOrganizadas } = require("../services/catalogo-aplicacao-ia.service");
+
+// Issue #23 (2026-08-26): quantos textos de aplicação NOVOS (sem cache
+// ainda) o clique em "Gerar catálogo completo" tenta organizar com IA antes
+// de gerar o PDF — limite baixo de propósito, pra não deixar a resposta
+// HTTP pendurada esperando o rate limit do provedor de IA (pode chegar a
+// 20s/chamada no provedor free tier padrão, ver PROVIDER.intervalMs em
+// ai.service.js). O resto (se sobrar) fica sem esse bloco NESSA exportação
+// — não trava nem quebra o PDF, só sai menos completo até alguém rodar
+// `npm run organizar-aplicacoes-ia -- --fabricante=X` (sem esse limite) ou
+// exportar de novo mais tarde (cache já preenchido de exportações
+// anteriores acelera a próxima).
+const MAX_APLICACOES_NOVAS_POR_EXPORT = 8;
 
 // Código de produto do X2 é sempre numérico (ex: "111430") — validação
 // simples evita processar entrada absurda antes de tocar no índice em memória.
@@ -132,6 +145,21 @@ async function exportarPdfHandler(req, res) {
       return res.status(400).json({
         error: `A busca encontrou ${produtos.length} peças — refine os filtros (máx. ${MAX_EXPORT_PDF} peças por exportação em PDF).`,
       });
+    }
+
+    if (modoCompleto) {
+      // Issue #23: melhor esforço LIMITADO — organiza com IA só os textos de
+      // aplicação ainda sem cache (até o teto acima), sem travar a resposta
+      // HTTP por um fabricante nunca processado antes. Roda ANTES dos
+      // headers pra poder responder 500 aqui se der erro grave sem quebrar
+      // o stream do PDF (embora anexarAplicacoesOrganizadas nunca deva
+      // lançar — falha de IA vira produto sem aplicacaoOrganizada, não
+      // exceção).
+      try {
+        await anexarAplicacoesOrganizadas(produtos, { maxNovos: MAX_APLICACOES_NOVAS_POR_EXPORT });
+      } catch (err) {
+        logger.warn(`[Catálogo] Falha ao organizar aplicações com IA (seguindo sem elas): ${err.message}`);
+      }
     }
 
     res.setHeader("Content-Type", "application/pdf");

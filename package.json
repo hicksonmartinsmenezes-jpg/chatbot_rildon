@@ -28,6 +28,7 @@
     "x2-catalogo-sync": "node scripts/x2-catalogo-sync.js",
     "x2-painel": "node scripts/x2-painel/server.js",
     "importar-estoque": "node scripts/importar-estoque.js",
+    "organizar-aplicacoes-ia": "node scripts/organizar-aplicacoes-ia.js",
     "lint": "eslint src tests",
     "lint:fix": "eslint src tests --fix",
     "format": "prettier --write \"src/**/*.js\" \"tests/**/*.js\"",

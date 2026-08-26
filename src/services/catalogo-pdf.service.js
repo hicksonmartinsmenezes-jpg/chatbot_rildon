@@ -637,6 +637,19 @@ function _agruparPorLinha(produtos) {
     .sort((a, b) => a.linha.localeCompare(b.linha, "pt-BR"));
 }
 
+// Efeito de sombra (pedido do usuário, 2026-08-26: "aplique esse efeito de
+// sombra em todos os textos") — cópia do texto em preto translúcido,
+// deslocada +1.5pt/+1.5pt, desenhada por baixo do texto principal. Era só
+// do título "ÍNDICE"; virou helper reaproveitado por TODOS os textos da
+// página de índice (título, nome da Linha, "PG" e número) pra não repetir
+// esse par de chamadas 4x. Assume que doc.font()/fontSize() já foram
+// setados pelo chamador — a sombra usa a mesma fonte/tamanho do principal.
+function _textoComSombra(doc, texto, x, y, cor, opcoes) {
+  doc.fillColor("#000000", 0.35).text(texto, x + 1.5, y + 1.5, opcoes);
+  doc.fillOpacity(1);
+  doc.fillColor(cor).text(texto, x, y, opcoes);
+}
+
 // Cabeçalho da(s) página(s) de índice — mesma arte de _desenharCabecalho,
 // só com o título fixo "ÍNDICE" em INDICE_TITULO_TAMANHO (36pt, pedido do
 // usuário) em vez do nome da busca em TITULO_TAMANHO (17pt).
@@ -663,12 +676,8 @@ function _desenharCabecalhoIndice(doc) {
 
   // Pedido do usuário (2026-08-26): título "ÍNDICE" centralizado na página
   // (só ele — o resto do cabeçalho/linhas do índice continua como estava).
-  doc.fillColor("#000000", 0.35).font(TITULO_FONTE).fontSize(INDICE_TITULO_TAMANHO)
-    .text(tituloTexto, tituloX + 1.5, tituloY + 1.5, { width: tituloLargura, align: "center" });
-  doc.fillOpacity(1);
-
-  doc.fillColor(VERMELHO_CATEGORIA).font(TITULO_FONTE).fontSize(INDICE_TITULO_TAMANHO)
-    .text(tituloTexto, tituloX, tituloY, { width: tituloLargura, align: "center" });
+  doc.font(TITULO_FONTE).fontSize(INDICE_TITULO_TAMANHO);
+  _textoComSombra(doc, tituloTexto, tituloX, tituloY, VERMELHO_CATEGORIA, { width: tituloLargura, align: "center" });
 
   doc.fillColor("#111827").font("Helvetica");
 }
@@ -685,28 +694,28 @@ function _desenharLinhaIndice(doc, textoLinha, numeroPagina, y, larguraTotal) {
 
   const nomeUpper = String(textoLinha || "").toUpperCase();
 
-  doc.fillColor(VERMELHO_CATEGORIA).font(TITULO_FONTE).fontSize(INDICE_LINHA_TAMANHO)
-    .text(nomeUpper, xEsquerda, y, {
-      width: larguraNomeMax,
-      height: INDICE_LINHA_TAMANHO + 4,
-      ellipsis: true,
-      lineBreak: false,
-    });
+  doc.font(TITULO_FONTE).fontSize(INDICE_LINHA_TAMANHO);
+  const opcoesNome = {
+    width: larguraNomeMax,
+    height: INDICE_LINHA_TAMANHO + 4,
+    ellipsis: true,
+    lineBreak: false,
+  };
+  _textoComSombra(doc, nomeUpper, xEsquerda, y, VERMELHO_CATEGORIA, opcoesNome);
 
   doc.font(TITULO_FONTE).fontSize(INDICE_LINHA_TAMANHO);
   const larguraNomeReal = Math.min(doc.widthOfString(nomeUpper), larguraNomeMax);
 
-  // Líder pontilhado entre o fim do nome e o bloco "PG nn".
+  // Pedido do usuário (2026-08-26): trocar o líder pontilhado por um "hr"
+  // cinza sólido — mesma cor/espessura/opacidade já usadas como divisória
+  // entre foto e texto em cada card (LINHA_DIVISORIA), padronizando o
+  // cinza do índice com o resto do catálogo em vez de um estilo novo.
   const yLider = y + INDICE_LINHA_TAMANHO * 0.7;
   const xLiderInicio = xEsquerda + larguraNomeReal + 8;
   const xLiderFim = xBlocoPg - 8;
   if (xLiderFim > xLiderInicio) {
-    doc.save();
-    doc.dash(1.5, { space: 2.5 });
     doc.moveTo(xLiderInicio, yLider).lineTo(xLiderFim, yLider)
-      .lineWidth(0.75).strokeColor("#9ca3af").stroke();
-    doc.undash();
-    doc.restore();
+      .lineWidth(0.6).strokeColor(LINHA_DIVISORIA, 0.8).stroke();
   }
 
   // Pedido do usuário (2026-08-26): "centralize PG e números" — antes "PG"
@@ -730,10 +739,10 @@ function _desenharLinhaIndice(doc, textoLinha, numeroPagina, y, larguraTotal) {
   const yNumero = y + (INDICE_LINHA_TAMANHO - INDICE_PG_NUMERO_TAMANHO) / 2;
   const yPg = yNumero + (INDICE_PG_NUMERO_TAMANHO - INDICE_PG_LABEL_TAMANHO);
 
-  doc.fillColor(AZUL).font(TITULO_FONTE).fontSize(INDICE_PG_LABEL_TAMANHO)
-    .text("PG", xGrupo, yPg, { lineBreak: false });
-  doc.fillColor(AZUL).font(TITULO_FONTE).fontSize(INDICE_PG_NUMERO_TAMANHO)
-    .text(String(numeroPagina), xGrupo + larguraPg + gapPgNumero, yNumero, { lineBreak: false });
+  doc.font(TITULO_FONTE).fontSize(INDICE_PG_LABEL_TAMANHO);
+  _textoComSombra(doc, "PG", xGrupo, yPg, AZUL, { lineBreak: false });
+  doc.font(TITULO_FONTE).fontSize(INDICE_PG_NUMERO_TAMANHO);
+  _textoComSombra(doc, String(numeroPagina), xGrupo + larguraPg + gapPgNumero, yNumero, AZUL, { lineBreak: false });
 
   doc.fillColor("#111827").font("Helvetica");
 }

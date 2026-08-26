@@ -346,10 +346,6 @@ const INDICE_PG_NUMERO_TAMANHO = 18;
 // exata, então esse valor é uma estimativa própria, ajustável se o resultado
 // impresso ficar apertado/solto demais.
 const INDICE_LINHA_ALTURA = 36;
-// Início da área de conteúdo da página de índice — mesma fórmula de
-// AREA_TOPO_Y acima, só que com o título maior (INDICE_TITULO_TAMANHO em vez
-// de TITULO_TAMANHO), pra não desalinhar com o tamanho de fonte pedido.
-const AREA_TOPO_Y_INDICE = HEADER_HEIGHT + TITULO_GAP_TOPO + INDICE_TITULO_TAMANHO + TITULO_GAP_CARDS;
 // Tamanho de página "A4" que o pdfkit usa (595.28 × 841.89pt) — o mesmo
 // doc.page.height que o resto do arquivo lê de `doc.page` depois do 1º
 // addPage(). Usado SÓ no pré-cálculo de paginação do índice em
@@ -358,6 +354,34 @@ const AREA_TOPO_Y_INDICE = HEADER_HEIGHT + TITULO_GAP_TOPO + INDICE_TITULO_TAMAN
 // em que página cada Linha vai cair).
 const A4_LARGURA = 595.28;
 const A4_ALTURA = 841.89;
+
+// Pedido do usuário (2026-08-26): cabeçalho da página de ÍNDICE maior,
+// "colando" nas margens laterais — só a página de índice (_desenharCabecalhoIndice),
+// não mexe no cabeçalho compartilhado (_desenharCabecalho/HEADER_HEIGHT,
+// usado nas páginas de conteúdo e nos outros modos de exportação, já
+// ajustados em rodadas anteriores). Técnica: desenha a MESMA arte
+// (CABECALHO_IMG) ampliada (escala > 1) e centralizada horizontalmente —
+// como a largura ampliada é maior que a página, as bordas sangram pra fora
+// simetricamente e a própria borda da página corta exatamente em x=0/x=w,
+// dando o efeito "grudado na margem" (sem gap branco nas laterais) sem
+// distorcer a arte original. Valor de escala (1.35) é escolha própria —
+// usuário pediu "aumente", sem número exato.
+const INDICE_CABECALHO_ESCALA = 1.35;
+const INDICE_CABECALHO_IMG_ALTURA_REAL = (A4_LARGURA * INDICE_CABECALHO_ESCALA) / CABECALHO_IMG_RATIO;
+const INDICE_CABECALHO_SANGRIA_TOPO = CABECALHO_SANGRIA_TOPO * INDICE_CABECALHO_ESCALA;
+const INDICE_HEADER_HEIGHT = INDICE_CABECALHO_IMG_ALTURA_REAL - INDICE_CABECALHO_SANGRIA_TOPO;
+
+// Pedido do usuário (2026-08-26): mais respiro entre o cabeçalho e o título
+// "ÍNDICE", e entre o título e a 1ª linha da lista — valores escolhidos
+// (não pedidos em pt exatos) bem maiores que os respiros padrão
+// (TITULO_GAP_TOPO=8 / TITULO_GAP_CARDS=10) usados no resto do PDF.
+const INDICE_TITULO_GAP_TOPO = 26;
+const INDICE_TITULO_GAP_LINHAS = 34;
+
+// Início da área de conteúdo da página de índice — mesma lógica de
+// AREA_TOPO_Y acima, só com as constantes maiores específicas do índice
+// (cabeçalho/respiros/título) em vez das compartilhadas.
+const AREA_TOPO_Y_INDICE = INDICE_HEADER_HEIGHT + INDICE_TITULO_GAP_TOPO + INDICE_TITULO_TAMANHO + INDICE_TITULO_GAP_LINHAS;
 
 // Pedido do usuário (2026-07-30): remover o fundo cinza clarinho atrás da
 // foto (existia desde 2026-07-28 pra dar contraste com fotos de fundo
@@ -616,11 +640,23 @@ function _agruparPorLinha(produtos) {
 // usuário) em vez do nome da busca em TITULO_TAMANHO (17pt).
 function _desenharCabecalhoIndice(doc) {
   const w = doc.page.width;
-  doc.image(CABECALHO_IMG, 0, -CABECALHO_SANGRIA_TOPO, { width: w, height: CABECALHO_IMG_ALTURA_REAL });
+
+  // Pedido do usuário (2026-08-26): "aumente o cabeçalho colando os lados
+  // na margem da página" — a arte é desenhada AMPLIADA (INDICE_CABECALHO_ESCALA)
+  // e centralizada horizontalmente; como a largura ampliada é maior que a
+  // página, os dois lados sangram simetricamente pra fora e a borda da
+  // própria página corta exatamente em x=0/x=w — visualmente fica "grudado"
+  // nas duas margens, sem gap branco, sem distorcer a arte original.
+  const larguraAmpliada = w * INDICE_CABECALHO_ESCALA;
+  const xAmpliada = -(larguraAmpliada - w) / 2;
+  doc.image(CABECALHO_IMG, xAmpliada, -INDICE_CABECALHO_SANGRIA_TOPO, { width: larguraAmpliada, height: INDICE_CABECALHO_IMG_ALTURA_REAL });
 
   const tituloTexto = "ÍNDICE";
   const tituloX = PAGE_MARGIN;
-  const tituloY = HEADER_HEIGHT + TITULO_GAP_TOPO;
+  // Pedido do usuário (2026-08-26): respiro maior entre o cabeçalho e o
+  // título "ÍNDICE" — INDICE_TITULO_GAP_TOPO em vez do TITULO_GAP_TOPO
+  // compartilhado (8pt) usado no resto do PDF.
+  const tituloY = INDICE_HEADER_HEIGHT + INDICE_TITULO_GAP_TOPO;
   const tituloLargura = w - PAGE_MARGIN * 2;
 
   // Pedido do usuário (2026-08-26): título "ÍNDICE" centralizado na página
@@ -671,10 +707,25 @@ function _desenharLinhaIndice(doc, textoLinha, numeroPagina, y, larguraTotal) {
     doc.restore();
   }
 
+  // Pedido do usuário (2026-08-26): "centralize PG e números" — antes "PG"
+  // ficava colado na ponta esquerda do bloco reservado e o número na ponta
+  // direita (bem separados); agora os dois são medidos e desenhados como
+  // um GRUPO único, centralizado dentro de larguraBlocoPg, com a linha de
+  // base do "PG" (fonte menor) alinhada à base do número (fonte maior).
+  const gapPgNumero = 5;
+  doc.font(TITULO_FONTE).fontSize(INDICE_PG_LABEL_TAMANHO);
+  const larguraPg = doc.widthOfString("PG");
+  doc.font("Helvetica-Bold").fontSize(INDICE_PG_NUMERO_TAMANHO);
+  const larguraNumero = doc.widthOfString(String(numeroPagina));
+  const larguraGrupo = larguraPg + gapPgNumero + larguraNumero;
+  const xGrupo = xBlocoPg + (larguraBlocoPg - larguraGrupo) / 2;
+  const yNumero = y + (INDICE_LINHA_TAMANHO - INDICE_PG_NUMERO_TAMANHO) / 2;
+  const yPg = yNumero + (INDICE_PG_NUMERO_TAMANHO - INDICE_PG_LABEL_TAMANHO);
+
   doc.fillColor(AZUL).font(TITULO_FONTE).fontSize(INDICE_PG_LABEL_TAMANHO)
-    .text("PG", xBlocoPg, y + 6, { width: larguraBlocoPg, align: "left", lineBreak: false });
+    .text("PG", xGrupo, yPg, { lineBreak: false });
   doc.fillColor(AZUL).font("Helvetica-Bold").fontSize(INDICE_PG_NUMERO_TAMANHO)
-    .text(String(numeroPagina), xBlocoPg, y, { width: larguraBlocoPg, align: "right", lineBreak: false });
+    .text(String(numeroPagina), xGrupo + larguraPg + gapPgNumero, yNumero, { lineBreak: false });
 
   doc.fillColor("#111827").font("Helvetica");
 }

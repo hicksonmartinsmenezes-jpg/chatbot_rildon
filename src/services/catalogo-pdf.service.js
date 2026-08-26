@@ -355,18 +355,20 @@ const INDICE_LINHA_ALTURA = 36;
 const A4_LARGURA = 595.28;
 const A4_ALTURA = 841.89;
 
-// Pedido do usuário (2026-08-26): cabeçalho da página de ÍNDICE maior,
-// "colando" nas margens laterais — só a página de índice (_desenharCabecalhoIndice),
-// não mexe no cabeçalho compartilhado (_desenharCabecalho/HEADER_HEIGHT,
-// usado nas páginas de conteúdo e nos outros modos de exportação, já
-// ajustados em rodadas anteriores). Técnica: desenha a MESMA arte
-// (CABECALHO_IMG) ampliada (escala > 1) e centralizada horizontalmente —
-// como a largura ampliada é maior que a página, as bordas sangram pra fora
-// simetricamente e a própria borda da página corta exatamente em x=0/x=w,
-// dando o efeito "grudado na margem" (sem gap branco nas laterais) sem
-// distorcer a arte original. Valor de escala (1.35) é escolha própria —
-// usuário pediu "aumente", sem número exato.
-const INDICE_CABECALHO_ESCALA = 1.35;
+// Pedido do usuário (2026-08-26): cabeçalho da página de ÍNDICE "colado"
+// nas margens laterais (sem gap branco), no MESMO tamanho do cabeçalho
+// compartilhado (_desenharCabecalho/HEADER_HEIGHT, usado nas páginas de
+// conteúdo e nos outros modos de exportação) — padronizando a página de
+// índice com o resto do catálogo em vez de ter uma arte maior só ali.
+// Rodada anterior tinha ampliado (escala 1.35) pra "colar" nas margens;
+// revertido aqui porque a escala 1.35 já não era mais necessária pra
+// colar nas margens — em escala 1 (largura = largura da página) o efeito
+// "grudado" já acontece naturalmente, sem sangria nem distorção.
+// INDICE_CABECALHO_ESCALA mantida (em vez de reusar CABECALHO_IMG_ALTURA_REAL
+// direto) só pra não precisar reescrever _desenharCabecalhoIndice — a
+// técnica de zoom+center-crop abaixo continua válida, só que com escala
+// neutra (1) o "crop" não recorta nada.
+const INDICE_CABECALHO_ESCALA = 1;
 const INDICE_CABECALHO_IMG_ALTURA_REAL = (A4_LARGURA * INDICE_CABECALHO_ESCALA) / CABECALHO_IMG_RATIO;
 const INDICE_CABECALHO_SANGRIA_TOPO = CABECALHO_SANGRIA_TOPO * INDICE_CABECALHO_ESCALA;
 const INDICE_HEADER_HEIGHT = INDICE_CABECALHO_IMG_ALTURA_REAL - INDICE_CABECALHO_SANGRIA_TOPO;

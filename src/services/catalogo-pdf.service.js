@@ -308,7 +308,13 @@ const APLICACAO_COR = "#111827";
 // aplicação em preto embaixo. O catálogo comum (comAplicacao=false, sem
 // aplicação/OEM) continua com o layout antigo (_desenharCaixaCodigo sobre a
 // foto), sem mudança — ver _desenharCard/_desenharCardCatalogoCompleto.
-const HEADER_NOME_FONTE = 8;      // maior que NOME_FONTE (6) — descrição em destaque, como na referência
+// 2026-08-27 (ajuste fino, pedido seguinte): "reduza o tamanho da descrição
+// para ficar do tamanho e alinhado com o número" — era 8 (mesmo valor
+// numérico de CODIGO_FONTE, mas TITULO_FONTE do selo é uma itálica
+// condensada que renderiza visualmente menor que Helvetica-Bold no mesmo
+// tamanho; a descrição parecia maior mesmo com o mesmo fontSize). Reduzida
+// pra 7 pra bater com o tamanho visual do número do selo.
+const HEADER_NOME_FONTE = 7;
 // 2026-08-27 (ajuste fino, pedido seguinte): "caso a descrição seja um
 // pouco grande deixe quebra de linha automática" — era 20, ficava justo
 // demais pra 2 linhas completas nesse fontSize/lineGap (o pdfkit cortava
@@ -714,10 +720,15 @@ function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight
   // canto direito" — align:"right" puxa o texto (linha única curta ou cada
   // linha da quebra automática) pro canto direito do card, em vez de ficar
   // colado à esquerda logo após o selo.
+  // "...alinhado com o número" — a descrição começa na mesma altura que o
+  // texto do número dentro do selo (yTopo + CAIXA_CODIGO_PAD_V), não no
+  // topo da caixa do selo, pra alinhar visualmente os dois textos pelo
+  // topo em vez da descrição ficar mais alta que o número.
   const xNome = xConteudo + larguraSelo + GAP_BADGE_NOME;
   const larguraNome = xConteudo + larguraConteudo - xNome;
+  const yNomeCabecalho = yTopo + CAIXA_CODIGO_PAD_V;
   doc.fillColor("#111827").font("Helvetica-Bold").fontSize(HEADER_NOME_FONTE)
-    .text(_nomeExibicao(produto, true).toUpperCase(), xNome, yTopo, {
+    .text(_nomeExibicao(produto, true).toUpperCase(), xNome, yNomeCabecalho, {
       width: larguraNome,
       height: HEADER_NOME_ALTURA,
       ellipsis: true,

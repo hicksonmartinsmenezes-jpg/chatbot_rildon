@@ -245,6 +245,12 @@ const RAIO_CARD = 0;
 // foi e voltou 2x neste arquivo — ver histórico dos comentários acima).
 // CODIGO_FONTE continua em uso (fonte do texto dentro do próprio selo).
 const CODIGO_FONTE = 8;
+// 2026-08-27: pedido do usuário — "no card do meu codigo por mais que ele
+// seja grande nunca deixe '...' sempre coloque completo nem que precise
+// reduzir tamanho". Piso de segurança pro auto-encolhimento de fonte do
+// selo (ver _ajustarFonteSeloParaCaber) — só entra em jogo em código
+// absurdamente longo; na prática nenhum código real do catálogo chega perto.
+const CODIGO_FONTE_MIN = 4;
 const CODIGO_ALTURA = 11; // sem uso atualmente — ver comentário acima
 const NOME_FONTE = 6;
 const NOME_ALTURA = 16;  // ~2 linhas no tamanho novo
@@ -314,7 +320,9 @@ const APLICACAO_COR = "#111827";
 // condensada que renderiza visualmente menor que Helvetica-Bold no mesmo
 // tamanho; a descrição parecia maior mesmo com o mesmo fontSize). Reduzida
 // pra 7 pra bater com o tamanho visual do número do selo.
-const HEADER_NOME_FONTE = 7;
+// 2026-08-27 (ajuste seguinte): "na minha descrição reduza mais o tamanho
+// para ficar mais organizado" — reduzida de 7 pra 6.
+const HEADER_NOME_FONTE = 6;
 // 2026-08-27 (ajuste fino, pedido seguinte): "caso a descrição seja um
 // pouco grande deixe quebra de linha automática" — era 20, ficava justo
 // demais pra 2 linhas completas nesse fontSize/lineGap (o pdfkit cortava
@@ -335,7 +343,12 @@ const OEM_COR = "#dc2626"; // mesmo vermelho de VERMELHO_CATEGORIA
 const OEM_ALTURA = 8;      // 1 linha
 const GAP_BADGE_OEM = 3;   // respiro vertical entre o selo e o código OEM
 const GAP_HEADER_FOTO = 6; // respiro entre o bloco de cabeçalho (selo+nome) e a foto
-const GAP_FOTO_APLICACAO = 6; // respiro entre a foto e o bloco de aplicação (sem linha divisória nesse layout — a referência não tem)
+// 2026-08-27 (ajuste seguinte): "minha aplicação se puder desça mais" —
+// era 6, aumentado pra descer o bloco de aplicação, mais respiro depois da
+// foto. photoBoxHeight absorve a diferença automaticamente (ver
+// _geometriaGrid: alturaFixaTexto sobe, photoBoxHeight desce na mesma
+// medida), não estoura a altura do card.
+const GAP_FOTO_APLICACAO = 13; // respiro entre a foto e o bloco de aplicação (sem linha divisória nesse layout — a referência não tem)
 
 // Cor do texto do código — pedido do usuário (2026-07-30): "azul oceano/
 // petróleo", rgb(0, 96, 151), mais sóbrio que o azul do painel usado antes.
@@ -534,12 +547,35 @@ function _rotuloProduto(produto) {
 // então pode ser calculada uma vez e reusada tanto em _geometriaGrid quanto
 // em _desenharCardCatalogoCompleto sem duplicar a fórmula.
 function _alturaSelo(doc) {
-  // Só usada pela geometria do Catálogo Completo (ver único call site em
-  // _geometriaGrid) — por isso usa QUICKSAND_BOLD, a mesma fonte do selo
-  // desenhado em _desenharCardCatalogoCompleto. O selo do catálogo comum
-  // (gerarPdfCatalogo) continua em TITULO_FONTE e não passa por aqui.
-  doc.font(QUICKSAND_BOLD).fontSize(CODIGO_FONTE);
+  // 2026-08-27: "a fonte do meu codigo e descrição deixe futura mb bt" —
+  // voltou a usar TITULO_FONTE (era QUICKSAND_BOLD, testado no pedido
+  // anterior). Usa CODIGO_FONTE "cheio" (não o tamanho encolhido de um
+  // código específico) de propósito: é o valor usado só pela geometria do
+  // grid (_geometriaGrid), que precisa de uma altura de cabeçalho ÚNICA pra
+  // todos os cards da mesma linha — reserva o pior caso (maior altura
+  // possível). O auto-encolhimento por código (ver
+  // _ajustarFonteSeloParaCaber) só reduz a LARGURA reservada por card
+  // individual, nunca aumenta a altura além deste valor de referência.
+  doc.font(TITULO_FONTE).fontSize(CODIGO_FONTE);
   return doc.currentLineHeight() + CAIXA_CODIGO_PAD_V * 2;
+}
+
+// 2026-08-27: pedido do usuário — "no card do meu codigo por mais que ele
+// seja grande nunca deixe '...' sempre coloque completo nem que precise
+// reduzir tamanho". Antes o selo cortava com ellipsis quando o texto não
+// cabia em larguraMaxima (50% do conteúdo do card); agora, em vez de
+// cortar, encolhe o fontSize em passos de 0.5pt até caber (ou até bater no
+// piso CODIGO_FONTE_MIN) — o texto do código NUNCA é truncado.
+function _ajustarFonteSeloParaCaber(doc, rotulo, larguraMaxima) {
+  let tamanho = CODIGO_FONTE;
+  doc.font(TITULO_FONTE).fontSize(tamanho);
+  let largura = doc.widthOfString(rotulo);
+  while (largura + CAIXA_CODIGO_PAD_H * 2 + 1.5 > larguraMaxima && tamanho > CODIGO_FONTE_MIN) {
+    tamanho -= 0.5;
+    doc.fontSize(tamanho);
+    largura = doc.widthOfString(rotulo);
+  }
+  return { tamanho, largura };
 }
 
 // Pedido do usuário (2026-07-29): "a caixa" da referência — o código do
@@ -709,21 +745,25 @@ function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight
 
   // --- Selo do código (topo esquerdo, agora fora da foto) ---
   const rotulo = _rotuloProduto(produto);
-  doc.font(QUICKSAND_BOLD).fontSize(CODIGO_FONTE);
-  const larguraTextoSelo = doc.widthOfString(rotulo);
   // Não deixa o selo comer mais da metade do cabeçalho — sobra pouco/nada
   // pra descrição em código muito longo (raro, mas evita card quebrado).
+  // 2026-08-27: "por mais que ele seja grande nunca deixe '...' sempre
+  // coloque completo nem que precise reduzir tamanho" — em vez de cortar
+  // com ellipsis quando o texto não cabe em larguraMaximaSelo, encolhe o
+  // fontSize até caber (_ajustarFonteSeloParaCaber); a caixa então se
+  // ajusta exatamente ao texto (já garantido caber), nunca corta.
   const larguraMaximaSelo = larguraConteudo * 0.5;
-  const larguraSelo = Math.min(larguraTextoSelo + CAIXA_CODIGO_PAD_H * 2 + 1.5, larguraMaximaSelo);
+  const { tamanho: tamanhoSelo, largura: larguraTextoSelo } = _ajustarFonteSeloParaCaber(doc, rotulo, larguraMaximaSelo);
+  const larguraSelo = larguraTextoSelo + CAIXA_CODIGO_PAD_H * 2 + 1.5;
+  doc.font(TITULO_FONTE).fontSize(tamanhoSelo);
   const alturaLinhaSelo = doc.currentLineHeight();
   const alturaSelo = alturaLinhaSelo + CAIXA_CODIGO_PAD_V * 2;
 
   doc.rect(xConteudo, yTopo, larguraSelo, alturaSelo).fillColor(CAIXA_CODIGO_FUNDO).fill();
-  doc.fillColor(CAIXA_CODIGO_TEXTO).font(QUICKSAND_BOLD).fontSize(CODIGO_FONTE)
+  doc.fillColor(CAIXA_CODIGO_TEXTO).font(TITULO_FONTE).fontSize(tamanhoSelo)
     .text(rotulo, xConteudo + CAIXA_CODIGO_PAD_H, yTopo + CAIXA_CODIGO_PAD_V, {
       width: larguraSelo - CAIXA_CODIGO_PAD_H * 2,
       height: alturaLinhaSelo,
-      ellipsis: true,
       lineBreak: false,
       align: "center",
     });
@@ -752,7 +792,10 @@ function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight
   const xNome = xConteudo + larguraSelo + GAP_BADGE_NOME;
   const larguraNome = xConteudo + larguraConteudo - xNome;
   const yNomeCabecalho = yTopo + CAIXA_CODIGO_PAD_V;
-  doc.fillColor("#111827").font(QUICKSAND_BOLD).fontSize(HEADER_NOME_FONTE)
+  // 2026-08-27: "a fonte do meu codigo e descrição deixe futura mb bt" —
+  // volta a usar TITULO_FONTE (era QUICKSAND_BOLD). Aplicação (ver abaixo)
+  // continua em Quicksand — não foi pedido reverter essa.
+  doc.fillColor("#111827").font(TITULO_FONTE).fontSize(HEADER_NOME_FONTE)
     .text(_nomeExibicao(produto, true).toUpperCase(), xNome, yNomeCabecalho, {
       width: larguraNome,
       height: HEADER_NOME_ALTURA,

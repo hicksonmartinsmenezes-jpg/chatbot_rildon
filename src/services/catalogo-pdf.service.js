@@ -260,9 +260,12 @@ const GAP_DIVISORIA_TEXTO = 6;
 // 2026-08-27: "desça mais um pouco" o nome, pedido específico sobre o card
 // do Catálogo Completo (comAplicacao=true) — respiro ADICIONAL somado só
 // nesse modo, em cima do GAP_DIVISORIA_TEXTO padrão acima (que continua
-// valendo sozinho pro catálogo comum). Entra tanto em alturaFixaTexto
-// (_geometriaGrid) quanto no cálculo de yNome (_desenharCard) — nomeada pra
-// não desencontrar os dois lugares.
+// valendo sozinho pro catálogo comum).
+// SEM USO desde o redesenho do card do Catálogo Completo (mesmo dia,
+// pedido seguinte: referência visual "SENSOR DE TEMPERATURA") — o nome
+// saiu de baixo da foto e foi pro cabeçalho, lado a lado com o selo (ver
+// _desenharCardCatalogoCompleto). Mantida documentada, não removida, caso
+// o layout antigo (nome abaixo da foto) volte a ser usado no futuro.
 const GAP_DIVISORIA_TEXTO_EXTRA_COMPLETO = 5;
 // Respiro entre o código e o nome — sem uso atualmente (ver comentário
 // acima em CODIGO_ALTURA), mantida documentada pelo mesmo motivo.
@@ -291,7 +294,32 @@ const APLICACAO_ALTURA = 20; // ~3 linhas nesse tamanho
 // 2026-08-27: usuário pediu "desça mais as aplicações no card" — era 3,
 // mais respiro entre o fim do nome e o início do bloco de aplicação.
 const APLICACAO_GAP = 9;     // respiro entre o nome e esse bloco
-const APLICACAO_COR = "#4b5563";
+// 2026-08-27: usuário mandou um card de referência ("SENSOR DE
+// TEMPERATURA") de outro catálogo pedindo "ajuste melhor... aplicação" —
+// era cinza claro (#4b5563), quase ilegível na referência mandada, virou
+// preto igual ao resto do texto do card.
+const APLICACAO_COR = "#111827";
+
+// --- Redesenho do card do Catálogo Completo (2026-08-27, referência visual
+// mandada pelo usuário: card "SENSOR DE TEMPERATURA" de outro catálogo) ---
+// Layout NOVO, só pro modo comAplicacao=true — substitui o selo-sobre-foto +
+// nome-abaixo-da-foto por: selo + descrição LADO A LADO no topo do card,
+// código OEM em vermelho embaixo do selo, foto grande ocupando o meio, e
+// aplicação em preto embaixo. O catálogo comum (comAplicacao=false, sem
+// aplicação/OEM) continua com o layout antigo (_desenharCaixaCodigo sobre a
+// foto), sem mudança — ver _desenharCard/_desenharCardCatalogoCompleto.
+const HEADER_NOME_FONTE = 8;      // maior que NOME_FONTE (6) — descrição em destaque, como na referência
+const HEADER_NOME_ALTURA = 20;    // ~2 linhas
+const GAP_BADGE_NOME = 8;         // respiro horizontal entre o selo e a descrição
+// Código OEM/equivalente em vermelho, embaixo do selo (ex: "A011.542.96.17"
+// na referência) — usa o 1º item de `produto.equivalentes` (já indexado por
+// catalogo-x2.service.js), sem novo campo/dado a buscar.
+const OEM_FONTE = 6.5;
+const OEM_COR = "#dc2626"; // mesmo vermelho de VERMELHO_CATEGORIA
+const OEM_ALTURA = 8;      // 1 linha
+const GAP_BADGE_OEM = 3;   // respiro vertical entre o selo e o código OEM
+const GAP_HEADER_FOTO = 6; // respiro entre o bloco de cabeçalho (selo+nome) e a foto
+const GAP_FOTO_APLICACAO = 6; // respiro entre a foto e o bloco de aplicação (sem linha divisória nesse layout — a referência não tem)
 
 // Cor do texto do código — pedido do usuário (2026-07-30): "azul oceano/
 // petróleo", rgb(0, 96, 151), mais sóbrio que o azul do painel usado antes.
@@ -464,6 +492,15 @@ function _rotuloProduto(produto) {
   return codigoFornecedor || String(produto.codigo);
 }
 
+// Altura do selo do código, dado o fontSize/fonte fixos (CODIGO_FONTE em
+// TITULO_FONTE) — não depende do texto (só a LARGURA varia por produto),
+// então pode ser calculada uma vez e reusada tanto em _geometriaGrid quanto
+// em _desenharCardCatalogoCompleto sem duplicar a fórmula.
+function _alturaSelo(doc) {
+  doc.font(TITULO_FONTE).fontSize(CODIGO_FONTE);
+  return doc.currentLineHeight() + CAIXA_CODIGO_PAD_V * 2;
+}
+
 // Pedido do usuário (2026-07-29): "a caixa" da referência — o código do
 // fabricante agora é uma CAIXA cheia (fundo azul, texto branco) sobreposta
 // no canto superior esquerdo da foto, igual ao card de "Sensor de
@@ -589,30 +626,139 @@ function _geometriaGrid(doc, cols, rows, comAplicacao = false) {
   const areaFimY = doc.page.height - FOOTER_HEIGHT - 8;
   const alturaDisponivel = areaFimY - areaTopoY;
   const cardHeightMax = (alturaDisponivel - (rows - 1) * GAP) / rows;
-  // Issue #23: bloco extra de "aplicação organizada" (só no Catálogo
-  // Completo, comAplicacao=true) soma altura fixa reservada — a foto
-  // encolhe um pouco pra abrir espaço, igual ao princípio já usado pro
-  // resto do bloco de texto (nome) desde a v3.
-  // 2026-08-27: código voltou a ser um SELO sobreposto no canto superior
-  // esquerdo da foto (_desenharCaixaCodigo) em vez de uma linha de texto
-  // própria abaixo da foto — CODIGO_ALTURA/GAP_CODIGO_NOME saíram da conta
-  // (o selo não ocupa altura fixa do bloco de texto, fica por cima da
-  // foto), o que também aumenta a caixa de foto disponível, como pedido.
-  const alturaFixaTexto = PAD_CARD + GAP_FOTO_DIVISORIA + GAP_DIVISORIA_TEXTO + NOME_ALTURA
-    + (comAplicacao ? GAP_DIVISORIA_TEXTO_EXTRA_COMPLETO + APLICACAO_GAP + APLICACAO_ALTURA : 0)
-    + PAD_CARD;
+
+  let alturaFixaTexto;
+  if (comAplicacao) {
+    // 2026-08-27: redesenho do card do Catálogo Completo (referência visual
+    // "SENSOR DE TEMPERATURA" mandada pelo usuário) — cabeçalho com selo +
+    // descrição lado a lado no topo (ver _desenharCardCatalogoCompleto), não
+    // mais selo sobreposto na foto + nome abaixo. A altura do cabeçalho é o
+    // MAIOR entre a coluna do selo (selo + código OEM embaixo) e a coluna da
+    // descrição (HEADER_NOME_ALTURA) — o lado mais alto dos dois manda.
+    const alturaColunaSelo = _alturaSelo(doc) + GAP_BADGE_OEM + OEM_ALTURA;
+    const alturaCabecalho = Math.max(alturaColunaSelo, HEADER_NOME_ALTURA);
+    alturaFixaTexto = PAD_CARD + alturaCabecalho + GAP_HEADER_FOTO
+      + GAP_FOTO_APLICACAO + APLICACAO_ALTURA + PAD_CARD;
+  } else {
+    // Layout antigo (catálogo comum, sem aplicação/OEM) — selo sobreposto na
+    // foto (_desenharCaixaCodigo, não ocupa altura fixa própria) + nome
+    // abaixo da foto, sem mudança.
+    alturaFixaTexto = PAD_CARD + GAP_FOTO_DIVISORIA + GAP_DIVISORIA_TEXTO + NOME_ALTURA + PAD_CARD;
+  }
   const photoBoxHeight = cardHeightMax - alturaFixaTexto;
   const cardHeight = cardHeightMax;
   return { cardWidth, cardHeight, photoBoxWidth, photoBoxHeight, areaTopoY, areaFimY };
 }
 
+// Pedido do usuário (2026-08-27): mandou um card de referência de outro
+// catálogo ("SENSOR DE TEMPERATURA") pedindo "ajuste melhor descrição,
+// aplicação e foto" — layout NOVO só pro Catálogo Completo (comAplicacao):
+// selo do código + descrição LADO A LADO no topo (não mais selo sobreposto
+// na foto), código OEM/equivalente em vermelho embaixo do selo, foto
+// ocupando o meio do card (agora bem maior, sem o selo "roubando" espaço
+// dela), aplicação em preto embaixo (ver APLICACAO_COR). O código
+// OEM/equivalente mostrado é o 1º item de `produto.equivalentes` — já é a
+// lista de referências cruzadas de outros fabricantes indexada por
+// catalogo-x2.service.js (mesmo dado usado em "Ver referências" no painel
+// de atendimento), sem precisar buscar nada novo.
+function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth, photoBoxHeight) {
+  const larguraConteudo = photoBoxWidth; // = cardWidth - PAD_CARD*2, já calculado em _geometriaGrid
+  const xConteudo = x + PAD_CARD;
+  const yTopo = y + PAD_CARD;
+
+  // --- Selo do código (topo esquerdo, agora fora da foto) ---
+  const rotulo = _rotuloProduto(produto);
+  doc.font(TITULO_FONTE).fontSize(CODIGO_FONTE);
+  const larguraTextoSelo = doc.widthOfString(rotulo);
+  // Não deixa o selo comer mais da metade do cabeçalho — sobra pouco/nada
+  // pra descrição em código muito longo (raro, mas evita card quebrado).
+  const larguraMaximaSelo = larguraConteudo * 0.5;
+  const larguraSelo = Math.min(larguraTextoSelo + CAIXA_CODIGO_PAD_H * 2 + 1.5, larguraMaximaSelo);
+  const alturaLinhaSelo = doc.currentLineHeight();
+  const alturaSelo = alturaLinhaSelo + CAIXA_CODIGO_PAD_V * 2;
+
+  doc.rect(xConteudo, yTopo, larguraSelo, alturaSelo).fillColor(CAIXA_CODIGO_FUNDO).fill();
+  doc.fillColor(CAIXA_CODIGO_TEXTO).font(TITULO_FONTE).fontSize(CODIGO_FONTE)
+    .text(rotulo, xConteudo + CAIXA_CODIGO_PAD_H, yTopo + CAIXA_CODIGO_PAD_V, {
+      width: larguraSelo - CAIXA_CODIGO_PAD_H * 2,
+      height: alturaLinhaSelo,
+      ellipsis: true,
+      lineBreak: false,
+      align: "center",
+    });
+
+  // --- Código OEM/equivalente em vermelho, embaixo do selo ---
+  const oem = Array.isArray(produto.equivalentes) && produto.equivalentes.length ? produto.equivalentes[0] : null;
+  if (oem) {
+    doc.fillColor(OEM_COR).font("Helvetica-Bold").fontSize(OEM_FONTE)
+      .text(String(oem), xConteudo, yTopo + alturaSelo + GAP_BADGE_OEM, {
+        width: larguraSelo,
+        height: OEM_ALTURA,
+        ellipsis: true,
+        lineBreak: false,
+      });
+  }
+
+  // --- Descrição do produto, à direita do selo ---
+  const xNome = xConteudo + larguraSelo + GAP_BADGE_NOME;
+  const larguraNome = xConteudo + larguraConteudo - xNome;
+  doc.fillColor("#111827").font("Helvetica-Bold").fontSize(HEADER_NOME_FONTE)
+    .text(_nomeExibicao(produto, true).toUpperCase(), xNome, yTopo, {
+      width: larguraNome,
+      height: HEADER_NOME_ALTURA,
+      ellipsis: true,
+      lineGap: 1,
+    });
+
+  // --- Foto (agora abaixo do cabeçalho inteiro, não mais atrás do selo) ---
+  const alturaColunaSelo = alturaSelo + GAP_BADGE_OEM + OEM_ALTURA;
+  const alturaCabecalho = Math.max(alturaColunaSelo, HEADER_NOME_ALTURA);
+  const yFoto = yTopo + alturaCabecalho + GAP_HEADER_FOTO;
+
+  try {
+    const foto = obterFoto(produto.codigo, 0);
+    if (foto && (foto.mimetype === "image/jpeg" || foto.mimetype === "image/png")) {
+      doc.image(foto.buffer, xConteudo, yFoto, { fit: [larguraConteudo, photoBoxHeight], align: "center", valign: "center" });
+    } else {
+      doc.font("Helvetica").fontSize(7).fillColor("#9ca3af")
+        .text("sem foto", xConteudo, yFoto + photoBoxHeight / 2 - 5, { width: larguraConteudo, align: "center" });
+    }
+  } catch {
+    doc.font("Helvetica").fontSize(7).fillColor("#9ca3af")
+      .text("sem foto", xConteudo, yFoto + photoBoxHeight / 2 - 5, { width: larguraConteudo, align: "center" });
+  }
+  doc.fillColor("#111827").font("Helvetica");
+
+  // --- Aplicação (embaixo da foto, em preto — ver APLICACAO_COR) ---
+  if (produto.aplicacaoOrganizada) {
+    const yAplicacao = yFoto + photoBoxHeight + GAP_FOTO_APLICACAO;
+    doc.fillColor(APLICACAO_COR).font("Helvetica").fontSize(APLICACAO_FONTE)
+      .text(produto.aplicacaoOrganizada, xConteudo, yAplicacao, {
+        width: larguraConteudo,
+        height: APLICACAO_ALTURA,
+        ellipsis: true,
+        lineGap: 0.5,
+      });
+  }
+
+  doc.font("Helvetica");
+}
+
 // Extraído de gerarPdfCatalogo (2026-08-26, Issue #21) — desenha um card de
-// produto completo (moldura + foto + divisória + código + nome) em x/y
-// dados, sem saber nada sobre grade/paginação. Reusado por gerarPdfCatalogo
-// (grade 5×6) e gerarPdfCatalogoCompleto (grade 4×5) — comportamento
-// idêntico ao que já existia antes da extração, só parametrizado.
+// produto completo em x/y dados, sem saber nada sobre grade/paginação.
+// Reusado por gerarPdfCatalogo (grade 5×6, catálogo comum) e
+// gerarPdfCatalogoCompleto (grade 4×5, por fabricante). 2026-08-27: os dois
+// modos agora têm layouts DIFERENTES (ver _desenharCardCatalogoCompleto) —
+// catálogo comum mantém o desenho original (selo sobre a foto + nome
+// abaixo), Catálogo Completo usa o cabeçalho novo (selo+descrição lado a
+// lado + OEM em vermelho + foto maior + aplicação em preto).
 function _desenharCard(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth, photoBoxHeight, comAplicacao = false) {
   _desenharCardVidro(doc, x, y, cardWidth, cardHeight);
+
+  if (comAplicacao) {
+    _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth, photoBoxHeight);
+    return;
+  }
 
   const xFoto = x + PAD_CARD;
   const yFoto = y + PAD_CARD;
@@ -631,8 +777,7 @@ function _desenharCard(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth,
   }
   doc.fillColor("#111827").font("Helvetica");
 
-  // 2026-08-27 (pedido do usuário, testando o Catálogo Completo impresso):
-  // código de volta como SELO sobreposto no canto superior esquerdo da foto
+  // Código de volta como SELO sobreposto no canto superior esquerdo da foto
   // — reusa _desenharCaixaCodigo, que já existia no arquivo desde 2026-07-29
   // mas tinha ficado sem uso desde 2026-07-30 (quando o código voltou a ser
   // uma linha de texto solta abaixo da foto). Desenhado por cima da foto
@@ -645,34 +790,14 @@ function _desenharCard(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth,
 
   // Sem o código como linha de texto própria, o nome sobe pra logo depois
   // da divisória (era yCodigo + CODIGO_ALTURA + GAP_CODIGO_NOME).
-  // 2026-08-27: "desça mais um pouco" (pedido específico sobre o card do
-  // Catálogo Completo) — só nesse modo (comAplicacao=true) soma um respiro
-  // extra; o catálogo padrão (busca/seleção manual, sem bloco de aplicação)
-  // continua com o espaçamento de sempre, sem esse ajuste.
-  const yNome = yDivisoria + GAP_DIVISORIA_TEXTO + (comAplicacao ? GAP_DIVISORIA_TEXTO_EXTRA_COMPLETO : 0);
+  const yNome = yDivisoria + GAP_DIVISORIA_TEXTO;
   doc.fillColor("#111827").font("Helvetica-Bold").fontSize(NOME_FONTE)
-    .text(_nomeExibicao(produto, comAplicacao).toUpperCase(), x + PAD_CARD, yNome, {
+    .text(_nomeExibicao(produto, false).toUpperCase(), x + PAD_CARD, yNome, {
       width: cardWidth - PAD_CARD * 2,
       height: NOME_ALTURA,
       ellipsis: true,
       lineGap: 0.5,
     });
-
-  // Issue #23 (2026-08-26): bloco de aplicação já organizada pela IA (ver
-  // catalogo-aplicacao-ia.service.js) — só desenha texto se
-  // `produto.aplicacaoOrganizada` já estiver preenchido (cache hit); sem
-  // isso, o espaço reservado por APLICACAO_ALTURA em _geometriaGrid fica
-  // simplesmente em branco (nunca quebra o layout, nunca mostra "undefined").
-  if (comAplicacao && produto.aplicacaoOrganizada) {
-    const yAplicacao = yNome + NOME_ALTURA + APLICACAO_GAP;
-    doc.fillColor(APLICACAO_COR).font("Helvetica").fontSize(APLICACAO_FONTE)
-      .text(produto.aplicacaoOrganizada, x + PAD_CARD, yAplicacao, {
-        width: cardWidth - PAD_CARD * 2,
-        height: APLICACAO_ALTURA,
-        ellipsis: true,
-        lineGap: 0.5,
-      });
-  }
 
   doc.font("Helvetica");
 }

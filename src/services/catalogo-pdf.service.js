@@ -309,12 +309,22 @@ const APLICACAO_COR = "#111827";
 // aplicação/OEM) continua com o layout antigo (_desenharCaixaCodigo sobre a
 // foto), sem mudança — ver _desenharCard/_desenharCardCatalogoCompleto.
 const HEADER_NOME_FONTE = 8;      // maior que NOME_FONTE (6) — descrição em destaque, como na referência
-const HEADER_NOME_ALTURA = 20;    // ~2 linhas
-const GAP_BADGE_NOME = 8;         // respiro horizontal entre o selo e a descrição
+// 2026-08-27 (ajuste fino, pedido seguinte): "caso a descrição seja um
+// pouco grande deixe quebra de linha automática" — era 20, ficava justo
+// demais pra 2 linhas completas nesse fontSize/lineGap (o pdfkit cortava
+// com "…" já na 1ª linha em vez de quebrar a 2ª). Aumentado com folga.
+const HEADER_NOME_ALTURA = 24;    // ~2 linhas, com folga real pra não cortar cedo
+// Respiro horizontal entre o selo e a descrição — pedido do usuário
+// "ajuste melhor a descrição mais para o canto direito" (era 8, descrição
+// colada demais no selo); a descrição também passou a alinhar à direita
+// (ver align:"right" em _desenharCardCatalogoCompleto), então esse gap
+// garante que sobre respiro mesmo com o texto puxado pro canto direito.
+const GAP_BADGE_NOME = 14;
 // Código OEM/equivalente em vermelho, embaixo do selo (ex: "A011.542.96.17"
 // na referência) — usa o 1º item de `produto.equivalentes` (já indexado por
 // catalogo-x2.service.js), sem novo campo/dado a buscar.
-const OEM_FONTE = 6.5;
+// 2026-08-27: "reduza o tamanho dos códigos originais" — era 6.5.
+const OEM_FONTE = 5.5;
 const OEM_COR = "#dc2626"; // mesmo vermelho de VERMELHO_CATEGORIA
 const OEM_ALTURA = 8;      // 1 linha
 const GAP_BADGE_OEM = 3;   // respiro vertical entre o selo e o código OEM
@@ -700,6 +710,10 @@ function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight
   }
 
   // --- Descrição do produto, à direita do selo ---
+  // Pedido do usuário (2026-08-27): "ajuste melhor a descrição mais para o
+  // canto direito" — align:"right" puxa o texto (linha única curta ou cada
+  // linha da quebra automática) pro canto direito do card, em vez de ficar
+  // colado à esquerda logo após o selo.
   const xNome = xConteudo + larguraSelo + GAP_BADGE_NOME;
   const larguraNome = xConteudo + larguraConteudo - xNome;
   doc.fillColor("#111827").font("Helvetica-Bold").fontSize(HEADER_NOME_FONTE)
@@ -708,6 +722,7 @@ function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight
       height: HEADER_NOME_ALTURA,
       ellipsis: true,
       lineGap: 1,
+      align: "right",
     });
 
   // --- Foto (agora abaixo do cabeçalho inteiro, não mais atrás do selo) ---

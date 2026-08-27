@@ -790,15 +790,16 @@ function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight
   const xConteudo = x + PAD_CARD;
   const yTopo = y + PAD_CARD;
 
-  // --- Selo do código da loja (topo, sozinho — sem mais nada ao lado) ---
-  // 2026-08-27 (ajuste seguinte): "no lugar do codigo de fabricante troque
-  // pelo codigo da propria loja" — era _rotuloProduto(produto) (código do
-  // FABRICANTE, ex: "I321"), agora é produto.codigo (código INTERNO da
-  // loja, ex: "117437"). A regra de nunca truncar (ver
-  // _ajustarFonteSeloParaCaber logo abaixo) é uma propriedade do SELO em
-  // si, não do código específico que estava nele — continua valendo do
-  // mesmo jeito pro código da loja.
-  const rotulo = String(produto.codigo);
+  // --- Selo do código do fabricante (topo, sozinho — sem mais nada ao lado) ---
+  // 2026-08-27 (revertido de novo, mesmo dia): tinha trocado pra
+  // produto.codigo (código da loja) por pedido do usuário, depois ele
+  // pediu pra voltar: "embaixo fica o codigo da loja e encima o codigo de
+  // fabricante" — selo no topo volta a ser o código do FABRICANTE
+  // (_rotuloProduto), código da loja volta pra linha de resumo embaixo da
+  // foto (ver mais abaixo). A regra de nunca truncar
+  // (_ajustarFonteSeloParaCaber logo abaixo) é uma propriedade do SELO em
+  // si, não do código específico que está nele — vale do mesmo jeito.
+  const rotulo = _rotuloProduto(produto);
   // 2026-08-27: "por mais que ele seja grande nunca deixe '...' sempre
   // coloque completo nem que precise reduzir tamanho" — em vez de cortar
   // com ellipsis quando o texto não cabe em larguraMaximaSelo, encolhe o
@@ -852,16 +853,17 @@ function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight
   }
   doc.fillColor("#111827").font("Helvetica");
 
-  // --- Descrição resumida, numa linha só, embaixo da foto ---
-  // 2026-08-27 (ajuste seguinte): "na descrição, remova o codigo" — o
-  // código da loja subiu pro selo (ver acima), então essa linha não
-  // precisa mais repeti-lo na frente; agora é só a descrição. Mesma fonte
-  // do selo/OEM (Futura MD BT, ver pedido "a fonte do meu codigo e
-  // descrição deixe futura mb bt"). "Resumida" = 1 linha só, corta com
-  // "..." se não couber (ao contrário do selo, aqui NÃO foi pedido pra
+  // --- Código da loja + descrição resumida, numa linha só, embaixo da foto ---
+  // 2026-08-27 (revertido de novo — ver comentário no selo acima): código
+  // da loja volta pra esta linha, na frente da descrição. produto.codigo
+  // é o código INTERNO da loja (ex: "117437"), diferente do código do
+  // fabricante que volta a ir no selo azul lá em cima. Mesma fonte do
+  // selo/OEM (Futura MD BT, ver pedido "a fonte do meu codigo e descrição
+  // deixe futura mb bt"). "Resumida" = 1 linha só, corta com "..." se não
+  // couber (ao contrário do selo do fabricante, aqui NÃO foi pedido pra
   // nunca truncar).
   const yResumo = yFoto + photoBoxHeight + GAP_FOTO_RESUMO;
-  const resumo = _nomeExibicao(produto, true).toUpperCase();
+  const resumo = `${produto.codigo} - ${_nomeExibicao(produto, true).toUpperCase()}`;
   doc.fillColor("#111827").font(TITULO_FONTE).fontSize(RESUMO_FONTE)
     .text(resumo, xConteudo, yResumo, {
       width: larguraConteudo,

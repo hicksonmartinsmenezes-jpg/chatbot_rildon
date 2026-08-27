@@ -762,22 +762,36 @@ function _geometriaGrid(doc, cols, rows, comAplicacao = false) {
 //
 //   codigo da loja + Descrição resumida
 //   aplicação até duas linhas
-// Cabeçalho volta a ser só o selo do fabricante + código original/OEM,
-// EMPILHADOS (a descrição saiu daqui, ver bloco de baixo). Foto ocupa o
-// meio do card. Embaixo da foto: código da loja (produto.codigo — código
-// INTERNO, diferente do código do fabricante que vai no selo) + descrição
-// resumida numa linha só, depois a aplicação em até 2 linhas. O código
-// OEM/equivalente mostrado é o 1º item de `produto.equivalentes` — já é a
-// lista de referências cruzadas de outros fabricantes indexada por
-// catalogo-x2.service.js (mesmo dado usado em "Ver referências" no painel
-// de atendimento), sem precisar buscar nada novo.
+// Cabeçalho volta a ser só o selo + código original/OEM, EMPILHADOS (a
+// descrição saiu daqui, ver bloco de baixo). Foto ocupa o meio do card.
+// Embaixo da foto: descrição resumida numa linha só, depois a aplicação
+// em até 2 linhas. O código OEM/equivalente mostrado é o 1º item de
+// `produto.equivalentes` — já é a lista de referências cruzadas de outros
+// fabricantes indexada por catalogo-x2.service.js (mesmo dado usado em
+// "Ver referências" no painel de atendimento), sem precisar buscar nada
+// novo.
+//
+// 2026-08-27 (ajuste seguinte, mesmo dia): "na descrição, remova o
+// codigo, no lugar do codigo de fabricante troque pelo codigo da propria
+// loja" — o selo do topo, que mostrava o código do FABRICANTE
+// (_rotuloProduto, ex: "I321"), passou a mostrar o código da LOJA
+// (produto.codigo, ex: "117437"); a linha de resumo embaixo da foto, que
+// antes repetia esse código na frente da descrição, agora é só a
+// descrição (o código não precisa mais aparecer duas vezes no card).
 function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth, photoBoxHeight) {
   const larguraConteudo = photoBoxWidth; // = cardWidth - PAD_CARD*2, já calculado em _geometriaGrid
   const xConteudo = x + PAD_CARD;
   const yTopo = y + PAD_CARD;
 
-  // --- Selo do código do fabricante (topo, sozinho — sem mais nada ao lado) ---
-  const rotulo = _rotuloProduto(produto);
+  // --- Selo do código da loja (topo, sozinho — sem mais nada ao lado) ---
+  // 2026-08-27 (ajuste seguinte): "no lugar do codigo de fabricante troque
+  // pelo codigo da propria loja" — era _rotuloProduto(produto) (código do
+  // FABRICANTE, ex: "I321"), agora é produto.codigo (código INTERNO da
+  // loja, ex: "117437"). A regra de nunca truncar (ver
+  // _ajustarFonteSeloParaCaber logo abaixo) é uma propriedade do SELO em
+  // si, não do código específico que estava nele — continua valendo do
+  // mesmo jeito pro código da loja.
+  const rotulo = String(produto.codigo);
   // 2026-08-27: "por mais que ele seja grande nunca deixe '...' sempre
   // coloque completo nem que precise reduzir tamanho" — em vez de cortar
   // com ellipsis quando o texto não cabe em larguraMaximaSelo, encolhe o
@@ -831,15 +845,16 @@ function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight
   }
   doc.fillColor("#111827").font("Helvetica");
 
-  // --- Código da loja + descrição resumida, numa linha só, embaixo da foto ---
-  // "codigo da loja + Descrição resumida" — produto.codigo é o código
-  // INTERNO da loja (ex: "ETE7043"), diferente do código do fabricante que
-  // vai no selo azul lá em cima. Mesma fonte do selo/OEM (Futura MD BT,
-  // ver pedido "a fonte do meu codigo e descrição deixe futura mb bt").
-  // "Resumida" = 1 linha só, corta com "..." se não couber (ao contrário
-  // do selo do fabricante, aqui NÃO foi pedido pra nunca truncar).
+  // --- Descrição resumida, numa linha só, embaixo da foto ---
+  // 2026-08-27 (ajuste seguinte): "na descrição, remova o codigo" — o
+  // código da loja subiu pro selo (ver acima), então essa linha não
+  // precisa mais repeti-lo na frente; agora é só a descrição. Mesma fonte
+  // do selo/OEM (Futura MD BT, ver pedido "a fonte do meu codigo e
+  // descrição deixe futura mb bt"). "Resumida" = 1 linha só, corta com
+  // "..." se não couber (ao contrário do selo, aqui NÃO foi pedido pra
+  // nunca truncar).
   const yResumo = yFoto + photoBoxHeight + GAP_FOTO_RESUMO;
-  const resumo = `${produto.codigo} - ${_nomeExibicao(produto, true).toUpperCase()}`;
+  const resumo = _nomeExibicao(produto, true).toUpperCase();
   doc.fillColor("#111827").font(TITULO_FONTE).fontSize(RESUMO_FONTE)
     .text(resumo, xConteudo, yResumo, {
       width: larguraConteudo,

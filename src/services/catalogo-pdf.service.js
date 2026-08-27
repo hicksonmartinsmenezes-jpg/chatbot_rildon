@@ -238,11 +238,17 @@ const RAIO_CARD = 0;
 // seguem a mesma razão ~1.36-1.37x), só em escala menor — o texto continua
 // legível, só ocupa menos espaço fixo, sobrando mais altura pra foto em
 // cada uma das 6 linhas.
+// 2026-08-27: código voltou a ser um SELO sobre a foto (_desenharCaixaCodigo)
+// — CODIGO_ALTURA e GAP_CODIGO_NOME abaixo ficaram SEM USO no bloco de texto
+// (não entram mais em alturaFixaTexto nem em _desenharCard), mas mantidas
+// documentadas caso o código volte a virar linha de texto solta de novo (já
+// foi e voltou 2x neste arquivo — ver histórico dos comentários acima).
+// CODIGO_FONTE continua em uso (fonte do texto dentro do próprio selo).
 const CODIGO_FONTE = 8;
-const CODIGO_ALTURA = 11;
+const CODIGO_ALTURA = 11; // sem uso atualmente — ver comentário acima
 const NOME_FONTE = 6;
 const NOME_ALTURA = 16;  // ~2 linhas no tamanho novo
-// Espaço entre a linha divisória e o bloco de texto (código+nome) — pedido
+// Espaço entre a linha divisória e o bloco de texto (nome) — pedido
 // do usuário 2026-07-30 "desça um pouco mais" (era GAP_DIVISORIA_NOME=10,
 // usado quando só o nome ficava aqui; depois 12; "desça mais a descrição
 // se possível" — mais uma rodada, agora 16). Nomeado como constante porque
@@ -251,7 +257,8 @@ const NOME_ALTURA = 16;  // ~2 linhas no tamanho novo
 // 2026-07-31: reduzido de 16 pra 6 — junto com o resto do bloco de texto
 // (ver comentário acima em CODIGO_FONTE), pra caber mais linhas de card.
 const GAP_DIVISORIA_TEXTO = 6;
-// Respiro entre o código e o nome, dentro do mesmo bloco de texto.
+// Respiro entre o código e o nome — sem uso atualmente (ver comentário
+// acima em CODIGO_ALTURA), mantida documentada pelo mesmo motivo.
 const GAP_CODIGO_NOME = 2; // era 3 — reduzido em 2026-07-31, mesmo motivo acima
 // Respiro entre o fim da foto e a linha divisória — era um "5" hardcoded
 // direto no cálculo (gerarPdfCatalogo) e em alturaFixaTexto; virou
@@ -269,7 +276,11 @@ const GAP_FOTO_DIVISORIA = 3;
 // organizada em cache — isso mantém a foto do mesmo tamanho em toda a
 // grade, evitando cards desalinhados entre si numa mesma linha.
 const APLICACAO_FONTE = 5.5;
-const APLICACAO_ALTURA = 13; // ~2 linhas nesse tamanho
+// 2026-08-27: usuário pediu "padronize até 3 linhas na Aplicação" — era 13
+// (~2 linhas), textos mais longos cortavam no meio de uma palavra/vírgula
+// (ver teste real "FORD: Cargo 712, 814, 815, 915, 1317E,"). Aumentado pra
+// caber uma 3ª linha antes do ellipsis entrar em ação.
+const APLICACAO_ALTURA = 20; // ~3 linhas nesse tamanho
 const APLICACAO_GAP = 3;     // respiro entre o nome e esse bloco
 const APLICACAO_COR = "#4b5563";
 
@@ -439,7 +450,15 @@ function _desenharCaixaCodigo(doc, produto, xFoto, yFoto, larguraMaxima) {
   const rotulo = _rotuloProduto(produto);
   doc.font("Helvetica-Bold").fontSize(CODIGO_FONTE);
   const larguraTexto = doc.widthOfString(rotulo);
-  const larguraBadge = Math.min(larguraTexto + CAIXA_CODIGO_PAD_H * 2, larguraMaxima - 8);
+  // BUG REAL corrigido em 2026-08-27 (achado reativando esta função depois
+  // de ficar sem uso desde 2026-07-30): quando a caixa cabia EXATAMENTE do
+  // tamanho do texto medido (sem sobra nenhuma), o próprio pdfkit.text()
+  // reconstruía a largura da string de um jeito levemente diferente de
+  // doc.widthOfString() e cortava com "…" mesmo sobrando espaço de sobra na
+  // foto (ex: "I332" virava "I3…" numa caixa de 111pt de largura máxima
+  // disponível). +1.5pt de folga aqui é imperceptível visualmente e evita
+  // esse acerto de contas exato entre as duas medições.
+  const larguraBadge = Math.min(larguraTexto + CAIXA_CODIGO_PAD_H * 2 + 1.5, larguraMaxima - 8);
 
   // Altura real da linha de texto nesse fontSize (pedido do usuário
   // 2026-07-30: "altura exata do código, se tiver espaço remova") — em vez
@@ -497,8 +516,13 @@ function _geometriaGrid(doc, cols, rows, comAplicacao = false) {
   // Issue #23: bloco extra de "aplicação organizada" (só no Catálogo
   // Completo, comAplicacao=true) soma altura fixa reservada — a foto
   // encolhe um pouco pra abrir espaço, igual ao princípio já usado pro
-  // resto do bloco de texto (código+nome) desde a v3.
-  const alturaFixaTexto = PAD_CARD + GAP_FOTO_DIVISORIA + GAP_DIVISORIA_TEXTO + CODIGO_ALTURA + GAP_CODIGO_NOME + NOME_ALTURA
+  // resto do bloco de texto (nome) desde a v3.
+  // 2026-08-27: código voltou a ser um SELO sobreposto no canto superior
+  // esquerdo da foto (_desenharCaixaCodigo) em vez de uma linha de texto
+  // própria abaixo da foto — CODIGO_ALTURA/GAP_CODIGO_NOME saíram da conta
+  // (o selo não ocupa altura fixa do bloco de texto, fica por cima da
+  // foto), o que também aumenta a caixa de foto disponível, como pedido.
+  const alturaFixaTexto = PAD_CARD + GAP_FOTO_DIVISORIA + GAP_DIVISORIA_TEXTO + NOME_ALTURA
     + (comAplicacao ? APLICACAO_GAP + APLICACAO_ALTURA : 0)
     + PAD_CARD;
   const photoBoxHeight = cardHeightMax - alturaFixaTexto;
@@ -531,19 +555,21 @@ function _desenharCard(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth,
   }
   doc.fillColor("#111827").font("Helvetica");
 
+  // 2026-08-27 (pedido do usuário, testando o Catálogo Completo impresso):
+  // código de volta como SELO sobreposto no canto superior esquerdo da foto
+  // — reusa _desenharCaixaCodigo, que já existia no arquivo desde 2026-07-29
+  // mas tinha ficado sem uso desde 2026-07-30 (quando o código voltou a ser
+  // uma linha de texto solta abaixo da foto). Desenhado por cima da foto
+  // (ou do "sem foto"), independe da imagem ter carregado ou não.
+  _desenharCaixaCodigo(doc, produto, xFoto, yFoto, photoBoxWidth);
+
   const yDivisoria = yFoto + photoBoxHeight + GAP_FOTO_DIVISORIA;
   doc.moveTo(x + PAD_CARD, yDivisoria).lineTo(x + cardWidth - PAD_CARD, yDivisoria)
     .lineWidth(0.6).strokeColor(LINHA_DIVISORIA, 0.8).stroke();
 
-  const yCodigo = yDivisoria + GAP_DIVISORIA_TEXTO;
-  doc.fillColor(AZUL).font("Helvetica-Bold").fontSize(CODIGO_FONTE)
-    .text(_rotuloProduto(produto), x + PAD_CARD, yCodigo, {
-      width: cardWidth - PAD_CARD * 2,
-      height: CODIGO_ALTURA,
-      ellipsis: true,
-    });
-
-  const yNome = yCodigo + CODIGO_ALTURA + GAP_CODIGO_NOME;
+  // Sem o código como linha de texto própria, o nome sobe pra logo depois
+  // da divisória (era yCodigo + CODIGO_ALTURA + GAP_CODIGO_NOME).
+  const yNome = yDivisoria + GAP_DIVISORIA_TEXTO;
   doc.fillColor("#111827").font("Helvetica-Bold").fontSize(NOME_FONTE)
     .text(String(produto.nome || "").toUpperCase(), x + PAD_CARD, yNome, {
       width: cardWidth - PAD_CARD * 2,

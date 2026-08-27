@@ -403,6 +403,27 @@ const TITULO_FONTE_ARQUIVO = path.join(__dirname, "../assets/fonts/Futura-Md-BT-
 const TITULO_FONTE = "FuturaMdBT-BoldItalic";
 const TITULO_TAMANHO = 17;
 
+// Pedido do usuário (2026-08-27): "esse catalogo que estou usando de
+// referencia [3-RHO.pdf original], observe as descriçoes e como estão as
+// aplicações, a ideia e que fique exatamente igual". O selo/descrição/
+// aplicação do catálogo original usam uma fonte geométrica arredondada
+// (não é Futura, não é Helvetica) que não está entre os assets do projeto
+// e cuja identidade exata não foi possível confirmar. Quicksand (Google
+// Fonts, open source, obtida via `npm pack @fontsource/quicksand` porque
+// fonts.google.com/gstatic estão bloqueados no sandbox) foi escolhida como
+// a substituta gratuita visualmente mais próxima — mesma família de curvas
+// arredondadas nos "a", "o", "g". Não é o arquivo original: se o usuário
+// tiver a fonte real do catálogo 3-RHO, trocar aqui é só substituir estes
+// dois arquivos. Os .woff2 baixados pelo Fontsource não renderizavam no
+// pdftoppm/poppler (glyphs invisíveis apesar de pdfkit/pdftotext aceitarem
+// o arquivo sem erro) — convertidos para .ttf estático via Python
+// fonttools (`font.flavor = None; font.save(...)`) antes de entrar no
+// projeto, o que resolveu o problema.
+const QUICKSAND_BOLD_ARQUIVO = path.join(__dirname, "../assets/fonts/Quicksand-Bold.ttf");
+const QUICKSAND_BOLD = "Quicksand-Bold";
+const QUICKSAND_MEDIUM_ARQUIVO = path.join(__dirname, "../assets/fonts/Quicksand-Medium.ttf");
+const QUICKSAND_MEDIUM = "Quicksand-Medium";
+
 // Onde o topo dos cards começa: fim da arte do cabeçalho + respiro antes do
 // título + altura do título + respiro depois do título (TITULO_GAP_CARDS,
 // igual ao GAP das colunas). Uma única fórmula usada tanto pra desenhar o
@@ -513,7 +534,11 @@ function _rotuloProduto(produto) {
 // então pode ser calculada uma vez e reusada tanto em _geometriaGrid quanto
 // em _desenharCardCatalogoCompleto sem duplicar a fórmula.
 function _alturaSelo(doc) {
-  doc.font(TITULO_FONTE).fontSize(CODIGO_FONTE);
+  // Só usada pela geometria do Catálogo Completo (ver único call site em
+  // _geometriaGrid) — por isso usa QUICKSAND_BOLD, a mesma fonte do selo
+  // desenhado em _desenharCardCatalogoCompleto. O selo do catálogo comum
+  // (gerarPdfCatalogo) continua em TITULO_FONTE e não passa por aqui.
+  doc.font(QUICKSAND_BOLD).fontSize(CODIGO_FONTE);
   return doc.currentLineHeight() + CAIXA_CODIGO_PAD_V * 2;
 }
 
@@ -684,7 +709,7 @@ function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight
 
   // --- Selo do código (topo esquerdo, agora fora da foto) ---
   const rotulo = _rotuloProduto(produto);
-  doc.font(TITULO_FONTE).fontSize(CODIGO_FONTE);
+  doc.font(QUICKSAND_BOLD).fontSize(CODIGO_FONTE);
   const larguraTextoSelo = doc.widthOfString(rotulo);
   // Não deixa o selo comer mais da metade do cabeçalho — sobra pouco/nada
   // pra descrição em código muito longo (raro, mas evita card quebrado).
@@ -694,7 +719,7 @@ function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight
   const alturaSelo = alturaLinhaSelo + CAIXA_CODIGO_PAD_V * 2;
 
   doc.rect(xConteudo, yTopo, larguraSelo, alturaSelo).fillColor(CAIXA_CODIGO_FUNDO).fill();
-  doc.fillColor(CAIXA_CODIGO_TEXTO).font(TITULO_FONTE).fontSize(CODIGO_FONTE)
+  doc.fillColor(CAIXA_CODIGO_TEXTO).font(QUICKSAND_BOLD).fontSize(CODIGO_FONTE)
     .text(rotulo, xConteudo + CAIXA_CODIGO_PAD_H, yTopo + CAIXA_CODIGO_PAD_V, {
       width: larguraSelo - CAIXA_CODIGO_PAD_H * 2,
       height: alturaLinhaSelo,
@@ -727,7 +752,7 @@ function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight
   const xNome = xConteudo + larguraSelo + GAP_BADGE_NOME;
   const larguraNome = xConteudo + larguraConteudo - xNome;
   const yNomeCabecalho = yTopo + CAIXA_CODIGO_PAD_V;
-  doc.fillColor("#111827").font("Helvetica-Bold").fontSize(HEADER_NOME_FONTE)
+  doc.fillColor("#111827").font(QUICKSAND_BOLD).fontSize(HEADER_NOME_FONTE)
     .text(_nomeExibicao(produto, true).toUpperCase(), xNome, yNomeCabecalho, {
       width: larguraNome,
       height: HEADER_NOME_ALTURA,
@@ -758,7 +783,7 @@ function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight
   // --- Aplicação (embaixo da foto, em preto — ver APLICACAO_COR) ---
   if (produto.aplicacaoOrganizada) {
     const yAplicacao = yFoto + photoBoxHeight + GAP_FOTO_APLICACAO;
-    doc.fillColor(APLICACAO_COR).font("Helvetica").fontSize(APLICACAO_FONTE)
+    doc.fillColor(APLICACAO_COR).font(QUICKSAND_MEDIUM).fontSize(APLICACAO_FONTE)
       .text(produto.aplicacaoOrganizada, xConteudo, yAplicacao, {
         width: larguraConteudo,
         height: APLICACAO_ALTURA,
@@ -1133,6 +1158,11 @@ function gerarPdfCatalogoCompleto(produtos, fabricante, destino) {
   const doc = new PDFDocument({ size: "A4", margin: 0, autoFirstPage: false, bufferPages: true });
   doc.pipe(destino);
   doc.registerFont(TITULO_FONTE, TITULO_FONTE_ARQUIVO);
+  // Quicksand só é usada no card do Catálogo Completo (_desenharCardCatalogoCompleto)
+  // — ver comentário em QUICKSAND_BOLD acima. gerarPdfCatalogo (modo regular/
+  // busca expressa) não registra essas fontes de propósito, não é afetado.
+  doc.registerFont(QUICKSAND_BOLD, QUICKSAND_BOLD_ARQUIVO);
+  doc.registerFont(QUICKSAND_MEDIUM, QUICKSAND_MEDIUM_ARQUIVO);
 
   const grupos = _agruparPorLinha(produtos);
   const itensPorPagina = COLS_COMPLETO * ROWS_POR_PAGINA_COMPLETO;

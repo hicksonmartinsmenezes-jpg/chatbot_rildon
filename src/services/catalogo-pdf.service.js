@@ -281,7 +281,9 @@ const APLICACAO_FONTE = 5.5;
 // (ver teste real "FORD: Cargo 712, 814, 815, 915, 1317E,"). Aumentado pra
 // caber uma 3ª linha antes do ellipsis entrar em ação.
 const APLICACAO_ALTURA = 20; // ~3 linhas nesse tamanho
-const APLICACAO_GAP = 3;     // respiro entre o nome e esse bloco
+// 2026-08-27: usuário pediu "desça mais as aplicações no card" — era 3,
+// mais respiro entre o fim do nome e o início do bloco de aplicação.
+const APLICACAO_GAP = 9;     // respiro entre o nome e esse bloco
 const APLICACAO_COR = "#4b5563";
 
 // Cor do texto do código — pedido do usuário (2026-07-30): "azul oceano/
@@ -448,7 +450,11 @@ function _rotuloProduto(produto) {
 // gigante pra código curto ou cortando código longo sem necessidade.
 function _desenharCaixaCodigo(doc, produto, xFoto, yFoto, larguraMaxima) {
   const rotulo = _rotuloProduto(produto);
-  doc.font("Helvetica-Bold").fontSize(CODIGO_FONTE);
+  // Pedido do usuário (2026-08-27): "padronize a fonte do código também
+  // para Futura Md BT" — era Helvetica-Bold, agora usa a mesma fonte dos
+  // títulos de seção/índice (TITULO_FONTE, registrada em gerarPdfCatalogo/
+  // gerarPdfCatalogoCompleto antes de qualquer card ser desenhado).
+  doc.font(TITULO_FONTE).fontSize(CODIGO_FONTE);
   const larguraTexto = doc.widthOfString(rotulo);
   // BUG REAL corrigido em 2026-08-27 (achado reativando esta função depois
   // de ficar sem uso desde 2026-07-30): quando a caixa cabia EXATAMENTE do
@@ -468,16 +474,25 @@ function _desenharCaixaCodigo(doc, produto, xFoto, yFoto, larguraMaxima) {
   const alturaLinha = doc.currentLineHeight();
   const alturaBadge = alturaLinha + CAIXA_CODIGO_PAD_V * 2;
 
-  const xBadge = xFoto + 4;
+  // Pedido do usuário (2026-08-27): "coloque mais para esquerda" — o selo
+  // encosta mais perto do canto da foto (era +4/+4, ficou +2/+4 — só o
+  // eixo X mudou, o pedido foi especificamente "para esquerda").
+  const xBadge = xFoto + 2;
   const yBadge = yFoto + 4;
 
   doc.rect(xBadge, yBadge, larguraBadge, alturaBadge).fillColor(CAIXA_CODIGO_FUNDO).fill();
-  doc.fillColor(CAIXA_CODIGO_TEXTO).font("Helvetica-Bold").fontSize(CODIGO_FONTE)
+  // Pedido do usuário (2026-08-27): "centralize mais o código no card azul"
+  // — align:"center" garante que o texto fique centralizado na largura do
+  // selo mesmo com a folga de +1.5pt de larguraBadge acima (antes ficava
+  // encostado à esquerda da caixa de texto, com toda a folga sobrando à
+  // direita).
+  doc.fillColor(CAIXA_CODIGO_TEXTO).font(TITULO_FONTE).fontSize(CODIGO_FONTE)
     .text(rotulo, xBadge + CAIXA_CODIGO_PAD_H, yBadge + CAIXA_CODIGO_PAD_V, {
       width: larguraBadge - CAIXA_CODIGO_PAD_H * 2,
       height: alturaLinha,
       ellipsis: true,
       lineBreak: false,
+      align: "center",
     });
 
   doc.fillColor("#111827").font("Helvetica");

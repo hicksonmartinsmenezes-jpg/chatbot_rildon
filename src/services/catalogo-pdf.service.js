@@ -89,24 +89,40 @@ const CODIGO_FORNECEDOR_MAP = new Map(
 // Carregada uma única vez no require — reusada em toda geração de PDF, sem
 // I/O repetido por página.
 //
-// 2026-08-27: pedido do usuário "no rodapé preencha os lados também" —
-// NÃO aplicado ainda. O rodapé tem uma área branca real (o triângulo onde
-// o nº de página é desenhado, ver RODAPE_NUM_X_FRACAO/Y_FRACAO abaixo,
-// pedido explícito 2026-07-28 "número centralizado ali"), mas essa mesma
-// imagem também tem a LOGO e o texto "www.rildoneletro.com.br" em branco
-// desenhados dentro do próprio arquivo (diferente do cabeçalho — ver
-// CABECALHO_SANGRIA_TOPO — que não tem nenhum texto embutido). Testei a
-// técnica de preencher automaticamente (inpainting) e ela também reescreve
-// os pixels brancos da logo/texto por engano (não dá pra distinguir "fundo
-// vazio" de "texto branco de propósito" só pela cor) — arriscado demais
-// pra aplicar sem supervisão visual linha a linha. Avisar o usuário e
-// perguntar como prefere resolver (encolher o triângulo manualmente no
-// arquivo de origem? trocar a cor do número em vez de mexer no fundo?)
-// antes de tentar de novo.
+// 2026-08-27 (RESOLVIDO — substitui o comentário antigo sobre "não aplicado
+// ainda"): usuário mandou um arquivo de referência novo (SVG,
+// "Design sem nome.svg") pedindo "padronize cabeçalho e rodape exatamente
+// desse jeito, com lados preenchidos de todas as paginas". Esse arquivo é
+// um mockup vetorial completo (cunha cinza/azul no topo + barra preta com
+// logo/URL/triângulo embaixo), mas MEDIDO pixel a pixel: nem a barra preta
+// nem a cunha tocavam as bordas esquerda/direita no arquivo original — o
+// "lados preenchidos" pedido teve que ser produzido, não só copiado.
+// Técnica usada (script Python/numpy+scipy+PIL, arquivos gerados ficam só
+// como asset, não fazem parte do código): (1) renderizado o SVG em alta
+// resolução via cairosvg; (2) cada pixel quantizado pra cor mais próxima
+// de uma paleta pequena (branco/cinza/azul/preto/teal — as cores reais do
+// design, medidas na própria imagem) pra eliminar o anti-aliasing (sem
+// isso, o preenchimento por vizinho-mais-próximo perto de bordas
+// diagonais finas criava um efeito de "serrilhado"/ruído visível, tentado
+// e descartado antes de chegar nessa versão); (3) todo pixel branco de
+// FUNDO preenchido com a cor do pixel colorido mais próximo em 2D
+// (`scipy.ndimage.distance_transform_edt`), preenchendo tanto as margens
+// laterais quanto qualquer vão interno (ex: o notch entre a cunha cinza e
+// o diamante azul) — mesma técnica já usada uma vez no cabeçalho antigo
+// (ver histórico abaixo em CABECALHO_SANGRIA_TOPO); (4) filtro de mediana
+// pra limpar "dentes" residuais na borda diagonal do preenchimento; (5) NO
+// RODAPÉ especificamente, uma zona retangular foi protegida do
+// preenchimento (a área da barra preta onde ficam a logo, o texto
+// "www.rildoneletro.com.br" e o triângulo branco do nº de página, ver
+// RODAPE_NUM_X_FRACAO/Y_FRACAO abaixo) — só o fundo FORA dessa zona foi
+// preenchido, então a logo/texto/triângulo originais continuam intactos,
+// sem o risco de "apagar a logo por engano" que travou a tentativa
+// anterior (inpainting cego na imagem antiga, sem essa proteção).
 const RODAPE_IMG = fs.readFileSync(path.join(__dirname, "../assets/catalogo-rodape.png"));
-// Proporção exata do arquivo acima (1372×156 px) — ver comentário no topo
-// do arquivo sobre por que isso precisa bater com a imagem de verdade.
-const RODAPE_IMG_RATIO = 1372 / 156;
+// Proporção exata do arquivo ATUAL (3000×447 px, gerado a partir do SVG —
+// ver comentário acima) — mesmo princípio de sempre: FOOTER_HEIGHT é
+// derivada disso, nunca um valor fixo, pra imagem nunca esticar/espremer.
+const RODAPE_IMG_RATIO = 3000 / 447;
 
 // Pedido do usuário (2026-07-29): "coloque exatamente isso sem alterações
 // como cabeçalho" — arte da cunha cinza/azul (mesma família visual do
@@ -152,7 +168,13 @@ const CABECALHO_IMG = fs.readFileSync(path.join(__dirname, "../assets/catalogo-c
 // imagem — agora é desenhado só DEPOIS que a arte termina (ver
 // _desenharCabecalho), então não tem mais como encostar na arte, não
 // importa até onde o bico do desenho desça.
-const CABECALHO_IMG_RATIO = 719 / 146;
+// 2026-08-27: substituído pelo novo cabeçalho gerado a partir do SVG de
+// referência (ver comentário completo da técnica em RODAPE_IMG acima —
+// mesmo arquivo de origem, mesmo tratamento de quantização+preenchimento
+// 2D). Arquivo atual: 3000×436 px, já preenchido de lateral a lateral (sem
+// nenhum branco de fundo sobrando) — diferente das versões anteriores,
+// não sobra mais nenhuma margem branca real pra medir/recortar.
+const CABECALHO_IMG_RATIO = 3000 / 436;
 
 // 2026-07-30 (mesmo dia, 3ª rodada): usuário pediu "suba mais um pouco o
 // cabeçalho" de novo. Naquela época, já não sobrava margem branca de
@@ -182,17 +204,29 @@ const CABECALHO_IMG_RATIO = 719 / 146;
 // (2) "suba mais": com o cabeçalho inteiro preenchido (sem mais branco pra
 // se preocupar em não cortar), sangria subiu de 16 pra 32 — header fica
 // mais baixo/compacto, título e cards começam mais cedo na página.
-const CABECALHO_SANGRIA_TOPO = 32;
+//
+// 2026-08-27 (arte trocada de novo — ver CABECALHO_IMG_RATIO/RODAPE_IMG
+// acima): a sangria negativa existia pra "esconder" margem branca real que
+// sobrava no TOPO do arquivo antigo. A nova arte (gerada a partir do SVG)
+// já é recortada exatamente na borda de cima do desenho (linha 0 do
+// arquivo já é a borda reta da cunha, sem nenhum pixel de branco acima) —
+// não sobra mais nada pra sangrar, então a sangria volta a 0. Se um novo
+// arquivo de cabeçalho for enviado no futuro com margem branca de verdade
+// no topo, esse valor pode voltar a ser necessário.
+const CABECALHO_SANGRIA_TOPO = 0;
 
 // Centro do triângulo branco da arte (pedido do usuário, 2026-07-28: número
-// da página centralizado ali) — medido pixel a pixel na imagem real
-// (1372×156): o triângulo tem o ápice perto de x≈1065/y≈0 e alarga pra
-// baixo, ficando sempre centrado horizontalmente em x≈1060-1065. Escolhido
-// y≈130 (não o fundo exato, y=155) pra sobrar respiro pro texto não
-// encostar na borda inferior da página. Se a imagem do rodapé for trocada
-// de novo, essas frações também precisam ser remedidas.
-const RODAPE_NUM_X_FRACAO = 1062 / 1372;
-const RODAPE_NUM_Y_FRACAO = 108 / 156;
+// da página centralizado ali) — remedido em 2026-08-27 pro novo arquivo de
+// rodapé (ver RODAPE_IMG acima): triângulo branco novo tem o ápice em
+// x≈2081/y≈212 (de 3000×447) e alarga simetricamente pra baixo. Ponto
+// escolhido a ~70% da altura do triângulo (não o fundo exato) pra sobrar
+// respiro pro texto não encostar na borda inferior da página — mesmo
+// critério de antes, só remedido pro triângulo novo. Se a imagem do
+// rodapé for trocada de novo, essas frações precisam ser remedidas de
+// novo (script de medição: achar o maior blob branco DENTRO da faixa de
+// x só do triângulo, isolado da logo/texto/linha, ver histórico do PR).
+const RODAPE_NUM_X_FRACAO = 2075 / 3000;
+const RODAPE_NUM_Y_FRACAO = 400 / 447;
 
 const PAGE_MARGIN = 24;
 // Pedido do usuário (2026-07-31): "caiba o máximo de itens possíveis" — era

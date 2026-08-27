@@ -257,6 +257,13 @@ const NOME_ALTURA = 16;  // ~2 linhas no tamanho novo
 // 2026-07-31: reduzido de 16 pra 6 — junto com o resto do bloco de texto
 // (ver comentário acima em CODIGO_FONTE), pra caber mais linhas de card.
 const GAP_DIVISORIA_TEXTO = 6;
+// 2026-08-27: "desça mais um pouco" o nome, pedido específico sobre o card
+// do Catálogo Completo (comAplicacao=true) — respiro ADICIONAL somado só
+// nesse modo, em cima do GAP_DIVISORIA_TEXTO padrão acima (que continua
+// valendo sozinho pro catálogo comum). Entra tanto em alturaFixaTexto
+// (_geometriaGrid) quanto no cálculo de yNome (_desenharCard) — nomeada pra
+// não desencontrar os dois lugares.
+const GAP_DIVISORIA_TEXTO_EXTRA_COMPLETO = 5;
 // Respiro entre o código e o nome — sem uso atualmente (ver comentário
 // acima em CODIGO_ALTURA), mantida documentada pelo mesmo motivo.
 const GAP_CODIGO_NOME = 2; // era 3 — reduzido em 2026-07-31, mesmo motivo acima
@@ -322,7 +329,10 @@ const CAIXA_CODIGO_PAD_H = 4;
 // caixa agora é CALCULADA a partir da altura real da linha de texto no
 // fontSize do código (doc.currentLineHeight()) + esse respiro vertical
 // mínimo, não mais um valor arbitrário.
-const CAIXA_CODIGO_PAD_V = 3;
+// 2026-08-27 (mesmo dia, request seguinte): "deixe a altura do tamanho do
+// código mesmo para ganharmos espaço" — reduzido de 3 pra 1, caixa mais
+// colada ao texto (era um respiro perceptível em cima/embaixo do código).
+const CAIXA_CODIGO_PAD_V = 1;
 
 // Pedido do usuário (2026-07-28): título da seção ("AMORTECEDORES" etc.) em
 // "Futura Md BT" 17pt. Fonte recebida em 2026-08-26 (arquivo .ttf enviado
@@ -448,6 +458,36 @@ function _rotuloProduto(produto) {
 // existia antes (ver histórico no topo do arquivo). Largura da caixa segue
 // o texto (com um mínimo/máximo), não é um tamanho fixo — evita caixa
 // gigante pra código curto ou cortando código longo sem necessidade.
+// Pedido do usuário (2026-08-27): "remova o fabricante e o código [do nome]
+// já que estamos no catálogo do próprio [fabricante] e o código está acima"
+// — só no Catálogo Completo (comAplicacao=true): o `produto.nome` cru do X2
+// vem no formato "DESCRIÇÃO - FABRICANTE - CÓDIGO" (ex: "INTERRUPTOR
+// PRESSÃO DIREÇÃO HIDRÁULICA - 3RHO - I 9901"), redundante aqui porque o
+// fabricante já é o assunto do catálogo inteiro e o código já está no selo
+// azul sobre a foto (_desenharCaixaCodigo). Remove só os segmentos finais
+// (separados por " - ") que baterem com o fabricante ou com o código
+// (rótulo do selo OU código interno) — pra ou dos dois estar ausente/em
+// ordem diferente não quebra, e a descrição real nunca é tocada.
+function _nomeExibicao(produto, comAplicacao) {
+  const nomeCru = String(produto.nome || "");
+  if (!comAplicacao) return nomeCru;
+
+  // BUG REAL corrigido no mesmo commit: o nome cru vem com espaço dentro do
+  // código ("... - I 321"), mas o rótulo do selo/código interno não tem
+  // ("I321") — comparação exata nunca batia e nada era removido. Normaliza
+  // os DOIS lados removendo espaço antes de comparar (só pra comparação;
+  // o texto original de `partes` continua intacto se não for removido).
+  const rotulo = _rotuloProduto(produto);
+  const normalizar = (v) => String(v).trim().toUpperCase().replace(/\s+/g, "");
+  const alvos = [produto.fabricante, rotulo, produto.codigo].filter(Boolean).map(normalizar);
+
+  const partes = nomeCru.split(" - ");
+  while (partes.length > 1 && alvos.includes(normalizar(partes[partes.length - 1]))) {
+    partes.pop();
+  }
+  return partes.join(" - ");
+}
+
 function _desenharCaixaCodigo(doc, produto, xFoto, yFoto, larguraMaxima) {
   const rotulo = _rotuloProduto(produto);
   // Pedido do usuário (2026-08-27): "padronize a fonte do código também
@@ -538,7 +578,7 @@ function _geometriaGrid(doc, cols, rows, comAplicacao = false) {
   // (o selo não ocupa altura fixa do bloco de texto, fica por cima da
   // foto), o que também aumenta a caixa de foto disponível, como pedido.
   const alturaFixaTexto = PAD_CARD + GAP_FOTO_DIVISORIA + GAP_DIVISORIA_TEXTO + NOME_ALTURA
-    + (comAplicacao ? APLICACAO_GAP + APLICACAO_ALTURA : 0)
+    + (comAplicacao ? GAP_DIVISORIA_TEXTO_EXTRA_COMPLETO + APLICACAO_GAP + APLICACAO_ALTURA : 0)
     + PAD_CARD;
   const photoBoxHeight = cardHeightMax - alturaFixaTexto;
   const cardHeight = cardHeightMax;
@@ -584,9 +624,13 @@ function _desenharCard(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth,
 
   // Sem o código como linha de texto própria, o nome sobe pra logo depois
   // da divisória (era yCodigo + CODIGO_ALTURA + GAP_CODIGO_NOME).
-  const yNome = yDivisoria + GAP_DIVISORIA_TEXTO;
+  // 2026-08-27: "desça mais um pouco" (pedido específico sobre o card do
+  // Catálogo Completo) — só nesse modo (comAplicacao=true) soma um respiro
+  // extra; o catálogo padrão (busca/seleção manual, sem bloco de aplicação)
+  // continua com o espaçamento de sempre, sem esse ajuste.
+  const yNome = yDivisoria + GAP_DIVISORIA_TEXTO + (comAplicacao ? GAP_DIVISORIA_TEXTO_EXTRA_COMPLETO : 0);
   doc.fillColor("#111827").font("Helvetica-Bold").fontSize(NOME_FONTE)
-    .text(String(produto.nome || "").toUpperCase(), x + PAD_CARD, yNome, {
+    .text(_nomeExibicao(produto, comAplicacao).toUpperCase(), x + PAD_CARD, yNome, {
       width: cardWidth - PAD_CARD * 2,
       height: NOME_ALTURA,
       ellipsis: true,

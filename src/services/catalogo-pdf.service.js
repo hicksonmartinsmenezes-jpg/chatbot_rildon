@@ -337,8 +337,12 @@ const GAP_HEADER_FOTO = 6; // respiro entre o cabeçalho (selo+OEM) e a foto
 // 1 linha só (a descrição completa saiu daqui — ficou "resumida" mesmo,
 // corta com "..." se não couber; ver TITULO_FONTE em
 // _desenharCardCatalogoCompleto, mesma fonte do selo/OEM).
-const RESUMO_FONTE = 6.5;
-const RESUMO_ALTURA = 9;        // 1 linha nesse tamanho
+// 2026-08-27 (ajuste seguinte): "deixe o tamanho da fonte da descrição um
+// pouco menor e que caiba tudo de forma resumida" — era 6.5, reduzida pra
+// 5.5 (mesmo tamanho do OEM/aplicação) pra sobrar mais espaço na linha e
+// cortar menos cedo com "...".
+const RESUMO_FONTE = 5.5;
+const RESUMO_ALTURA = 8;        // 1 linha nesse tamanho
 const GAP_FOTO_RESUMO = 6;      // respiro entre a foto e a linha de resumo
 const GAP_RESUMO_APLICACAO = 3; // respiro entre a linha de resumo e a aplicação
 

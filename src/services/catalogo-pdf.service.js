@@ -302,8 +302,18 @@ const AZUL = "#006097";
 // imagem de referência (site real de e-commerce, cards de "Sensor de
 // Estacionamento"): borda ciano rgb(0,174,239) = #00aeef, bem mais grossa
 // que a cinza anterior.
-const BORDA_CARD = "#00aeef";
+// 2026-08-27: ajuste fino de cor pedido pelo usuário — #00aeef -> #00AFEF
+// (praticamente o mesmo tom, 1 dígito de diferença no canal G).
+const BORDA_CARD = "#00afef";
 const BORDA_CARD_ESPESSURA = 3; // era 1.75 (cinza) — bem mais grossa, igual à referência
+// 2026-08-27 (mesmo dia, request seguinte): "na borda de dentro da parte
+// branca coloque um preto" — 2ª borda, fina e preta, desenhada por DENTRO
+// da borda ciano (ver _desenharCardVidro), enquadrando a área branca do
+// card. BORDA_CARD_INTERNA_GAP é a distância entre a borda ciano e essa
+// borda preta interna.
+const BORDA_CARD_INTERNA = "#000000";
+const BORDA_CARD_INTERNA_ESPESSURA = 0.75;
+const BORDA_CARD_INTERNA_GAP = 3;
 // Pedido do usuário (2026-07-30): "remova o fundo de vidro" — CINZA_SOMBRA
 // não é mais usada (era a cor da sombra em camadas do efeito vidro, ver
 // _desenharCardVidro). Mantida como constante só documentada, não removida,
@@ -514,10 +524,11 @@ function _desenharCaixaCodigo(doc, produto, xFoto, yFoto, larguraMaxima) {
   const alturaLinha = doc.currentLineHeight();
   const alturaBadge = alturaLinha + CAIXA_CODIGO_PAD_V * 2;
 
-  // Pedido do usuário (2026-08-27): "coloque mais para esquerda" — o selo
-  // encosta mais perto do canto da foto (era +4/+4, ficou +2/+4 — só o
-  // eixo X mudou, o pedido foi especificamente "para esquerda").
-  const xBadge = xFoto + 2;
+  // Pedido do usuário (2026-08-27, 2ª rodada — "arraste mais um pouco o
+  // card do código para esquerda como nessa referência"): encostado ainda
+  // mais perto do canto esquerdo da foto (era +2, foi pra 0 — o selo agora
+  // começa exatamente na borda esquerda da área da foto, sem respiro).
+  const xBadge = xFoto;
   const yBadge = yFoto + 4;
 
   doc.rect(xBadge, yBadge, larguraBadge, alturaBadge).fillColor(CAIXA_CODIGO_FUNDO).fill();
@@ -550,6 +561,13 @@ function _desenharCardVidro(doc, x, y, w, h) {
   // Borda ciano grossa, cantos quadrados — pedido do usuário 2026-07-29,
   // medida na imagem de referência (ver BORDA_CARD/BORDA_CARD_ESPESSURA).
   doc.roundedRect(x, y, w, h, RAIO_CARD).lineWidth(BORDA_CARD_ESPESSURA).strokeColor(BORDA_CARD, 1).stroke();
+
+  // 2026-08-27: "na borda de dentro da parte branca coloque um preto" — 2ª
+  // borda fina preta, desenhada um pouco pra dentro da ciano (inset de
+  // BORDA_CARD_INTERNA_GAP), enquadrando a área branca do card.
+  const inset = BORDA_CARD_INTERNA_GAP;
+  doc.roundedRect(x + inset, y + inset, w - inset * 2, h - inset * 2, RAIO_CARD)
+    .lineWidth(BORDA_CARD_INTERNA_ESPESSURA).strokeColor(BORDA_CARD_INTERNA, 1).stroke();
 
   doc.fillOpacity(1).strokeOpacity(1);
 }

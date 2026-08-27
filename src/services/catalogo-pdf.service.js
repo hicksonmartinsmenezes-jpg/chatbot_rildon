@@ -89,40 +89,26 @@ const CODIGO_FORNECEDOR_MAP = new Map(
 // Carregada uma única vez no require — reusada em toda geração de PDF, sem
 // I/O repetido por página.
 //
-// 2026-08-27 (RESOLVIDO — substitui o comentário antigo sobre "não aplicado
-// ainda"): usuário mandou um arquivo de referência novo (SVG,
-// "Design sem nome.svg") pedindo "padronize cabeçalho e rodape exatamente
-// desse jeito, com lados preenchidos de todas as paginas". Esse arquivo é
-// um mockup vetorial completo (cunha cinza/azul no topo + barra preta com
-// logo/URL/triângulo embaixo), mas MEDIDO pixel a pixel: nem a barra preta
-// nem a cunha tocavam as bordas esquerda/direita no arquivo original — o
-// "lados preenchidos" pedido teve que ser produzido, não só copiado.
-// Técnica usada (script Python/numpy+scipy+PIL, arquivos gerados ficam só
-// como asset, não fazem parte do código): (1) renderizado o SVG em alta
-// resolução via cairosvg; (2) cada pixel quantizado pra cor mais próxima
-// de uma paleta pequena (branco/cinza/azul/preto/teal — as cores reais do
-// design, medidas na própria imagem) pra eliminar o anti-aliasing (sem
-// isso, o preenchimento por vizinho-mais-próximo perto de bordas
-// diagonais finas criava um efeito de "serrilhado"/ruído visível, tentado
-// e descartado antes de chegar nessa versão); (3) todo pixel branco de
-// FUNDO preenchido com a cor do pixel colorido mais próximo em 2D
-// (`scipy.ndimage.distance_transform_edt`), preenchendo tanto as margens
-// laterais quanto qualquer vão interno (ex: o notch entre a cunha cinza e
-// o diamante azul) — mesma técnica já usada uma vez no cabeçalho antigo
-// (ver histórico abaixo em CABECALHO_SANGRIA_TOPO); (4) filtro de mediana
-// pra limpar "dentes" residuais na borda diagonal do preenchimento; (5) NO
-// RODAPÉ especificamente, uma zona retangular foi protegida do
-// preenchimento (a área da barra preta onde ficam a logo, o texto
-// "www.rildoneletro.com.br" e o triângulo branco do nº de página, ver
-// RODAPE_NUM_X_FRACAO/Y_FRACAO abaixo) — só o fundo FORA dessa zona foi
-// preenchido, então a logo/texto/triângulo originais continuam intactos,
-// sem o risco de "apagar a logo por engano" que travou a tentativa
-// anterior (inpainting cego na imagem antiga, sem essa proteção).
+// 2026-08-27 (revertido no mesmo dia): tentativa de trocar cabeçalho/rodapé
+// por uma versão gerada a partir de um SVG de referência mandado pelo
+// usuário ("padronize cabeçalho e rodape exatamente desse jeito, com lados
+// preenchidos") — usuário achou o resultado "terrível" e pediu pra voltar
+// pro cabeçalho/rodapé de antes. Revertido de volta pro arquivo original
+// (o mesmo desde 2026-07-28). "Preencher os lados" nas laterais continua
+// pendente/não resolvido — se for pedido de novo, considerar outra
+// abordagem (ex: pedir uma arte já preenchida direto pro usuário, em vez
+// de tentar reconstruir automaticamente).
+//
+// O rodapé tem uma área branca real (o triângulo onde o nº de página é
+// desenhado, ver RODAPE_NUM_X_FRACAO/Y_FRACAO abaixo, pedido explícito
+// 2026-07-28 "número centralizado ali"), e a mesma imagem também tem a
+// LOGO e o texto "www.rildoneletro.com.br" em branco desenhados dentro do
+// próprio arquivo — qualquer preenchimento automático de fundo branco
+// precisa proteger essa área pra não apagar a logo por engano.
 const RODAPE_IMG = fs.readFileSync(path.join(__dirname, "../assets/catalogo-rodape.png"));
-// Proporção exata do arquivo ATUAL (3000×447 px, gerado a partir do SVG —
-// ver comentário acima) — mesmo princípio de sempre: FOOTER_HEIGHT é
-// derivada disso, nunca um valor fixo, pra imagem nunca esticar/espremer.
-const RODAPE_IMG_RATIO = 3000 / 447;
+// Proporção exata do arquivo acima (1372×156 px) — ver comentário no topo
+// do arquivo sobre por que isso precisa bater com a imagem de verdade.
+const RODAPE_IMG_RATIO = 1372 / 156;
 
 // Pedido do usuário (2026-07-29): "coloque exatamente isso sem alterações
 // como cabeçalho" — arte da cunha cinza/azul (mesma família visual do
@@ -168,13 +154,7 @@ const CABECALHO_IMG = fs.readFileSync(path.join(__dirname, "../assets/catalogo-c
 // imagem — agora é desenhado só DEPOIS que a arte termina (ver
 // _desenharCabecalho), então não tem mais como encostar na arte, não
 // importa até onde o bico do desenho desça.
-// 2026-08-27: substituído pelo novo cabeçalho gerado a partir do SVG de
-// referência (ver comentário completo da técnica em RODAPE_IMG acima —
-// mesmo arquivo de origem, mesmo tratamento de quantização+preenchimento
-// 2D). Arquivo atual: 3000×436 px, já preenchido de lateral a lateral (sem
-// nenhum branco de fundo sobrando) — diferente das versões anteriores,
-// não sobra mais nenhuma margem branca real pra medir/recortar.
-const CABECALHO_IMG_RATIO = 3000 / 436;
+const CABECALHO_IMG_RATIO = 719 / 146;
 
 // 2026-07-30 (mesmo dia, 3ª rodada): usuário pediu "suba mais um pouco o
 // cabeçalho" de novo. Naquela época, já não sobrava margem branca de
@@ -205,28 +185,21 @@ const CABECALHO_IMG_RATIO = 3000 / 436;
 // se preocupar em não cortar), sangria subiu de 16 pra 32 — header fica
 // mais baixo/compacto, título e cards começam mais cedo na página.
 //
-// 2026-08-27 (arte trocada de novo — ver CABECALHO_IMG_RATIO/RODAPE_IMG
-// acima): a sangria negativa existia pra "esconder" margem branca real que
-// sobrava no TOPO do arquivo antigo. A nova arte (gerada a partir do SVG)
-// já é recortada exatamente na borda de cima do desenho (linha 0 do
-// arquivo já é a borda reta da cunha, sem nenhum pixel de branco acima) —
-// não sobra mais nada pra sangrar, então a sangria volta a 0. Se um novo
-// arquivo de cabeçalho for enviado no futuro com margem branca de verdade
-// no topo, esse valor pode voltar a ser necessário.
-const CABECALHO_SANGRIA_TOPO = 0;
+// 2026-08-27 (revertido — ver comentário em RODAPE_IMG acima): a tentativa
+// de arte nova tinha zerado essa sangria (arquivo já vinha sem margem
+// branca no topo). Revertido de volta pro arquivo/arte original, que
+// precisa da sangria de 32 de novo.
+const CABECALHO_SANGRIA_TOPO = 32;
 
 // Centro do triângulo branco da arte (pedido do usuário, 2026-07-28: número
-// da página centralizado ali) — remedido em 2026-08-27 pro novo arquivo de
-// rodapé (ver RODAPE_IMG acima): triângulo branco novo tem o ápice em
-// x≈2081/y≈212 (de 3000×447) e alarga simetricamente pra baixo. Ponto
-// escolhido a ~70% da altura do triângulo (não o fundo exato) pra sobrar
-// respiro pro texto não encostar na borda inferior da página — mesmo
-// critério de antes, só remedido pro triângulo novo. Se a imagem do
-// rodapé for trocada de novo, essas frações precisam ser remedidas de
-// novo (script de medição: achar o maior blob branco DENTRO da faixa de
-// x só do triângulo, isolado da logo/texto/linha, ver histórico do PR).
-const RODAPE_NUM_X_FRACAO = 2075 / 3000;
-const RODAPE_NUM_Y_FRACAO = 400 / 447;
+// da página centralizado ali) — medido pixel a pixel na imagem real
+// (1372×156): o triângulo tem o ápice perto de x≈1065/y≈0 e alarga pra
+// baixo, ficando sempre centrado horizontalmente em x≈1060-1065. Escolhido
+// y≈130 (não o fundo exato, y=155) pra sobrar respiro pro texto não
+// encostar na borda inferior da página. Se a imagem do rodapé for trocada
+// de novo, essas frações também precisam ser remedidas.
+const RODAPE_NUM_X_FRACAO = 1062 / 1372;
+const RODAPE_NUM_Y_FRACAO = 108 / 156;
 
 const PAGE_MARGIN = 24;
 // Pedido do usuário (2026-07-31): "caiba o máximo de itens possíveis" — era
@@ -1291,10 +1264,25 @@ function gerarPdfCatalogoCompleto(produtos, fabricante, destino) {
   const linhasPorPaginaIndice = Math.max(1, Math.floor(alturaDisponivelIndice / INDICE_LINHA_ALTURA));
   const paginasIndice = Math.max(1, Math.ceil(grupos.length / linhasPorPaginaIndice));
 
-  let paginaAtual = paginasIndice + 1;
+  // 2026-08-27: pedido do usuário — "em todas as paginas por mais que não
+  // tenha mais produtos para a folha da linha complete com os cards de
+  // produtos". Antes, cada Linha calculava sua própria paginação isolada
+  // (Math.ceil(grupo.itens.length / itensPorPagina)), o que reservava uma
+  // página CHEIA pra Linha mesmo quando ela só preenchia, digamos, 3 dos 20
+  // slots da grade — o resto ficava em branco e a Linha seguinte começava
+  // do zero numa página nova. Como a grade (COLS_COMPLETO×
+  // ROWS_POR_PAGINA_COMPLETO) é a MESMA em toda página deste modo, dá pra
+  // tratar os itens de todas as Linhas como uma sequência ÚNICA e
+  // contínua (mesma ordem de _agruparPorLinha) — a página de cada item é
+  // só floor(índice global / itensPorPagina), então a página inicial de
+  // cada grupo sai de uma soma acumulada simples, sem precisar simular a
+  // grade item a item. O preenchimento de verdade (sem deixar vão em
+  // branco) acontece no loop de conteúdo abaixo, que usa essa mesma
+  // sequência plana.
+  let acumulado = 0;
   const paginaInicialPorGrupo = grupos.map((grupo) => {
-    const inicio = paginaAtual;
-    paginaAtual += Math.ceil(grupo.itens.length / itensPorPagina);
+    const inicio = paginasIndice + 1 + Math.floor(acumulado / itensPorPagina);
+    acumulado += grupo.itens.length;
     return inicio;
   });
 
@@ -1316,39 +1304,57 @@ function gerarPdfCatalogoCompleto(produtos, fabricante, destino) {
     });
   }
 
-  // --- Páginas de conteúdo, uma seção por Linha ---
-  grupos.forEach((grupo) => {
-    let col = 0;
-    let linhaY = 0;
-    let geometria = null;
+  // --- Páginas de conteúdo: sequência única e contínua entre Linhas ---
+  // 2026-08-27 (ver comentário completo em paginaInicialPorGrupo acima):
+  // os itens de TODAS as Linhas (já na ordem alfabética de
+  // _agruparPorLinha) formam uma única sequência achatada — a grade é
+  // preenchida sem parar entre grupos, só quebra página quando a grade da
+  // página atual está de fato cheia. Uma Linha que termina no meio de uma
+  // linha da grade não deixa mais vão em branco: a Linha seguinte
+  // continua exatamente nos slots que sobraram, na mesma página.
+  //
+  // Título do cabeçalho de cada página = a Linha do item que ABRIU essa
+  // página (o 1º card desenhado nela) — se uma página tiver o fim de uma
+  // Linha e o começo da seguinte, o título mostra a Linha de quem abriu;
+  // os produtos da Linha seguinte, mesmo sem cabeçalho próprio nessa
+  // página, continuam identificáveis pelo selo/código no próprio card.
+  const itensFlat = grupos.flatMap((grupo) =>
+    grupo.itens.map((produto) => ({ produto, linha: grupo.linha }))
+  );
 
-    function novaPaginaGrupo() {
-      doc.addPage();
-      pagina += 1;
-      _desenharCabecalho(doc, grupo.linha);
-      _desenharRodape(doc, pagina);
-      geometria = _geometriaGrid(doc, COLS_COMPLETO, ROWS_POR_PAGINA_COMPLETO, true);
-      linhaY = geometria.areaTopoY;
+  const geometriaCompleto = _geometriaGrid(doc, COLS_COMPLETO, ROWS_POR_PAGINA_COMPLETO, true);
+  let col = 0;
+  let linhaY = 0;
+
+  function novaPaginaConteudo(tituloLinha) {
+    doc.addPage();
+    pagina += 1;
+    _desenharCabecalho(doc, tituloLinha);
+    _desenharRodape(doc, pagina);
+    doc.y = geometriaCompleto.areaTopoY;
+    linhaY = doc.y;
+    col = 0;
+  }
+
+  itensFlat.forEach((item, i) => {
+    if (i === 0 || (col === 0 && linhaY + geometriaCompleto.cardHeight > geometriaCompleto.areaFimY + 0.5)) {
+      novaPaginaConteudo(item.linha);
     }
 
-    novaPaginaGrupo();
+    const x = PAGE_MARGIN + col * (geometriaCompleto.cardWidth + GAP);
+    const y = linhaY;
 
-    grupo.itens.forEach((produto) => {
-      if (col === 0 && linhaY + geometria.cardHeight > geometria.areaFimY + 0.5) {
-        novaPaginaGrupo();
-      }
+    _desenharCard(
+      doc, item.produto, x, y,
+      geometriaCompleto.cardWidth, geometriaCompleto.cardHeight,
+      geometriaCompleto.photoBoxWidth, geometriaCompleto.photoBoxHeight, true
+    );
 
-      const x = PAGE_MARGIN + col * (geometria.cardWidth + GAP);
-      const y = linhaY;
-
-      _desenharCard(doc, produto, x, y, geometria.cardWidth, geometria.cardHeight, geometria.photoBoxWidth, geometria.photoBoxHeight, true);
-
-      col += 1;
-      if (col >= COLS_COMPLETO) {
-        col = 0;
-        linhaY += geometria.cardHeight + GAP;
-      }
-    });
+    col += 1;
+    if (col >= COLS_COMPLETO) {
+      col = 0;
+      linhaY += geometriaCompleto.cardHeight + GAP;
+    }
   });
 
   doc.end();

@@ -296,7 +296,10 @@ const APLICACAO_FONTE = 5.5;
 // (~2 linhas), textos mais longos cortavam no meio de uma palavra/vírgula
 // (ver teste real "FORD: Cargo 712, 814, 815, 915, 1317E,"). Aumentado pra
 // caber uma 3ª linha antes do ellipsis entrar em ação.
-const APLICACAO_ALTURA = 20; // ~3 linhas nesse tamanho
+// 2026-08-27 (ajuste seguinte, reorganização do card): "aplicação até duas
+// linhas" — reduzida de volta pra caber só 2 linhas (a 3ª agora corta com
+// "..." via ellipsis:true em _desenharCardCatalogoCompleto).
+const APLICACAO_ALTURA = 15; // ~2 linhas nesse tamanho
 // 2026-08-27: usuário pediu "desça mais as aplicações no card" — era 3,
 // mais respiro entre o fim do nome e o início do bloco de aplicação.
 const APLICACAO_GAP = 9;     // respiro entre o nome e esse bloco
@@ -306,34 +309,21 @@ const APLICACAO_GAP = 9;     // respiro entre o nome e esse bloco
 // preto igual ao resto do texto do card.
 const APLICACAO_COR = "#111827";
 
-// --- Redesenho do card do Catálogo Completo (2026-08-27, referência visual
-// mandada pelo usuário: card "SENSOR DE TEMPERATURA" de outro catálogo) ---
-// Layout NOVO, só pro modo comAplicacao=true — substitui o selo-sobre-foto +
-// nome-abaixo-da-foto por: selo + descrição LADO A LADO no topo do card,
-// código OEM em vermelho embaixo do selo, foto grande ocupando o meio, e
-// aplicação em preto embaixo. O catálogo comum (comAplicacao=false, sem
-// aplicação/OEM) continua com o layout antigo (_desenharCaixaCodigo sobre a
-// foto), sem mudança — ver _desenharCard/_desenharCardCatalogoCompleto.
-// 2026-08-27 (ajuste fino, pedido seguinte): "reduza o tamanho da descrição
-// para ficar do tamanho e alinhado com o número" — era 8 (mesmo valor
-// numérico de CODIGO_FONTE, mas TITULO_FONTE do selo é uma itálica
-// condensada que renderiza visualmente menor que Helvetica-Bold no mesmo
-// tamanho; a descrição parecia maior mesmo com o mesmo fontSize). Reduzida
-// pra 7 pra bater com o tamanho visual do número do selo.
-// 2026-08-27 (ajuste seguinte): "na minha descrição reduza mais o tamanho
-// para ficar mais organizado" — reduzida de 7 pra 6.
-const HEADER_NOME_FONTE = 6;
-// 2026-08-27 (ajuste fino, pedido seguinte): "caso a descrição seja um
-// pouco grande deixe quebra de linha automática" — era 20, ficava justo
-// demais pra 2 linhas completas nesse fontSize/lineGap (o pdfkit cortava
-// com "…" já na 1ª linha em vez de quebrar a 2ª). Aumentado com folga.
-const HEADER_NOME_ALTURA = 24;    // ~2 linhas, com folga real pra não cortar cedo
-// Respiro horizontal entre o selo e a descrição — pedido do usuário
-// "ajuste melhor a descrição mais para o canto direito" (era 8, descrição
-// colada demais no selo); a descrição também passou a alinhar à direita
-// (ver align:"right" em _desenharCardCatalogoCompleto), então esse gap
-// garante que sobre respiro mesmo com o texto puxado pro canto direito.
-const GAP_BADGE_NOME = 14;
+// --- Redesenho do card do Catálogo Completo (2026-08-27, 3ª rodada) ---
+// Layout MUDOU DE NOVO — pedido do usuário, com esboço em texto:
+//   codigo do fabricante
+//   codigo original
+//
+//         *foto*
+//
+//   codigo da loja + Descrição resumida
+//   aplicação até duas linhas
+// Ou seja: cabeçalho volta a ser só o selo do fabricante + código
+// original/OEM, EMPILHADOS (não mais lado a lado com a descrição — essa
+// desceu). Descrição agora fica embaixo da foto, resumida numa linha só
+// junto com o código da loja (produto.codigo, o código interno — diferente
+// do código do fabricante que vai no selo azul). Aplicação limitada a até
+// 2 linhas, logo abaixo dessa linha de resumo.
 // Código OEM/equivalente em vermelho, embaixo do selo (ex: "A011.542.96.17"
 // na referência) — usa o 1º item de `produto.equivalentes` (já indexado por
 // catalogo-x2.service.js), sem novo campo/dado a buscar.
@@ -342,13 +332,15 @@ const OEM_FONTE = 5.5;
 const OEM_COR = "#dc2626"; // mesmo vermelho de VERMELHO_CATEGORIA
 const OEM_ALTURA = 8;      // 1 linha
 const GAP_BADGE_OEM = 3;   // respiro vertical entre o selo e o código OEM
-const GAP_HEADER_FOTO = 6; // respiro entre o bloco de cabeçalho (selo+nome) e a foto
-// 2026-08-27 (ajuste seguinte): "minha aplicação se puder desça mais" —
-// era 6, aumentado pra descer o bloco de aplicação, mais respiro depois da
-// foto. photoBoxHeight absorve a diferença automaticamente (ver
-// _geometriaGrid: alturaFixaTexto sobe, photoBoxHeight desce na mesma
-// medida), não estoura a altura do card.
-const GAP_FOTO_APLICACAO = 13; // respiro entre a foto e o bloco de aplicação (sem linha divisória nesse layout — a referência não tem)
+const GAP_HEADER_FOTO = 6; // respiro entre o cabeçalho (selo+OEM) e a foto
+// Linha de resumo abaixo da foto: "código da loja + descrição resumida",
+// 1 linha só (a descrição completa saiu daqui — ficou "resumida" mesmo,
+// corta com "..." se não couber; ver TITULO_FONTE em
+// _desenharCardCatalogoCompleto, mesma fonte do selo/OEM).
+const RESUMO_FONTE = 6.5;
+const RESUMO_ALTURA = 9;        // 1 linha nesse tamanho
+const GAP_FOTO_RESUMO = 6;      // respiro entre a foto e a linha de resumo
+const GAP_RESUMO_APLICACAO = 3; // respiro entre a linha de resumo e a aplicação
 
 // Cor do texto do código — pedido do usuário (2026-07-30): "azul oceano/
 // petróleo", rgb(0, 96, 151), mais sóbrio que o azul do painel usado antes.
@@ -706,16 +698,15 @@ function _geometriaGrid(doc, cols, rows, comAplicacao = false) {
 
   let alturaFixaTexto;
   if (comAplicacao) {
-    // 2026-08-27: redesenho do card do Catálogo Completo (referência visual
-    // "SENSOR DE TEMPERATURA" mandada pelo usuário) — cabeçalho com selo +
-    // descrição lado a lado no topo (ver _desenharCardCatalogoCompleto), não
-    // mais selo sobreposto na foto + nome abaixo. A altura do cabeçalho é o
-    // MAIOR entre a coluna do selo (selo + código OEM embaixo) e a coluna da
-    // descrição (HEADER_NOME_ALTURA) — o lado mais alto dos dois manda.
-    const alturaColunaSelo = _alturaSelo(doc) + GAP_BADGE_OEM + OEM_ALTURA;
-    const alturaCabecalho = Math.max(alturaColunaSelo, HEADER_NOME_ALTURA);
+    // 2026-08-27 (3ª rodada de redesenho): cabeçalho é só o selo do
+    // fabricante + código original/OEM, EMPILHADOS (a descrição saiu
+    // daqui, desceu pra linha de resumo abaixo da foto — ver
+    // _desenharCardCatalogoCompleto e comentário no bloco de constantes
+    // "RESUMO_*"). alturaCabecalho não precisa mais de Math.max com a
+    // altura da descrição, já que não tem mais nada ao lado do selo.
+    const alturaCabecalho = _alturaSelo(doc) + GAP_BADGE_OEM + OEM_ALTURA;
     alturaFixaTexto = PAD_CARD + alturaCabecalho + GAP_HEADER_FOTO
-      + GAP_FOTO_APLICACAO + APLICACAO_ALTURA + PAD_CARD;
+      + GAP_FOTO_RESUMO + RESUMO_ALTURA + GAP_RESUMO_APLICACAO + APLICACAO_ALTURA + PAD_CARD;
   } else {
     // Layout antigo (catálogo comum, sem aplicação/OEM) — selo sobreposto na
     // foto (_desenharCaixaCodigo, não ocupa altura fixa própria) + nome
@@ -727,13 +718,19 @@ function _geometriaGrid(doc, cols, rows, comAplicacao = false) {
   return { cardWidth, cardHeight, photoBoxWidth, photoBoxHeight, areaTopoY, areaFimY };
 }
 
-// Pedido do usuário (2026-08-27): mandou um card de referência de outro
-// catálogo ("SENSOR DE TEMPERATURA") pedindo "ajuste melhor descrição,
-// aplicação e foto" — layout NOVO só pro Catálogo Completo (comAplicacao):
-// selo do código + descrição LADO A LADO no topo (não mais selo sobreposto
-// na foto), código OEM/equivalente em vermelho embaixo do selo, foto
-// ocupando o meio do card (agora bem maior, sem o selo "roubando" espaço
-// dela), aplicação em preto embaixo (ver APLICACAO_COR). O código
+// Pedido do usuário (2026-08-27, 3ª rodada de redesenho), esboço em texto:
+//   codigo do fabricante
+//   codigo original
+//
+//         *foto*
+//
+//   codigo da loja + Descrição resumida
+//   aplicação até duas linhas
+// Cabeçalho volta a ser só o selo do fabricante + código original/OEM,
+// EMPILHADOS (a descrição saiu daqui, ver bloco de baixo). Foto ocupa o
+// meio do card. Embaixo da foto: código da loja (produto.codigo — código
+// INTERNO, diferente do código do fabricante que vai no selo) + descrição
+// resumida numa linha só, depois a aplicação em até 2 linhas. O código
 // OEM/equivalente mostrado é o 1º item de `produto.equivalentes` — já é a
 // lista de referências cruzadas de outros fabricantes indexada por
 // catalogo-x2.service.js (mesmo dado usado em "Ver referências" no painel
@@ -743,16 +740,16 @@ function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight
   const xConteudo = x + PAD_CARD;
   const yTopo = y + PAD_CARD;
 
-  // --- Selo do código (topo esquerdo, agora fora da foto) ---
+  // --- Selo do código do fabricante (topo, sozinho — sem mais nada ao lado) ---
   const rotulo = _rotuloProduto(produto);
-  // Não deixa o selo comer mais da metade do cabeçalho — sobra pouco/nada
-  // pra descrição em código muito longo (raro, mas evita card quebrado).
   // 2026-08-27: "por mais que ele seja grande nunca deixe '...' sempre
   // coloque completo nem que precise reduzir tamanho" — em vez de cortar
   // com ellipsis quando o texto não cabe em larguraMaximaSelo, encolhe o
   // fontSize até caber (_ajustarFonteSeloParaCaber); a caixa então se
-  // ajusta exatamente ao texto (já garantido caber), nunca corta.
-  const larguraMaximaSelo = larguraConteudo * 0.5;
+  // ajusta exatamente ao texto (já garantido caber), nunca corta. Sem mais
+  // descrição disputando espaço na mesma linha, o teto pode ser bem mais
+  // generoso (85% em vez de 50%) — só entra em jogo em código raro/enorme.
+  const larguraMaximaSelo = larguraConteudo * 0.85;
   const { tamanho: tamanhoSelo, largura: larguraTextoSelo } = _ajustarFonteSeloParaCaber(doc, rotulo, larguraMaximaSelo);
   const larguraSelo = larguraTextoSelo + CAIXA_CODIGO_PAD_H * 2 + 1.5;
   doc.font(TITULO_FONTE).fontSize(tamanhoSelo);
@@ -768,45 +765,20 @@ function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight
       align: "center",
     });
 
-  // --- Código OEM/equivalente em vermelho, embaixo do selo ---
+  // --- Código original/OEM em vermelho, embaixo do selo ---
   const oem = Array.isArray(produto.equivalentes) && produto.equivalentes.length ? produto.equivalentes[0] : null;
   if (oem) {
     doc.fillColor(OEM_COR).font("Helvetica-Bold").fontSize(OEM_FONTE)
       .text(String(oem), xConteudo, yTopo + alturaSelo + GAP_BADGE_OEM, {
-        width: larguraSelo,
+        width: larguraConteudo,
         height: OEM_ALTURA,
         ellipsis: true,
         lineBreak: false,
       });
   }
 
-  // --- Descrição do produto, à direita do selo ---
-  // Pedido do usuário (2026-08-27): "ajuste melhor a descrição mais para o
-  // canto direito" — align:"right" puxa o texto (linha única curta ou cada
-  // linha da quebra automática) pro canto direito do card, em vez de ficar
-  // colado à esquerda logo após o selo.
-  // "...alinhado com o número" — a descrição começa na mesma altura que o
-  // texto do número dentro do selo (yTopo + CAIXA_CODIGO_PAD_V), não no
-  // topo da caixa do selo, pra alinhar visualmente os dois textos pelo
-  // topo em vez da descrição ficar mais alta que o número.
-  const xNome = xConteudo + larguraSelo + GAP_BADGE_NOME;
-  const larguraNome = xConteudo + larguraConteudo - xNome;
-  const yNomeCabecalho = yTopo + CAIXA_CODIGO_PAD_V;
-  // 2026-08-27: "a fonte do meu codigo e descrição deixe futura mb bt" —
-  // volta a usar TITULO_FONTE (era QUICKSAND_BOLD). Aplicação (ver abaixo)
-  // continua em Quicksand — não foi pedido reverter essa.
-  doc.fillColor("#111827").font(TITULO_FONTE).fontSize(HEADER_NOME_FONTE)
-    .text(_nomeExibicao(produto, true).toUpperCase(), xNome, yNomeCabecalho, {
-      width: larguraNome,
-      height: HEADER_NOME_ALTURA,
-      ellipsis: true,
-      lineGap: 1,
-      align: "right",
-    });
-
-  // --- Foto (agora abaixo do cabeçalho inteiro, não mais atrás do selo) ---
-  const alturaColunaSelo = alturaSelo + GAP_BADGE_OEM + OEM_ALTURA;
-  const alturaCabecalho = Math.max(alturaColunaSelo, HEADER_NOME_ALTURA);
+  // --- Foto (abaixo do cabeçalho selo+OEM) ---
+  const alturaCabecalho = alturaSelo + GAP_BADGE_OEM + OEM_ALTURA;
   const yFoto = yTopo + alturaCabecalho + GAP_HEADER_FOTO;
 
   try {
@@ -823,9 +795,26 @@ function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight
   }
   doc.fillColor("#111827").font("Helvetica");
 
-  // --- Aplicação (embaixo da foto, em preto — ver APLICACAO_COR) ---
+  // --- Código da loja + descrição resumida, numa linha só, embaixo da foto ---
+  // "codigo da loja + Descrição resumida" — produto.codigo é o código
+  // INTERNO da loja (ex: "ETE7043"), diferente do código do fabricante que
+  // vai no selo azul lá em cima. Mesma fonte do selo/OEM (Futura MD BT,
+  // ver pedido "a fonte do meu codigo e descrição deixe futura mb bt").
+  // "Resumida" = 1 linha só, corta com "..." se não couber (ao contrário
+  // do selo do fabricante, aqui NÃO foi pedido pra nunca truncar).
+  const yResumo = yFoto + photoBoxHeight + GAP_FOTO_RESUMO;
+  const resumo = `${produto.codigo} - ${_nomeExibicao(produto, true).toUpperCase()}`;
+  doc.fillColor("#111827").font(TITULO_FONTE).fontSize(RESUMO_FONTE)
+    .text(resumo, xConteudo, yResumo, {
+      width: larguraConteudo,
+      height: RESUMO_ALTURA,
+      ellipsis: true,
+      lineBreak: false,
+    });
+
+  // --- Aplicação (até 2 linhas, embaixo da linha de resumo) ---
   if (produto.aplicacaoOrganizada) {
-    const yAplicacao = yFoto + photoBoxHeight + GAP_FOTO_APLICACAO;
+    const yAplicacao = yResumo + RESUMO_ALTURA + GAP_RESUMO_APLICACAO;
     doc.fillColor(APLICACAO_COR).font(QUICKSAND_MEDIUM).fontSize(APLICACAO_FONTE)
       .text(produto.aplicacaoOrganizada, xConteudo, yAplicacao, {
         width: larguraConteudo,

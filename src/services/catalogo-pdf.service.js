@@ -88,6 +88,21 @@ const CODIGO_FORNECEDOR_MAP = new Map(
 
 // Carregada uma única vez no require — reusada em toda geração de PDF, sem
 // I/O repetido por página.
+//
+// 2026-08-27: pedido do usuário "no rodapé preencha os lados também" —
+// NÃO aplicado ainda. O rodapé tem uma área branca real (o triângulo onde
+// o nº de página é desenhado, ver RODAPE_NUM_X_FRACAO/Y_FRACAO abaixo,
+// pedido explícito 2026-07-28 "número centralizado ali"), mas essa mesma
+// imagem também tem a LOGO e o texto "www.rildoneletro.com.br" em branco
+// desenhados dentro do próprio arquivo (diferente do cabeçalho — ver
+// CABECALHO_SANGRIA_TOPO — que não tem nenhum texto embutido). Testei a
+// técnica de preencher automaticamente (inpainting) e ela também reescreve
+// os pixels brancos da logo/texto por engano (não dá pra distinguir "fundo
+// vazio" de "texto branco de propósito" só pela cor) — arriscado demais
+// pra aplicar sem supervisão visual linha a linha. Avisar o usuário e
+// perguntar como prefere resolver (encolher o triângulo manualmente no
+// arquivo de origem? trocar a cor do número em vez de mexer no fundo?)
+// antes de tentar de novo.
 const RODAPE_IMG = fs.readFileSync(path.join(__dirname, "../assets/catalogo-rodape.png"));
 // Proporção exata do arquivo acima (1372×156 px) — ver comentário no topo
 // do arquivo sobre por que isso precisa bater com a imagem de verdade.
@@ -140,17 +155,34 @@ const CABECALHO_IMG = fs.readFileSync(path.join(__dirname, "../assets/catalogo-c
 const CABECALHO_IMG_RATIO = 719 / 146;
 
 // 2026-07-30 (mesmo dia, 3ª rodada): usuário pediu "suba mais um pouco o
-// cabeçalho" de novo. Já não sobra margem branca de verdade pra recortar do
-// arquivo sem começar a cortar a própria cunha diagonal (medido: já na 1ª
-// linha de conteúdo o desenho cobre ~98% da largura e vai estreitando aos
-// poucos — não é uma faixa reta, é o próprio desenho diagonal desde o
-// topo). Em vez de continuar cortando pixels reais da arte, troquei de
-// técnica: a imagem inteira (sem cortar mais nada, na proporção exata de
-// sempre) é desenhada "sangrando" um pouco pra fora do topo da página (y
-// negativo) — a parte que passa de y=0 fica invisível (a página só mostra o
-// que está dentro dela), então o efeito visual é o cabeçalho parecer mais
-// baixo, sem alterar/distorcer/cortar um único pixel do arquivo de verdade.
-const CABECALHO_SANGRIA_TOPO = 16;
+// cabeçalho" de novo. Naquela época, já não sobrava margem branca de
+// verdade pra recortar do arquivo sem começar a cortar a própria cunha
+// diagonal — o desenho é uma cunha inteira que ESTREITA de ~98% de largura
+// no topo até um ponto no fundo, então o sangria (y negativo, "a imagem
+// sangra pra fora do topo da página, a parte que passa de y=0 fica
+// invisível") já mostrava quase o desenho inteiro, incluindo a parte de
+// baixo, mais estreita — sobrava bastante branco nas laterais ali.
+//
+// 2026-08-27: pedido do usuário "preciso que suba mais o cabeçalho e
+// preencha os lados" — resolvido em duas partes. (1) "preencha os lados":
+// medi pixel a pixel (script Python/numpy+scipy) e confirmei que o branco
+// nas laterais era real, não miragem visual — a cunha cobre só ~43% da
+// largura na altura onde o cabeçalho terminava antes. Reprocessei o PNG
+// (mesma técnica de inpainting 2D usada uma vez só, arquivo salvo direto
+// em src/assets/catalogo-cabecalho.png — não é código, é o asset em si)
+// pra "esticar" a cor de cada pixel branco até o vizinho colorido mais
+// próximo, preenchendo TODO o retângulo do cabeçalho de lateral a
+// lateral, sem nenhuma distorção/estica da cunha original (ela continua
+// visível por cima, só o fundo que era branco virou cinza/azul). Seguro
+// fazer isso aqui porque essa imagem NÃO tem texto/logo desenhado nela —
+// título é sempre desenhado por código, depois, por cima (ver
+// _desenharCabecalho) — diferente do rodapé, que tem logo+texto brancos
+// embutidos na própria imagem e por isso NÃO recebeu o mesmo tratamento
+// (risco real de apagar a logo por engano — ver comentário em RODAPE_IMG).
+// (2) "suba mais": com o cabeçalho inteiro preenchido (sem mais branco pra
+// se preocupar em não cortar), sangria subiu de 16 pra 32 — header fica
+// mais baixo/compacto, título e cards começam mais cedo na página.
+const CABECALHO_SANGRIA_TOPO = 32;
 
 // Centro do triângulo branco da arte (pedido do usuário, 2026-07-28: número
 // da página centralizado ali) — medido pixel a pixel na imagem real

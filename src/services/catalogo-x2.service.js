@@ -376,7 +376,15 @@ function _tokenBateAplicacao(token, aplicacaoPalavras) {
 // Arquivos em catalogo-x2/ que NÃO são catálogo de produto (mapeamentos
 // auxiliares usados por outro serviço) — ver comentário longo em
 // _indexarProduto sobre o bug real que isso causou em 2026-08-13.
-const ARQUIVOS_NAO_PRODUTO = new Set(["cod-fornecedor.json"]);
+// BUG REAL corrigido em 2026-08-27: aplicacao-ia-cache.json (Issue #23,
+// cache de texto de "aplicação" já organizado pela IA — ver
+// catalogo-aplicacao-ia.service.js) mora no MESMO diretório mas é um
+// objeto hash→texto, não um array de produtos. Assim que o arquivo passou
+// a existir de verdade (1º export real do Catálogo Completo que cacheou
+// algo), _carregarIndices tentava iterar esse objeto com `for...of` e
+// derrubava o boot inteiro do bot com "TypeError: data is not iterable" —
+// mesma classe de bug do cod-fornecedor.json em 2026-08-13, mesmo fix.
+const ARQUIVOS_NAO_PRODUTO = new Set(["cod-fornecedor.json", "aplicacao-ia-cache.json"]);
 
 function _carregarIndices() {
   let arquivos;

@@ -313,7 +313,10 @@ const BORDA_CARD_ESPESSURA = 3; // era 1.75 (cinza) — bem mais grossa, igual �
 // borda preta interna.
 const BORDA_CARD_INTERNA = "#000000";
 const BORDA_CARD_INTERNA_ESPESSURA = 0.75;
-const BORDA_CARD_INTERNA_GAP = 3;
+// 2026-08-27 (mesmo dia, ajuste fino): "cole essa preta como na referência"
+// — usuário circulou o canto do card mostrando que sobrava vão branco
+// entre a ciano e a preta (era 3, ficou colada quase na borda ciano).
+const BORDA_CARD_INTERNA_GAP = 1;
 // Pedido do usuário (2026-07-30): "remova o fundo de vidro" — CINZA_SOMBRA
 // não é mais usada (era a cor da sombra em camadas do efeito vidro, ver
 // _desenharCardVidro). Mantida como constante só documentada, não removida,

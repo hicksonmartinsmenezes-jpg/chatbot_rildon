@@ -189,22 +189,7 @@ const CABECALHO_IMG_RATIO = 719 / 146;
 // de arte nova tinha zerado essa sangria (arquivo já vinha sem margem
 // branca no topo). Revertido de volta pro arquivo/arte original, que
 // precisa da sangria de 32 de novo.
-//
-// 2026-08-27 (pedido seguinte): usuário mandou um preview em página A4
-// inteira (mockup feito no Canva a partir do mesmo design) mostrando o
-// cabeçalho com uma margem branca REAL acima da arte, sem encostar no
-// topo da folha — "será para folhas a4 as impressões de catalogo".
-// Sangria (bleed até y=0, sem nenhum branco acima) funciona bem numa tela/
-// PDF viewer, mas nem toda impressora doméstica/de escritório imprime até
-// a borda física da folha A4 sem cortar ou sem registro exato — manter uma
-// margem de segurança é mais seguro pra impressão de verdade. Substituída
-// a sangria negativa por uma margem POSITIVA (CABECALHO_MARGEM_TOPO) — a
-// arte deixa de sangrar pra fora da página e passa a começar com um
-// respiro real abaixo do topo, como no preview do usuário. Valor escolhido
-// (36pt) por proporção visual ao preview mandado (~4.5% da altura da
-// página) — não foi um número exato pedido pelo usuário, ajustável se o
-// resultado impresso ficar com margem maior/menor do que ele queria.
-const CABECALHO_MARGEM_TOPO = 36;
+const CABECALHO_SANGRIA_TOPO = 32;
 
 // Centro do triângulo branco da arte (pedido do usuário, 2026-07-28: número
 // da página centralizado ali) — medido pixel a pixel na imagem real
@@ -234,12 +219,10 @@ const GAP = 10;
 // _desenharCabecalho) — todo o resto do layout usa HEADER_HEIGHT (abaixo),
 // que é a altura VISÍVEL na página (menor, por causa da sangria).
 const CABECALHO_IMG_ALTURA_REAL = 595.28 / CABECALHO_IMG_RATIO;
-// Altura visível do cabeçalho na página — 2026-08-27: era a altura real
-// MENOS a sangria (imagem desenhada em y negativo); agora é a altura real
-// MAIS a margem (imagem desenhada em y positivo, com respiro acima —
-// ver CABECALHO_MARGEM_TOPO). Título, cards etc. usam ESTA altura, não a
-// real da imagem sozinha.
-const HEADER_HEIGHT = CABECALHO_IMG_ALTURA_REAL + CABECALHO_MARGEM_TOPO;
+// Altura visível do cabeçalho na página — desconta a sangria (a imagem é
+// desenhada em y negativo, então essa fatia do topo fica fora da página,
+// invisível). Título, cards etc. usam ESTA altura, não a real.
+const HEADER_HEIGHT = CABECALHO_IMG_ALTURA_REAL - CABECALHO_SANGRIA_TOPO;
 // Calculada a partir da proporção real da imagem — largura sempre = página
 // inteira, então a altura sai daqui, sem esticar/espremer o desenho.
 const FOOTER_HEIGHT = 595.28 / RODAPE_IMG_RATIO;
@@ -547,11 +530,8 @@ const A4_ALTURA = 841.89;
 // sem distorcer a arte original.
 const INDICE_CABECALHO_ESCALA = 1.08;
 const INDICE_CABECALHO_IMG_ALTURA_REAL = (A4_LARGURA * INDICE_CABECALHO_ESCALA) / CABECALHO_IMG_RATIO;
-// 2026-08-27 (mesmo ajuste do cabeçalho comum — ver CABECALHO_MARGEM_TOPO):
-// sangria negativa trocada por margem positiva, escalada junto com o zoom
-// do cabeçalho do índice.
-const INDICE_CABECALHO_MARGEM_TOPO = CABECALHO_MARGEM_TOPO * INDICE_CABECALHO_ESCALA;
-const INDICE_HEADER_HEIGHT = INDICE_CABECALHO_IMG_ALTURA_REAL + INDICE_CABECALHO_MARGEM_TOPO;
+const INDICE_CABECALHO_SANGRIA_TOPO = CABECALHO_SANGRIA_TOPO * INDICE_CABECALHO_ESCALA;
+const INDICE_HEADER_HEIGHT = INDICE_CABECALHO_IMG_ALTURA_REAL - INDICE_CABECALHO_SANGRIA_TOPO;
 
 // Pedido do usuário (2026-08-26): mais respiro entre o cabeçalho e o título
 // "ÍNDICE", e entre o título e a 1ª linha da lista — valores escolhidos
@@ -975,12 +955,12 @@ function _desenharCabecalho(doc, tituloBusca) {
   // transparência), então substitui de vez o retângulo cinza chapado que
   // existia antes.
   //
-  // 2026-08-27: era desenhada em y NEGATIVO (sangria, sem margem acima —
-  // ver histórico em CABECALHO_MARGEM_TOPO). Trocado por y POSITIVO — a
-  // arte agora começa com um respiro real abaixo do topo da página, pra
-  // bater com o preview em folha A4 que o usuário mandou ("será para
-  // folhas a4 as impressões de catalogo").
-  doc.image(CABECALHO_IMG, 0, CABECALHO_MARGEM_TOPO, { width: w, height: CABECALHO_IMG_ALTURA_REAL });
+  // Pedido do usuário (2026-07-30, 3ª rodada de "suba mais o cabeçalho"):
+  // desenhada em y NEGATIVO (sangria) — a imagem inteira, sem cortar/
+  // distorcer um pixel, só desenhada um pouco pra cima da borda da página;
+  // a fatia que passa de y=0 fica fora da página (invisível), então o
+  // cabeçalho aparece mais baixo sem alterar o arquivo de verdade.
+  doc.image(CABECALHO_IMG, 0, -CABECALHO_SANGRIA_TOPO, { width: w, height: CABECALHO_IMG_ALTURA_REAL });
 
   // Pedido do usuário (2026-07-30): removido "RILDON PEÇAS" / "Catálogo
   // Expresso" do cabeçalho — a arte de fundo já carrega a identidade visual,
@@ -1091,7 +1071,7 @@ function _desenharCabecalhoIndice(doc) {
   // nas duas margens, sem gap branco, sem distorcer a arte original.
   const larguraAmpliada = w * INDICE_CABECALHO_ESCALA;
   const xAmpliada = -(larguraAmpliada - w) / 2;
-  doc.image(CABECALHO_IMG, xAmpliada, INDICE_CABECALHO_MARGEM_TOPO, { width: larguraAmpliada, height: INDICE_CABECALHO_IMG_ALTURA_REAL });
+  doc.image(CABECALHO_IMG, xAmpliada, -INDICE_CABECALHO_SANGRIA_TOPO, { width: larguraAmpliada, height: INDICE_CABECALHO_IMG_ALTURA_REAL });
 
   const tituloTexto = "ÍNDICE";
   const tituloX = PAGE_MARGIN;

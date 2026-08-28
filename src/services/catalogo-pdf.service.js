@@ -189,7 +189,21 @@ const CABECALHO_IMG_RATIO = 719 / 146;
 // de arte nova tinha zerado essa sangria (arquivo já vinha sem margem
 // branca no topo). Revertido de volta pro arquivo/arte original, que
 // precisa da sangria de 32 de novo.
-const CABECALHO_SANGRIA_TOPO = 32;
+//
+// 2026-08-28: pedido do usuário "quero que a ponta do cabeçalho tope no
+// canto direito" — medido pixel a pixel (mesmo arquivo, 719×146): com
+// sangria=32, a fatia visível da arte (a partir da linha 309 de 1168px)
+// já perdeu a parte mais larga do desenho — a ponta azul só chega a
+// ~88% da largura da página, sobrando um vão branco real no canto
+// direito. A linha y=0 do arquivo (a borda de cima da própria cunha) já
+// cobre ~99% da largura sozinha (x≈44 a x≈5702 de 5752px) — zerando a
+// sangria, quase toda a largura aparece sem precisar reprocessar a
+// imagem (a mesma técnica de inpainting já tentada antes e revertida por
+// causar artefato visual). Troca de: header fica mais alto na página
+// (usa a altura REAL da imagem inteira, ~120.9pt, era ~88.9pt com
+// sangria=32) — inevitável pra mostrar a parte mais larga da cunha; se o
+// usuário achar o cabeçalho grande demais depois, dá pra revisitar.
+const CABECALHO_SANGRIA_TOPO = 0;
 
 // Centro do triângulo branco da arte (pedido do usuário, 2026-07-28: número
 // da página centralizado ali) — medido pixel a pixel na imagem real
@@ -528,10 +542,16 @@ const A4_ALTURA = 841.89;
 // página e centralizada horizontalmente — a borda da própria página
 // corta simetricamente os dois lados em x=0/x=w, "colando" nas margens
 // sem distorcer a arte original.
-const INDICE_CABECALHO_ESCALA = 1.08;
-const INDICE_CABECALHO_IMG_ALTURA_REAL = (A4_LARGURA * INDICE_CABECALHO_ESCALA) / CABECALHO_IMG_RATIO;
-const INDICE_CABECALHO_SANGRIA_TOPO = CABECALHO_SANGRIA_TOPO * INDICE_CABECALHO_ESCALA;
-const INDICE_HEADER_HEIGHT = INDICE_CABECALHO_IMG_ALTURA_REAL - INDICE_CABECALHO_SANGRIA_TOPO;
+// 2026-08-28 (revertido — pedido do usuário "preciso que padronize o
+// cabeçalho da primeira pagina com o restante"): o zoom de 1.08x acima
+// deixava o cabeçalho do índice ligeiramente DIFERENTE do resto do PDF
+// (maior, cortado nas laterais de um jeito próprio) — exatamente a
+// inconsistência que o usuário pediu pra tirar. INDICE_HEADER_HEIGHT
+// agora é só um alias de HEADER_HEIGHT (mesma arte, mesmo tamanho, mesma
+// posição da sangria=0 — ver CABECALHO_SANGRIA_TOPO acima) — cabeçalho do
+// índice fica idêntico ao das páginas de conteúdo, só o texto abaixo dele
+// muda ("ÍNDICE" em vez do nome da busca, ver _desenharCabecalhoIndice).
+const INDICE_HEADER_HEIGHT = HEADER_HEIGHT;
 
 // Pedido do usuário (2026-08-26): mais respiro entre o cabeçalho e o título
 // "ÍNDICE", e entre o título e a 1ª linha da lista — valores escolhidos
@@ -1063,15 +1083,14 @@ function _textoComSombra(doc, texto, x, y, cor, opcoes) {
 function _desenharCabecalhoIndice(doc) {
   const w = doc.page.width;
 
-  // Pedido do usuário (2026-08-26): "aumente o cabeçalho colando os lados
-  // na margem da página" — a arte é desenhada AMPLIADA (INDICE_CABECALHO_ESCALA)
-  // e centralizada horizontalmente; como a largura ampliada é maior que a
-  // página, os dois lados sangram simetricamente pra fora e a borda da
-  // própria página corta exatamente em x=0/x=w — visualmente fica "grudado"
-  // nas duas margens, sem gap branco, sem distorcer a arte original.
-  const larguraAmpliada = w * INDICE_CABECALHO_ESCALA;
-  const xAmpliada = -(larguraAmpliada - w) / 2;
-  doc.image(CABECALHO_IMG, xAmpliada, -INDICE_CABECALHO_SANGRIA_TOPO, { width: larguraAmpliada, height: INDICE_CABECALHO_IMG_ALTURA_REAL });
+  // 2026-08-28 (revertido — pedido do usuário "padronize o cabeçalho da
+  // primeira pagina com o restante"): era desenhada AMPLIADA (zoom 1.08x +
+  // corte simétrico nas laterais), ficando ligeiramente diferente do
+  // cabeçalho das páginas de conteúdo. Agora usa exatamente a mesma
+  // largura/altura/posição de _desenharCabecalho — mesma arte, sem zoom,
+  // sem corte — só o texto abaixo dela muda ("ÍNDICE" em vez do nome da
+  // busca, ver mais abaixo).
+  doc.image(CABECALHO_IMG, 0, -CABECALHO_SANGRIA_TOPO, { width: w, height: CABECALHO_IMG_ALTURA_REAL });
 
   const tituloTexto = "ÍNDICE";
   const tituloX = PAGE_MARGIN;

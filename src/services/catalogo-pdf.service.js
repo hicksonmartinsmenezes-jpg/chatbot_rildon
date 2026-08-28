@@ -576,10 +576,17 @@ const ROWS_POR_PAGINA_COMPLETO = 5;
 // mantém a separação visual clara entre sub-grupos mesmo sem o bloco de
 // cor cheio.
 const MARCA_HEADER_FONTE = 12;
-// Espaço entre o texto do cabeçalho e a divisória logo abaixo dele.
-const MARCA_HEADER_PAD_V = 4;
-// Respiro entre a divisória e a 1ª linha de cards do sub-grupo.
-const MARCA_HEADER_GAP = 8;
+// 2026-08-28 (3ª rodada, pedido "organize melhor os espaços entre os
+// cards"): a versão anterior tinha o respiro invertido — pouco espaço
+// SEPARANDO um sub-grupo do anterior (só o GAP normal de linha, 10pt) e
+// bastante espaço PRENDENDO o cabeçalho aos próprios cards (PAD_V+GAP
+// antigos, ~12pt combinados, sobrando uma faixa em branco logo abaixo do
+// texto desde que a divisória/hr foi removida). Invertido pra seguir o
+// princípio "mais perto do que rotula": bastante respiro ANTES de um
+// cabeçalho novo (separa do sub-grupo anterior), pouco respiro DEPOIS
+// (liga o cabeçalho às suas próprias cards).
+const MARCA_HEADER_GAP_ANTES = 18; // espaço extra antes de um cabeçalho de marca que não é o 1º da página
+const MARCA_HEADER_GAP_DEPOIS = 6; // espaço entre o texto do cabeçalho e a 1ª linha de cards do sub-grupo
 // Pedido do usuário (2026-08-28, follow-up "se caso uma peça aparecer
 // para ford e também kia, deixe os duplicados"): produto sem marca de
 // veículo identificável em aplicacaoOrganizada (campo vazio, ou nenhum
@@ -1555,21 +1562,52 @@ function _calcularLayoutConteudo(sequencia, geometria, alturaHeaderMarca) {
       if (pagina === -1) {
         novaPagina();
       }
-      if (linhaY + alturaHeaderMarca + MARCA_HEADER_GAP + cardHeight > areaFimY + 0.5) {
+      // 2026-08-28: espaço extra ANTES de um cabeçalho de marca que não é
+      // o 1º bloco da página (separa visualmente do sub-grupo anterior) —
+      // ver comentário em MARCA_HEADER_GAP_ANTES. Não entra quando o
+      // cabeçalho já é o topo da página (logo abaixo do título da Linha),
+      // pra não duplicar o respiro que TITULO_GAP_CARDS já garante ali.
+      const temConteudoAcima = linhaY > areaTopoY + 0.5;
+      const espacoAntes = temConteudoAcima ? MARCA_HEADER_GAP_ANTES : 0;
+      if (linhaY + espacoAntes + alturaHeaderMarca + MARCA_HEADER_GAP_DEPOIS + cardHeight > areaFimY + 0.5) {
         novaPagina();
+      } else {
+        linhaY += espacoAntes;
       }
       posicoes.push({ pagina, x: PAGE_MARGIN, y: linhaY });
-      linhaY += alturaHeaderMarca + MARCA_HEADER_GAP;
+      linhaY += alturaHeaderMarca + MARCA_HEADER_GAP_DEPOIS;
     } else {
       // "card" (produto real) e "cardVazio" (placeholder de preenchimento,
       // ver _construirSequenciaConteudo) usam a MESMA largura fixa da
       // geometria — só a largura da COLUNA muda entre eles (nenhuma, o
       // grid inteiro é sempre COLS_COMPLETO colunas iguais).
-      if (bloco.colIndex === 0 && (pagina === -1 || linhaY + cardHeight > areaFimY + 0.5)) {
-        novaPagina();
+      //
+      // 2026-08-28 (pedido "repita a subcategoria para evitar se
+      // perder"): uma quebra de página no meio de um sub-grupo só pode
+      // acontecer aqui (colIndex===0 de uma linha que não coube) — a 1ª
+      // linha de cada sub-grupo já é protegida junto com seu cabeçalho
+      // pela regra de órfão acima, então se ESTA quebra específica
+      // acontecer, é sempre uma CONTINUAÇÃO do sub-grupo (nunca a 1ª
+      // linha dele). Nesse caso, reserva espaço pra repetir o cabeçalho
+      // da marca no topo da nova página antes da linha de cards — sem
+      // isso o cliente vira a página e perde a referência de qual marca
+      // está olhando.
+      let headerRepetidoY = null;
+      if (bloco.colIndex === 0) {
+        if (pagina === -1) {
+          novaPagina();
+        } else if (linhaY + cardHeight > areaFimY + 0.5) {
+          novaPagina();
+          headerRepetidoY = linhaY;
+          linhaY += alturaHeaderMarca + MARCA_HEADER_GAP_DEPOIS;
+        }
       }
       const x = PAGE_MARGIN + bloco.colIndex * (cardWidth + GAP);
-      posicoes.push({ pagina, x, y: linhaY });
+      posicoes.push({
+        pagina, x, y: linhaY,
+        headerRepetidoY,
+        headerRepetidoMarca: headerRepetidoY !== null ? bloco.marca : null,
+      });
       if (bloco.colIndex === bloco.colsLinha - 1) {
         linhaY += cardHeight + GAP;
       }
@@ -1579,15 +1617,16 @@ function _calcularLayoutConteudo(sequencia, geometria, alturaHeaderMarca) {
   return { posicoes, totalPaginas: pagina + 1 };
 }
 
-// Nome da marca de veículo centralizado, cor/fonte do título de Linha,
-// com uma divisória fina logo abaixo — ver comentário em MARCA_HEADER_FONTE
-// sobre a troca da faixa azul sólida por este estilo. `_alturaCabecalhoMarca`
-// calcula a altura fixa (linha de texto + respiro até a divisória) UMA
-// vez, reaproveitada tanto no cálculo de layout quanto no desenho de
-// verdade — mesmo padrão de _alturaSelo logo acima.
+// Nome da marca de veículo centralizado, cor/fonte do título de Linha —
+// ver comentário em MARCA_HEADER_FONTE sobre a troca da faixa azul sólida
+// por este estilo (a divisória/hr que existia abaixo foi removida depois,
+// ver _desenharCabecalhoMarca). `_alturaCabecalhoMarca` calcula a altura
+// fixa (só a linha de texto, no fontSize do cabeçalho) UMA vez,
+// reaproveitada tanto no cálculo de layout quanto no desenho de verdade —
+// mesmo padrão de _alturaSelo logo acima.
 function _alturaCabecalhoMarca(doc) {
   doc.font(TITULO_FONTE).fontSize(MARCA_HEADER_FONTE);
-  return doc.currentLineHeight() + MARCA_HEADER_PAD_V;
+  return doc.currentLineHeight();
 }
 
 function _desenharCabecalhoMarca(doc, marca, x, y, largura, altura) {
@@ -1898,14 +1937,25 @@ function gerarPdfCatalogoCompleto(produtos, fabricante, destino) {
 
     if (bloco.tipo === "cabecalhoMarca") {
       _desenharCabecalhoMarca(doc, bloco.marca, pos.x, pos.y, larguraUtilCompleto, alturaHeaderMarca);
-    } else if (bloco.tipo === "cardVazio") {
-      _desenharCardVazio(doc, pos.x, pos.y, geometriaCompleto.cardWidth, geometriaCompleto.cardHeight);
     } else {
-      _desenharCard(
-        doc, bloco.produto, pos.x, pos.y,
-        geometriaCompleto.cardWidth, geometriaCompleto.cardHeight,
-        geometriaCompleto.photoBoxWidth, geometriaCompleto.photoBoxHeight, true, bloco.marca
-      );
+      // 2026-08-28: quando uma quebra de página acontece NO MEIO de um
+      // sub-grupo (não na 1ª linha dele, ver comentário em
+      // _calcularLayoutConteudo), `pos.headerRepetidoMarca` vem
+      // preenchido — repete o cabeçalho da marca no topo da página nova
+      // antes de desenhar este card, pra o cliente não perder a
+      // referência de qual marca está olhando.
+      if (pos.headerRepetidoMarca) {
+        _desenharCabecalhoMarca(doc, pos.headerRepetidoMarca, PAGE_MARGIN, pos.headerRepetidoY, larguraUtilCompleto, alturaHeaderMarca);
+      }
+      if (bloco.tipo === "cardVazio") {
+        _desenharCardVazio(doc, pos.x, pos.y, geometriaCompleto.cardWidth, geometriaCompleto.cardHeight);
+      } else {
+        _desenharCard(
+          doc, bloco.produto, pos.x, pos.y,
+          geometriaCompleto.cardWidth, geometriaCompleto.cardHeight,
+          geometriaCompleto.photoBoxWidth, geometriaCompleto.photoBoxHeight, true, bloco.marca
+        );
+      }
     }
   });
 

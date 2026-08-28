@@ -1475,9 +1475,25 @@ function _construirSequenciaConteudo(grupos) {
     primeiroIndicePorGrupo.push(sequencia.length);
     _agruparPorMarca(itens).forEach(({ marca, produtos }) => {
       sequencia.push({ tipo: "cabecalhoMarca", linha, marca });
-      produtos.forEach((produto) => {
-        sequencia.push({ tipo: "card", linha, marca, produto });
-      });
+      // 2026-08-28: pedido do usuário "faça como antes, complete os cards
+      // por mais que só tenham poucos produtos" — antes, um sub-grupo com
+      // menos produtos que COLS_COMPLETO deixava colunas vazias do lado
+      // (ex. 2 cards de 4 colunas, 2 colunas em branco). Em vez de usar
+      // sempre COLS_COMPLETO colunas de largura fixa, cada LEVA de até
+      // COLS_COMPLETO produtos vira sua própria "linha da grade" com o
+      // número de colunas = quantos produtos ela realmente tem
+      // (`colsLinha`) — a leva final (ou única, se o sub-grupo inteiro
+      // for menor que COLS_COMPLETO) usa menos colunas e cada card fica
+      // mais largo, esticando pra preencher a largura toda sem sobrar
+      // buraco. `colIndex`/`colsLinha` são usados por
+      // _calcularLayoutConteudo pra calcular a largura de cada card por
+      // linha da grade, em vez de uma largura global fixa.
+      for (let inicio = 0; inicio < produtos.length; inicio += COLS_COMPLETO) {
+        const leva = produtos.slice(inicio, inicio + COLS_COMPLETO);
+        leva.forEach((produto, colIndex) => {
+          sequencia.push({ tipo: "card", linha, marca, produto, colIndex, colsLinha: leva.length });
+        });
+      }
     });
   });
   return { sequencia, primeiroIndicePorGrupo };
@@ -1497,26 +1513,27 @@ function _construirSequenciaConteudo(grupos) {
 // disputam o mesmo espaço, em vez de só um tipo uniforme.
 //
 // Regras de quebra:
-// - Cabeçalho de marca sempre começa numa linha nova (col=0) — se a
-//   marca anterior parou no meio de uma linha da grade, os slots que
-//   sobraram ficam em branco (perda pequena, só nas transições de marca —
-//   bem menor que o vão de página inteira que a paginação contínua por
-//   Linha já evita, ver comentário 2026-08-27 em paginaInicialPorGrupo).
+// - Cabeçalho de marca sempre começa numa linha nova da grade — mas
+//   desde a mudança 2026-08-28 (ver _construirSequenciaConteudo), os
+//   cards de um sub-grupo SEMPRE completam a própria linha (a leva final
+//   estica pra usar exatamente `colsLinha` colunas), então quando um
+//   cabeçalho de marca é desenhado, a linha anterior de cards (se
+//   houver) já terminou "cheia" sozinha — não sobra coluna vazia nem
+//   precisa de flush de linha incompleta.
 // - Controle de "órfão": um cabeçalho de marca só entra numa página se
 //   pelo menos 1 linha de cards do sub-grupo couber JUNTO nela — senão os
 //   dois (cabeçalho + 1ª linha de cards) vão pra página seguinte, pra não
 //   deixar um cabeçalho sozinho colado no rodapé sem nenhum produto
 //   embaixo até a próxima página.
 function _calcularLayoutConteudo(sequencia, geometria, alturaHeaderMarca) {
-  const { cardWidth, cardHeight, areaTopoY, areaFimY } = geometria;
+  const { cardHeight, areaTopoY, areaFimY } = geometria;
+  const larguraUtil = A4_LARGURA - PAGE_MARGIN * 2;
   const posicoes = [];
   let pagina = -1;
-  let col = 0;
   let linhaY = areaTopoY;
 
   function novaPagina() {
     pagina += 1;
-    col = 0;
     linhaY = areaTopoY;
   }
 
@@ -1524,9 +1541,6 @@ function _calcularLayoutConteudo(sequencia, geometria, alturaHeaderMarca) {
     if (bloco.tipo === "cabecalhoMarca") {
       if (pagina === -1) {
         novaPagina();
-      } else if (col !== 0) {
-        col = 0;
-        linhaY += cardHeight + GAP;
       }
       if (linhaY + alturaHeaderMarca + MARCA_HEADER_GAP + cardHeight > areaFimY + 0.5) {
         novaPagina();
@@ -1534,13 +1548,18 @@ function _calcularLayoutConteudo(sequencia, geometria, alturaHeaderMarca) {
       posicoes.push({ pagina, x: PAGE_MARGIN, y: linhaY });
       linhaY += alturaHeaderMarca + MARCA_HEADER_GAP;
     } else {
-      if (pagina === -1 || (col === 0 && linhaY + cardHeight > areaFimY + 0.5)) {
+      // 2026-08-28: largura do card não é mais um valor global fixo —
+      // cada linha da grade usa `bloco.colsLinha` colunas (ver
+      // _construirSequenciaConteudo), então a largura de CADA card é
+      // recalculada por linha: quanto menos cards na leva, mais larga
+      // cada uma fica, preenchendo a largura útil da página inteira.
+      const cardWidthLinha = (larguraUtil - (bloco.colsLinha - 1) * GAP) / bloco.colsLinha;
+      if (bloco.colIndex === 0 && (pagina === -1 || linhaY + cardHeight > areaFimY + 0.5)) {
         novaPagina();
       }
-      posicoes.push({ pagina, x: PAGE_MARGIN + col * (cardWidth + GAP), y: linhaY });
-      col += 1;
-      if (col >= COLS_COMPLETO) {
-        col = 0;
+      const x = PAGE_MARGIN + bloco.colIndex * (cardWidthLinha + GAP);
+      posicoes.push({ pagina, x, y: linhaY, cardWidth: cardWidthLinha });
+      if (bloco.colIndex === bloco.colsLinha - 1) {
         linhaY += cardHeight + GAP;
       }
     }
@@ -1869,10 +1888,18 @@ function gerarPdfCatalogoCompleto(produtos, fabricante, destino) {
     if (bloco.tipo === "cabecalhoMarca") {
       _desenharCabecalhoMarca(doc, bloco.marca, pos.x, pos.y, larguraUtilCompleto, alturaHeaderMarca);
     } else {
+      // 2026-08-28: largura do card vem de pos.cardWidth (calculada por
+      // linha da grade em _calcularLayoutConteudo, ver comentário lá) em
+      // vez do geometriaCompleto.cardWidth global — sub-grupo com menos
+      // produtos que COLS_COMPLETO gera cards mais largos, preenchendo a
+      // linha inteira. Só a LARGURA muda; altura da foto/card continuam
+      // as mesmas de sempre (geometriaCompleto), senão o texto fixo
+      // (selo, resumo, aplicação) não bateria mais com a altura do card.
+      const photoBoxWidthLinha = pos.cardWidth - PAD_CARD * 2;
       _desenharCard(
         doc, bloco.produto, pos.x, pos.y,
-        geometriaCompleto.cardWidth, geometriaCompleto.cardHeight,
-        geometriaCompleto.photoBoxWidth, geometriaCompleto.photoBoxHeight, true, bloco.marca
+        pos.cardWidth, geometriaCompleto.cardHeight,
+        photoBoxWidthLinha, geometriaCompleto.photoBoxHeight, true, bloco.marca
       );
     }
   });

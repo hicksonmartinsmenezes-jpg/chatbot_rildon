@@ -272,33 +272,14 @@ const CABECALHO_IMG_X_DESENHO = -CABECALHO_CONTEUDO_ESQUERDA_FRACAO * CABECALHO_
 // bleed), sem esticar/espremer o desenho (pedido do usuário original:
 // "sem alterações" — o zoom aplicado é uniforme nos dois eixos, então a
 // proporção da arte continua intacta). Usada só pra desenhar a imagem em
-// si (ver _desenharCabecalho) — a arte é sempre desenhada NESSE tamanho
-// cheio, e o que efetivamente aparece na página é recortado por CLIP até
-// CABECALHO_ALTURA_VISIVEL (abaixo), não mais reduzindo a altura de
-// desenho em si.
+// si (ver _desenharCabecalho) — todo o resto do layout usa HEADER_HEIGHT
+// (abaixo), que é a altura VISÍVEL na página (menor, por causa da
+// sangria).
 const CABECALHO_IMG_ALTURA_REAL = CABECALHO_IMG_LARGURA_DESENHO / CABECALHO_IMG_RATIO;
-// 2026-08-28 (mesmo dia, pedido seguinte ao "tope no canto direito"):
-// "suba um pouco mais o cabeçalho" — com CABECALHO_SANGRIA_TOPO=0 (ver
-// comentário acima, precisa ficar 0 pra ponta da cunha continuar
-// encostando na borda direita), a arte passou a ocupar a altura REAL
-// inteira (~122.9pt) — grande demais depois da correção. Cortar de novo
-// pelo TOPO reabriria o problema da ponta cortada (a cunha é mais larga
-// exatamente no topo do arquivo — cortar ali é cortar a parte mais
-// larga). Solução: corta por BAIXO em vez de por cima — a arte continua
-// desenhada no tamanho/posição cheios (preservando o topo, onde a ponta
-// bate a borda), só que um CLIP (doc.save/rect/clip, ver
-// _desenharCabecalho) esconde tudo que passa de CABECALHO_ALTURA_VISIVEL
-// a partir do topo. Como a cunha ESTREITA indo pra baixo (documentado
-// acima), a parte cortada é só a ponta fina — nada de largura relevante
-// se perde. Valor escolhido pra chegar perto da altura confortável que o
-// cabeçalho já teve antes desta rodada de ajustes finos (~89pt, ver
-// histórico de CABECALHO_SANGRIA_TOPO=32 acima).
-const CABECALHO_ALTURA_VISIVEL = 90;
-// Altura visível do cabeçalho na página — o que título/cards usam pra
-// saber onde a área de conteúdo começa (ver AREA_TOPO_Y). Não é mais
-// "altura real menos sangria" (sangria do topo é 0 agora) — é o corte de
-// baixo explicado acima.
-const HEADER_HEIGHT = CABECALHO_ALTURA_VISIVEL;
+// Altura visível do cabeçalho na página — desconta a sangria (a imagem é
+// desenhada em y negativo, então essa fatia do topo fica fora da página,
+// invisível). Título, cards etc. usam ESTA altura, não a real.
+const HEADER_HEIGHT = CABECALHO_IMG_ALTURA_REAL - CABECALHO_SANGRIA_TOPO;
 // Calculada a partir da proporção real da imagem — largura sempre = página
 // inteira, então a altura sai daqui, sem esticar/espremer o desenho.
 const FOOTER_HEIGHT = 595.28 / RODAPE_IMG_RATIO;
@@ -1358,19 +1339,7 @@ function _desenharCabecalho(doc, tituloBusca) {
   // a imagem começa um pouco antes de x=0 e termina um pouco depois de
   // x=w, de propósito, pra empurrar a margem branca real do arquivo pra
   // fora da página nos dois lados.
-  //
-  // 2026-08-28 (mesmo dia, pedido seguinte "suba um pouco mais o
-  // cabeçalho"): a arte é desenhada no tamanho REAL cheio (preserva o topo,
-  // onde a cunha é mais larga e bate a borda direita), mas um CLIP
-  // (doc.save/rect/clip) esconde tudo abaixo de CABECALHO_ALTURA_VISIVEL —
-  // corta a ponta fina de baixo da cunha em vez da parte larga de cima
-  // (ver comentário em CABECALHO_ALTURA_VISIVEL sobre por que não dá mais
-  // pra cortar por cima). doc.restore() depois tira o clip pro resto da
-  // página (título/cards) não ser afetado.
-  doc.save();
-  doc.rect(0, 0, w, CABECALHO_ALTURA_VISIVEL).clip();
   doc.image(CABECALHO_IMG, CABECALHO_IMG_X_DESENHO, -CABECALHO_SANGRIA_TOPO, { width: CABECALHO_IMG_LARGURA_DESENHO, height: CABECALHO_IMG_ALTURA_REAL });
-  doc.restore();
 
   // Pedido do usuário (2026-07-30): removido "RILDON PEÇAS" / "Catálogo
   // Expresso" do cabeçalho — a arte de fundo já carrega a identidade visual,
@@ -1701,12 +1670,8 @@ function _desenharCabecalhoIndice(doc) {
   // largura/altura/posição de _desenharCabecalho — mesma arte, mesmo zoom
   // de bleed horizontal (ver CABECALHO_ESCALA_BLEED), sem corte — só o
   // texto abaixo dela muda ("ÍNDICE" em vez do nome da busca, ver mais
-  // abaixo). Mesmo clip por baixo de _desenharCabecalho (ver
-  // CABECALHO_ALTURA_VISIVEL) — os dois cabeçalhos continuam idênticos.
-  doc.save();
-  doc.rect(0, 0, w, CABECALHO_ALTURA_VISIVEL).clip();
+  // abaixo).
   doc.image(CABECALHO_IMG, CABECALHO_IMG_X_DESENHO, -CABECALHO_SANGRIA_TOPO, { width: CABECALHO_IMG_LARGURA_DESENHO, height: CABECALHO_IMG_ALTURA_REAL });
-  doc.restore();
 
   const tituloTexto = "ÍNDICE";
   const tituloX = PAGE_MARGIN;

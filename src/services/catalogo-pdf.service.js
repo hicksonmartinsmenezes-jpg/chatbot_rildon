@@ -827,19 +827,16 @@ function _desenharCardVidro(doc, x, y, w, h) {
 }
 
 // Placeholder de "coluna vazia" no Catálogo Completo (pedido do usuário,
-// 2026-08-28: sub-grupo de marca com menos produtos que COLS_COMPLETO
-// não deve nem esticar os cards reais nem deixar espaço em branco sem
-// nada — as colunas que sobrarem na leva final recebem este card vazio).
-// Deliberadamente SEM a borda ciano/preta do card real (_desenharCardVidro)
-// — um traço cinza-claro tracejado, sem preenchimento, sem foto/selo/texto
-// — pra preencher visualmente a linha da grade sem parecer um produto de
-// verdade.
+// 2026-08-28: sub-grupo de marca com menos produtos que COLS_COMPLETO não
+// deve nem esticar os cards reais nem deixar espaço em branco sem nada —
+// as colunas que sobrarem na leva final recebem este card vazio).
+// 1ª versão usava um traço tracejado cinza-claro pra não parecer produto
+// de verdade; usuário pediu pra tirar o tracejado e usar "os cards vazios
+// mesmo" — ou seja, a MESMA moldura do card real (_desenharCardVidro:
+// fundo branco + borda ciano grossa + borda preta interna), só sem
+// foto/selo/texto dentro.
 function _desenharCardVazio(doc, x, y, w, h) {
-  doc.save();
-  doc.dash(4, { space: 3 });
-  doc.roundedRect(x, y, w, h, RAIO_CARD).lineWidth(1).strokeColor(LINHA_DIVISORIA, 1).stroke();
-  doc.restore();
-  doc.undash();
+  _desenharCardVidro(doc, x, y, w, h);
 }
 
 // Extraído de gerarPdfCatalogo (2026-08-26, Issue #21) pra ser reusado
@@ -1601,10 +1598,10 @@ function _desenharCabecalhoMarca(doc, marca, x, y, largura, altura) {
     lineBreak: false,
   });
 
-  const yDivisoria = y + altura;
-  doc.moveTo(x, yDivisoria).lineTo(x + largura, yDivisoria)
-    .lineWidth(0.9).strokeColor(LINHA_DIVISORIA, 0.8).stroke();
-
+  // 2026-08-28: pedido do usuário "retire esse hr abaixo da subcategoria"
+  // — a divisória fina que separava o cabeçalho de marca da 1ª linha de
+  // cards foi removida; `altura` continua reservando o mesmo respiro
+  // vertical (ver _alturaCabecalhoMarca), só não desenha mais o traço.
   doc.fillColor("#111827").font("Helvetica");
 }
 

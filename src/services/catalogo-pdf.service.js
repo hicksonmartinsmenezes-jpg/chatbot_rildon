@@ -1552,7 +1552,15 @@ function _calcularLayoutConteudo(sequencia, geometria, alturaHeaderMarca) {
   let pagina = -1;
   let linhaY = areaTopoY;
 
+  // 2026-08-28 (pedido "preencha com cards vazios embaixo"): guarda o Y
+  // final de CADA página assim que ela é abandonada (ver novaPagina) —
+  // usado depois do loop principal pra calcular quantas linhas de card
+  // vazio cabem no espaço que sobrou embaixo de cada página, não só na
+  // última linha de um sub-grupo (ver preenchimentoFinal mais abaixo).
+  const alturaFinalPorPagina = [];
+
   function novaPagina() {
+    if (pagina >= 0) alturaFinalPorPagina[pagina] = linhaY;
     pagina += 1;
     linhaY = areaTopoY;
   }
@@ -1614,7 +1622,32 @@ function _calcularLayoutConteudo(sequencia, geometria, alturaHeaderMarca) {
     }
   });
 
-  return { posicoes, totalPaginas: pagina + 1 };
+  // A última página não passa por novaPagina() de novo (não tem próximo
+  // bloco pra disparar a troca) — grava o Y final dela aqui, fora do loop.
+  if (pagina >= 0) alturaFinalPorPagina[pagina] = linhaY;
+
+  // 2026-08-28 (pedido "preencha com cards vazios embaixo"): pra cada
+  // página, se sobrou espaço suficiente pra pelo menos mais 1 linha
+  // inteira de cards depois do último conteúdo real (isso só acontece em
+  // duas situações — a ÚLTIMA página do documento, que simplesmente
+  // acaba o conteúdo antes de encher a grade, ou uma página no MEIO que
+  // perdeu a última linha pra regra de órfão do cabeçalho de marca),
+  // preenche com linhas inteiras de "cardVazio" até não caber mais
+  // nenhuma linha completa — mesmo placeholder já usado pra completar
+  // leva parcial (ver _desenharCardVazio), só que aqui cobrindo a página
+  // toda em vez de só uma leva.
+  const preenchimentoFinal = [];
+  alturaFinalPorPagina.forEach((yFinal, p) => {
+    let y = yFinal;
+    while (y + cardHeight <= areaFimY + 0.5) {
+      for (let col = 0; col < COLS_COMPLETO; col += 1) {
+        preenchimentoFinal.push({ pagina: p, x: PAGE_MARGIN + col * (cardWidth + GAP), y, cardWidth, cardHeight });
+      }
+      y += cardHeight + GAP;
+    }
+  });
+
+  return { posicoes, totalPaginas: pagina + 1, preenchimentoFinal };
 }
 
 // Nome da marca de veículo centralizado, cor/fonte do título de Linha —
@@ -1880,7 +1913,7 @@ function gerarPdfCatalogoCompleto(produtos, fabricante, destino) {
   const alturaHeaderMarca = _alturaCabecalhoMarca(doc);
   const { sequencia, primeiroIndicePorGrupo } = _construirSequenciaConteudo(grupos);
   const geometriaCompleto = _geometriaGrid(doc, COLS_COMPLETO, ROWS_POR_PAGINA_COMPLETO, true);
-  const { posicoes } = _calcularLayoutConteudo(sequencia, geometriaCompleto, alturaHeaderMarca);
+  const { posicoes, preenchimentoFinal } = _calcularLayoutConteudo(sequencia, geometriaCompleto, alturaHeaderMarca);
   const paginaInicialPorGrupo = primeiroIndicePorGrupo.map(
     (idx) => paginasIndice + 1 + posicoes[idx].pagina
   );
@@ -1925,9 +1958,22 @@ function gerarPdfCatalogoCompleto(produtos, fabricante, destino) {
   const larguraUtilCompleto = A4_LARGURA - PAGE_MARGIN * 2;
   let paginaLocalAtual = -1;
 
+  // 2026-08-28 (pedido "preencha com cards vazios embaixo"): desenha as
+  // linhas de preenchimento de UMA página (calculadas em
+  // _calcularLayoutConteudo) — chamada logo ANTES de sair dela de vez
+  // (seja trocando pra próxima página, seja no fim do documento), porque
+  // é o último momento em que ela ainda é a página ativa no pdfkit (sem
+  // isso precisaria de doc.switchToPage, mais complicado sem necessidade).
+  function _desenharPreenchimentoDaPagina(numeroPagina) {
+    preenchimentoFinal
+      .filter((p) => p.pagina === numeroPagina)
+      .forEach((p) => _desenharCardVazio(doc, p.x, p.y, p.cardWidth, p.cardHeight));
+  }
+
   sequencia.forEach((bloco, i) => {
     const pos = posicoes[i];
     if (pos.pagina !== paginaLocalAtual) {
+      if (paginaLocalAtual !== -1) _desenharPreenchimentoDaPagina(paginaLocalAtual);
       paginaLocalAtual = pos.pagina;
       doc.addPage();
       pagina += 1;
@@ -1958,6 +2004,10 @@ function gerarPdfCatalogoCompleto(produtos, fabricante, destino) {
       }
     }
   });
+
+  // Preenchimento da ÚLTIMA página — não passa pela troca de página do
+  // loop acima (não tem próximo bloco depois dela), desenha aqui.
+  if (paginaLocalAtual !== -1) _desenharPreenchimentoDaPagina(paginaLocalAtual);
 
   doc.end();
 }

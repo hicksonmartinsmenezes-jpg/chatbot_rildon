@@ -1034,29 +1034,33 @@ function _normalizarMarcasTexto(texto) {
     .replace(/volkswagen/gi, "VW");
 }
 
-// `marcaPrioritaria` (2026-08-28, sub-agrupamento por marca de veículo):
-// quando o card é desenhado DENTRO de um sub-grupo de marca (ver
-// _desenharCabecalhoMarca/gerarPdfCatalogoCompleto), um produto que atende
-// várias marcas (ex. "CASE: ...; AGRALE: ...; ATLAS-COPCO: ...") é
-// desenhado 3 vezes — uma sob cada cabeçalho de marca. Sem isso, as 3
-// cópias mostrariam sempre o MESMO trecho (o 1º da lista, ex. sempre
-// "CASE: ..."), inclusive embaixo do cabeçalho "AGRALE" — confuso pra
-// quem está folheando aquela seção específica. Reordena os segmentos
-// pra que o da marca da seção atual apareça PRIMEIRO (mais chance de
-// sobreviver ao truncamento por altura), sem esconder os outros — só
-// muda a ordem, não remove nenhum segmento.
+// `marcaPrioritaria` (2026-08-28, sub-agrupamento por marca de veículo —
+// 2ª versão, pedido do usuário "se uma peça pode ser aplicada em Fiat e
+// Ford [...] Subcategoria Fiat só colocaremos o que tem específico pra
+// ela na peça e não todos os outros assim como ford"): quando o card é
+// desenhado DENTRO de um sub-grupo de marca (ver
+// _desenharCabecalhoMarca/gerarPdfCatalogoCompleto), um produto que
+// atende várias marcas (ex. "FIAT: ...; FORD: ...") é desenhado uma vez
+// por marca — sob "FIAT" mostra SÓ o trecho da FIAT, sob "FORD" mostra SÓ
+// o trecho da FORD, os outros segmentos são descartados nessa cópia (não
+// só reordenados pra trás — removidos mesmo, já que cada seção deve
+// listar apenas a aplicação específica dela). Se por algum motivo nenhum
+// segmento bater com a marca-alvo (não deveria acontecer, já que
+// _agruparPorMarca só duplica o produto pras marcas que ele realmente
+// cita), mantém o texto original inteiro como rede de segurança em vez de
+// desenhar um card vazio.
 function _desenharAplicacao(doc, textoOriginal, x, y, largura, altura, marcaPrioritaria) {
   let texto = _normalizarMarcasTexto(textoOriginal);
   if (marcaPrioritaria && marcaPrioritaria !== MARCA_OUTRAS) {
     const alvo = marcaPrioritaria.toUpperCase();
     const partes = texto.split(/;\s*/).filter(Boolean);
-    const comAlvoPrimeiro = [...partes].sort((a, b) => {
-      const aEhAlvo = (a.match(/^([^:]+):/)?.[1].trim().toUpperCase() ?? "") === alvo;
-      const bEhAlvo = (b.match(/^([^:]+):/)?.[1].trim().toUpperCase() ?? "") === alvo;
-      if (aEhAlvo === bEhAlvo) return 0;
-      return aEhAlvo ? -1 : 1;
+    const apenasAlvo = partes.filter((p) => {
+      const marca = p.match(/^([^:]+):/)?.[1]?.trim().toUpperCase() ?? "";
+      return marca === alvo;
     });
-    texto = comAlvoPrimeiro.join("; ");
+    if (apenasAlvo.length > 0) {
+      texto = apenasAlvo.join("; ");
+    }
   }
 
   doc.font(QUICKSAND_MEDIUM).fontSize(APLICACAO_FONTE);

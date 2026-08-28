@@ -937,49 +937,88 @@ function _desenharFotoAjustada(doc, buffer, mimetype, x, y, boxWidth, boxHeight)
 
 // 2026-08-28: pedido do usuário "na aplicação sempre que couber inteiro
 // padronize ponto final no final do texto e as marcas deixe em negrito,
-// padronize Mercedes Benz como MB" — três ajustes no mesmo texto:
-// (1) "MERCEDES-BENZ"/"MERCEDES BENZ"/o typo "MERCEDES BENS" (variante já
-// vista em dado real do X2, ver memória do agente sobre o cachimbo
-// "Mercedes Bens") viram "MB" sempre — é padronização de conteúdo, roda
-// incondicionalmente, não só quando sobra espaço.
-// (2) ponto final só quando o texto INTEIRO cabe na área reservada
-// (mesma lógica já usada na linha de resumo/descrição — texto cortado
-// pelo "..." do ellipsis não ganha ponto, o "..." já sinaliza corte).
-// (3) negrito nas MARCAS (ex. "FORD", "MB") — o texto vem formatado como
-// "MARCA: modelos; OUTRA MARCA: modelos" (ver PROMPT_APLICACAO_SISTEMA em
-// ai.service.js). Negrito seletivo só é possível com o modo "continued"
-// do pdfkit (testado à parte, ver protótipo) — que NÃO tem corte
-// automático por altura feito o `ellipsis`, por isso só entra nesse
-// caminho quando já sabemos que o texto INTEIRO cabe (mesma medição do
-// ponto final acima). Se o formato não bater ("MARCA: ...") ou não
-// couber inteiro, cai no desenho antigo — texto corrido, sem negrito,
-// cortado com "..." se precisar — nunca quebra a geração do PDF.
+// padronize Mercedes Benz como MB" — e, no mesmo dia, follow-up "volkswagen
+// é a mesma coisa que Vw, padronize os em negrito. ainda vejo muitos
+// fabricantes sem negrito": a 1ª versão só aplicava negrito quando o texto
+// INTEIRO cabia na área (mesma trava do ponto final), por isso a maioria
+// dos cards — que têm lista de modelos longa e precisam de corte — ficava
+// sem negrito nenhum. Reescrito pra desacoplar as duas regras:
+// (1) "MERCEDES-BENZ"/"MERCEDES BENZ"/typo "MERCEDES BENS" -> "MB", e
+// "VOLKSWAGEN" (qualquer grafia/caixa) -> "VW" — padronização de
+// conteúdo, roda incondicionalmente, não depende de caber ou não.
+// (2) ponto final SÓ quando o texto inteiro cabe (mesma lógica da linha
+// de resumo) — texto cortado não ganha ponto, o "..." já sinaliza corte.
+// (3) negrito nas MARCAS (ex. "FORD", "MB", "VW") — SEMPRE que o formato
+// bater "MARCA: modelos; OUTRA: modelos" (ver PROMPT_APLICACAO_SISTEMA em
+// ai.service.js), esteja o texto inteiro ou truncado. Como o modo
+// "continued" do pdfkit (negrito seletivo) não tem corte automático por
+// altura como o `ellipsis`, o truncamento agora é feito manualmente em
+// _truncarParaAltura() antes de desenhar, e o desenho fica dentro de um
+// clip (doc.rect().clip()) como cinto de segurança — a medição usa a
+// fonte regular pro texto inteiro, mas a marca desenha em negrito (um
+// pouco mais larga); a diferença é mínima já que a marca é a menor parte
+// do texto, mas o clip garante que nenhum estouro vaze pro card vizinho.
+// Só cai no desenho antigo (corrido, sem negrito, ellipsis nativo) se o
+// texto não bater no formato "MARCA: ..." em nenhum trecho — dado
+// legado/malformado, não deveria acontecer com o prompt atual.
+function _truncarParaAltura(doc, texto, largura, altura) {
+  let lo = 0;
+  let hi = texto.length;
+  while (lo < hi) {
+    const meio = Math.ceil((lo + hi) / 2);
+    const candidato = `${texto.slice(0, meio).trimEnd()}...`;
+    if (doc.heightOfString(candidato, { width: largura }) <= altura + 0.5) {
+      lo = meio;
+    } else {
+      hi = meio - 1;
+    }
+  }
+  return lo > 0 ? `${texto.slice(0, lo).trimEnd()}...` : "...";
+}
+
 function _desenharAplicacao(doc, textoOriginal, x, y, largura, altura) {
-  const texto = textoOriginal.replace(/mercedes[-\s]*ben[zs]/gi, "MB");
-  const textoComPonto = /[.!?…]$/.test(texto) ? texto : `${texto}.`;
+  const texto = textoOriginal
+    .replace(/mercedes[-\s]*ben[zs]/gi, "MB")
+    .replace(/volkswagen/gi, "VW");
 
   doc.font(QUICKSAND_MEDIUM).fontSize(APLICACAO_FONTE);
-  const coubeInteira = doc.heightOfString(textoComPonto, { width: largura }) <= altura + 0.5;
-  const partes = coubeInteira ? textoComPonto.split(/;\s*/).filter(Boolean) : [];
-  const todasComMarca = partes.length > 0 && partes.every((p) => /^[^:]+:\s*.+$/s.test(p));
+  const coubeInteira = doc.heightOfString(texto, { width: largura }) <= altura + 0.5;
+  const textoFinal = coubeInteira
+    ? (/[.!?…]$/.test(texto) ? texto : `${texto}.`)
+    : _truncarParaAltura(doc, texto, largura, altura);
 
-  if (coubeInteira && todasComMarca) {
-    doc.x = x;
-    doc.y = y;
-    doc.fillColor(APLICACAO_COR);
-    partes.forEach((parte, i) => {
-      const ultima = i === partes.length - 1;
-      const [, marca, resto] = parte.match(/^([^:]+):\s*(.*)$/s);
+  const partes = textoFinal.split(/;\s*/).filter(Boolean);
+  const temFormatoMarca = partes.some((p) => /^[^:]+:\s*.+$/s.test(p));
+
+  if (!temFormatoMarca) {
+    doc.fillColor(APLICACAO_COR).font(QUICKSAND_MEDIUM).fontSize(APLICACAO_FONTE)
+      .text(texto, x, y, { width: largura, height: altura, ellipsis: true, lineGap: 0.5 });
+    return;
+  }
+
+  doc.save();
+  doc.rect(x, y, largura, altura).clip();
+  doc.x = x;
+  doc.y = y;
+  doc.fillColor(APLICACAO_COR);
+  partes.forEach((parte, i) => {
+    const ultima = i === partes.length - 1;
+    const match = parte.match(/^([^:]+):\s*(.*)$/s);
+    if (match) {
+      const [, marca, resto] = match;
       doc.font(QUICKSAND_BOLD).fontSize(APLICACAO_FONTE)
         .text(marca, { continued: true, width: largura, lineGap: 0.5 });
       doc.font(QUICKSAND_MEDIUM).fontSize(APLICACAO_FONTE)
         .text(`: ${resto}${ultima ? "" : "; "}`, { continued: !ultima, width: largura, lineGap: 0.5 });
-    });
-    return;
-  }
-
-  doc.fillColor(APLICACAO_COR).font(QUICKSAND_MEDIUM).fontSize(APLICACAO_FONTE)
-    .text(texto, x, y, { width: largura, height: altura, ellipsis: true, lineGap: 0.5 });
+    } else {
+      // fragmento sem "MARCA:" completo — sobra de um corte bem no meio do
+      // nome da marca (raro); desenha como está, sem negrito, em vez de
+      // adivinhar onde a marca terminaria.
+      doc.font(QUICKSAND_MEDIUM).fontSize(APLICACAO_FONTE)
+        .text(`${parte}${ultima ? "" : "; "}`, { continued: !ultima, width: largura, lineGap: 0.5 });
+    }
+  });
+  doc.restore();
 }
 
 function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth, photoBoxHeight) {

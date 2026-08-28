@@ -205,6 +205,28 @@ const CABECALHO_IMG_RATIO = 719 / 146;
 // usuário achar o cabeçalho grande demais depois, dá pra revisitar.
 const CABECALHO_SANGRIA_TOPO = 0;
 
+// 2026-08-28 (mesmo dia, pedido seguinte): "cole mais o cabeçalho na
+// esquerda e direita" — medido pixel a pixel no MESMO arquivo (719×146,
+// upscalado 8x = 5752×1168): na borda de cima da arte (onde a cunha é mais
+// larga), o desenho de verdade começa em x=44 e termina em x=5702 de
+// 5752px — sobra uma margem branca REAL de ~0.76% da largura à esquerda e
+// ~0.87% à direita que nunca fez parte do desenho (mesma classe de
+// problema do vão vertical acima, só que nas laterais). Fix: a arte é
+// desenhada num ZOOM leve e uniforme — mesma escala nos dois eixos, não
+// distorce a cunha — grande o bastante pra empurrar as duas margens
+// brancas pra fora da página (bleed horizontal), então a parte colorida
+// encosta nas duas bordas sem sobrar vão branco. É a mesma técnica que já
+// tinha sido usada uma vez só na página do índice (INDICE_CABECALHO_ESCALA,
+// removida no commit anterior) — mas agora a escala vem de medição exata
+// (não um valor arbitrário como o 1.08 antigo) e é aplicada nas DUAS
+// funções que desenham cabeçalho (_desenharCabecalho e
+// _desenharCabecalhoIndice), então elas continuam idênticas uma à outra —
+// não reabre a inconsistência "padronize o cabeçalho" que o usuário pediu
+// pra tirar antes.
+const CABECALHO_CONTEUDO_ESQUERDA_FRACAO = 44 / 5752;
+const CABECALHO_CONTEUDO_DIREITA_FRACAO = 5702 / 5752;
+const CABECALHO_ESCALA_BLEED = 1 / (CABECALHO_CONTEUDO_DIREITA_FRACAO - CABECALHO_CONTEUDO_ESQUERDA_FRACAO);
+
 // Centro do triângulo branco da arte (pedido do usuário, 2026-07-28: número
 // da página centralizado ali) — medido pixel a pixel na imagem real
 // (1372×156): o triângulo tem o ápice perto de x≈1065/y≈0 e alarga pra
@@ -226,13 +248,21 @@ const PAGE_MARGIN = 24;
 // e um modo mais agressivo (lista sem foto).
 const COLS = 5;
 const GAP = 10;
+// Largura de desenho da imagem do cabeçalho — página inteira (595.28pt em
+// A4) MULTIPLICADA pelo zoom de bleed (ver CABECALHO_ESCALA_BLEED acima),
+// e o X de desenho correspondente (negativo — a imagem começa um pouco
+// antes da borda esquerda da página, de propósito, é o bleed).
+const CABECALHO_IMG_LARGURA_DESENHO = 595.28 * CABECALHO_ESCALA_BLEED;
+const CABECALHO_IMG_X_DESENHO = -CABECALHO_CONTEUDO_ESQUERDA_FRACAO * CABECALHO_IMG_LARGURA_DESENHO;
 // Altura REAL/undistorcida da imagem do cabeçalho — calculada a partir da
-// proporção verdadeira do arquivo, largura sempre = página inteira
-// (595.28pt em A4), sem esticar/espremer o desenho (pedido do usuário:
-// "sem alterações"). Usada só pra desenhar a imagem em si (ver
-// _desenharCabecalho) — todo o resto do layout usa HEADER_HEIGHT (abaixo),
-// que é a altura VISÍVEL na página (menor, por causa da sangria).
-const CABECALHO_IMG_ALTURA_REAL = 595.28 / CABECALHO_IMG_RATIO;
+// proporção verdadeira do arquivo e da largura de desenho acima (já com
+// bleed), sem esticar/espremer o desenho (pedido do usuário original:
+// "sem alterações" — o zoom aplicado é uniforme nos dois eixos, então a
+// proporção da arte continua intacta). Usada só pra desenhar a imagem em
+// si (ver _desenharCabecalho) — todo o resto do layout usa HEADER_HEIGHT
+// (abaixo), que é a altura VISÍVEL na página (menor, por causa da
+// sangria).
+const CABECALHO_IMG_ALTURA_REAL = CABECALHO_IMG_LARGURA_DESENHO / CABECALHO_IMG_RATIO;
 // Altura visível do cabeçalho na página — desconta a sangria (a imagem é
 // desenhada em y negativo, então essa fatia do topo fica fora da página,
 // invisível). Título, cards etc. usam ESTA altura, não a real.
@@ -980,7 +1010,13 @@ function _desenharCabecalho(doc, tituloBusca) {
   // distorcer um pixel, só desenhada um pouco pra cima da borda da página;
   // a fatia que passa de y=0 fica fora da página (invisível), então o
   // cabeçalho aparece mais baixo sem alterar o arquivo de verdade.
-  doc.image(CABECALHO_IMG, 0, -CABECALHO_SANGRIA_TOPO, { width: w, height: CABECALHO_IMG_ALTURA_REAL });
+  //
+  // 2026-08-28: X e largura de desenho agora usam o zoom de bleed
+  // horizontal (ver CABECALHO_ESCALA_BLEED/CABECALHO_IMG_X_DESENHO acima) —
+  // a imagem começa um pouco antes de x=0 e termina um pouco depois de
+  // x=w, de propósito, pra empurrar a margem branca real do arquivo pra
+  // fora da página nos dois lados.
+  doc.image(CABECALHO_IMG, CABECALHO_IMG_X_DESENHO, -CABECALHO_SANGRIA_TOPO, { width: CABECALHO_IMG_LARGURA_DESENHO, height: CABECALHO_IMG_ALTURA_REAL });
 
   // Pedido do usuário (2026-07-30): removido "RILDON PEÇAS" / "Catálogo
   // Expresso" do cabeçalho — a arte de fundo já carrega a identidade visual,
@@ -1087,10 +1123,11 @@ function _desenharCabecalhoIndice(doc) {
   // primeira pagina com o restante"): era desenhada AMPLIADA (zoom 1.08x +
   // corte simétrico nas laterais), ficando ligeiramente diferente do
   // cabeçalho das páginas de conteúdo. Agora usa exatamente a mesma
-  // largura/altura/posição de _desenharCabecalho — mesma arte, sem zoom,
-  // sem corte — só o texto abaixo dela muda ("ÍNDICE" em vez do nome da
-  // busca, ver mais abaixo).
-  doc.image(CABECALHO_IMG, 0, -CABECALHO_SANGRIA_TOPO, { width: w, height: CABECALHO_IMG_ALTURA_REAL });
+  // largura/altura/posição de _desenharCabecalho — mesma arte, mesmo zoom
+  // de bleed horizontal (ver CABECALHO_ESCALA_BLEED), sem corte — só o
+  // texto abaixo dela muda ("ÍNDICE" em vez do nome da busca, ver mais
+  // abaixo).
+  doc.image(CABECALHO_IMG, CABECALHO_IMG_X_DESENHO, -CABECALHO_SANGRIA_TOPO, { width: CABECALHO_IMG_LARGURA_DESENHO, height: CABECALHO_IMG_ALTURA_REAL });
 
   const tituloTexto = "ÍNDICE";
   const tituloX = PAGE_MARGIN;

@@ -562,18 +562,24 @@ const ROWS_POR_PAGINA_COMPLETO = 5;
 // Motor de partida / Agrale / Citroen / etc"): não é pra SUBSTITUIR o
 // agrupamento por Linha que já existe (Issue #21) — é pra ACRESCENTAR um
 // nível: dentro de cada Linha, os cards agora ficam sub-agrupados por
-// marca de veículo, com um cabeçalho inline (faixa azul) antes de cada
-// sub-grupo. Ver _agruparPorMarca/_extrairMarcas/_desenharCabecalhoMarca.
-// Estilo do cabeçalho de marca: reaproveita a cor/estilo do selo de
-// código (CAIXA_CODIGO_FUNDO/TEXTO) — mesma linguagem visual azul já usada
-// no catálogo, só numa faixa horizontal em vez de um selo pontual, pra não
-// competir com o título vermelho (VERMELHO_CATEGORIA) da Linha no topo da
-// página.
-const MARCA_HEADER_FONTE = 10;
-const MARCA_HEADER_PAD_V = 3;
-const MARCA_HEADER_PAD_H = 6;
-// Respiro entre a faixa de marca e a 1ª linha de cards do sub-grupo.
-const MARCA_HEADER_GAP = 6;
+// marca de veículo, com um cabeçalho inline antes de cada sub-grupo. Ver
+// _agruparPorMarca/_extrairMarcas/_desenharCabecalhoMarca.
+//
+// Estilo do cabeçalho de marca (2ª rodada, mesmo dia — pedido do usuário
+// "retire background azul da sub categoria e coloque a centralizada no
+// meio com a mesma cor da linha"): a 1ª versão usava uma faixa azul
+// sólida (mesma cor do selo de código); trocada por texto centralizado
+// SEM fundo, na mesma cor/fonte do título de Linha (VERMELHO_CATEGORIA +
+// TITULO_FONTE, com a mesma sombra de _textoComSombra) — só menor, pra
+// não competir em hierarquia com o título da página. Uma divisória fina
+// (LINHA_DIVISORIA, mesma cor usada no índice) desenhada logo abaixo
+// mantém a separação visual clara entre sub-grupos mesmo sem o bloco de
+// cor cheio.
+const MARCA_HEADER_FONTE = 12;
+// Espaço entre o texto do cabeçalho e a divisória logo abaixo dele.
+const MARCA_HEADER_PAD_V = 4;
+// Respiro entre a divisória e a 1ª linha de cards do sub-grupo.
+const MARCA_HEADER_GAP = 8;
 // Pedido do usuário (2026-08-28, follow-up "se caso uma peça aparecer
 // para ford e também kia, deixe os duplicados"): produto sem marca de
 // veículo identificável em aplicacaoOrganizada (campo vazio, ou nenhum
@@ -1172,32 +1178,59 @@ function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight
   // nunca truncar).
   const yResumo = yFoto + photoBoxHeight + GAP_FOTO_RESUMO;
   let resumo = `${produto.codigo} - ${_nomeExibicao(produto, true).toUpperCase()}`;
-  // 2026-08-28: pedido do usuário "sempre que o texto couber inteiro
-  // padronize ponto final" — só entra ponto quando o texto cabe INTEIRO
-  // na linha (não seria cortado pelo "..." do ellipsis); texto cortado já
-  // sinaliza continuação com "...", não faz sentido enfiar ponto ali.
-  // pdfkit não expõe se o ellipsis disparou, então mede a largura de
-  // verdade (doc.widthOfString, precisa fonte/tamanho já setados antes de
-  // medir) — mesma técnica já usada em _ajustarFonteSeloParaCaber.
-  doc.font(TITULO_FONTE).fontSize(RESUMO_FONTE);
-  if (!/[.!?…]$/.test(resumo)) {
-    const resumoComPonto = resumo + ".";
-    if (doc.widthOfString(resumoComPonto) <= larguraConteudo) {
-      resumo = resumoComPonto;
-    }
-  }
-  doc.fillColor("#111827").font(TITULO_FONTE).fontSize(RESUMO_FONTE)
-    .text(resumo, xConteudo, yResumo, {
-      width: larguraConteudo,
-      height: RESUMO_ALTURA,
-      ellipsis: true,
-      lineBreak: false,
-    });
 
-  // --- Aplicação (até 2 linhas, embaixo da linha de resumo) ---
   if (produto.aplicacaoOrganizada) {
+    // 2026-08-28: pedido do usuário "sempre que o texto couber inteiro
+    // padronize ponto final" — só entra ponto quando o texto cabe INTEIRO
+    // na linha (não seria cortado pelo "..." do ellipsis); texto cortado já
+    // sinaliza continuação com "...", não faz sentido enfiar ponto ali.
+    // pdfkit não expõe se o ellipsis disparou, então mede a largura de
+    // verdade (doc.widthOfString, precisa fonte/tamanho já setados antes de
+    // medir) — mesma técnica já usada em _ajustarFonteSeloParaCaber.
+    doc.font(TITULO_FONTE).fontSize(RESUMO_FONTE);
+    if (!/[.!?…]$/.test(resumo)) {
+      const resumoComPonto = resumo + ".";
+      if (doc.widthOfString(resumoComPonto) <= larguraConteudo) {
+        resumo = resumoComPonto;
+      }
+    }
+    doc.fillColor("#111827").font(TITULO_FONTE).fontSize(RESUMO_FONTE)
+      .text(resumo, xConteudo, yResumo, {
+        width: larguraConteudo,
+        height: RESUMO_ALTURA,
+        ellipsis: true,
+        lineBreak: false,
+      });
+
+    // --- Aplicação (até 2 linhas, embaixo da linha de resumo) ---
     const yAplicacao = yResumo + RESUMO_ALTURA + GAP_RESUMO_APLICACAO;
     _desenharAplicacao(doc, produto.aplicacaoOrganizada, xConteudo, yAplicacao, larguraConteudo, APLICACAO_ALTURA, marcaAtual);
+  } else {
+    // 2026-08-28: pedido do usuário "os que não tiverem aplicação deixe a
+    // descrição completa com uma quebra de linha" — produto sem
+    // aplicacaoOrganizada (grupo MARCA_OUTRAS) não tem o bloco de
+    // aplicação embaixo pra desenhar, então em vez de desperdiçar aquele
+    // espaço com o resumo cortado em 1 linha só, usa o espaço INTEIRO
+    // (resumo + respiro + aplicação somados) pra mostrar a descrição
+    // completa, podendo quebrar em várias linhas — só corta com "..." se
+    // realmente não couber nem assim (mesma lógica "cabe inteiro" de
+    // _desenharAplicacao, aqui via heightOfString em vez de widthOfString
+    // porque agora é um bloco multi-linha, não mais 1 linha só).
+    const alturaDescricaoCompleta = RESUMO_ALTURA + GAP_RESUMO_APLICACAO + APLICACAO_ALTURA;
+    doc.font(TITULO_FONTE).fontSize(RESUMO_FONTE);
+    if (!/[.!?…]$/.test(resumo)) {
+      const resumoComPonto = resumo + ".";
+      if (doc.heightOfString(resumoComPonto, { width: larguraConteudo }) <= alturaDescricaoCompleta + 0.5) {
+        resumo = resumoComPonto;
+      }
+    }
+    doc.fillColor("#111827").font(TITULO_FONTE).fontSize(RESUMO_FONTE)
+      .text(resumo, xConteudo, yResumo, {
+        width: larguraConteudo,
+        height: alturaDescricaoCompleta,
+        ellipsis: true,
+        lineGap: 0.5,
+      });
   }
 
   doc.font("Helvetica");
@@ -1512,24 +1545,29 @@ function _calcularLayoutConteudo(sequencia, geometria, alturaHeaderMarca) {
   return { posicoes, totalPaginas: pagina + 1 };
 }
 
-// Faixa horizontal com o nome da marca de veículo — mesma linguagem
-// visual do selo de código (fundo CAIXA_CODIGO_FUNDO, texto branco), só
-// como barra espalhada pela largura útil da página em vez de um selo
-// pontual sobre a foto. `_alturaCabecalhoMarca` calcula a altura fixa
-// (font+padding) UMA vez, reaproveitada tanto no cálculo de layout quanto
-// no desenho de verdade — mesmo padrão de _alturaSelo logo acima.
+// Nome da marca de veículo centralizado, cor/fonte do título de Linha,
+// com uma divisória fina logo abaixo — ver comentário em MARCA_HEADER_FONTE
+// sobre a troca da faixa azul sólida por este estilo. `_alturaCabecalhoMarca`
+// calcula a altura fixa (linha de texto + respiro até a divisória) UMA
+// vez, reaproveitada tanto no cálculo de layout quanto no desenho de
+// verdade — mesmo padrão de _alturaSelo logo acima.
 function _alturaCabecalhoMarca(doc) {
   doc.font(TITULO_FONTE).fontSize(MARCA_HEADER_FONTE);
-  return doc.currentLineHeight() + MARCA_HEADER_PAD_V * 2;
+  return doc.currentLineHeight() + MARCA_HEADER_PAD_V;
 }
 
 function _desenharCabecalhoMarca(doc, marca, x, y, largura, altura) {
-  doc.rect(x, y, largura, altura).fillColor(CAIXA_CODIGO_FUNDO).fill();
-  doc.fillColor(CAIXA_CODIGO_TEXTO).font(TITULO_FONTE).fontSize(MARCA_HEADER_FONTE)
-    .text(String(marca || "").toUpperCase(), x + MARCA_HEADER_PAD_H, y + MARCA_HEADER_PAD_V, {
-      width: largura - MARCA_HEADER_PAD_H * 2,
-      lineBreak: false,
-    });
+  doc.font(TITULO_FONTE).fontSize(MARCA_HEADER_FONTE);
+  _textoComSombra(doc, String(marca || "").toUpperCase(), x, y, VERMELHO_CATEGORIA, {
+    width: largura,
+    align: "center",
+    lineBreak: false,
+  });
+
+  const yDivisoria = y + altura;
+  doc.moveTo(x, yDivisoria).lineTo(x + largura, yDivisoria)
+    .lineWidth(0.9).strokeColor(LINHA_DIVISORIA, 0.8).stroke();
+
   doc.fillColor("#111827").font("Helvetica");
 }
 

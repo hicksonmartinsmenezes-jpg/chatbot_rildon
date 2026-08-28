@@ -440,11 +440,12 @@ const GAP_HEADER_FOTO = 6; // respiro entre o cabeçalho (selo+OEM) e a foto
 const RESUMO_FONTE = 5.5;
 const RESUMO_ALTURA = 8;        // 1 linha nesse tamanho
 // 2026-08-28: pedido do usuário "descer um pouquinho a descrição" — era 6,
-// sobe pra 9 (mais 3pt de respiro entre a foto e a linha de resumo). Como
-// _geometriaGrid deriva photoBoxHeight subtraindo essa constante da altura
-// total do card, a foto encolhe automaticamente esses mesmos 3pt — não
-// precisa mexer em mais nada pra layout continuar batendo certo.
-const GAP_FOTO_RESUMO = 9;      // respiro entre a foto e a linha de resumo
+// subiu pra 9. Mesmo dia, pedido seguinte "desça mais descrição" — sobe
+// de novo, 9 pra 13. Como _geometriaGrid deriva photoBoxHeight subtraindo
+// essa constante da altura total do card, a foto encolhe automaticamente
+// esses mesmos pontos — não precisa mexer em mais nada pra layout
+// continuar batendo certo.
+const GAP_FOTO_RESUMO = 13;     // respiro entre a foto e a linha de resumo
 const GAP_RESUMO_APLICACAO = 3; // respiro entre a linha de resumo e a aplicação
 
 // Cor do texto do código — pedido do usuário (2026-07-30): "azul oceano/
@@ -934,6 +935,53 @@ function _desenharFotoAjustada(doc, buffer, mimetype, x, y, boxWidth, boxHeight)
   doc.restore();
 }
 
+// 2026-08-28: pedido do usuário "na aplicação sempre que couber inteiro
+// padronize ponto final no final do texto e as marcas deixe em negrito,
+// padronize Mercedes Benz como MB" — três ajustes no mesmo texto:
+// (1) "MERCEDES-BENZ"/"MERCEDES BENZ"/o typo "MERCEDES BENS" (variante já
+// vista em dado real do X2, ver memória do agente sobre o cachimbo
+// "Mercedes Bens") viram "MB" sempre — é padronização de conteúdo, roda
+// incondicionalmente, não só quando sobra espaço.
+// (2) ponto final só quando o texto INTEIRO cabe na área reservada
+// (mesma lógica já usada na linha de resumo/descrição — texto cortado
+// pelo "..." do ellipsis não ganha ponto, o "..." já sinaliza corte).
+// (3) negrito nas MARCAS (ex. "FORD", "MB") — o texto vem formatado como
+// "MARCA: modelos; OUTRA MARCA: modelos" (ver PROMPT_APLICACAO_SISTEMA em
+// ai.service.js). Negrito seletivo só é possível com o modo "continued"
+// do pdfkit (testado à parte, ver protótipo) — que NÃO tem corte
+// automático por altura feito o `ellipsis`, por isso só entra nesse
+// caminho quando já sabemos que o texto INTEIRO cabe (mesma medição do
+// ponto final acima). Se o formato não bater ("MARCA: ...") ou não
+// couber inteiro, cai no desenho antigo — texto corrido, sem negrito,
+// cortado com "..." se precisar — nunca quebra a geração do PDF.
+function _desenharAplicacao(doc, textoOriginal, x, y, largura, altura) {
+  const texto = textoOriginal.replace(/mercedes[-\s]*ben[zs]/gi, "MB");
+  const textoComPonto = /[.!?…]$/.test(texto) ? texto : `${texto}.`;
+
+  doc.font(QUICKSAND_MEDIUM).fontSize(APLICACAO_FONTE);
+  const coubeInteira = doc.heightOfString(textoComPonto, { width: largura }) <= altura + 0.5;
+  const partes = coubeInteira ? textoComPonto.split(/;\s*/).filter(Boolean) : [];
+  const todasComMarca = partes.length > 0 && partes.every((p) => /^[^:]+:\s*.+$/s.test(p));
+
+  if (coubeInteira && todasComMarca) {
+    doc.x = x;
+    doc.y = y;
+    doc.fillColor(APLICACAO_COR);
+    partes.forEach((parte, i) => {
+      const ultima = i === partes.length - 1;
+      const [, marca, resto] = parte.match(/^([^:]+):\s*(.*)$/s);
+      doc.font(QUICKSAND_BOLD).fontSize(APLICACAO_FONTE)
+        .text(marca, { continued: true, width: largura, lineGap: 0.5 });
+      doc.font(QUICKSAND_MEDIUM).fontSize(APLICACAO_FONTE)
+        .text(`: ${resto}${ultima ? "" : "; "}`, { continued: !ultima, width: largura, lineGap: 0.5 });
+    });
+    return;
+  }
+
+  doc.fillColor(APLICACAO_COR).font(QUICKSAND_MEDIUM).fontSize(APLICACAO_FONTE)
+    .text(texto, x, y, { width: largura, height: altura, ellipsis: true, lineGap: 0.5 });
+}
+
 function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth, photoBoxHeight) {
   const larguraConteudo = photoBoxWidth; // = cardWidth - PAD_CARD*2, já calculado em _geometriaGrid
   const xConteudo = x + PAD_CARD;
@@ -1038,13 +1086,7 @@ function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight
   // --- Aplicação (até 2 linhas, embaixo da linha de resumo) ---
   if (produto.aplicacaoOrganizada) {
     const yAplicacao = yResumo + RESUMO_ALTURA + GAP_RESUMO_APLICACAO;
-    doc.fillColor(APLICACAO_COR).font(QUICKSAND_MEDIUM).fontSize(APLICACAO_FONTE)
-      .text(produto.aplicacaoOrganizada, xConteudo, yAplicacao, {
-        width: larguraConteudo,
-        height: APLICACAO_ALTURA,
-        ellipsis: true,
-        lineGap: 0.5,
-      });
+    _desenharAplicacao(doc, produto.aplicacaoOrganizada, xConteudo, yAplicacao, larguraConteudo, APLICACAO_ALTURA);
   }
 
   doc.font("Helvetica");

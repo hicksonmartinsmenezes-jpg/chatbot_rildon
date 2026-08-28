@@ -555,6 +555,33 @@ const AREA_TOPO_Y = HEADER_HEIGHT + TITULO_GAP_TOPO + TITULO_TAMANHO + TITULO_GA
 const COLS_COMPLETO = 4;
 const ROWS_POR_PAGINA_COMPLETO = 5;
 
+// 2026-08-28: pedido do usuário — mostrando um catálogo de referência
+// (outro material da loja) que separa os produtos em seções por MARCA DE
+// VEÍCULO (ex. "MERCEDES-BENZ"), pediu pra usar esse padrão de referência
+// também. Esclarecido em follow-up ("observe tenha a linha e fabricante:
+// Motor de partida / Agrale / Citroen / etc"): não é pra SUBSTITUIR o
+// agrupamento por Linha que já existe (Issue #21) — é pra ACRESCENTAR um
+// nível: dentro de cada Linha, os cards agora ficam sub-agrupados por
+// marca de veículo, com um cabeçalho inline (faixa azul) antes de cada
+// sub-grupo. Ver _agruparPorMarca/_extrairMarcas/_desenharCabecalhoMarca.
+// Estilo do cabeçalho de marca: reaproveita a cor/estilo do selo de
+// código (CAIXA_CODIGO_FUNDO/TEXTO) — mesma linguagem visual azul já usada
+// no catálogo, só numa faixa horizontal em vez de um selo pontual, pra não
+// competir com o título vermelho (VERMELHO_CATEGORIA) da Linha no topo da
+// página.
+const MARCA_HEADER_FONTE = 10;
+const MARCA_HEADER_PAD_V = 3;
+const MARCA_HEADER_PAD_H = 6;
+// Respiro entre a faixa de marca e a 1ª linha de cards do sub-grupo.
+const MARCA_HEADER_GAP = 6;
+// Pedido do usuário (2026-08-28, follow-up "se caso uma peça aparecer
+// para ford e também kia, deixe os duplicados"): produto sem marca de
+// veículo identificável em aplicacaoOrganizada (campo vazio, ou nenhum
+// segmento no formato "MARCA: modelos") não pode sumir do catálogo
+// impresso — cai num sub-grupo catch-all ao final de cada Linha, em vez
+// de ser descartado.
+const MARCA_OUTRAS = "OUTRAS APLICAÇÕES";
+
 // Tamanhos de fonte do índice — pedido explícito do usuário (2026-08-26):
 // "Indice deixa 36pt, pg deixa 12pt... Linhas deixa 17 pt" (17pt é o mesmo
 // TITULO_TAMANHO já usado nos títulos de seção — reaproveitado, não é
@@ -799,12 +826,22 @@ function _desenharCardVidro(doc, x, y, w, h) {
 // texto), só parametrizada por cols/rows em vez de usar COLS/ROWS_POR_PAGINA
 // direto, pra caber tanto a grade 5×6 padrão quanto a 4×5 do modo completo
 // sem duplicar a função.
+//
+// 2026-08-28 (sub-agrupamento por marca de veículo no Catálogo Completo):
+// trocado doc.page.width/height por A4_LARGURA/A4_ALTURA — os dois batem
+// exatamente igual, já que este doc é sempre criado com { size: "A4" }
+// (ver gerarPdfCatalogo/gerarPdfCatalogoCompleto), mas doc.page só existe
+// DEPOIS do 1º doc.addPage(). O pré-cálculo de paginação do Catálogo
+// Completo agora precisa saber a altura de cada card (pra simular em que
+// página cada cabeçalho de marca cai) ANTES de desenhar a página de
+// índice, que é a 1ª coisa desenhada no documento — sem essa troca,
+// _geometriaGrid não podia ser chamada cedo o bastante pra isso.
 function _geometriaGrid(doc, cols, rows, comAplicacao = false) {
-  const larguraUtil = doc.page.width - PAGE_MARGIN * 2;
+  const larguraUtil = A4_LARGURA - PAGE_MARGIN * 2;
   const cardWidth = (larguraUtil - (cols - 1) * GAP) / cols;
   const photoBoxWidth = cardWidth - PAD_CARD * 2;
   const areaTopoY = AREA_TOPO_Y;
-  const areaFimY = doc.page.height - FOOTER_HEIGHT - 8;
+  const areaFimY = A4_ALTURA - FOOTER_HEIGHT - 8;
   const alturaDisponivel = areaFimY - areaTopoY;
   const cardHeightMax = (alturaDisponivel - (rows - 1) * GAP) / rows;
 
@@ -976,10 +1013,45 @@ function _truncarParaAltura(doc, texto, largura, altura) {
   return lo > 0 ? `${texto.slice(0, lo).trimEnd()}...` : "...";
 }
 
-function _desenharAplicacao(doc, textoOriginal, x, y, largura, altura) {
-  const texto = textoOriginal
+// Extraída pra função própria (2026-08-28, pedido do usuário sobre
+// agrupar por marca de veículo — ver _agruparPorMarca mais abaixo): a
+// mesma padronização "MERCEDES-BENZ"/variantes -> "MB" e "VOLKSWAGEN" ->
+// "VW" agora é usada em DOIS lugares — aqui, pra desenhar o texto, e em
+// _extrairMarcas, pra decidir em qual sub-grupo de marca cada produto
+// entra. Compartilhar a mesma função garante que o texto exibido no card
+// e o cabeçalho de marca sob o qual ele é agrupado NUNCA divirjam (ex.
+// produto com "Mercedes-Benz" no texto cru sempre cai no grupo "MB", e o
+// texto desenhado no card também sempre mostra "MB").
+function _normalizarMarcasTexto(texto) {
+  return String(texto || "")
     .replace(/mercedes[-\s]*ben[zs]/gi, "MB")
     .replace(/volkswagen/gi, "VW");
+}
+
+// `marcaPrioritaria` (2026-08-28, sub-agrupamento por marca de veículo):
+// quando o card é desenhado DENTRO de um sub-grupo de marca (ver
+// _desenharCabecalhoMarca/gerarPdfCatalogoCompleto), um produto que atende
+// várias marcas (ex. "CASE: ...; AGRALE: ...; ATLAS-COPCO: ...") é
+// desenhado 3 vezes — uma sob cada cabeçalho de marca. Sem isso, as 3
+// cópias mostrariam sempre o MESMO trecho (o 1º da lista, ex. sempre
+// "CASE: ..."), inclusive embaixo do cabeçalho "AGRALE" — confuso pra
+// quem está folheando aquela seção específica. Reordena os segmentos
+// pra que o da marca da seção atual apareça PRIMEIRO (mais chance de
+// sobreviver ao truncamento por altura), sem esconder os outros — só
+// muda a ordem, não remove nenhum segmento.
+function _desenharAplicacao(doc, textoOriginal, x, y, largura, altura, marcaPrioritaria) {
+  let texto = _normalizarMarcasTexto(textoOriginal);
+  if (marcaPrioritaria && marcaPrioritaria !== MARCA_OUTRAS) {
+    const alvo = marcaPrioritaria.toUpperCase();
+    const partes = texto.split(/;\s*/).filter(Boolean);
+    const comAlvoPrimeiro = [...partes].sort((a, b) => {
+      const aEhAlvo = (a.match(/^([^:]+):/)?.[1].trim().toUpperCase() ?? "") === alvo;
+      const bEhAlvo = (b.match(/^([^:]+):/)?.[1].trim().toUpperCase() ?? "") === alvo;
+      if (aEhAlvo === bEhAlvo) return 0;
+      return aEhAlvo ? -1 : 1;
+    });
+    texto = comAlvoPrimeiro.join("; ");
+  }
 
   doc.font(QUICKSAND_MEDIUM).fontSize(APLICACAO_FONTE);
   const coubeInteira = doc.heightOfString(texto, { width: largura }) <= altura + 0.5;
@@ -1021,7 +1093,7 @@ function _desenharAplicacao(doc, textoOriginal, x, y, largura, altura) {
   doc.restore();
 }
 
-function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth, photoBoxHeight) {
+function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth, photoBoxHeight, marcaAtual = null) {
   const larguraConteudo = photoBoxWidth; // = cardWidth - PAD_CARD*2, já calculado em _geometriaGrid
   const xConteudo = x + PAD_CARD;
   const yTopo = y + PAD_CARD;
@@ -1125,7 +1197,7 @@ function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight
   // --- Aplicação (até 2 linhas, embaixo da linha de resumo) ---
   if (produto.aplicacaoOrganizada) {
     const yAplicacao = yResumo + RESUMO_ALTURA + GAP_RESUMO_APLICACAO;
-    _desenharAplicacao(doc, produto.aplicacaoOrganizada, xConteudo, yAplicacao, larguraConteudo, APLICACAO_ALTURA);
+    _desenharAplicacao(doc, produto.aplicacaoOrganizada, xConteudo, yAplicacao, larguraConteudo, APLICACAO_ALTURA, marcaAtual);
   }
 
   doc.font("Helvetica");
@@ -1139,11 +1211,11 @@ function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight
 // catálogo comum mantém o desenho original (selo sobre a foto + nome
 // abaixo), Catálogo Completo usa o cabeçalho novo (selo+descrição lado a
 // lado + OEM em vermelho + foto maior + aplicação em preto).
-function _desenharCard(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth, photoBoxHeight, comAplicacao = false) {
+function _desenharCard(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth, photoBoxHeight, comAplicacao = false, marcaAtual = null) {
   _desenharCardVidro(doc, x, y, cardWidth, cardHeight);
 
   if (comAplicacao) {
-    _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth, photoBoxHeight);
+    _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth, photoBoxHeight, marcaAtual);
     return;
   }
 
@@ -1292,6 +1364,173 @@ function _agruparPorLinha(produtos) {
   return Array.from(grupos.entries())
     .map(([linha, itens]) => ({ linha, itens }))
     .sort((a, b) => a.linha.localeCompare(b.linha, "pt-BR"));
+}
+
+// 2026-08-28 (sub-agrupamento por marca de veículo, ver comentário em
+// MARCA_HEADER_FONTE): extrai as marcas de veículo citadas no texto de
+// aplicação de UM produto — mesmo parser usado em _desenharAplicacao pra
+// achar os segmentos "MARCA: modelos" (texto.split(/;\s*/) + regex
+// /^([^:]+):/ por segmento), mas aqui só a lista de marcas interessa, não
+// o texto completo. Usa _normalizarMarcasTexto ANTES de parsear — mesma
+// padronização "MERCEDES-BENZ"->"MB"/"VOLKSWAGEN"->"VW" do desenho, pra
+// grupo e texto exibido nunca divergirem. Marca sempre em MAIÚSCULAS na
+// chave de agrupamento: a mesma peça pode ter "FORD" num produto e "Ford"
+// noutro (dado vem de texto livre gerado por IA, casing inconsistente
+// entre textos diferentes — ver exemplos reais em aplicacao-ia-cache.json)
+// e os dois precisam cair no MESMO sub-grupo, não em dois quase-iguais.
+// Segmento sem ":" (dado malformado raro, ex. "EATON; FORD: Cargo...")
+// não vira marca — esse pedaço específico só não entra em grupo nenhum,
+// sem derrubar as marcas boas do mesmo produto.
+function _extrairMarcas(textoOriginal) {
+  if (!textoOriginal) return [];
+  const texto = _normalizarMarcasTexto(textoOriginal);
+  const marcas = [];
+  texto.split(/;\s*/).filter(Boolean).forEach((parte) => {
+    const match = parte.match(/^([^:]+):/);
+    if (!match) return;
+    const marca = match[1].trim().toUpperCase();
+    if (marca && !marcas.includes(marca)) marcas.push(marca);
+  });
+  return marcas;
+}
+
+// Sub-agrupa os itens de UMA Linha por marca de veículo. Pedido explícito
+// do usuário (2026-08-28): "se caso uma peça aparecer para ford e também
+// kia, deixe os duplicados" — produto com N marcas entra em CADA um dos N
+// sub-grupos (o MESMO objeto `produto`, sem clonar — cada card desenhado
+// a partir dele fica idêntico, só a posição/sub-grupo mudam). Produto sem
+// nenhuma marca identificável cai em MARCA_OUTRAS, sempre por último
+// (catch-all, não teria sentido ordenado no meio alfabético das marcas
+// de verdade).
+function _agruparPorMarca(itens) {
+  const grupos = new Map();
+  itens.forEach((produto) => {
+    const marcas = _extrairMarcas(produto.aplicacaoOrganizada);
+    const chaves = marcas.length > 0 ? marcas : [MARCA_OUTRAS];
+    chaves.forEach((marca) => {
+      if (!grupos.has(marca)) grupos.set(marca, []);
+      grupos.get(marca).push(produto);
+    });
+  });
+
+  const semOutras = Array.from(grupos.entries()).filter(([marca]) => marca !== MARCA_OUTRAS);
+  semOutras.sort((a, b) => a[0].localeCompare(b[0], "pt-BR"));
+  const resultado = semOutras.map(([marca, produtos]) => ({ marca, produtos }));
+  if (grupos.has(MARCA_OUTRAS)) {
+    resultado.push({ marca: MARCA_OUTRAS, produtos: grupos.get(MARCA_OUTRAS) });
+  }
+  return resultado;
+}
+
+// Achata grupos (Linha) -> sub-grupos (Marca) -> produtos numa única
+// sequência de "blocos" na ordem exata em que vão ser desenhados: um
+// bloco "cabecalhoMarca" antes de cada sub-grupo, seguido dos blocos
+// "card" dos produtos daquele sub-grupo (já duplicados por marca, ver
+// _agruparPorMarca). `primeiroIndicePorGrupo[i]` guarda o índice em
+// `sequencia` onde a Linha `grupos[i]` COMEÇA (sempre um bloco
+// "cabecalhoMarca", o do 1º sub-grupo de marca daquela Linha) — usado
+// depois pra descobrir em que página cada Linha começa (ver
+// _calcularLayoutConteudo), sem precisar re-varrer a sequência inteira.
+function _construirSequenciaConteudo(grupos) {
+  const sequencia = [];
+  const primeiroIndicePorGrupo = [];
+  grupos.forEach(({ linha, itens }) => {
+    primeiroIndicePorGrupo.push(sequencia.length);
+    _agruparPorMarca(itens).forEach(({ marca, produtos }) => {
+      sequencia.push({ tipo: "cabecalhoMarca", linha, marca });
+      produtos.forEach((produto) => {
+        sequencia.push({ tipo: "card", linha, marca, produto });
+      });
+    });
+  });
+  return { sequencia, primeiroIndicePorGrupo };
+}
+
+// Simula o layout da sequência de blocos (cabeçalhos de marca + cards) na
+// grade COLS_COMPLETO×ROWS_POR_PAGINA_COMPLETO, calculando em que página/
+// posição (x,y) cada bloco cai — SEM desenhar nada (não recebe `doc` além
+// da geometria já calculada). Precisa ser pura/determinística porque roda
+// DUAS vezes com o mesmo resultado: uma vez ANTES de desenhar qualquer
+// página (só pra descobrir os números de página de cada Linha pro
+// índice), e de novo — mesma sequência, mesma geometria — na hora de
+// desenhar de verdade (ver gerarPdfCatalogoCompleto). Reaproveita a MESMA
+// lógica Y-based que gerarPdfCatalogo já usava pra decidir quebra de
+// página (linhaY + altura > areaFimY), só que agora dois tipos de "linha"
+// diferentes (cabeçalho de marca, mais baixo, e linha de cards, cardHeight)
+// disputam o mesmo espaço, em vez de só um tipo uniforme.
+//
+// Regras de quebra:
+// - Cabeçalho de marca sempre começa numa linha nova (col=0) — se a
+//   marca anterior parou no meio de uma linha da grade, os slots que
+//   sobraram ficam em branco (perda pequena, só nas transições de marca —
+//   bem menor que o vão de página inteira que a paginação contínua por
+//   Linha já evita, ver comentário 2026-08-27 em paginaInicialPorGrupo).
+// - Controle de "órfão": um cabeçalho de marca só entra numa página se
+//   pelo menos 1 linha de cards do sub-grupo couber JUNTO nela — senão os
+//   dois (cabeçalho + 1ª linha de cards) vão pra página seguinte, pra não
+//   deixar um cabeçalho sozinho colado no rodapé sem nenhum produto
+//   embaixo até a próxima página.
+function _calcularLayoutConteudo(sequencia, geometria, alturaHeaderMarca) {
+  const { cardWidth, cardHeight, areaTopoY, areaFimY } = geometria;
+  const posicoes = [];
+  let pagina = -1;
+  let col = 0;
+  let linhaY = areaTopoY;
+
+  function novaPagina() {
+    pagina += 1;
+    col = 0;
+    linhaY = areaTopoY;
+  }
+
+  sequencia.forEach((bloco) => {
+    if (bloco.tipo === "cabecalhoMarca") {
+      if (pagina === -1) {
+        novaPagina();
+      } else if (col !== 0) {
+        col = 0;
+        linhaY += cardHeight + GAP;
+      }
+      if (linhaY + alturaHeaderMarca + MARCA_HEADER_GAP + cardHeight > areaFimY + 0.5) {
+        novaPagina();
+      }
+      posicoes.push({ pagina, x: PAGE_MARGIN, y: linhaY });
+      linhaY += alturaHeaderMarca + MARCA_HEADER_GAP;
+    } else {
+      if (pagina === -1 || (col === 0 && linhaY + cardHeight > areaFimY + 0.5)) {
+        novaPagina();
+      }
+      posicoes.push({ pagina, x: PAGE_MARGIN + col * (cardWidth + GAP), y: linhaY });
+      col += 1;
+      if (col >= COLS_COMPLETO) {
+        col = 0;
+        linhaY += cardHeight + GAP;
+      }
+    }
+  });
+
+  return { posicoes, totalPaginas: pagina + 1 };
+}
+
+// Faixa horizontal com o nome da marca de veículo — mesma linguagem
+// visual do selo de código (fundo CAIXA_CODIGO_FUNDO, texto branco), só
+// como barra espalhada pela largura útil da página em vez de um selo
+// pontual sobre a foto. `_alturaCabecalhoMarca` calcula a altura fixa
+// (font+padding) UMA vez, reaproveitada tanto no cálculo de layout quanto
+// no desenho de verdade — mesmo padrão de _alturaSelo logo acima.
+function _alturaCabecalhoMarca(doc) {
+  doc.font(TITULO_FONTE).fontSize(MARCA_HEADER_FONTE);
+  return doc.currentLineHeight() + MARCA_HEADER_PAD_V * 2;
+}
+
+function _desenharCabecalhoMarca(doc, marca, x, y, largura, altura) {
+  doc.rect(x, y, largura, altura).fillColor(CAIXA_CODIGO_FUNDO).fill();
+  doc.fillColor(CAIXA_CODIGO_TEXTO).font(TITULO_FONTE).fontSize(MARCA_HEADER_FONTE)
+    .text(String(marca || "").toUpperCase(), x + MARCA_HEADER_PAD_H, y + MARCA_HEADER_PAD_V, {
+      width: largura - MARCA_HEADER_PAD_H * 2,
+      lineBreak: false,
+    });
+  doc.fillColor("#111827").font("Helvetica");
 }
 
 // Efeito de sombra (pedido do usuário, 2026-08-26: "aplique esse efeito de
@@ -1507,7 +1746,6 @@ function gerarPdfCatalogoCompleto(produtos, fabricante, destino) {
   doc.registerFont(QUICKSAND_MEDIUM, QUICKSAND_MEDIUM_ARQUIVO);
 
   const grupos = _agruparPorLinha(produtos);
-  const itensPorPagina = COLS_COMPLETO * ROWS_POR_PAGINA_COMPLETO;
 
   // --- Pré-cálculo da paginação do índice (ver comentário acima) ---
   const larguraUtilIndice = A4_LARGURA - PAGE_MARGIN * 2;
@@ -1516,27 +1754,25 @@ function gerarPdfCatalogoCompleto(produtos, fabricante, destino) {
   const linhasPorPaginaIndice = Math.max(1, Math.floor(alturaDisponivelIndice / INDICE_LINHA_ALTURA));
   const paginasIndice = Math.max(1, Math.ceil(grupos.length / linhasPorPaginaIndice));
 
-  // 2026-08-27: pedido do usuário — "em todas as paginas por mais que não
-  // tenha mais produtos para a folha da linha complete com os cards de
-  // produtos". Antes, cada Linha calculava sua própria paginação isolada
-  // (Math.ceil(grupo.itens.length / itensPorPagina)), o que reservava uma
-  // página CHEIA pra Linha mesmo quando ela só preenchia, digamos, 3 dos 20
-  // slots da grade — o resto ficava em branco e a Linha seguinte começava
-  // do zero numa página nova. Como a grade (COLS_COMPLETO×
-  // ROWS_POR_PAGINA_COMPLETO) é a MESMA em toda página deste modo, dá pra
-  // tratar os itens de todas as Linhas como uma sequência ÚNICA e
-  // contínua (mesma ordem de _agruparPorLinha) — a página de cada item é
-  // só floor(índice global / itensPorPagina), então a página inicial de
-  // cada grupo sai de uma soma acumulada simples, sem precisar simular a
-  // grade item a item. O preenchimento de verdade (sem deixar vão em
-  // branco) acontece no loop de conteúdo abaixo, que usa essa mesma
-  // sequência plana.
-  let acumulado = 0;
-  const paginaInicialPorGrupo = grupos.map((grupo) => {
-    const inicio = paginasIndice + 1 + Math.floor(acumulado / itensPorPagina);
-    acumulado += grupo.itens.length;
-    return inicio;
-  });
+  // 2026-08-28 (sub-agrupamento por marca de veículo — ver comentário em
+  // MARCA_HEADER_FONTE e em _calcularLayoutConteudo): a paginação por
+  // Linha não é mais uma divisão simples (itens / itensPorPagina), porque
+  // os cabeçalhos de marca inseridos dentro de cada Linha "comem" espaço
+  // que antes era só de cards, e um cabeçalho força início de linha nova
+  // na grade (perde alguns slots vazios na transição de marca). Por isso
+  // agora simula a grade de verdade (_calcularLayoutConteudo) ANTES de
+  // desenhar a página de índice, pra saber com precisão em que página
+  // cada Linha cai — mesma função usada depois pra desenhar de verdade
+  // (chamada de novo com a mesma sequência/geometria = mesmo resultado,
+  // ver comentário em _calcularLayoutConteudo sobre por que ela precisa
+  // ser pura/determinística).
+  const alturaHeaderMarca = _alturaCabecalhoMarca(doc);
+  const { sequencia, primeiroIndicePorGrupo } = _construirSequenciaConteudo(grupos);
+  const geometriaCompleto = _geometriaGrid(doc, COLS_COMPLETO, ROWS_POR_PAGINA_COMPLETO, true);
+  const { posicoes } = _calcularLayoutConteudo(sequencia, geometriaCompleto, alturaHeaderMarca);
+  const paginaInicialPorGrupo = primeiroIndicePorGrupo.map(
+    (idx) => paginasIndice + 1 + posicoes[idx].pagina
+  );
 
   let pagina = 0;
 
@@ -1557,55 +1793,45 @@ function gerarPdfCatalogoCompleto(produtos, fabricante, destino) {
   }
 
   // --- Páginas de conteúdo: sequência única e contínua entre Linhas ---
-  // 2026-08-27 (ver comentário completo em paginaInicialPorGrupo acima):
-  // os itens de TODAS as Linhas (já na ordem alfabética de
-  // _agruparPorLinha) formam uma única sequência achatada — a grade é
-  // preenchida sem parar entre grupos, só quebra página quando a grade da
-  // página atual está de fato cheia. Uma Linha que termina no meio de uma
-  // linha da grade não deixa mais vão em branco: a Linha seguinte
-  // continua exatamente nos slots que sobraram, na mesma página.
+  // 2026-08-27 (paginação contínua original): os itens de TODAS as Linhas
+  // (já na ordem alfabética de _agruparPorLinha) formam uma única
+  // sequência — a grade é preenchida sem parar entre grupos, só quebra
+  // página quando a grade da página atual está de fato cheia.
   //
-  // Título do cabeçalho de cada página = a Linha do item que ABRIU essa
-  // página (o 1º card desenhado nela) — se uma página tiver o fim de uma
-  // Linha e o começo da seguinte, o título mostra a Linha de quem abriu;
-  // os produtos da Linha seguinte, mesmo sem cabeçalho próprio nessa
-  // página, continuam identificáveis pelo selo/código no próprio card.
-  const itensFlat = grupos.flatMap((grupo) =>
-    grupo.itens.map((produto) => ({ produto, linha: grupo.linha }))
-  );
+  // 2026-08-28 (sub-agrupamento por marca): a sequência agora intercala
+  // blocos "cabecalhoMarca" (faixa azul com o nome da marca) entre os
+  // blocos "card" — já construída em `sequencia`/`posicoes` acima, no
+  // mesmo pré-cálculo que gerou os números de página do índice. Este loop
+  // só REPRODUZ essas posições já calculadas (desenhando, não recalculando
+  // layout), então índice e conteúdo nunca podem divergir.
+  //
+  // Título do cabeçalho de cada página = a Linha do bloco que ABRIU essa
+  // página (o 1º bloco desenhado nela, cabeçalho de marca ou card) — se
+  // uma página tiver o fim de uma Linha e o começo da seguinte, o título
+  // mostra a Linha de quem abriu; os produtos da Linha seguinte, mesmo
+  // sem título de página próprio, continuam identificáveis pelo cabeçalho
+  // de marca (inline) e pelo selo/código no próprio card.
+  const larguraUtilCompleto = A4_LARGURA - PAGE_MARGIN * 2;
+  let paginaLocalAtual = -1;
 
-  const geometriaCompleto = _geometriaGrid(doc, COLS_COMPLETO, ROWS_POR_PAGINA_COMPLETO, true);
-  let col = 0;
-  let linhaY = 0;
-
-  function novaPaginaConteudo(tituloLinha) {
-    doc.addPage();
-    pagina += 1;
-    _desenharCabecalho(doc, tituloLinha);
-    _desenharRodape(doc, pagina);
-    doc.y = geometriaCompleto.areaTopoY;
-    linhaY = doc.y;
-    col = 0;
-  }
-
-  itensFlat.forEach((item, i) => {
-    if (i === 0 || (col === 0 && linhaY + geometriaCompleto.cardHeight > geometriaCompleto.areaFimY + 0.5)) {
-      novaPaginaConteudo(item.linha);
+  sequencia.forEach((bloco, i) => {
+    const pos = posicoes[i];
+    if (pos.pagina !== paginaLocalAtual) {
+      paginaLocalAtual = pos.pagina;
+      doc.addPage();
+      pagina += 1;
+      _desenharCabecalho(doc, bloco.linha);
+      _desenharRodape(doc, pagina);
     }
 
-    const x = PAGE_MARGIN + col * (geometriaCompleto.cardWidth + GAP);
-    const y = linhaY;
-
-    _desenharCard(
-      doc, item.produto, x, y,
-      geometriaCompleto.cardWidth, geometriaCompleto.cardHeight,
-      geometriaCompleto.photoBoxWidth, geometriaCompleto.photoBoxHeight, true
-    );
-
-    col += 1;
-    if (col >= COLS_COMPLETO) {
-      col = 0;
-      linhaY += geometriaCompleto.cardHeight + GAP;
+    if (bloco.tipo === "cabecalhoMarca") {
+      _desenharCabecalhoMarca(doc, bloco.marca, pos.x, pos.y, larguraUtilCompleto, alturaHeaderMarca);
+    } else {
+      _desenharCard(
+        doc, bloco.produto, pos.x, pos.y,
+        geometriaCompleto.cardWidth, geometriaCompleto.cardHeight,
+        geometriaCompleto.photoBoxWidth, geometriaCompleto.photoBoxHeight, true, bloco.marca
+      );
     }
   });
 

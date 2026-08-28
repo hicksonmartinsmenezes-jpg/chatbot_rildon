@@ -237,7 +237,19 @@ const CABECALHO_ESCALA_BLEED = 1 / (CABECALHO_CONTEUDO_DIREITA_FRACAO - CABECALH
 const RODAPE_NUM_X_FRACAO = 1062 / 1372;
 const RODAPE_NUM_Y_FRACAO = 108 / 156;
 
-const PAGE_MARGIN = 24;
+// 2026-08-28: pedido do usuário "ajuste pra folha A4 escala 100% pra
+// preencher a folha inteira" (depois esclarecido: "observe as margens de
+// cima, de baixo e dos lados do papel") — o PDF já é A4 exato (595.28×
+// 841.89pt, conferido com pdfinfo) e cabeçalho/rodapé já vão de borda a
+// borda (ver CABECALHO_ESCALA_BLEED acima), sem faixa branca real ali. A
+// margem que sobrava era a desse PAGE_MARGIN — 24pt (≈8.5mm) de cada lado
+// do grid de cards, a maior faixa branca "de verdade" na página. Reduzido
+// pra 10pt (≈3.5mm), mantendo uma margem de segurança mínima pro
+// texto/código dos cards não correr risco de ser cortado por impressoras
+// comuns (a maioria não imprime até a borda física sem um modo
+// "sem margem" específico — diferente do cabeçalho/rodapé, que são arte
+// decorativa e toleram um corte de alguns mm sem perder informação).
+const PAGE_MARGIN = 10;
 // Pedido do usuário (2026-07-31): "caiba o máximo de itens possíveis" — era
 // 4 colunas. Foto/fontes/respiros foram encolhidos (ver ROWS_POR_PAGINA,
 // PAD_CARD, CODIGO_FONTE/CODIGO_ALTURA, NOME_FONTE/NOME_ALTURA,

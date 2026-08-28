@@ -439,7 +439,12 @@ const GAP_HEADER_FOTO = 6; // respiro entre o cabeçalho (selo+OEM) e a foto
 // cortar menos cedo com "...".
 const RESUMO_FONTE = 5.5;
 const RESUMO_ALTURA = 8;        // 1 linha nesse tamanho
-const GAP_FOTO_RESUMO = 6;      // respiro entre a foto e a linha de resumo
+// 2026-08-28: pedido do usuário "descer um pouquinho a descrição" — era 6,
+// sobe pra 9 (mais 3pt de respiro entre a foto e a linha de resumo). Como
+// _geometriaGrid deriva photoBoxHeight subtraindo essa constante da altura
+// total do card, a foto encolhe automaticamente esses mesmos 3pt — não
+// precisa mexer em mais nada pra layout continuar batendo certo.
+const GAP_FOTO_RESUMO = 9;      // respiro entre a foto e a linha de resumo
 const GAP_RESUMO_APLICACAO = 3; // respiro entre a linha de resumo e a aplicação
 
 // Cor do texto do código — pedido do usuário (2026-07-30): "azul oceano/
@@ -1007,7 +1012,21 @@ function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight
   // couber (ao contrário do selo do fabricante, aqui NÃO foi pedido pra
   // nunca truncar).
   const yResumo = yFoto + photoBoxHeight + GAP_FOTO_RESUMO;
-  const resumo = `${produto.codigo} - ${_nomeExibicao(produto, true).toUpperCase()}`;
+  let resumo = `${produto.codigo} - ${_nomeExibicao(produto, true).toUpperCase()}`;
+  // 2026-08-28: pedido do usuário "sempre que o texto couber inteiro
+  // padronize ponto final" — só entra ponto quando o texto cabe INTEIRO
+  // na linha (não seria cortado pelo "..." do ellipsis); texto cortado já
+  // sinaliza continuação com "...", não faz sentido enfiar ponto ali.
+  // pdfkit não expõe se o ellipsis disparou, então mede a largura de
+  // verdade (doc.widthOfString, precisa fonte/tamanho já setados antes de
+  // medir) — mesma técnica já usada em _ajustarFonteSeloParaCaber.
+  doc.font(TITULO_FONTE).fontSize(RESUMO_FONTE);
+  if (!/[.!?…]$/.test(resumo)) {
+    const resumoComPonto = resumo + ".";
+    if (doc.widthOfString(resumoComPonto) <= larguraConteudo) {
+      resumo = resumoComPonto;
+    }
+  }
   doc.fillColor("#111827").font(TITULO_FONTE).fontSize(RESUMO_FONTE)
     .text(resumo, xConteudo, yResumo, {
       width: larguraConteudo,

@@ -68,6 +68,7 @@
 const fs = require("fs");
 const path = require("path");
 const PDFDocument = require("pdfkit");
+const jpeg = require("jpeg-js");
 const { obterFoto } = require("./catalogo-fotos.service");
 
 // Mapa codigo -> "Cód. Fornecedor" (2026-07-29): fonte extraída direto da
@@ -847,6 +848,87 @@ function _geometriaGrid(doc, cols, rows, comAplicacao = false) {
 // (produto.codigo, ex: "117437"); a linha de resumo embaixo da foto, que
 // antes repetia esse código na frente da descrição, agora é só a
 // descrição (o código não precisa mais aparecer duas vezes no card).
+// 2026-08-28: pedido do usuário "existem várias fotos com tamanhos
+// diferentes, existe uma possibilidade de ajustar para todas ficarem
+// visualmente do mesmo tamanho?" — causa raiz medida pixel a pixel: fotos
+// de produto de verdade já ocupam quase o arquivo inteiro (ex:
+// 330×151px, conteúdo real ~326×150 — margem interna insignificante),
+// mas um bom número de produtos só tem o ÍCONE GENÉRICO de "sem foto
+// cadastrada" do X2 — arquivo minúsculo (82×72px) onde o desenho em si
+// ocupa só ~26×13px, o resto é fundo branco que já é parte do arquivo.
+// Como o desenho antigo usava doc.image({fit:...}) medindo o TAMANHO
+// TOTAL do arquivo, essas fotos genéricas ficavam visualmente minúsculas
+// dentro do quadro (a margem branca embutida no arquivo virava margem
+// branca visível no card, além da margem normal do fit).
+//
+// Fix: decodifica o JPEG (jpeg-js, puro JS, sem dependência nativa — só
+// usado pra MEDIR pixels, o desenho final continua sendo o buffer
+// original via doc.image, sem perda de qualidade) e mede o bounding box
+// real do conteúdo (varre os pixels, ignora os quase-brancos). O "fit"
+// passa a ser calculado em cima desse CONTEÚDO em vez do arquivo inteiro
+// — fotos reais e ícones genéricos passam a preencher o quadro do mesmo
+// jeito visualmente. Só funciona pra JPEG (a esmagadora maioria dos
+// arquivos do zip de fotos, ver catalogo-fotos.service) — qualquer falha
+// de decode (formato não suportado, arquivo corrompido) cai de volta pro
+// fit antigo (imagem inteira), sem quebrar a geração do PDF.
+const LIMIAR_BRANCO_BBOX_FOTO = 245;
+
+function _bboxConteudoFoto(buffer, mimetype) {
+  if (mimetype !== "image/jpeg") return null;
+  let decodificada;
+  try {
+    decodificada = jpeg.decode(buffer, { useTArray: true });
+  } catch {
+    return null;
+  }
+  const { width, height, data } = decodificada;
+  let minX = width, maxX = -1, minY = height, maxY = -1;
+  for (let y = 0; y < height; y++) {
+    const linhaBase = y * width * 4;
+    for (let x = 0; x < width; x++) {
+      const i = linhaBase + x * 4;
+      if (data[i] > LIMIAR_BRANCO_BBOX_FOTO && data[i + 1] > LIMIAR_BRANCO_BBOX_FOTO && data[i + 2] > LIMIAR_BRANCO_BBOX_FOTO) continue;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+  }
+  if (maxX < minX || maxY < minY) return null; // imagem inteiramente branca
+  const conteudoLargura = maxX - minX + 1;
+  const conteudoAltura = maxY - minY + 1;
+  // Se o conteúdo já cobre quase o arquivo inteiro (foto normal, sem
+  // margem embutida relevante), não vale mexer — evita ampliar por causa
+  // de 1-2px de ruído de compressão JPEG na borda.
+  if (conteudoLargura >= width * 0.97 && conteudoAltura >= height * 0.97) return null;
+  return { x: minX, y: minY, width: conteudoLargura, height: conteudoAltura, imgWidth: width, imgHeight: height };
+}
+
+// Desenha a foto ajustada ao quadro (x,y,boxWidth,boxHeight) usando o
+// bounding box do conteúdo real (ver _bboxConteudoFoto) em vez do tamanho
+// total do arquivo — mesmo efeito de "object-fit: contain" do CSS, mas
+// medido no conteúdo, não na tela toda. Sem bbox (não-JPEG, decode
+// falhou, ou já preenche o arquivo quase inteiro), cai no fit antigo
+// (imagem inteira). Precisa de clip porque a imagem inteira (com a
+// margem branca embutida) fica MAIOR que o quadro depois do zoom no
+// conteúdo — sem isso vazaria por cima dos cards vizinhos.
+function _desenharFotoAjustada(doc, buffer, mimetype, x, y, boxWidth, boxHeight) {
+  const bbox = _bboxConteudoFoto(buffer, mimetype);
+  if (!bbox) {
+    doc.image(buffer, x, y, { fit: [boxWidth, boxHeight], align: "center", valign: "center" });
+    return;
+  }
+  const escala = Math.min(boxWidth / bbox.width, boxHeight / bbox.height);
+  const larguraDesenho = bbox.imgWidth * escala;
+  const alturaDesenho = bbox.imgHeight * escala;
+  const xDesenho = x + (boxWidth - bbox.width * escala) / 2 - bbox.x * escala;
+  const yDesenho = y + (boxHeight - bbox.height * escala) / 2 - bbox.y * escala;
+  doc.save();
+  doc.rect(x, y, boxWidth, boxHeight).clip();
+  doc.image(buffer, xDesenho, yDesenho, { width: larguraDesenho, height: alturaDesenho });
+  doc.restore();
+}
+
 function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth, photoBoxHeight) {
   const larguraConteudo = photoBoxWidth; // = cardWidth - PAD_CARD*2, já calculado em _geometriaGrid
   const xConteudo = x + PAD_CARD;
@@ -904,7 +986,7 @@ function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight
   try {
     const foto = obterFoto(produto.codigo, 0);
     if (foto && (foto.mimetype === "image/jpeg" || foto.mimetype === "image/png")) {
-      doc.image(foto.buffer, xConteudo, yFoto, { fit: [larguraConteudo, photoBoxHeight], align: "center", valign: "center" });
+      _desenharFotoAjustada(doc, foto.buffer, foto.mimetype, xConteudo, yFoto, larguraConteudo, photoBoxHeight);
     } else {
       doc.font("Helvetica").fontSize(7).fillColor("#9ca3af")
         .text("sem foto", xConteudo, yFoto + photoBoxHeight / 2 - 5, { width: larguraConteudo, align: "center" });
@@ -971,7 +1053,7 @@ function _desenharCard(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth,
   try {
     const foto = obterFoto(produto.codigo, 0);
     if (foto && (foto.mimetype === "image/jpeg" || foto.mimetype === "image/png")) {
-      doc.image(foto.buffer, xFoto, yFoto, { fit: [photoBoxWidth, photoBoxHeight], align: "center", valign: "center" });
+      _desenharFotoAjustada(doc, foto.buffer, foto.mimetype, xFoto, yFoto, photoBoxWidth, photoBoxHeight);
     } else {
       doc.font("Helvetica").fontSize(7).fillColor("#9ca3af")
         .text("sem foto", xFoto, yFoto + photoBoxHeight / 2 - 5, { width: photoBoxWidth, align: "center" });

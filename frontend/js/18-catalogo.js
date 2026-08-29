@@ -320,10 +320,12 @@ function _catalogoEsconderTodasAbas() {
   document.getElementById("catalogo-tab-codigo")?.classList.remove("active");
   document.getElementById("catalogo-tab-nome")?.classList.remove("active");
   document.getElementById("catalogo-tab-completo")?.classList.remove("active");
+  document.getElementById("catalogo-tab-promocional")?.classList.remove("active");
   document.getElementById("catalogo-form")?.classList.add("hidden");
   document.getElementById("catalogo-form-codigo")?.classList.add("hidden");
   document.getElementById("catalogo-form-nome")?.classList.add("hidden");
   document.getElementById("catalogo-form-completo")?.classList.add("hidden");
+  document.getElementById("catalogo-form-promocional")?.classList.add("hidden");
   document.getElementById("catalogo-hint-veiculo")?.classList.add("hidden");
   document.getElementById("catalogo-hint-codigo")?.classList.add("hidden");
   document.getElementById("catalogo-hint-nome")?.classList.add("hidden");
@@ -365,6 +367,18 @@ function catalogoMostrarAbaCompleto() {
   document.getElementById("catalogo-form-completo")?.classList.remove("hidden");
   document.getElementById("catalogo-resultados")?.classList.add("hidden");
   loadCatalogoFabricantesCompleto();
+}
+
+// Aba "Catálogo Promocional" (nova função, pedido do usuário 2026-08-29):
+// mesmo padrão da aba Catálogo Completo — não usa a grid de resultados
+// compartilhada (#catalogo-resultados), tem sua própria mini-busca+lista de
+// selecionados dentro do próprio formulário.
+function catalogoMostrarAbaPromocional() {
+  _catalogoEsconderTodasAbas();
+  document.getElementById("catalogo-tab-promocional")?.classList.add("active");
+  document.getElementById("catalogo-form-promocional")?.classList.remove("hidden");
+  document.getElementById("catalogo-resultados")?.classList.add("hidden");
+  document.getElementById("catalogo-promo-busca")?.focus();
 }
 
 // Limpa os campos do formulário e volta o painel de resultados pro estado
@@ -1042,5 +1056,385 @@ async function buscarCatalogoPorNome(event) {
 
   } finally {
     setButtonBusy(searchBtn, false);
+  }
+}
+
+// ─── Aba "Catálogo Promocional" (nova função, pedido do usuário 2026-08-29) ───
+// "farei uma nova aba dentro de catalogos de produto, crie Catalogo
+// Promocional onde terá a mesma funcionalidade de catalogo completo, porém
+// farei lista selecionada de produtos, não precisa subcategorizar, deixa
+// como antes e na parte superior direita iremos deixar um espaço para
+// preços" — o atendente busca produtos (nome ou código, reusando os mesmos
+// endpoints já existentes /catalogo/buscar-codigo e /catalogo/buscar-nome),
+// clica "Adicionar" nos que quer, monta a lista manualmente, opcionalmente
+// sobe um CSV de preços (código,preço) e gera o PDF via
+// POST /api/catalogo/promocional/exportar-pdf.
+//
+// _catalogoPromoSelecionados: Map código -> {codigo, nome, secao, linha} —
+// só os campos usados pra render da lista/lookup, não o produto inteiro
+// (nem precisa: o backend resolve o produto de novo a partir do código na
+// hora de gerar o PDF, é só a UI que precisa lembrar nome/seção pra mostrar
+// a lista).
+let _catalogoPromoSelecionados = new Map();
+// Cache do ÚLTIMO resultado de busca (código -> produto) — os botões
+// "Adicionar" dos resultados chamam catalogoPromoAdicionar(codigo) só com o
+// código (mais simples que colocar nome/seção inteiros num atributo HTML
+// com aspas/acentos); a função busca os dados completos aqui.
+let _catalogoPromoUltimaBusca = new Map();
+
+function _catalogoPromoResultadoHTML(produto) {
+  const jaSelecionado = _catalogoPromoSelecionados.has(String(produto.codigo));
+  return `
+    <div class="catalogo-promo-resultado-item">
+      <div class="catalogo-promo-resultado-info">
+        <strong>${safe(produto.codigo)}</strong> — ${safe(produto.nome)}
+        <span class="catalogo-promo-resultado-meta">${safe(produto.secao || "")}${produto.linha ? " · " + safe(produto.linha) : ""}</span>
+      </div>
+      <button
+        type="button"
+        class="catalogo-promo-add-btn"
+        ${jaSelecionado ? "disabled" : ""}
+        onclick="catalogoPromoAdicionar('${escapeAttr(produto.codigo)}')"
+      >
+        <i class="fa-solid ${jaSelecionado ? "fa-check" : "fa-plus"}"></i> ${jaSelecionado ? "Adicionado" : "Adicionar"}
+      </button>
+    </div>
+  `;
+}
+
+// Busca única (nome OU código): tenta código exato primeiro (mais rápido/
+// direto quando o atendente já sabe o número), cai pra busca por nome se
+// não achar nada — evita obrigar o atendente a escolher o tipo de busca
+// numa aba que já é só um passo intermediário (montar a lista), não o foco
+// principal da tela.
+async function catalogoPromoBuscar(event) {
+  if (event) event.preventDefault();
+  const termo = document.getElementById("catalogo-promo-busca")?.value.trim() || "";
+  const wrap = document.getElementById("catalogo-promo-resultados");
+  if (!wrap) return;
+
+  if (!termo) {
+    wrap.innerHTML = "";
+    return;
+  }
+
+  wrap.innerHTML = `<p class="catalogo-promo-buscando"><i class="fa-solid fa-spinner fa-spin"></i> Buscando...</p>`;
+
+  try {
+    let produtos = [];
+    const resCodigo = await apiFetch(`/api/catalogo/buscar-codigo?codigo=${encodeURIComponent(termo)}`);
+    if (resCodigo.ok) {
+      const data = await resCodigo.json();
+      produtos = data.produtos || [];
+    }
+    if (!produtos.length) {
+      const resNome = await apiFetch(`/api/catalogo/buscar-nome?nome=${encodeURIComponent(termo)}`);
+      if (resNome.ok) {
+        const data = await resNome.json();
+        produtos = data.produtos || [];
+      }
+    }
+
+    if (!produtos.length) {
+      wrap.innerHTML = `<p class="catalogo-promo-vazio">Nenhum produto encontrado pra "${safe(termo)}".</p>`;
+      return;
+    }
+
+    _catalogoPromoUltimaBusca = new Map(produtos.map(p => [String(p.codigo), p]));
+    wrap.innerHTML = produtos.slice(0, 30).map(_catalogoPromoResultadoHTML).join("");
+  } catch (err) {
+    wrap.innerHTML = `<p class="catalogo-promo-vazio">Erro ao buscar. Tente novamente.</p>`;
+    console.warn("[catalogo-promocional] falha na busca:", err.message);
+  }
+}
+
+function _catalogoPromoRenderSelecionados() {
+  const wrap = document.getElementById("catalogo-promo-selecionados");
+  const contagemEl = document.getElementById("catalogo-promo-contagem");
+  const gerarBtn = document.getElementById("catalogo-promo-gerar-btn");
+  if (!wrap) return;
+
+  const itens = [..._catalogoPromoSelecionados.values()];
+  if (contagemEl) contagemEl.textContent = `${itens.length} selecionado${itens.length === 1 ? "" : "s"}`;
+  if (gerarBtn) gerarBtn.disabled = itens.length === 0;
+
+  if (!itens.length) {
+    wrap.innerHTML = `<p class="catalogo-promo-vazio">Nenhum produto selecionado ainda — busque acima e clique em "Adicionar".</p>`;
+    return;
+  }
+
+  wrap.innerHTML = itens.map(p => `
+    <div class="catalogo-promo-selecionado-item">
+      <div class="catalogo-promo-resultado-info">
+        <strong>${safe(p.codigo)}</strong> — ${safe(p.nome)}
+        <span class="catalogo-promo-resultado-meta">${safe(p.secao || "")}${p.linha ? " · " + safe(p.linha) : ""}</span>
+      </div>
+      <div class="catalogo-promo-item-right">
+        ${p.preco != null ? `<span class="catalogo-badge catalogo-badge-ano" title="Preço importado do arquivo">R$ ${safe(_formatarPrecoBR(p.preco))}</span>` : ""}
+        <button type="button" class="catalogo-promo-remove-btn" title="Remover da lista" onclick="catalogoPromoRemover('${escapeAttr(p.codigo)}')">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+    </div>
+  `).join("");
+}
+
+// Formata número (99.9) pra texto pt-BR ("99,90") — só pro badge de preço
+// da lista de selecionados, espelhando o formato que o PDF já usa
+// (_formatarPrecoPdf em catalogo-pdf.service.js).
+function _formatarPrecoBR(valor) {
+  return Number(valor).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function catalogoPromoAdicionar(codigo) {
+  const produto = _catalogoPromoUltimaBusca.get(String(codigo));
+  if (!produto) return;
+  _catalogoPromoSelecionados.set(String(codigo), {
+    codigo: produto.codigo,
+    nome: produto.nome,
+    secao: produto.secao,
+    linha: produto.linha,
+  });
+  _catalogoPromoRenderSelecionados();
+
+  // Atualiza o botão "Adicionar" pra "Adicionado" sem precisar refazer a
+  // busca inteira — os resultados continuam na tela depois de adicionar,
+  // pra o atendente poder marcar vários seguidos.
+  const wrap = document.getElementById("catalogo-promo-resultados");
+  if (wrap) wrap.innerHTML = [..._catalogoPromoUltimaBusca.values()].slice(0, 30).map(_catalogoPromoResultadoHTML).join("");
+  _agendarPreviewCatalogoPromocional();
+}
+
+function catalogoPromoRemover(codigo) {
+  _catalogoPromoSelecionados.delete(String(codigo));
+  _catalogoPromoRenderSelecionados();
+  // Se o produto removido ainda estiver nos resultados de busca em tela,
+  // volta o botão dele pra "Adicionar".
+  const wrap = document.getElementById("catalogo-promo-resultados");
+  if (wrap && _catalogoPromoUltimaBusca.has(String(codigo))) {
+    wrap.innerHTML = [..._catalogoPromoUltimaBusca.values()].slice(0, 30).map(_catalogoPromoResultadoHTML).join("");
+  }
+  _agendarPreviewCatalogoPromocional();
+}
+
+function catalogoPromoLimparSelecao() {
+  _catalogoPromoSelecionados.clear();
+  _catalogoPromoRenderSelecionados();
+  const wrap = document.getElementById("catalogo-promo-resultados");
+  if (wrap) wrap.innerHTML = [..._catalogoPromoUltimaBusca.values()].slice(0, 30).map(_catalogoPromoResultadoHTML).join("");
+  _agendarPreviewCatalogoPromocional();
+}
+
+// Escolher o arquivo de preços JÁ importa os produtos pra lista (pedido do
+// usuário, 2026-08-29: "no upload de preços promocionais geralmente vai
+// junto ao codigo, dá pra fazer a captação do produto ao mesmo tempo o
+// preço no arquivo e inseri-lo no catálogo promocional?") — antes o
+// arquivo só dava preço a produtos já adicionados manualmente; agora ele
+// também POPULA a lista sozinho, sem precisar buscar código por código.
+document.getElementById("catalogo-promo-csv")?.addEventListener("change", (event) => {
+  const file = event.target.files?.[0];
+  if (!file) {
+    const statusEl = document.getElementById("catalogo-promo-csv-status");
+    statusEl?.classList.add("hidden");
+    return;
+  }
+  catalogoPromoImportarArquivo(file);
+});
+
+// Lê o arquivo (CSV/XLS/XLSX) no backend, resolve cada código pro produto
+// real e já adiciona tudo em _catalogoPromoSelecionados com o preço
+// correspondente — a mesma lista que os botões "Adicionar" manuais
+// alimentam, então os dois jeitos convivem (pode importar um arquivo E
+// ainda buscar/adicionar produtos avulsos depois, ou vice-versa). Se um
+// código do arquivo já estiver selecionado manualmente, só atualiza o
+// preço dele (merge, não substitui a lista inteira).
+async function catalogoPromoImportarArquivo(file) {
+  const statusEl = document.getElementById("catalogo-promo-csv-status");
+  if (statusEl) {
+    statusEl.textContent = `Lendo ${file.name}...`;
+    statusEl.classList.remove("hidden");
+  }
+
+  try {
+    const formData = new FormData();
+    formData.append("csv", file);
+    const res = await fetch("/api/catalogo/promocional/importar-arquivo", {
+      method: "POST",
+      credentials: "include",
+      body: formData,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Erro ao importar o arquivo.");
+
+    const produtos = data.produtos || [];
+    produtos.forEach((p) => {
+      _catalogoPromoSelecionados.set(String(p.codigo), {
+        codigo: p.codigo,
+        nome: p.nome,
+        secao: p.secao,
+        linha: p.linha,
+        preco: p.preco,
+      });
+    });
+    _catalogoPromoRenderSelecionados();
+
+    // Se algum dos códigos importados estiver nos resultados de busca em
+    // tela, atualiza o botão dele pra "Adicionado".
+    const wrap = document.getElementById("catalogo-promo-resultados");
+    if (wrap && _catalogoPromoUltimaBusca.size) {
+      wrap.innerHTML = [..._catalogoPromoUltimaBusca.values()].slice(0, 30).map(_catalogoPromoResultadoHTML).join("");
+    }
+
+    const naoEncontrados = data.naoEncontrados || [];
+    if (statusEl) {
+      statusEl.textContent = produtos.length
+        ? `${produtos.length} produto${produtos.length === 1 ? "" : "s"} importado${produtos.length === 1 ? "" : "s"} de ${file.name}.`
+        : `Nenhum produto do arquivo foi encontrado no catálogo.`;
+      statusEl.classList.remove("hidden");
+    }
+    if (naoEncontrados.length) {
+      showToast?.(`${naoEncontrados.length} código${naoEncontrados.length === 1 ? "" : "s"} do arquivo não ${naoEncontrados.length === 1 ? "foi encontrado" : "foram encontrados"} no catálogo: ${naoEncontrados.join(", ")}`, "warning");
+    }
+
+    _agendarPreviewCatalogoPromocional();
+  } catch (err) {
+    if (statusEl) {
+      statusEl.textContent = err.message || "Erro ao importar o arquivo.";
+      statusEl.classList.remove("hidden");
+    }
+    showToast?.(err.message || "Erro ao importar o arquivo de preços.", "error");
+    console.warn("[catalogo-promocional] falha ao importar arquivo:", err.message);
+  }
+}
+
+// Pré-visualização automática (pedido do usuário, 2026-08-29): mesmo padrão
+// de _atualizarPreviewCatalogoCompleto (blob do PDF vira src de <iframe>),
+// mas aqui a "seleção" muda a cada clique de Adicionar/Remover/CSV — sem
+// debounce, cada clique dispararia uma geração de PDF completa (inclusive
+// chamadas de IA pra aplicação de produtos ainda não cacheados). Por isso
+// _agendarPreviewCatalogoPromocional só dispara a geração de fato ~1.2s
+// depois da última mudança.
+let _catalogoPromoPreviewUrl = null;
+let _catalogoPromoPreviewTimer = null;
+
+function _agendarPreviewCatalogoPromocional() {
+  if (_catalogoPromoPreviewTimer) clearTimeout(_catalogoPromoPreviewTimer);
+
+  if (!_catalogoPromoSelecionados.size) {
+    // Nada selecionado: some com a prévia na hora, sem esperar o debounce.
+    _catalogoPromoPreviewTimer = null;
+    if (_catalogoPromoPreviewUrl) {
+      URL.revokeObjectURL(_catalogoPromoPreviewUrl);
+      _catalogoPromoPreviewUrl = null;
+    }
+    document.getElementById("catalogo-promo-preview")?.classList.add("hidden");
+    const frame = document.getElementById("catalogo-promo-preview-frame");
+    if (frame) frame.src = "about:blank";
+    return;
+  }
+
+  const wrap = document.getElementById("catalogo-promo-preview");
+  const statusEl = document.getElementById("catalogo-promo-preview-status");
+  wrap?.classList.remove("hidden");
+  if (statusEl) {
+    statusEl.textContent = "Aguardando pausa na seleção pra gerar a pré-visualização...";
+    statusEl.classList.remove("hidden");
+  }
+
+  _catalogoPromoPreviewTimer = setTimeout(_atualizarPreviewCatalogoPromocional, 1200);
+}
+
+async function _atualizarPreviewCatalogoPromocional() {
+  const frame = document.getElementById("catalogo-promo-preview-frame");
+  const statusEl = document.getElementById("catalogo-promo-preview-status");
+  const codigos = [..._catalogoPromoSelecionados.keys()];
+
+  if (_catalogoPromoPreviewUrl) {
+    URL.revokeObjectURL(_catalogoPromoPreviewUrl);
+    _catalogoPromoPreviewUrl = null;
+  }
+
+  if (!codigos.length) return;
+
+  if (frame) frame.src = "about:blank";
+  if (statusEl) {
+    statusEl.textContent = "Gerando pré-visualização... (pode levar alguns segundos)";
+    statusEl.classList.remove("hidden");
+  }
+
+  try {
+    const formData = new FormData();
+    formData.append("codigos", JSON.stringify(codigos));
+    const csvFile = document.getElementById("catalogo-promo-csv")?.files?.[0];
+    if (csvFile) formData.append("csv", csvFile);
+
+    const res = await fetch("/api/catalogo/promocional/exportar-pdf", {
+      method: "POST",
+      credentials: "include",
+      body: formData,
+    });
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      throw new Error(errBody.error || "Erro ao gerar pré-visualização.");
+    }
+    const blob = await res.blob();
+    _catalogoPromoPreviewUrl = URL.createObjectURL(blob);
+    if (frame) frame.src = _catalogoPromoPreviewUrl;
+    if (statusEl) statusEl.classList.add("hidden");
+  } catch (err) {
+    if (statusEl) {
+      statusEl.textContent = err.message || "Não foi possível carregar a pré-visualização.";
+      statusEl.classList.remove("hidden");
+    }
+    console.warn("[catalogo] falha ao carregar preview do catálogo promocional:", err.message);
+  }
+}
+
+async function gerarCatalogoPromocionalPDF(btnEl) {
+  const codigos = [..._catalogoPromoSelecionados.keys()];
+  if (!codigos.length) return;
+
+  const original = btnEl?.innerHTML;
+  if (btnEl) {
+    btnEl.disabled = true;
+    btnEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Gerando PDF...';
+  }
+
+  try {
+    const formData = new FormData();
+    formData.append("codigos", JSON.stringify(codigos));
+    const csvFile = document.getElementById("catalogo-promo-csv")?.files?.[0];
+    if (csvFile) formData.append("csv", csvFile);
+
+    const res = await fetch("/api/catalogo/promocional/exportar-pdf", {
+      method: "POST",
+      credentials: "include",
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      throw new Error(errBody.error || "Erro ao gerar PDF do catálogo promocional.");
+    }
+
+    const naoEncontrados = res.headers.get("X-Catalogo-Codigos-Nao-Encontrados");
+    if (naoEncontrados) {
+      showToast?.(`Alguns códigos não foram encontrados e ficaram de fora do PDF: ${naoEncontrados}`, "warning");
+    }
+
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = `catalogo-promocional-${Date.now()}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    showToast?.(err.message || "Erro ao gerar catálogo promocional em PDF.", "error");
+  } finally {
+    if (btnEl) {
+      btnEl.disabled = codigos.length === 0;
+      btnEl.innerHTML = original;
+    }
   }
 }

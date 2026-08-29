@@ -502,6 +502,70 @@ const CAIXA_CODIGO_PAD_H = 4;
 // colada ao texto (era um respiro perceptível em cima/embaixo do código).
 const CAIXA_CODIGO_PAD_V = 1;
 
+// 2026-08-29 ("Catálogo Promocional", nova função — pedido do usuário: "na
+// parte superior direita iremos deixar um espaço para preços", "por
+// produto, em cada card"): badge de preço promocional, canto superior
+// DIREITO do card — o mesmo espaço que hoje fica vazio ao lado do selo do
+// código (canto superior esquerdo, ver _desenharCardCatalogoCompleto).
+// Verde (em vez do azul do selo/vermelho do OEM) só pra diferenciar
+// visualmente "preço" de "identificação" à primeira vista — mesmo padrão
+// de caixa cheia + texto branco dos outros badges do card, só cor
+// diferente. Preço é OPCIONAL por produto (usuário sobe um CSV
+// código->preço próprio, nem todo código selecionado precisa vir nele) —
+// sem preço pro código, o card simplesmente não desenha o badge (ver
+// _desenharBadgePreco), sem placeholder feio tipo "R$ --".
+const BADGE_PRECO_FUNDO = "#0f8a3c";
+const BADGE_PRECO_TEXTO = "#ffffff";
+const BADGE_PRECO_FONTE = 7;
+
+// Formata um preço numérico (Number ou string numérica) em "R$ 1.234,56" —
+// mesma convenção pt-BR já usada no frontend (_formatarPrecoBRL em
+// 18-catalogo.js), reimplementada aqui porque o PDF é gerado no backend,
+// sem acesso ao código do frontend. `null`/`undefined`/NaN retornam null
+// (chamador decide não desenhar nada nesse caso).
+function _formatarPrecoPdf(valor) {
+  const num = Number(valor);
+  if (!Number.isFinite(num)) return null;
+  return "R$ " + num.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Desenha o badge de preço no canto superior direito da área de conteúdo do
+// card (xConteudo/yTopo/larguraConteudo = mesmos parâmetros já usados pro
+// selo do código, ver _desenharCardCatalogoCompleto). `larguraSelo` é
+// passada só pra checar colisão: em código de fabricante muito longo o
+// selo (canto esquerdo, largura variável — nunca trunca, ver
+// _ajustarFonteSeloParaCaber) pode ocupar quase o card inteiro; nesse caso
+// raro, em vez de desenhar o preço por cima do selo, o badge é
+// silenciosamente OMITIDO nesse card específico (o preço continua correto
+// nos outros cards da mesma leva/página — não vale complicar o layout por
+// um caso de borda de código gigante).
+function _desenharBadgePreco(doc, preco, xConteudo, yTopo, larguraConteudo, larguraSelo) {
+  const texto = _formatarPrecoPdf(preco);
+  if (!texto) return;
+
+  doc.font(TITULO_FONTE).fontSize(BADGE_PRECO_FONTE);
+  const larguraTexto = doc.widthOfString(texto);
+  const larguraBadge = larguraTexto + CAIXA_CODIGO_PAD_H * 2 + 1.5;
+  const alturaLinha = doc.currentLineHeight();
+  const alturaBadge = alturaLinha + CAIXA_CODIGO_PAD_V * 2;
+
+  const xBadge = xConteudo + larguraConteudo - larguraBadge;
+  const yBadge = yTopo;
+
+  if (xBadge < xConteudo + larguraSelo + 4) return; // colidiria com o selo — omite
+
+  doc.rect(xBadge, yBadge, larguraBadge, alturaBadge).fillColor(BADGE_PRECO_FUNDO).fill();
+  doc.fillColor(BADGE_PRECO_TEXTO).font(TITULO_FONTE).fontSize(BADGE_PRECO_FONTE)
+    .text(texto, xBadge + CAIXA_CODIGO_PAD_H, yBadge + CAIXA_CODIGO_PAD_V, {
+      width: larguraBadge - CAIXA_CODIGO_PAD_H * 2,
+      height: alturaLinha,
+      lineBreak: false,
+      align: "center",
+    });
+
+  doc.fillColor("#111827").font("Helvetica");
+}
+
 // Pedido do usuário (2026-07-28): título da seção ("AMORTECEDORES" etc.) em
 // "Futura Md BT" 17pt. Fonte recebida em 2026-08-26 (arquivo .ttf enviado
 // pelo usuário, peso Bold Italic — único peso disponível; o desenho de
@@ -1123,7 +1187,7 @@ function _desenharAplicacao(doc, textoOriginal, x, y, largura, altura, marcaPrio
   doc.restore();
 }
 
-function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth, photoBoxHeight, marcaAtual = null) {
+function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth, photoBoxHeight, marcaAtual = null, preco = null) {
   const larguraConteudo = photoBoxWidth; // = cardWidth - PAD_CARD*2, já calculado em _geometriaGrid
   const xConteudo = x + PAD_CARD;
   const yTopo = y + PAD_CARD;
@@ -1160,6 +1224,14 @@ function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight
       lineBreak: false,
       align: "center",
     });
+
+  // --- Preço promocional (canto superior direito, ver _desenharBadgePreco)
+  // — só desenha se `preco` foi passado (Catálogo Promocional); nos outros
+  // modos (Catálogo Completo comum) preco fica null e a função não desenha
+  // nada, canto continua vazio como sempre foi.
+  if (preco != null) {
+    _desenharBadgePreco(doc, preco, xConteudo, yTopo, larguraConteudo, larguraSelo);
+  }
 
   // --- Código original/OEM em vermelho, embaixo do selo ---
   const oem = Array.isArray(produto.equivalentes) && produto.equivalentes.length ? produto.equivalentes[0] : null;
@@ -1268,11 +1340,11 @@ function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight
 // catálogo comum mantém o desenho original (selo sobre a foto + nome
 // abaixo), Catálogo Completo usa o cabeçalho novo (selo+descrição lado a
 // lado + OEM em vermelho + foto maior + aplicação em preto).
-function _desenharCard(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth, photoBoxHeight, comAplicacao = false, marcaAtual = null) {
+function _desenharCard(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth, photoBoxHeight, comAplicacao = false, marcaAtual = null, preco = null) {
   _desenharCardVidro(doc, x, y, cardWidth, cardHeight);
 
   if (comAplicacao) {
-    _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth, photoBoxHeight, marcaAtual);
+    _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth, photoBoxHeight, marcaAtual, preco);
     return;
   }
 
@@ -1516,6 +1588,38 @@ function _construirSequenciaConteudo(grupos) {
         }
       }
     });
+  });
+  return { sequencia, primeiroIndicePorGrupo };
+}
+
+// 2026-08-29 (Issue nova função "Catálogo Promocional", pedido do usuário:
+// "farei lista selecionada de produtos, não precisa subcategorizar, deixa
+// como antes"): mesma ideia de _construirSequenciaConteudo (Linha -> cards
+// numa sequência única, com cardVazio preenchendo a leva final), mas SEM o
+// sub-agrupamento por marca (_agruparPorMarca) — nenhum bloco
+// "cabecalhoMarca" é gerado, os cards de cada Linha entram direto na
+// sequência. Consequência direta: _desenharAplicacao nunca recebe
+// `marcaPrioritaria` pra esses cards (ver chamada em gerarPdfCatalogoPromocional
+// mais abaixo), então o texto de aplicação sai completo/sem filtro por
+// marca — exatamente o "deixa como antes" pedido (mesmo texto que
+// aplicacaoOrganizada já traz, sem o corte por segmento que só faz sentido
+// dentro de um sub-grupo de marca). `primeiroIndicePorGrupo` continua com o
+// mesmo papel de sempre: índice em `sequencia` onde cada Linha começa, pro
+// cálculo de página do índice/sumário.
+function _construirSequenciaConteudoPromocional(grupos) {
+  const sequencia = [];
+  const primeiroIndicePorGrupo = [];
+  grupos.forEach(({ linha, itens }) => {
+    primeiroIndicePorGrupo.push(sequencia.length);
+    for (let inicio = 0; inicio < itens.length; inicio += COLS_COMPLETO) {
+      const leva = itens.slice(inicio, inicio + COLS_COMPLETO);
+      leva.forEach((produto, colIndex) => {
+        sequencia.push({ tipo: "card", linha, produto, colIndex, colsLinha: COLS_COMPLETO });
+      });
+      for (let colIndex = leva.length; colIndex < COLS_COMPLETO; colIndex += 1) {
+        sequencia.push({ tipo: "cardVazio", linha, colIndex, colsLinha: COLS_COMPLETO });
+      }
+    }
   });
   return { sequencia, primeiroIndicePorGrupo };
 }
@@ -2012,4 +2116,126 @@ function gerarPdfCatalogoCompleto(produtos, fabricante, destino) {
   doc.end();
 }
 
-module.exports = { gerarPdfCatalogo, gerarPdfCatalogoCompleto };
+/**
+ * Gera o PDF do modo "Catálogo Promocional" (nova função, pedido do usuário
+ * 2026-08-29: "farei uma nova aba dentro de catalogos de produto, crie
+ * Catalogo Promocional onde terá a mesma funcionalidade de catalogo
+ * completo, porém farei lista selecionada de produtos, não precisa
+ * subcategorizar, deixa como antes e na parte superior direita iremos
+ * deixar um espaço para preços").
+ *
+ * Réplica quase idêntica de gerarPdfCatalogoCompleto acima (mesmo
+ * cabeçalho/rodapé/índice por Linha/grade 4×5/foto real), com 3 diferenças
+ * pontuais, todas confirmadas com o usuário via perguntas de escopo:
+ *   1. `produtos` é uma LISTA SELECIONADA manualmente pelo atendente (não
+ *      "todo o catálogo de um fabricante") — controller resolve os
+ *      códigos escolhidos antes de chamar esta função, pode misturar
+ *      fabricantes diferentes na mesma lista.
+ *   2. SEM sub-agrupamento por marca de veículo dentro de cada Linha
+ *      ("não precisa subcategorizar, deixa como antes") — usa
+ *      _construirSequenciaConteudoPromocional em vez de
+ *      _construirSequenciaConteudo, sem blocos "cabecalhoMarca". Como
+ *      consequência, _desenharCard nunca recebe `marcaAtual` aqui (sempre
+ *      null) — o texto de aplicação de cada card sai completo, sem o corte
+ *      por marca que só faz sentido dentro de um sub-grupo.
+ *   3. Badge de preço por card, canto superior direito (ver
+ *      _desenharBadgePreco) — `precosPorCodigo` é um Map<string codigo,
+ *      number preco> montado pelo controller a partir do CSV que o
+ *      usuário sobe ("eu enviarei arquivos csv com codigos e preços
+ *      promocionais"); código sem entrada no map simplesmente não desenha
+ *      badge nenhum (preço é OPCIONAL por produto, não obrigatório pra
+ *      todo item da lista).
+ *
+ * Mantém o índice/sumário por Linha (agrupamento por p.linha/p.secao
+ * continua o mesmo de _agruparPorLinha) — só a Marca foi removida, a Linha
+ * ("cabeçalho" no sentido de organização/índice, não um bloco desenhado
+ * dentro da grade) continua exatamente como no Catálogo Completo, por
+ * pedido explícito do usuário ("Mantém cabeçalho de Linha, remove só
+ * Marca").
+ */
+function gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino) {
+  const doc = new PDFDocument({ size: "A4", margin: 0, autoFirstPage: false, bufferPages: true });
+  doc.pipe(destino);
+  doc.registerFont(TITULO_FONTE, TITULO_FONTE_ARQUIVO);
+  doc.registerFont(QUICKSAND_BOLD, QUICKSAND_BOLD_ARQUIVO);
+  doc.registerFont(QUICKSAND_MEDIUM, QUICKSAND_MEDIUM_ARQUIVO);
+
+  const grupos = _agruparPorLinha(produtos);
+
+  // --- Pré-cálculo da paginação do índice (mesmo princípio de
+  // gerarPdfCatalogoCompleto, ver comentário lá) ---
+  const larguraUtilIndice = A4_LARGURA - PAGE_MARGIN * 2;
+  const areaFimYIndice = A4_ALTURA - FOOTER_HEIGHT - 8;
+  const alturaDisponivelIndice = areaFimYIndice - AREA_TOPO_Y_INDICE;
+  const linhasPorPaginaIndice = Math.max(1, Math.floor(alturaDisponivelIndice / INDICE_LINHA_ALTURA));
+  const paginasIndice = Math.max(1, Math.ceil(grupos.length / linhasPorPaginaIndice));
+
+  // Sem sub-agrupamento por marca aqui — alturaHeaderMarca passada como 0
+  // pra _calcularLayoutConteudo não é usada de verdade (a sequência nunca
+  // tem blocos "cabecalhoMarca", ver _construirSequenciaConteudoPromocional),
+  // mas o parâmetro continua existindo pra reusar a MESMA função de layout
+  // sem duplicar a lógica de paginação/quebra de página.
+  const { sequencia, primeiroIndicePorGrupo } = _construirSequenciaConteudoPromocional(grupos);
+  const geometriaCompleto = _geometriaGrid(doc, COLS_COMPLETO, ROWS_POR_PAGINA_COMPLETO, true);
+  const { posicoes, preenchimentoFinal } = _calcularLayoutConteudo(sequencia, geometriaCompleto, 0);
+  const paginaInicialPorGrupo = primeiroIndicePorGrupo.map(
+    (idx) => paginasIndice + 1 + posicoes[idx].pagina
+  );
+
+  let pagina = 0;
+
+  // --- Páginas de índice (idêntico a gerarPdfCatalogoCompleto) ---
+  for (let p = 0; p < paginasIndice; p += 1) {
+    doc.addPage();
+    pagina += 1;
+    _desenharCabecalhoIndice(doc);
+    _desenharRodape(doc, pagina);
+
+    const offset = p * linhasPorPaginaIndice;
+    const linhasDestaPagina = grupos.slice(offset, offset + linhasPorPaginaIndice);
+    let y = AREA_TOPO_Y_INDICE;
+    linhasDestaPagina.forEach((grupo, i) => {
+      _desenharLinhaIndice(doc, grupo.linha, paginaInicialPorGrupo[offset + i], y, larguraUtilIndice);
+      y += INDICE_LINHA_ALTURA;
+    });
+  }
+
+  // --- Páginas de conteúdo: sequência única e contínua entre Linhas,
+  // sem blocos de cabeçalho de marca (ver _construirSequenciaConteudoPromocional) ---
+  let paginaLocalAtual = -1;
+
+  function _desenharPreenchimentoDaPagina(numeroPagina) {
+    preenchimentoFinal
+      .filter((p) => p.pagina === numeroPagina)
+      .forEach((p) => _desenharCardVazio(doc, p.x, p.y, p.cardWidth, p.cardHeight));
+  }
+
+  sequencia.forEach((bloco, i) => {
+    const pos = posicoes[i];
+    if (pos.pagina !== paginaLocalAtual) {
+      if (paginaLocalAtual !== -1) _desenharPreenchimentoDaPagina(paginaLocalAtual);
+      paginaLocalAtual = pos.pagina;
+      doc.addPage();
+      pagina += 1;
+      _desenharCabecalho(doc, bloco.linha);
+      _desenharRodape(doc, pagina);
+    }
+
+    if (bloco.tipo === "cardVazio") {
+      _desenharCardVazio(doc, pos.x, pos.y, geometriaCompleto.cardWidth, geometriaCompleto.cardHeight);
+    } else {
+      const preco = precosPorCodigo?.get(String(bloco.produto.codigo)) ?? null;
+      _desenharCard(
+        doc, bloco.produto, pos.x, pos.y,
+        geometriaCompleto.cardWidth, geometriaCompleto.cardHeight,
+        geometriaCompleto.photoBoxWidth, geometriaCompleto.photoBoxHeight, true, null, preco
+      );
+    }
+  });
+
+  if (paginaLocalAtual !== -1) _desenharPreenchimentoDaPagina(paginaLocalAtual);
+
+  doc.end();
+}
+
+module.exports = { gerarPdfCatalogo, gerarPdfCatalogoCompleto, gerarPdfCatalogoPromocional };

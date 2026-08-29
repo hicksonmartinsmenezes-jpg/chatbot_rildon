@@ -1,8 +1,9 @@
+const ExcelJS = require("exceljs");
 const logger = require("../utils/logger");
 const { listarFotos, obterFoto, recarregarIndice: recarregarIndiceFotos } = require("../services/catalogo-fotos.service");
 const { buscarProdutosPainel, buscarPorCodigo, buscarPorNomePainel, listarFabricantes, recarregarIndices: recarregarIndicesProdutos } = require("../services/catalogo-x2.service");
 const { listarSecoes, listarLinhasPorSecao } = require("../services/catalogo.service");
-const { gerarPdfCatalogo, gerarPdfCatalogoCompleto } = require("../services/catalogo-pdf.service");
+const { gerarPdfCatalogo, gerarPdfCatalogoCompleto, gerarPdfCatalogoPromocional } = require("../services/catalogo-pdf.service");
 const { carregarEstoque, statusCache } = require("../services/estoque.service");
 const { anexarAplicacoesOrganizadas } = require("../services/catalogo-aplicacao-ia.service");
 
@@ -40,6 +41,119 @@ const ANO_MINIMO = 1950;
 // real hoje é 863). 1000 cobre todos com folga sem abrir mão da trava de
 // segurança contra um filtro genérico demais.
 const MAX_EXPORT_PDF = 1000;
+
+// 2026-08-29 ("Catálogo Promocional", nova função): teto separado de
+// MAX_EXPORT_PDF — aqui a lista é curada produto a produto pelo atendente
+// (não um filtro amplo que pode trazer centenas sem querer), então um teto
+// bem menor já cobre qualquer uso real e evita só o caso degenerado de um
+// `codigos` gigante mandado direto na API sem passar pela UI.
+const MAX_ITENS_PROMOCIONAL = 200;
+
+// Converte um texto de preço (célula do CSV) num Number — aceita tanto
+// formato pt-BR ("1.234,56", vírgula decimal, ponto de milhar) quanto
+// formato solto com ponto decimal ("99.90", caso comum quando o CSV é
+// gerado por script/planilha em locale en-US) — decide pelo formato
+// olhando se tem vírgula: com vírgula, ponto vira separador de milhar
+// (removido) e vírgula vira o decimal; sem vírgula, usa o texto como está.
+// "R$" solto no início (cola comum de export de planilha) é removido antes.
+function _parsePrecoTexto(txt) {
+  const limpo = String(txt || "").trim().replace(/^R\$\s*/i, "");
+  if (!limpo) return null;
+  const normalizado = limpo.includes(",") ? limpo.replace(/\./g, "").replace(",", ".") : limpo;
+  const num = Number(normalizado);
+  return Number.isFinite(num) && num >= 0 ? num : null;
+}
+
+// Remove acento e normaliza espaço/caixa — usado só pra RECONHECER qual
+// coluna é qual no cabeçalho (o valor das células continua intocado).
+function _normalizarHeader(h) {
+  return String(h || "")
+    .trim().replace(/^"|"$/g, "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // remove acentos (o-com-acento -> o, c-cedilha -> c...)
+    .toLowerCase();
+}
+
+// Parser de linhas já tabuladas (2 colunas: codigo,preco) — comum ao CSV e
+// ao XLSX (2026-08-29, pedido do usuário: "preciso que ele entenda arquivos
+// xls também"). Recebe uma matriz de linhas, cada uma já um array de
+// células string — CSV chega assim depois do split por vírgula, XLSX chega
+// assim depois de _linhasDaPlanilha(). Linha sem código OU sem preço válido
+// é simplesmente ignorada (não derruba o import inteiro por causa de 1
+// linha suja).
+//
+// Reconhecimento de cabeçalho por SUBSTRING, não igualdade exata (2026-08-29,
+// achado testando com um export real do X2 — "Wega Estoque.xlsx" usa
+// "Cód. Fornecedor" e "Preço Venda", não "codigo"/"preco" like o formato
+// pensado originalmente pro upload manual). "cod" cobre código/código
+// interno/cód. fornecedor/cod produto etc.; "preco"/"valor" cobre preço/
+// preço venda/preço promocional/valor unitário etc. Se a planilha tiver
+// mais de uma coluna de preço (ex: custo E venda), pega a primeira que
+// bater — limitação aceitável pro uso real (upload de exports do X2, que
+// só trazem 1 preço de venda por padrão).
+function _mapaPrecosDeLinhas(linhas, nomeFormato) {
+  if (linhas.length < 2) return new Map();
+
+  const headers = linhas[0].map(_normalizarHeader);
+  const idxCodigo = headers.findIndex(h => h.includes("cod"));
+  const idxPreco = headers.findIndex(h => h.includes("preco") || h.includes("valor"));
+  if (idxCodigo === -1 || idxPreco === -1) {
+    throw new Error(`${nomeFormato} de preços precisa ter uma coluna de código (ex: "codigo", "cód. fornecedor") e uma de preço (ex: "preco", "preço venda") no cabeçalho.`);
+  }
+
+  const mapa = new Map();
+  linhas.slice(1).forEach(linha => {
+    const codigo = String(linha[idxCodigo] || "").trim().replace(/^"|"$/g, "");
+    const preco = _parsePrecoTexto(linha[idxPreco]);
+    if (!codigo || preco === null) return;
+    mapa.set(codigo, preco);
+  });
+  return mapa;
+}
+
+// Parser de CSV bem simples — pedido do usuário (2026-08-29): "eu enviarei
+// arquivos csv com codigos e preços promocionais". Não usa nenhuma lib de
+// CSV (o projeto já tem um parser próprio equivalente em contact.routes.js
+// pra importação de contatos, mas é local àquele arquivo) — como o formato
+// aqui é sempre só 2 colunas simples, sem aspas/vírgula dentro de campo
+// esperadas, um split direto basta, sem trazer dependência nova pra um caso
+// tão simples (ver princípio "evitar overengineering" em CLAUDE.md).
+function _parseCsvPrecos(conteudo) {
+  const linhas = String(conteudo || "")
+    .replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+    .split("\n").filter(l => l.trim())
+    .map(linha => linha.split(","));
+  return _mapaPrecosDeLinhas(linhas, "CSV");
+}
+
+// Parser de XLSX — pedido do usuário (2026-08-29): "preciso que ele
+// entenda arquivos xls também". Usa exceljs (já dependência do projeto, ver
+// scripts/x2-lancamentos-scraper.js) pra ler a 1ª planilha do workbook e
+// devolver o mesmo formato de matriz de linhas que o parser de CSV usa —
+// mesma validação de cabeçalho/preço, sem duplicar lógica.
+// Limitação conhecida: exceljs só lê o formato OOXML (.xlsx); um .xls de
+// verdade (binário antigo, pré-2007) cai aqui e estoura na leitura —
+// mensagem de erro abaixo já orienta o usuário a salvar como .xlsx.
+async function _parseXlsxPrecos(buffer) {
+  const workbook = new ExcelJS.Workbook();
+  try {
+    await workbook.xlsx.load(buffer);
+  } catch {
+    throw new Error('Não consegui ler a planilha. Se for um .xls antigo, salve como .xlsx (Excel: "Salvar como" → "Pasta de Trabalho do Excel") e envie de novo.');
+  }
+  const planilha = workbook.worksheets[0];
+  if (!planilha) throw new Error("A planilha enviada está vazia.");
+
+  const linhas = [];
+  planilha.eachRow({ includeEmpty: false }, (row) => {
+    const valores = row.values.slice(1).map(v => {
+      if (v && typeof v === "object" && "text" in v) return v.text; // rich text
+      if (v && typeof v === "object" && "result" in v) return v.result; // fórmula
+      return v;
+    });
+    linhas.push(valores);
+  });
+  return _mapaPrecosDeLinhas(linhas, "Planilha");
+}
 
 // GET /api/catalogo/buscar — painel "Catálogo de Produtos" (Task #240-243,
 // pedido do usuário em 2026-07-21): atendente digita marca/modelo/ano (e
@@ -173,6 +287,199 @@ async function exportarPdfHandler(req, res) {
   } catch (err) {
     logger.error("❌ Erro ao exportar catálogo em PDF:", err.message);
     if (!res.headersSent) res.status(500).json({ error: "Erro ao gerar PDF do catálogo." });
+  }
+}
+
+// Resolve uma lista de códigos internos pros produtos reais indexados —
+// mesma busca exata usada em /catalogo/buscar-codigo (equivalente/
+// referência/código interno). Prioriza o match EXATO do código interno (o
+// que a UI de seleção sempre manda) quando buscarPorCodigo devolver mais de
+// um resultado — caso raro de colisão entre um código interno e uma
+// referência de outro produto. Compartilhado entre exportarPdfPromocionalHandler
+// e importarArquivoPromocionalHandler (2026-08-29) — mesma lógica, evita os
+// dois divergirem com o tempo (ver princípio DRY em CLAUDE.md).
+function _resolverProdutosPorCodigos(codigos) {
+  const produtos = [];
+  const naoEncontrados = [];
+  codigos.forEach((codigo) => {
+    const resultados = buscarPorCodigo(codigo, { limite: 10 });
+    const exato = resultados.find((p) => String(p.codigo) === codigo) || resultados[0] || null;
+    if (exato) produtos.push(exato);
+    else naoEncontrados.push(codigo);
+  });
+  return { produtos, naoEncontrados };
+}
+
+// BUG REAL achado testando com arquivo de verdade do usuário (2026-08-29,
+// "Wega Estoque.xlsx"): o Map de preços vem indexado pelo código QUE ESTAVA
+// NO ARQUIVO (ex: "Cód. Fornecedor" tipo "WR106") — mas o produto resolvido
+// por buscarPorCodigo() sempre volta com o CÓDIGO INTERNO da loja (ex:
+// "126011", ver comentário de buscarPorCodigo em catalogo-x2.service.js).
+// gerarPdfCatalogoPromocional/importarArquivoPromocionalHandler procuravam
+// o preço fazendo precosPorCodigo.get(produto.codigo) — codigo INTERNO — só
+// que a chave do Map era o codigo do ARQUIVO. Resultado: preço sempre null,
+// mesmo com o arquivo "batendo" certinho na resolução de produto (que usa
+// os 3 índices — interno/referência/equivalente — então funciona mesmo com
+// código de fornecedor; só o preço que ficava sem achar a chave certa).
+// Esta função re-indexa o Map pelo código INTERNO logo após o parse, uma
+// vez só, resolvendo cada chave do arquivo pro mesmo produto que
+// _resolverProdutosPorCodigos acha depois — os dois pontos de uso (export
+// e import) passam a bater sempre, seja o arquivo usando código interno,
+// de fornecedor ou referência.
+function _reindexarPrecosPorCodigoInterno(precosBrutos) {
+  const mapa = new Map();
+  for (const [codigoArquivo, preco] of precosBrutos) {
+    const resultados = buscarPorCodigo(codigoArquivo, { limite: 10 });
+    const exato = resultados.find((p) => String(p.codigo) === codigoArquivo) || resultados[0] || null;
+    if (exato) mapa.set(String(exato.codigo), preco);
+  }
+  return mapa;
+}
+
+// POST /api/catalogo/promocional/exportar-pdf — "Catálogo Promocional" (nova
+// função, pedido do usuário 2026-08-29): mesmo layout com foto/aplicação do
+// Catálogo Completo, mas pra uma LISTA SELECIONADA de produtos (não "todo
+// fabricante") e com preço promocional por card, vindo de um CSV que o
+// próprio usuário sobe junto com a requisição. multipart/form-data:
+//   - `codigos` (campo de texto): JSON array de códigos internos dos
+//     produtos selecionados na UI (frontend acumula essa lista clicando
+//     "Adicionar" nos resultados de busca já existentes).
+//   - `csv` (arquivo, opcional): CSV com colunas "codigo,preco" — código
+//     sem entrada aqui simplesmente não ganha badge de preço no card (ver
+//     _desenharBadgePreco em catalogo-pdf.service.js), não bloqueia a
+//     geração do PDF.
+async function exportarPdfPromocionalHandler(req, res) {
+  try {
+    let codigos;
+    try {
+      codigos = JSON.parse(req.body.codigos || "[]");
+    } catch {
+      return res.status(400).json({ error: "Lista de produtos selecionados inválida." });
+    }
+    if (!Array.isArray(codigos) || !codigos.length) {
+      return res.status(400).json({ error: "Selecione ao menos 1 produto pra gerar o catálogo promocional." });
+    }
+
+    codigos = [...new Set(codigos.map(c => String(c).trim()).filter(Boolean))];
+    if (!codigos.length) {
+      return res.status(400).json({ error: "Selecione ao menos 1 produto pra gerar o catálogo promocional." });
+    }
+    if (codigos.some(c => !_codigoValido(c))) {
+      return res.status(400).json({ error: "Código de produto inválido na lista selecionada." });
+    }
+    if (codigos.length > MAX_ITENS_PROMOCIONAL) {
+      return res.status(400).json({ error: `A lista tem ${codigos.length} produtos — máx. ${MAX_ITENS_PROMOCIONAL} por catálogo promocional.` });
+    }
+
+    let precosPorCodigo = new Map();
+    if (req.file) {
+      const nomeArquivo = String(req.file.originalname || "").toLowerCase();
+      try {
+        precosPorCodigo = nomeArquivo.endsWith(".xls") || nomeArquivo.endsWith(".xlsx")
+          ? await _parseXlsxPrecos(req.file.buffer)
+          : _parseCsvPrecos(req.file.buffer.toString("utf-8"));
+        // Re-indexa pelo código INTERNO (ver _reindexarPrecosPorCodigoInterno)
+        // — sem isso, um arquivo com código de fornecedor/referência (ex:
+        // export de Estoque do X2) nunca batia com produto.codigo (sempre
+        // interno) na hora de desenhar o selo de preço no PDF.
+        precosPorCodigo = _reindexarPrecosPorCodigoInterno(precosPorCodigo);
+      } catch (err) {
+        return res.status(400).json({ error: err.message });
+      }
+    }
+
+    const { produtos, naoEncontrados } = _resolverProdutosPorCodigos(codigos);
+
+    if (!produtos.length) {
+      return res.status(404).json({ error: "Nenhum dos produtos selecionados foi encontrado no catálogo." });
+    }
+
+    // Mesmo melhor-esforço limitado do Catálogo Completo (Issue #23) —
+    // organiza com IA só os textos ainda sem cache, até o mesmo teto.
+    try {
+      await anexarAplicacoesOrganizadas(produtos, { maxNovos: MAX_APLICACOES_NOVAS_POR_EXPORT });
+    } catch (err) {
+      logger.warn(`[Catálogo Promocional] Falha ao organizar aplicações com IA (seguindo sem elas): ${err.message}`);
+    }
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="catalogo-promocional-${Date.now()}.pdf"`);
+    if (naoEncontrados.length) {
+      // Aviso não-bloqueante (o PDF sai só com o que foi encontrado) — o
+      // frontend pode ler esse header e avisar o atendente quais códigos
+      // sumiram da seleção (produto removido/renomeado no catálogo depois
+      // que a UI adicionou ele à lista).
+      res.setHeader("X-Catalogo-Codigos-Nao-Encontrados", naoEncontrados.join(","));
+    }
+    gerarPdfCatalogoPromocional(produtos, precosPorCodigo, res);
+  } catch (err) {
+    logger.error("❌ Erro ao exportar catálogo promocional em PDF:", err.message);
+    if (!res.headersSent) res.status(500).json({ error: "Erro ao gerar PDF do catálogo promocional." });
+  }
+}
+
+// POST /api/catalogo/promocional/importar-arquivo — pedido do usuário
+// (2026-08-29): "no upload de preços promocionais geralmente vai junto ao
+// codigo, dá pra fazer a captação do produto ao mesmo tempo o preço no
+// arquivo e inseri-lo no catálogo promocional?". Antes, o CSV/XLS/XLSX só
+// servia pra dar preço a produtos JÁ adicionados manualmente (busca +
+// "Adicionar" um a um). Agora o mesmo arquivo pode ALIMENTAR a lista
+// direto: lê codigo+preco do arquivo, resolve cada código pro produto real
+// (mesmo _resolverProdutosPorCodigos do handler de exportar-pdf) e devolve
+// pro frontend já com nome/seção/linha/preço prontos pra popular
+// "Produtos Selecionados" sem precisar buscar cada um manualmente.
+// Não gera PDF nenhum aqui — só devolve JSON; a geração continua reusando
+// o mesmo arquivo (reenviado) em exportarPdfPromocionalHandler.
+async function importarArquivoPromocionalHandler(req, res) {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "Envie um arquivo CSV, XLS ou XLSX com códigos e preços." });
+    }
+
+    const nomeArquivo = String(req.file.originalname || "").toLowerCase();
+    let precosPorCodigo;
+    try {
+      precosPorCodigo = nomeArquivo.endsWith(".xls") || nomeArquivo.endsWith(".xlsx")
+        ? await _parseXlsxPrecos(req.file.buffer)
+        : _parseCsvPrecos(req.file.buffer.toString("utf-8"));
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+
+    if (!precosPorCodigo.size) {
+      return res.status(400).json({ error: "Nenhum código com preço válido encontrado no arquivo." });
+    }
+    if (precosPorCodigo.size > MAX_ITENS_PROMOCIONAL) {
+      return res.status(400).json({ error: `O arquivo tem ${precosPorCodigo.size} códigos — máx. ${MAX_ITENS_PROMOCIONAL} por catálogo promocional.` });
+    }
+
+    // Resolve produtos usando os códigos CRUS do arquivo (podem ser código
+    // de fornecedor/referência, ex: export de Estoque do X2 — buscarPorCodigo
+    // já lida com isso). Só DEPOIS re-indexa o Map de preços pelo código
+    // INTERNO (mesmo formato que os produtos resolvidos sempre trazem) —
+    // mesmo bug/fix do exportarPdfPromocionalHandler, ver
+    // _reindexarPrecosPorCodigoInterno.
+    const codigosDoArquivo = [...precosPorCodigo.keys()];
+    const { produtos, naoEncontrados } = _resolverProdutosPorCodigos(codigosDoArquivo);
+    const precosPorCodigoInterno = _reindexarPrecosPorCodigoInterno(precosPorCodigo);
+
+    if (!produtos.length) {
+      return res.status(404).json({ error: "Nenhum dos códigos do arquivo foi encontrado no catálogo." });
+    }
+
+    res.json({
+      produtos: produtos.map(p => ({
+        codigo: p.codigo,
+        nome: p.nome,
+        secao: p.secao,
+        linha: p.linha,
+        preco: precosPorCodigoInterno.get(String(p.codigo)) ?? null,
+      })),
+      naoEncontrados,
+    });
+  } catch (err) {
+    logger.error("❌ Erro ao importar arquivo de preços do catálogo promocional:", err.message);
+    res.status(500).json({ error: "Erro ao processar o arquivo." });
   }
 }
 
@@ -347,4 +654,6 @@ module.exports = {
   buscarPorCodigoHandler,
   buscarPorNomeHandler,
   exportarPdfHandler,
+  exportarPdfPromocionalHandler,
+  importarArquivoPromocionalHandler,
 };

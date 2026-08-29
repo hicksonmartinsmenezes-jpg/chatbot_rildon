@@ -1,5 +1,7 @@
 const express = require("express");
+const multer = require("multer");
 const router = express.Router();
+const { uploadLimiter } = require("../middlewares/rate-limiters");
 const {
   listarFotosHandler,
   servirFotoHandler,
@@ -10,9 +12,43 @@ const {
   buscarPorCodigoHandler,
   buscarPorNomeHandler,
   exportarPdfHandler,
+  exportarPdfPromocionalHandler,
+  importarArquivoPromocionalHandler,
   recarregarEstoqueHandler,
   recarregarCatalogoHandler,
 } = require("../controllers/catalogo.controller");
+
+// CSV/XLSX de preços do "Catálogo Promocional" (nova função, 2026-08-29;
+// suporte a planilha Excel adicionado 2026-08-29 a pedido do usuário — "ele
+// entender arquivos xls também"): mesmo padrão de validação de
+// contact.routes.js (csvUpload), só que aceitando .csv/.xls/.xlsx até 2MB,
+// mimetype coerente. Preço promocional de umas dezenas/centenas de linhas
+// cabe MUITO longe desse teto — a trava é só contra arquivo errado enviado
+// sem querer, não uma limitação real de uso.
+// Nota: .xls (formato binário antigo, pré-2007) NÃO é lido de verdade — só
+// aceito na validação de upload por mimetype legado comum, mas o parser
+// (_parseXlsxPrecos, catalogo.controller.js) usa exceljs, que só entende
+// .xlsx (OOXML). Arquivo .xls de verdade cai no catch do parser com erro
+// claro pro usuário, pedindo pra salvar como .xlsx — troca de lib só se
+// isso vier a ser um problema real (evitar overengineering, CLAUDE.md).
+const csvUploadPrecos = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const original = String(file.originalname || "").toLowerCase();
+    const mime = String(file.mimetype || "").toLowerCase();
+    const mimesAceitos = [
+      "text/csv", "application/csv", "text/plain",
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "application/octet-stream", // alguns navegadores mandam isso pra .xlsx
+    ];
+    const extensaoOk = original.endsWith(".csv") || original.endsWith(".xls") || original.endsWith(".xlsx");
+    const allowed = extensaoOk && mimesAceitos.includes(mime);
+    if (!allowed) return cb(new Error("Envie apenas arquivo CSV, XLS ou XLSX válido."));
+    return cb(null, true);
+  }
+});
 
 // Painel "Catálogo de Produtos" (pedido do usuário, 2026-07-21): busca por
 // marca/modelo/ano/categoria. Mesma proteção authSession das rotas abaixo
@@ -35,6 +71,19 @@ router.get("/catalogo/buscar-nome", buscarPorNomeHandler);
 // critérios de /catalogo/buscar (ou um `codigo` isolado), mas sem o teto de
 // 200 da tela — traz tudo que bateu no filtro, até MAX_EXPORT_PDF.
 router.get("/catalogo/exportar-pdf", exportarPdfHandler);
+// "Catálogo Promocional" (nova função, pedido do usuário 2026-08-29): lista
+// selecionada de produtos + preço promocional por CSV, mesmo layout com
+// foto/aplicação do Catálogo Completo mas sem sub-agrupamento por marca (ver
+// comentário em catalogo-pdf.service.js/gerarPdfCatalogoPromocional). POST
+// porque a lista de códigos + o CSV de preços não cabem confortavelmente
+// numa query string GET (Catálogo Completo é só 1 fabricante = 1 parâmetro).
+router.post("/catalogo/promocional/exportar-pdf", uploadLimiter, csvUploadPrecos.single("csv"), exportarPdfPromocionalHandler);
+// Importar produtos + preço direto do arquivo (pedido do usuário, 2026-08-29):
+// mesmo arquivo de preços, mas em vez de só dar preço a produtos já
+// adicionados manualmente, também RESOLVE e devolve os produtos pro
+// frontend popular "Produtos Selecionados" sozinho — sem precisar buscar
+// código por código na UI.
+router.post("/catalogo/promocional/importar-arquivo", uploadLimiter, csvUploadPrecos.single("csv"), importarArquivoPromocionalHandler);
 // Força o reload do cache de estoque em memória (ver comentário no handler)
 // — chamado pelo pipeline scripts/x2-estoque-export.js via API_TOKEN logo
 // após o import no banco, pra não esperar o setInterval de 30min.

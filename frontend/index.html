@@ -23,7 +23,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css">
   <!-- CSS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <link rel="stylesheet" href="dist/bundle.36601a545d.css">
+  <link rel="stylesheet" href="dist/bundle.584a80cb24.css">
   <!-- CSS_BUNDLE_END -->
 <style>
     /* Centraliza colunas da tabela de histórico */
@@ -2015,6 +2015,9 @@ Como podemos ajudar você hoje?
       <span class="catalogo-erp-tab" data-action="catalogoMostrarAbaCompleto" id="catalogo-tab-completo">
         <i class="fa-solid fa-file-pdf"></i> Catálogo Completo
       </span>
+      <span class="catalogo-erp-tab" data-action="catalogoMostrarAbaPromocional" id="catalogo-tab-promocional">
+        <i class="fa-solid fa-tags"></i> Catálogo Promocional
+      </span>
     </div>
 
     <form id="catalogo-form" class="catalogo-erp-body" data-submit-action="buscarCatalogo">
@@ -2165,6 +2168,95 @@ Como podemos ajudar você hoje?
       </div>
     </div>
 
+    <!-- Aba "Catálogo Promocional" (nova função, pedido do usuário 2026-08-29):
+         mesma funcionalidade do Catálogo Completo (foto + aplicação + índice
+         por Linha), mas pra uma LISTA SELECIONADA de produtos (em vez de "todo
+         fabricante") e com preço promocional por card, vindo de um CSV que o
+         próprio usuário sobe. Não usa #catalogo-resultados (mesmo padrão da
+         aba Catálogo Completo) — tem sua própria mini-busca+lista aqui dentro. -->
+    <div id="catalogo-form-promocional" class="catalogo-erp-body hidden">
+      <!-- Rework UI/UX (pedido do usuário, 2026-08-29): busca+CSV empilhados
+           na coluna esquerda, Selecionados na coluna direita, reusando a
+           mesma grid .catalogo-erp-cols já usada em Critérios de Pesquisa. -->
+      <div class="catalogo-erp-cols">
+        <div class="catalogo-erp-col">
+          <div class="catalogo-erp-box">
+            <div class="catalogo-box-header">
+              <span class="catalogo-box-icon catalogo-box-icon-blue"><i class="fa-solid fa-magnifying-glass"></i></span>
+              <span class="catalogo-box-title">Adicionar Produtos à Lista</span>
+            </div>
+
+            <form class="catalogo-erp-row catalogo-promo-busca-row" data-submit-action="catalogoPromoBuscar">
+              <label for="catalogo-promo-busca"><i class="fa-solid fa-hashtag"></i> Nome ou código</label>
+              <input type="text" id="catalogo-promo-busca" autocomplete="off" placeholder="Ex: correia dentada, ou I321">
+              <button type="submit" class="catalogo-erp-search-btn catalogo-promo-busca-btn">
+                <i class="fa-solid fa-magnifying-glass"></i> Buscar
+              </button>
+            </form>
+
+            <div id="catalogo-promo-resultados" class="catalogo-promo-resultados"></div>
+          </div>
+
+          <div class="catalogo-erp-box">
+            <div class="catalogo-box-header">
+              <span class="catalogo-box-icon catalogo-box-icon-blue"><i class="fa-solid fa-file-csv"></i></span>
+              <span class="catalogo-box-title">Preços Promocionais (opcional)</span>
+              <span class="catalogo-erp-optional">Opcional</span>
+            </div>
+
+            <div class="catalogo-erp-row">
+              <label for="catalogo-promo-csv"><i class="fa-solid fa-upload"></i> Arquivo CSV ou Excel</label>
+              <input type="file" id="catalogo-promo-csv" accept=".csv,text/csv,.xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+            </div>
+            <p class="catalogo-promo-csv-hint">
+              Aceita <code>.csv</code>, <code>.xls</code> ou <code>.xlsx</code> (planilha antiga
+              precisa ser salva como .xlsx). Colunas obrigatórias: <code>codigo</code> e
+              <code>preco</code> (ex: <code>111430,99.90</code>).
+              Produto sem preço no arquivo sai no catálogo sem o selo de preço.
+            </p>
+            <p id="catalogo-promo-csv-status" class="catalogo-promo-csv-status hidden"></p>
+          </div>
+        </div>
+
+        <div class="catalogo-erp-col">
+          <div class="catalogo-erp-box">
+            <div class="catalogo-box-header">
+              <span class="catalogo-box-icon catalogo-box-icon-green"><i class="fa-solid fa-list-check"></i></span>
+              <span class="catalogo-box-title">Produtos Selecionados</span>
+              <span id="catalogo-promo-contagem" class="catalogo-erp-optional">0 selecionados</span>
+            </div>
+
+            <div id="catalogo-promo-selecionados" class="catalogo-promo-selecionados">
+              <p class="catalogo-promo-vazio">Nenhum produto selecionado ainda — busque acima e clique em "Adicionar".</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="catalogo-erp-actions">
+        <button type="button" class="catalogo-erp-search-btn" id="catalogo-promo-gerar-btn" onclick="gerarCatalogoPromocionalPDF(this)" disabled>
+          <i class="fa-solid fa-file-pdf"></i> Gerar catálogo promocional (PDF)
+        </button>
+        <button type="button" class="catalogo-erp-clear-btn" onclick="catalogoPromoLimparSelecao()">
+          <i class="fa-solid fa-rotate-left"></i> Limpar Seleção
+        </button>
+      </div>
+
+      <!-- Pré-visualização automática (pedido do usuário, 2026-08-29,
+           "se possível") — mesmo padrão do Catálogo Completo, mas
+           debounced (~1.2s após cada mudança na seleção/CSV) pra não
+           disparar uma geração de PDF (com chamadas de IA pra aplicação)
+           a cada clique de Adicionar/Remover — ver
+           _agendarPreviewCatalogoPromocional em 18-catalogo.js. -->
+      <div id="catalogo-promo-preview" class="catalogo-completo-preview hidden">
+        <div class="catalogo-completo-preview-header">
+          <i class="fa-solid fa-eye"></i> Pré-visualização
+        </div>
+        <p id="catalogo-promo-preview-status" class="catalogo-completo-preview-status hidden"></p>
+        <iframe id="catalogo-promo-preview-frame" class="catalogo-completo-preview-frame" title="Pré-visualização do catálogo promocional"></iframe>
+      </div>
+    </div>
+
   </div>
 
   <section id="catalogo-resultados" class="catalogo-resultados" aria-live="polite">
@@ -2299,7 +2391,7 @@ Como podemos ajudar você hoje?
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1"></script>
 
   <!-- JS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <script src="dist/bundle.ccc4419f44.js"></script>
+  <script src="dist/bundle.ec2a90c09f.js"></script>
   <!-- JS_BUNDLE_END -->
 
 

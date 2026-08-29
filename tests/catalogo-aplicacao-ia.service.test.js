@@ -142,4 +142,39 @@ describe("catalogo-aplicacao-ia.service — anexarAplicacoesOrganizadas", () => 
     // Já "tentou e falhou" fica em cache como "" — não tenta de novo à toa.
     expect(organizarAplicacaoIA).toHaveBeenCalledTimes(1);
   });
+
+  // Regressão do bug real de 2026-08-29: um lote grande rodou sem crédito
+  // na API no meio do caminho, organizarAplicacaoIA retornava null pra
+  // TODO tipo de falha (sem distinguir "não tentei de verdade" de "tentei
+  // e não deu"), e isso gravava ~49% do cache como "sem aplicação" pra
+  // sempre — nem recarregar crédito e rodar de novo destravava, porque o
+  // hash já contava como "já tentado". Fix: organizarAplicacaoIA agora
+  // retorna undefined pra "não tentei de verdade" (sem chave, circuit
+  // breaker, erro de rede/HTTP) — esse teste garante que ESSE caso
+  // específico NÃO fica preso em cache.
+  test("skip real da IA (undefined) NÃO fica em cache — tenta de novo na próxima chamada", async () => {
+    organizarAplicacaoIA.mockResolvedValue(undefined);
+    const texto = "texto sem crédito pra processar ainda";
+
+    const r1 = await anexarAplicacoesOrganizadas([{ codigo: "1", aplicacao: texto }]);
+    expect(organizarAplicacaoIA).toHaveBeenCalledTimes(1);
+    expect(r1.jaEmCache).toBe(0); // não ficou em cache — undefined não conta como "já tentado"
+
+    // 2ª chamada com o MESMO texto: precisa tentar de novo (não pode ter
+    // ficado marcado como "" permanentemente).
+    await anexarAplicacoesOrganizadas([{ codigo: "2", aplicacao: texto }]);
+    expect(organizarAplicacaoIA).toHaveBeenCalledTimes(2);
+
+    // Agora simula o crédito recarregado — sucesso real na 3ª tentativa —
+    // e confirma que dali em diante ENTRA no cache normalmente.
+    organizarAplicacaoIA.mockResolvedValue("FORD: Escort");
+    const r3 = await anexarAplicacoesOrganizadas([{ codigo: "3", aplicacao: texto }]);
+    expect(organizarAplicacaoIA).toHaveBeenCalledTimes(3);
+    expect(r3.novosComSucesso).toBe(1);
+
+    const r4 = await anexarAplicacoesOrganizadas([{ codigo: "4", aplicacao: texto }]);
+    expect(organizarAplicacaoIA).toHaveBeenCalledTimes(3); // agora sim ficou em cache
+    expect(r4.jaEmCache).toBe(1);
+    expect(r4.novosComSucesso).toBe(0);
+  });
 });

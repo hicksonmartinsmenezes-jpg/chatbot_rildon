@@ -26,21 +26,25 @@ describe("ai.service — organizarAplicacaoIA", () => {
     global.fetch = originalFetch;
   });
 
-  test("texto vazio/nulo → null sem chamar fetch", async () => {
+  // undefined (não null) de propósito nesses 3 casos abaixo — "não tentou
+  // de verdade" precisa ficar RETRYABLE, não virar falha permanente no
+  // cache de quem chama (ver catalogo-aplicacao-ia.service.js e o bug real
+  // de 2026-08-29 documentado no comentário de organizarAplicacaoIA).
+  test("texto vazio/nulo → undefined sem chamar fetch (retryable, não é falha permanente)", async () => {
     const { organizarAplicacaoIA } = loadAiService({ provider: "groq", apiKey: "chave-teste" });
 
-    expect(await organizarAplicacaoIA("")).toBeNull();
-    expect(await organizarAplicacaoIA(null)).toBeNull();
-    expect(await organizarAplicacaoIA("   ")).toBeNull();
+    expect(await organizarAplicacaoIA("")).toBeUndefined();
+    expect(await organizarAplicacaoIA(null)).toBeUndefined();
+    expect(await organizarAplicacaoIA("   ")).toBeUndefined();
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  test("sem GROQ_API_KEY configurada → null sem chamar fetch", async () => {
+  test("sem GROQ_API_KEY configurada → undefined sem chamar fetch (retryable)", async () => {
     const { organizarAplicacaoIA } = loadAiService({ provider: "groq", apiKey: "" });
 
     const res = await organizarAplicacaoIA("Escort, Uno, Duna, MWM, Universal, Ford, MB");
 
-    expect(res).toBeNull();
+    expect(res).toBeUndefined();
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
@@ -80,7 +84,7 @@ describe("ai.service — organizarAplicacaoIA", () => {
     expect(res).toBe("FORD: Escort");
   });
 
-  test("erro HTTP genérico (500) → null, sem lançar", async () => {
+  test("erro HTTP genérico (500) → undefined (retryable), sem lançar", async () => {
     const { organizarAplicacaoIA } = loadAiService({ provider: "groq", apiKey: "chave-teste" });
 
     global.fetch.mockResolvedValueOnce({
@@ -90,7 +94,39 @@ describe("ai.service — organizarAplicacaoIA", () => {
     });
 
     const res = await organizarAplicacaoIA("Escort, Ford");
-    expect(res).toBeNull();
+    expect(res).toBeUndefined();
+  });
+
+  test("sem crédito na API (Anthropic) → undefined (retryable) + ativa circuit breaker", async () => {
+    process.env.ANTHROPIC_API_KEY = "sk-ant-teste";
+    const { organizarAplicacaoIA } = loadAiService({ provider: "anthropic" });
+
+    global.fetch.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      text: async () => JSON.stringify({ error: { message: "Your credit balance is too low to access the Anthropic API." } }),
+    });
+
+    const res = await organizarAplicacaoIA("Escort, Ford");
+    // undefined — NÃO pode virar "" permanente no cache de quem chama, ou
+    // fica marcado como "sem aplicação" pra sempre mesmo depois de
+    // recarregar crédito (bug real de 2026-08-29).
+    expect(res).toBeUndefined();
+
+    // Circuit breaker ativo: 2ª chamada nem tenta a rede.
+    global.fetch.mockClear();
+    const res2 = await organizarAplicacaoIA("Outro texto");
+    expect(res2).toBeUndefined();
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  test("erro de rede/timeout (fetch lança) → undefined (retryable), sem lançar", async () => {
+    const { organizarAplicacaoIA } = loadAiService({ provider: "groq", apiKey: "chave-teste" });
+
+    global.fetch.mockRejectedValueOnce(new Error("fetch failed"));
+
+    const res = await organizarAplicacaoIA("Escort, Ford");
+    expect(res).toBeUndefined();
   });
 
   test("provedor anthropic → NÃO usa o truque de prefill '{' do chat (resposta é texto puro)", async () => {

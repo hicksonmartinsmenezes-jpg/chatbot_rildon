@@ -756,16 +756,34 @@ function _agendarRequisicaoAplicacao() {
 // Reorganiza UM texto de aplicação isolado. Sem retry (diferente de
 // perguntarIA) — de propósito: isso roda em LOTE (dezenas/centenas de
 // textos únicos por fabricante), então uma falha isolada custa só aquele
-// item (quem chama trata null como "sem versão organizada ainda", cai no
-// texto cru ou omite o bloco no PDF — nunca quebra a geração). Retry aqui
-// multiplicaria o tempo total do lote inteiro por pouco ganho.
+// item (quem chama trata o retorno como "sem versão organizada ainda", cai
+// no texto cru ou omite o bloco no PDF — nunca quebra a geração). Retry
+// aqui multiplicaria o tempo total do lote inteiro por pouco ganho.
+//
+// Retorno tem 3 estados, e quem chama (catalogo-aplicacao-ia.service.js)
+// só deve GRAVAR NO CACHE PERMANENTE (string vazia = "já tentei, não
+// organiza") o terceiro:
+//   1. `undefined` — não tentou de verdade (sem chave configurada, circuit
+//      breaker de falta de crédito ativo, erro de rede/timeout, ou
+//      qualquer resposta HTTP não-OK). Precisa TENTAR DE NOVO depois —
+//      cachear isso como falha permanente foi o bug real encontrado em
+//      2026-08-29 (Issue: cache de aplicação-IA marcava fabricante inteiro
+//      como "sem aplicação" pra sempre quando a Anthropic ficava sem
+//      crédito no meio de um lote grande — ~49% do cache ficou poluído
+//      numa rodada só, e nem recarregar crédito destravava, porque o hash
+//      já estava marcado como tentado).
+//   2. `null` — a IA respondeu de verdade (HTTP OK, JSON válido) mas o
+//      texto organizado saiu vazio. Esse caso sim é seguro cachear como
+//      falha permanente — reprocessar o mesmo texto não vai dar resultado
+//      diferente.
+//   3. string não vazia — sucesso, é o texto organizado.
 async function organizarAplicacaoIA(textoAplicacao) {
   const texto = String(textoAplicacao || "").trim();
-  if (!texto) return null;
+  if (!texto) return undefined;
 
   const apiKey = PROVIDER.getKey();
-  if (!apiKey || apiKey === "cole_sua_chave_aqui") return null;
-  if (iaEmFalhaCritica()) return null;
+  if (!apiKey || apiKey === "cole_sua_chave_aqui") return undefined;
+  if (iaEmFalhaCritica()) return undefined;
 
   try {
     await _agendarRequisicaoAplicacao();
@@ -786,7 +804,9 @@ async function organizarAplicacaoIA(textoAplicacao) {
       } else {
         logger.warn(`[IA-Aplicação] Erro ${res.status}: ${corpoErro.slice(0, 200)}`);
       }
-      return null;
+      // Não é "a IA respondeu e não teve o que organizar" — é "não deu pra
+      // saber". undefined = não cachear, tentar de novo numa próxima rodada.
+      return undefined;
     }
 
     const data = await res.json();
@@ -803,7 +823,9 @@ async function organizarAplicacaoIA(textoAplicacao) {
     return organizado || null;
   } catch (err) {
     logger.warn(`[IA-Aplicação] Falha ao organizar texto: ${err.message}`);
-    return null;
+    // Exceção de rede/timeout — mesmo raciocínio do !res.ok: transitório,
+    // não cachear como falha permanente.
+    return undefined;
   }
 }
 

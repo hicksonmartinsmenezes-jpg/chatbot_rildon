@@ -102,8 +102,20 @@ async function anexarAplicacoesOrganizadas(produtos, { maxNovos = 10 } = {}) {
       if (processados >= maxNovos) continue; // cap atingido — deixa pra próxima rodada
       processados++;
       organizado = await organizarAplicacaoIA(texto);
-      cache.set(hash, organizado || ""); // "" = já tentou, falhou — não tenta de novo à toa
-      houveMudanca = true;
+      // organizarAplicacaoIA distingue "não deu pra tentar de verdade"
+      // (undefined — sem chave, circuit breaker de crédito, erro de
+      // rede/timeout, resposta HTTP não-OK) de "a IA respondeu e não teve
+      // aplicação organizável" (null). Só o segundo caso é seguro gravar
+      // como falha permanente ("" no cache) — cachear o primeiro foi o bug
+      // real de 2026-08-29: um fabricante grande no meio de um lote quando
+      // a Anthropic ficou sem crédito marcou ~49% do cache como "sem
+      // aplicação" pra sempre, e nem recarregar crédito destravava, porque
+      // o hash já contava como "já tentei". Ver comentário em
+      // organizarAplicacaoIA (ai.service.js) pros 3 estados de retorno.
+      if (organizado !== undefined) {
+        cache.set(hash, organizado || ""); // "" = IA respondeu, não teve o que organizar
+        houveMudanca = true;
+      }
       if (organizado) novosProcessadosComSucesso++;
     }
 

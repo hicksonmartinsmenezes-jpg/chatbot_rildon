@@ -682,14 +682,22 @@ const PROMPT_APLICACAO_SISTEMA =
 const APLICACAO_MAX_TOKENS = 300;
 const APLICACAO_TEMPERATURE = 0.2; // baixa — tarefa de reformatação, não criativa
 
-async function _chamarGroqTexto(systemPrompt, userText, apiKey) {
+// `provedor` recebido por parâmetro (não a constante global PROVIDER) —
+// essas 3 funções só são chamadas de dentro de organizarAplicacaoIA, que
+// desde 2026-08-29 pode estar rodando num provedor DIFERENTE do PROVIDER
+// global (fallback automático pra Gemini quando Anthropic fica sem
+// crédito, ver _aplicacaoProviderOverride). Usar o global aqui seria bug:
+// chamaria a função certa (_chamarGeminiTexto) mas com a URL/model do
+// PROVIDER errado (ex: URL do Gemini só que enviando o body/versão da
+// Anthropic).
+async function _chamarGroqTexto(systemPrompt, userText, apiKey, provedor) {
   return _fetchComTimeout(
-    PROVIDER.url,
+    provedor.url,
     {
       method:  "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
-        model:       PROVIDER.model,
+        model:       provedor.model,
         messages:    [{ role: "system", content: systemPrompt }, { role: "user", content: userText }],
         temperature: APLICACAO_TEMPERATURE,
         max_tokens:  APLICACAO_MAX_TOKENS,
@@ -699,9 +707,9 @@ async function _chamarGroqTexto(systemPrompt, userText, apiKey) {
   );
 }
 
-async function _chamarGeminiTexto(systemPrompt, userText, apiKey) {
+async function _chamarGeminiTexto(systemPrompt, userText, apiKey, provedor) {
   return _fetchComTimeout(
-    `${PROVIDER.url}?key=${apiKey}`,
+    `${provedor.url}?key=${apiKey}`,
     {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
@@ -715,9 +723,9 @@ async function _chamarGeminiTexto(systemPrompt, userText, apiKey) {
   );
 }
 
-async function _chamarAnthropicTexto(systemPrompt, userText, apiKey) {
+async function _chamarAnthropicTexto(systemPrompt, userText, apiKey, provedor) {
   return _fetchComTimeout(
-    PROVIDER.url,
+    provedor.url,
     {
       method:  "POST",
       headers: {
@@ -726,7 +734,7 @@ async function _chamarAnthropicTexto(systemPrompt, userText, apiKey) {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model:       PROVIDER.model,
+        model:       provedor.model,
         system:      systemPrompt,
         messages:    [{ role: "user", content: userText }],
         temperature: APLICACAO_TEMPERATURE,
@@ -743,15 +751,28 @@ async function _chamarAnthropicTexto(systemPrompt, userText, apiKey) {
 let _ultimaRequisicaoAplicacao = 0;
 let _filaAplicacaoPromise      = Promise.resolve();
 
-function _agendarRequisicaoAplicacao() {
+function _agendarRequisicaoAplicacao(provedor) {
   _filaAplicacaoPromise = _filaAplicacaoPromise
     .then(() => {
-      const espera = Math.max(0, _ultimaRequisicaoAplicacao + PROVIDER.intervalMs - Date.now());
+      const espera = Math.max(0, _ultimaRequisicaoAplicacao + provedor.intervalMs - Date.now());
       return new Promise(r => setTimeout(r, espera));
     })
     .catch(() => {});
   return _filaAplicacaoPromise;
 }
+
+// Pedido do usuário (2026-08-29): quando a Anthropic fica sem crédito no
+// meio de uma rodada de organizar-aplicacoes-ia.js (offline, sem cliente
+// esperando resposta), trocar sozinho pra Gemini como provedor de
+// preferência secundária SÓ PRA ESTA FUNÇÃO — o chat ao vivo (perguntarIA)
+// continua exclusivamente em Anthropic e escala pro atendente se faltar
+// crédito (ver iaEmFalhaCritica), porque ali a qualidade/classificação de
+// intenção do Claude Haiku foi escolhida de propósito (ver comentário em
+// PROVIDERS.anthropic) e uma troca silenciosa de provedor no meio de um
+// atendimento real é um risco pior que escalar. `null` = usa o provedor
+// global (PROVIDER_NAME); "gemini" = fallback ativo, fica assim pelo resto
+// do processo (reseta sozinho no próximo boot/execução do script).
+let _aplicacaoProviderOverride = null;
 
 // Reorganiza UM texto de aplicação isolado. Sem retry (diferente de
 // perguntarIA) — de propósito: isso roda em LOTE (dezenas/centenas de
@@ -777,32 +798,54 @@ function _agendarRequisicaoAplicacao() {
 //      falha permanente — reprocessar o mesmo texto não vai dar resultado
 //      diferente.
 //   3. string não vazia — sucesso, é o texto organizado.
-async function organizarAplicacaoIA(textoAplicacao) {
+//
+// `_viaFallback` é uso INTERNO (não passar de fora) — marca que essa
+// chamada já é a retentativa automática em Gemini depois de detectar falta
+// de crédito na Anthropic, pra garantir no máximo 1 troca de provedor por
+// texto (sem recursão infinita se o Gemini também falhar).
+async function organizarAplicacaoIA(textoAplicacao, _viaFallback = false) {
   const texto = String(textoAplicacao || "").trim();
   if (!texto) return undefined;
 
-  const apiKey = PROVIDER.getKey();
+  const nomeProvedor = _aplicacaoProviderOverride || PROVIDER_NAME;
+  const provedor = PROVIDERS[nomeProvedor];
+  const apiKey = provedor.getKey();
   if (!apiKey || apiKey === "cole_sua_chave_aqui") return undefined;
-  if (iaEmFalhaCritica()) return undefined;
+  // iaEmFalhaCritica() é o circuit breaker de crédito da Anthropic,
+  // COMPARTILHADO com o chat ao vivo (perguntarIA) — só se aplica aqui
+  // quando esta função ainda está tentando Anthropic. Uma vez com o
+  // fallback pra Gemini ativo, a falta de crédito da Anthropic deixou de
+  // ser o gargalo desta função.
+  if (nomeProvedor === "anthropic" && iaEmFalhaCritica()) return undefined;
 
   try {
-    await _agendarRequisicaoAplicacao();
+    await _agendarRequisicaoAplicacao(provedor);
     _ultimaRequisicaoAplicacao = Date.now();
 
-    const res = PROVIDER_NAME === "gemini"
-      ? await _chamarGeminiTexto(PROMPT_APLICACAO_SISTEMA, texto, apiKey)
-      : PROVIDER_NAME === "anthropic"
-      ? await _chamarAnthropicTexto(PROMPT_APLICACAO_SISTEMA, texto, apiKey)
-      : await _chamarGroqTexto(PROMPT_APLICACAO_SISTEMA, texto, apiKey);
+    const res = nomeProvedor === "gemini"
+      ? await _chamarGeminiTexto(PROMPT_APLICACAO_SISTEMA, texto, apiKey, provedor)
+      : nomeProvedor === "anthropic"
+      ? await _chamarAnthropicTexto(PROMPT_APLICACAO_SISTEMA, texto, apiKey, provedor)
+      : await _chamarGroqTexto(PROMPT_APLICACAO_SISTEMA, texto, apiKey, provedor);
 
     if (!res.ok) {
       const corpoErro = await res.text().catch(() => "");
-      const semCredito = res.status === 400 && /credit balance is too low/i.test(corpoErro);
+      const semCredito = nomeProvedor === "anthropic" && res.status === 400 && /credit balance is too low/i.test(corpoErro);
       if (semCredito) {
         _semCreditoAte = Date.now() + CIRCUIT_BREAKER_MS;
-        logger.error(`[IA-Aplicação] Sem crédito na API (provedor: ${PROVIDER_NAME}) — pausando chamadas por ${CIRCUIT_BREAKER_MS / 1000}s.`);
+        logger.error(`[IA-Aplicação] Sem crédito na API (provedor: anthropic) — pausando chamadas por ${CIRCUIT_BREAKER_MS / 1000}s.`);
+
+        // Fallback automático (pedido do usuário, 2026-08-29): só pra esta
+        // rotina offline, troca sozinho pra Gemini dali em diante — não
+        // mexe no provedor do chat ao vivo (PROVIDER_NAME global fica
+        // intocado). Só 1 tentativa de troca por texto.
+        if (!_viaFallback && PROVIDERS.gemini.getKey()) {
+          _aplicacaoProviderOverride = "gemini";
+          logger.error(`[IA-Aplicação] Trocando automaticamente pra Gemini nesta rotina (organizar aplicação) — o chat ao vivo com cliente continua só em Anthropic.`);
+          return organizarAplicacaoIA(textoAplicacao, true);
+        }
       } else {
-        logger.warn(`[IA-Aplicação] Erro ${res.status}: ${corpoErro.slice(0, 200)}`);
+        logger.warn(`[IA-Aplicação] Erro ${res.status} (provedor: ${nomeProvedor}): ${corpoErro.slice(0, 200)}`);
       }
       // Não é "a IA respondeu e não teve o que organizar" — é "não deu pra
       // saber". undefined = não cachear, tentar de novo numa próxima rodada.
@@ -814,15 +857,15 @@ async function organizarAplicacaoIA(textoAplicacao) {
     // recompõe o prefixo "{" do truque de prefill JSON usado só pelo chat
     // (ver _chamarAnthropic acima) — aqui a resposta é texto livre, sem
     // prefill nenhum, então extrai direto da forma nativa de cada provedor.
-    const texto2 = PROVIDER_NAME === "anthropic"
+    const texto2 = nomeProvedor === "anthropic"
       ? data?.content?.[0]?.text
-      : PROVIDER_NAME === "gemini"
+      : nomeProvedor === "gemini"
       ? data?.candidates?.[0]?.content?.parts?.[0]?.text
       : data?.choices?.[0]?.message?.content;
     const organizado = texto2?.trim().replace(/^["']|["']$/g, "");
     return organizado || null;
   } catch (err) {
-    logger.warn(`[IA-Aplicação] Falha ao organizar texto: ${err.message}`);
+    logger.warn(`[IA-Aplicação] Falha ao organizar texto (provedor: ${nomeProvedor}): ${err.message}`);
     // Exceção de rede/timeout — mesmo raciocínio do !res.ok: transitório,
     // não cachear como falha permanente.
     return undefined;

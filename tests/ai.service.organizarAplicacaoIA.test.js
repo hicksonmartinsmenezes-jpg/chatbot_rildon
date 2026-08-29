@@ -7,10 +7,11 @@
 
 const ORIGINAL_ENV = { ...process.env };
 
-function loadAiService({ provider, apiKey } = {}) {
+function loadAiService({ provider, apiKey, geminiKey } = {}) {
   jest.resetModules();
   if (provider !== undefined) process.env.AI_PROVIDER = provider;
   if (apiKey !== undefined) process.env.GROQ_API_KEY = apiKey;
+  if (geminiKey !== undefined) process.env.GEMINI_API_KEY = geminiKey;
   return require("../src/services/ai.service");
 }
 
@@ -97,9 +98,9 @@ describe("ai.service — organizarAplicacaoIA", () => {
     expect(res).toBeUndefined();
   });
 
-  test("sem crédito na API (Anthropic) → undefined (retryable) + ativa circuit breaker", async () => {
+  test("sem crédito na API (Anthropic) e SEM Gemini configurado → undefined (retryable) + ativa circuit breaker", async () => {
     process.env.ANTHROPIC_API_KEY = "sk-ant-teste";
-    const { organizarAplicacaoIA } = loadAiService({ provider: "anthropic" });
+    const { organizarAplicacaoIA } = loadAiService({ provider: "anthropic", geminiKey: "" });
 
     global.fetch.mockResolvedValueOnce({
       ok: false,
@@ -118,6 +119,63 @@ describe("ai.service — organizarAplicacaoIA", () => {
     const res2 = await organizarAplicacaoIA("Outro texto");
     expect(res2).toBeUndefined();
     expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  // Fallback automático (pedido do usuário, 2026-08-29): sem crédito na
+  // Anthropic + Gemini configurado → troca sozinho, SÓ nesta função (não
+  // mexe no provedor do chat ao vivo — ver perguntarIA, que lê PROVIDER/
+  // PROVIDER_NAME diretamente e nunca _aplicacaoProviderOverride, então é
+  // estruturalmente impossível essa troca vazar pro chat).
+  test("sem crédito na Anthropic + Gemini configurado → troca sozinho pra Gemini e retorna o resultado", async () => {
+    process.env.ANTHROPIC_API_KEY = "sk-ant-teste";
+    const { organizarAplicacaoIA } = loadAiService({ provider: "anthropic", geminiKey: "gemini-chave-teste" });
+
+    global.fetch
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        text: async () => JSON.stringify({ error: { message: "Your credit balance is too low to access the Anthropic API." } }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ candidates: [{ content: { parts: [{ text: "FORD: Escort" }] } }] }),
+      });
+
+    const res = await organizarAplicacaoIA("Escort, Ford");
+
+    expect(res).toBe("FORD: Escort");
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(global.fetch.mock.calls[0][0]).toContain("anthropic.com");
+    expect(global.fetch.mock.calls[1][0]).toContain("generativelanguage.googleapis.com");
+  });
+
+  test("fallback pra Gemini fica ativo pro PRÓXIMO texto também (não tenta Anthropic de novo)", async () => {
+    process.env.ANTHROPIC_API_KEY = "sk-ant-teste";
+    const { organizarAplicacaoIA } = loadAiService({ provider: "anthropic", geminiKey: "gemini-chave-teste" });
+
+    global.fetch
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        text: async () => JSON.stringify({ error: { message: "Your credit balance is too low to access the Anthropic API." } }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ candidates: [{ content: { parts: [{ text: "FORD: Escort" }] } }] }),
+      });
+    await organizarAplicacaoIA("Escort, Ford"); // dispara o fallback
+
+    global.fetch.mockClear();
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ candidates: [{ content: { parts: [{ text: "VW: Gol" }] } }] }),
+    });
+    const res = await organizarAplicacaoIA("Gol, VW");
+
+    // 1 chamada só (direto no Gemini) — não tentou Anthropic de novo.
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(global.fetch.mock.calls[0][0]).toContain("generativelanguage.googleapis.com");
+    expect(res).toBe("VW: Gol");
   });
 
   test("erro de rede/timeout (fetch lança) → undefined (retryable), sem lançar", async () => {

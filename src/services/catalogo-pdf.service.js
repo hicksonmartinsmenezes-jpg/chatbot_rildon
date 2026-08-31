@@ -141,9 +141,9 @@ const RODAPE_IMG_RATIO = 1372 / 156;
 // _desenharCabecalhoPromo/_desenharRodapePromo, igual ao padrão já usado em
 // _desenharCabecalho/_desenharRodape pro Catálogo Completo.
 const PROMO_CABECALHO_LINHA_IMG = fs.readFileSync(path.join(__dirname, "../assets/catalogo-promocional-cabecalho-linha.png"));
-const PROMO_CABECALHO_LINHA_RATIO = 1092 / 157;
+const PROMO_CABECALHO_LINHA_RATIO = 1108 / 151;
 const PROMO_RODAPE_LINHA_IMG = fs.readFileSync(path.join(__dirname, "../assets/catalogo-promocional-rodape-linha.png"));
-const PROMO_RODAPE_LINHA_RATIO = 1088 / 61;
+const PROMO_RODAPE_LINHA_RATIO = 1087 / 57;
 const PROMO_CABECALHO_FABRICANTE_IMG = fs.readFileSync(path.join(__dirname, "../assets/catalogo-promocional-cabecalho-fabricante.png"));
 const PROMO_CABECALHO_FABRICANTE_RATIO = 1099 / 193;
 const PROMO_RODAPE_FABRICANTE_IMG = fs.readFileSync(path.join(__dirname, "../assets/catalogo-promocional-rodape-fabricante.png"));

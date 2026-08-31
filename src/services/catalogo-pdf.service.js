@@ -2307,12 +2307,12 @@ function gerarPdfCatalogoCompleto(produtos, fabricante, destino) {
  *      badge nenhum (preço é OPCIONAL por produto, não obrigatório pra
  *      todo item da lista).
  *
- * Mantém o índice/sumário por Linha (agrupamento por p.linha/p.secao
- * continua o mesmo de _agruparPorLinha) — só a Marca foi removida, a Linha
- * ("cabeçalho" no sentido de organização/índice, não um bloco desenhado
- * dentro da grade) continua exatamente como no Catálogo Completo, por
- * pedido explícito do usuário ("Mantém cabeçalho de Linha, remove só
- * Marca").
+ * Agrupamento por Linha (p.linha/p.secao, via _agruparPorLinha) continua
+ * exatamente como no Catálogo Completo — só o sub-agrupamento por Marca foi
+ * removido, por pedido explícito do usuário ("Mantém cabeçalho de Linha,
+ * remove só Marca"). **2026-08-31 (pedido do usuário "remova sumario"):**
+ * ao contrário do Catálogo Completo, esta função NÃO gera páginas de
+ * índice/sumário — vai direto pro conteúdo.
  *
  * 2026-08-31 (pedido do usuário: "o catalogo promocional poderá ser por
  * linha ou por fabricante"): novo parâmetro `modo` ("linha" | "fabricante",
@@ -2341,53 +2341,19 @@ function gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino, modo = 
 
   const grupos = modo === "fabricante" ? _agruparPorFabricante(produtos) : _agruparPorLinha(produtos);
 
-  // --- Pré-cálculo da paginação do índice (mesmo princípio de
-  // gerarPdfCatalogoCompleto, ver comentário lá) ---
-  const larguraUtilIndice = A4_LARGURA - PAGE_MARGIN * 2;
-  const areaFimYIndice = A4_ALTURA - FOOTER_HEIGHT - 8;
-  const alturaDisponivelIndice = areaFimYIndice - AREA_TOPO_Y_INDICE;
-  const linhasPorPaginaIndice = Math.max(1, Math.floor(alturaDisponivelIndice / INDICE_LINHA_ALTURA));
-  const paginasIndice = Math.max(1, Math.ceil(grupos.length / linhasPorPaginaIndice));
-
-  // Sem sub-agrupamento por marca aqui — alturaHeaderMarca passada como 0
-  // pra _calcularLayoutConteudo não é usada de verdade (a sequência nunca
-  // tem blocos "cabecalhoMarca", ver _construirSequenciaConteudoPromocional),
-  // mas o parâmetro continua existindo pra reusar a MESMA função de layout
-  // sem duplicar a lógica de paginação/quebra de página.
-  const { sequencia, primeiroIndicePorGrupo } = _construirSequenciaConteudoPromocional(grupos);
+  // 2026-08-31 (pedido do usuário: "remova sumario"): Catálogo Promocional
+  // não tem mais páginas de índice/sumário — vai direto pro conteúdo. Isso
+  // reverte a decisão anterior ("Mantém cabeçalho de Linha" via índice, ver
+  // comentário acima no JSDoc) só pra esta função; `gerarPdfCatalogoCompleto`
+  // continua com índice normalmente, não é afetado.
+  const { sequencia } = _construirSequenciaConteudoPromocional(grupos);
   const geometriaCompleto = _geometriaGrid(doc, COLS_COMPLETO, ROWS_POR_PAGINA_COMPLETO, true);
   // forcarQuebraEntreGrupos só no modo "fabricante" (ver comentário em
   // _construirSequenciaConteudoPromocional) — modo "linha" mantém a
   // paginação contínua de sempre, sem quebra forçada entre Linhas.
   const { posicoes, preenchimentoFinal } = _calcularLayoutConteudo(sequencia, geometriaCompleto, 0, modo === "fabricante");
-  const paginaInicialPorGrupo = primeiroIndicePorGrupo.map(
-    (idx) => paginasIndice + 1 + posicoes[idx].pagina
-  );
 
   let pagina = 0;
-
-  // --- Páginas de índice (idêntico a gerarPdfCatalogoCompleto) ---
-  for (let p = 0; p < paginasIndice; p += 1) {
-    doc.addPage();
-    pagina += 1;
-    // 2026-08-31: página de índice usa a MESMA arte nova (cabeçalho +
-    // rodapé dedicados do Catálogo Promocional, ver PROMO_CABECALHO_*/
-    // PROMO_RODAPE_*), só com título fixo "ÍNDICE" em vez do nome de um
-    // grupo — evita misturar a arte antiga (cunha cinza do Catálogo
-    // Completo, _desenharCabecalhoIndice) com a nova dentro do MESMO
-    // documento, o que ficaria visualmente inconsistente numa exportação
-    // que É especificamente sobre padronizar esse cabeçalho/rodapé.
-    _desenharCabecalhoPromo(doc, "Índice", modo);
-    _desenharRodapePromo(doc, pagina, modo);
-
-    const offset = p * linhasPorPaginaIndice;
-    const linhasDestaPagina = grupos.slice(offset, offset + linhasPorPaginaIndice);
-    let y = AREA_TOPO_Y_INDICE;
-    linhasDestaPagina.forEach((grupo, i) => {
-      _desenharLinhaIndice(doc, grupo.linha, paginaInicialPorGrupo[offset + i], y, larguraUtilIndice);
-      y += INDICE_LINHA_ALTURA;
-    });
-  }
 
   // --- Páginas de conteúdo: sequência única e contínua entre Linhas,
   // sem blocos de cabeçalho de marca (ver _construirSequenciaConteudoPromocional) ---

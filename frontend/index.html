@@ -2175,6 +2175,30 @@ Como podemos ajudar você hoje?
          próprio usuário sobe. Não usa #catalogo-resultados (mesmo padrão da
          aba Catálogo Completo) — tem sua própria mini-busca+lista aqui dentro. -->
     <div id="catalogo-form-promocional" class="catalogo-erp-body hidden">
+      <!-- 2026-08-31 (pedido do usuário: "o catalogo promocional poderá ser
+           por linha ou por fabricante") — escolhe o critério de agrupamento
+           E a arte de cabeçalho/rodapé usada no PDF (ver `modo` em
+           gerarPdfCatalogoPromocional/_catalogoPromoModoAtual). "Linha" é o
+           padrão de sempre (pode misturar fabricantes dentro da mesma
+           Linha); "Fabricante" agrupa tudo por marca (ex.: Gauss, Perfect),
+           cada uma na sua própria página. -->
+      <div class="catalogo-erp-box catalogo-promo-modo-box">
+        <div class="catalogo-box-header">
+          <span class="catalogo-box-icon catalogo-box-icon-blue"><i class="fa-solid fa-layer-group"></i></span>
+          <span class="catalogo-box-title">Agrupar catálogo por</span>
+        </div>
+        <div class="catalogo-promo-modo-opcoes">
+          <label class="catalogo-promo-modo-opcao">
+            <input type="radio" name="catalogo-promo-modo" value="linha" checked>
+            Linha <span class="catalogo-promo-modo-exemplo">(ex.: Alternadores — pode ter vários fabricantes)</span>
+          </label>
+          <label class="catalogo-promo-modo-opcao">
+            <input type="radio" name="catalogo-promo-modo" value="fabricante">
+            Fabricante <span class="catalogo-promo-modo-exemplo">(ex.: Gauss, Perfect — 1 fabricante por página)</span>
+          </label>
+        </div>
+      </div>
+
       <!-- Rework UI/UX (pedido do usuário, 2026-08-29): busca+CSV empilhados
            na coluna esquerda, Selecionados na coluna direita, reusando a
            mesma grid .catalogo-erp-cols já usada em Critérios de Pesquisa. -->

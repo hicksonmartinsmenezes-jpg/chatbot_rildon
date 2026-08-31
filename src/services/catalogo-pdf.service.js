@@ -111,6 +111,61 @@ const RODAPE_IMG = fs.readFileSync(path.join(__dirname, "../assets/catalogo-roda
 // do arquivo sobre por que isso precisa bater com a imagem de verdade.
 const RODAPE_IMG_RATIO = 1372 / 156;
 
+// 2026-08-31 (Catálogo Promocional, pedido do usuário: "poderá ser por linha
+// ou por fabricante, padronize esses cabeçalhos e rodapés para o catalogo
+// promocional e remova margens"): 4 artes NOVAS, dedicadas só ao Catálogo
+// Promocional (gerarPdfCatalogoPromocional) — nunca usadas no Catálogo
+// Completo/Expresso, que continuam com CABECALHO_IMG/RODAPE_IMG de sempre.
+// Vêm de 2 mockups mandados pelo usuário (prints do WhatsApp), um pra cada
+// "modo" de agrupamento pedido:
+//   - "linha": título dinâmico é o NOME DA LINHA (ex.: "Alternadores"), pode
+//     ter produtos de fabricantes diferentes dentro (fabricante aparece na
+//     descrição do produto, como já é hoje) — cor azul-claro (#126DBC).
+//   - "fabricante": título dinâmico é o NOME DO FABRICANTE (ex.: "Gauss",
+//     "Perfect") — todos os produtos daquele card vêm do mesmo fabricante —
+//     cor navy (#205490).
+// Diferente de CABECALHO_IMG/RODAPE_IMG (que têm margem branca real no
+// arquivo original e por isso precisam do zoom de bleed
+// CABECALHO_ESCALA_BLEED/CABECALHO_CONTEUDO_*_FRACAO), esses 4 arquivos já
+// foram recortados exatamente na borda do desenho (sem nenhuma margem
+// branca sobrando) — "remova margens" foi resolvido no PRÓPRIO ARQUIVO, não
+// precisa de zoom/sangria em tempo de desenho: basta esticar pra largura
+// inteira da página (width=w) na altura real (height=w/ratio), y=0 pro
+// cabeçalho e y=alturaPágina-altura pro rodapé — mesmo princípio de
+// RODAPE_IMG_RATIO/CABECALHO_IMG_RATIO (altura sempre derivada da proporção
+// real do arquivo, nunca esticada/espremida).
+// O texto "Nome da categoria"/"Catálogo de marca" (cabeçalho) e "Página 1"
+// (rodapé) que vinham desenhados NOS mockups originais foram apagados
+// (pintados por cima com a cor sólida de fundo, medida pixel a pixel) —
+// esse texto agora é dinâmico, desenhado por código em
+// _desenharCabecalhoPromo/_desenharRodapePromo, igual ao padrão já usado em
+// _desenharCabecalho/_desenharRodape pro Catálogo Completo.
+const PROMO_CABECALHO_LINHA_IMG = fs.readFileSync(path.join(__dirname, "../assets/catalogo-promocional-cabecalho-linha.png"));
+const PROMO_CABECALHO_LINHA_RATIO = 1091 / 159;
+const PROMO_RODAPE_LINHA_IMG = fs.readFileSync(path.join(__dirname, "../assets/catalogo-promocional-rodape-linha.png"));
+const PROMO_RODAPE_LINHA_RATIO = 1088 / 61;
+const PROMO_CABECALHO_FABRICANTE_IMG = fs.readFileSync(path.join(__dirname, "../assets/catalogo-promocional-cabecalho-fabricante.png"));
+const PROMO_CABECALHO_FABRICANTE_RATIO = 1099 / 193;
+const PROMO_RODAPE_FABRICANTE_IMG = fs.readFileSync(path.join(__dirname, "../assets/catalogo-promocional-rodape-fabricante.png"));
+const PROMO_RODAPE_FABRICANTE_RATIO = 1073 / 149;
+
+// Área segura pro título dinâmico (fração da largura/altura do cabeçalho,
+// medida pixel a pixel na arte já sem margem — mesmo princípio de
+// RODAPE_NUM_X_FRACAO/Y_FRACAO abaixo): retângulo onde dá pra escrever texto
+// sem invadir a faixa amarela/diagonal decorativa da arte.
+const PROMO_TITULO_AREA = {
+  linha: { xFrac0: 0.026, yFrac0: 0.18, xFrac1: 0.82, yFrac1: 0.72, cor: "#ffffff" },
+  fabricante: { xFrac0: 0.02, yFrac0: 0.06, xFrac1: 0.67, yFrac1: 0.94, cor: "#ffffff" },
+};
+// Centro do texto "Página N" (fração da largura/altura do rodapé) — mesma
+// técnica de RODAPE_NUM_X_FRACAO/Y_FRACAO, mas aqui o texto é "Página N"
+// (não só o número) pra bater exatamente com o mockup original, na mesma
+// cor escura que o mockup já usava ali.
+const PROMO_PAGINA_AREA = {
+  linha: { xFrac: 0.945, yFrac: 0.49, cor: "#0b3a5c" },
+  fabricante: { xFrac: 0.946, yFrac: 0.72, cor: "#0b3a5c" },
+};
+
 // Pedido do usuário (2026-07-29): "coloque exatamente isso sem alterações
 // como cabeçalho" — arte da cunha cinza/azul (mesma família visual do
 // rodapé), usada tal como enviada, sem recortar/recolorir. O arquivo
@@ -1478,6 +1533,66 @@ function _desenharRodape(doc, numeroPagina) {
   doc.fillColor("#111827").font("Helvetica");
 }
 
+// 2026-08-31 (Catálogo Promocional — ver comentário em
+// PROMO_CABECALHO_LINHA_IMG acima): cabeçalho/rodapé dedicados, escolhidos
+// por `modo` ("linha" | "fabricante"). Mesmo padrão de _desenharCabecalho/
+// _desenharRodape (imagem cobrindo a largura inteira, altura derivada da
+// proporção real do arquivo — nunca distorce), só que sem o zoom de bleed
+// (os 4 arquivos já vêm sem margem branca, ver comentário acima) e com
+// título/"Página N" desenhados dentro da área seguro medida em
+// PROMO_TITULO_AREA/PROMO_PAGINA_AREA.
+function _desenharCabecalhoPromo(doc, titulo, modo) {
+  const w = doc.page.width;
+  const ehFabricante = modo === "fabricante";
+  const img = ehFabricante ? PROMO_CABECALHO_FABRICANTE_IMG : PROMO_CABECALHO_LINHA_IMG;
+  const ratio = ehFabricante ? PROMO_CABECALHO_FABRICANTE_RATIO : PROMO_CABECALHO_LINHA_RATIO;
+  const h = w / ratio;
+  doc.image(img, 0, 0, { width: w, height: h });
+
+  const area = ehFabricante ? PROMO_TITULO_AREA.fabricante : PROMO_TITULO_AREA.linha;
+  const x = w * area.xFrac0;
+  const larguraTexto = w * (area.xFrac1 - area.xFrac0);
+  const yTopo = h * area.yFrac0;
+  const alturaArea = h * (area.yFrac1 - area.yFrac0);
+
+  const tituloTexto = String(titulo || "").toUpperCase();
+  // Fonte auto-encolhida (mesmo princípio de _ajustarFonteSeloParaCaber):
+  // nome de Linha/Fabricante é texto livre do X2, alguns são bem longos
+  // (ex.: "INTERRUPTORES SENSORES E VÁLVULAS") — nunca deixa vazar pra fora
+  // da área segura da arte.
+  let fonte = Math.min(30, alturaArea * 0.62);
+  doc.font(TITULO_FONTE);
+  while (fonte > 10 && doc.fontSize(fonte).widthOfString(tituloTexto) > larguraTexto) {
+    fonte -= 1;
+  }
+  const yTexto = yTopo + (alturaArea - fonte) / 2;
+  doc.fillColor(area.cor).font(TITULO_FONTE).fontSize(fonte)
+    .text(tituloTexto, x, yTexto, { width: larguraTexto, height: fonte * 1.3, ellipsis: true, lineBreak: false });
+
+  doc.fillColor("#111827").font("Helvetica");
+}
+
+function _desenharRodapePromo(doc, numeroPagina, modo) {
+  const w = doc.page.width;
+  const hPagina = doc.page.height;
+  const ehFabricante = modo === "fabricante";
+  const img = ehFabricante ? PROMO_RODAPE_FABRICANTE_IMG : PROMO_RODAPE_LINHA_IMG;
+  const ratio = ehFabricante ? PROMO_RODAPE_FABRICANTE_RATIO : PROMO_RODAPE_LINHA_RATIO;
+  const h = w / ratio;
+  const topo = hPagina - h;
+  doc.image(img, 0, topo, { width: w, height: h });
+
+  const area = ehFabricante ? PROMO_PAGINA_AREA.fabricante : PROMO_PAGINA_AREA.linha;
+  const fonteNumero = 11;
+  const larguraCaixa = 90;
+  const centroX = w * area.xFrac;
+  const centroY = topo + h * area.yFrac;
+  doc.fillColor(area.cor).font("Helvetica-Bold").fontSize(fonteNumero)
+    .text(`Página ${numeroPagina}`, centroX - larguraCaixa / 2, centroY - fonteNumero / 2, { width: larguraCaixa, align: "center", lineBreak: false });
+
+  doc.fillColor("#111827").font("Helvetica");
+}
+
 // Agrupa produtos por Linha (Issue #21) — usa p.linha, caindo pra p.secao e
 // depois "Outros" se nenhum dos dois vier preenchido. Já são campos
 // indexados em catalogo-x2.service.js, nenhum dado novo precisou ser
@@ -1487,6 +1602,28 @@ function _agruparPorLinha(produtos) {
   const grupos = new Map();
   produtos.forEach((produto) => {
     const chave = String(produto.linha || produto.secao || "Outros").trim() || "Outros";
+    if (!grupos.has(chave)) grupos.set(chave, []);
+    grupos.get(chave).push(produto);
+  });
+  return Array.from(grupos.entries())
+    .map(([linha, itens]) => ({ linha, itens }))
+    .sort((a, b) => a.linha.localeCompare(b.linha, "pt-BR"));
+}
+
+// 2026-08-31 (Catálogo Promocional, modo "fabricante" — pedido do usuário:
+// "poderá ser por linha ou por fabricante ... por fabricante todos os
+// produtos serão de fabricante especifico por exemplo Gauss, Perfect etc"):
+// mesmo princípio de _agruparPorLinha, mas a chave é `produto.fabricante`
+// (campo já extraído do nome do produto em catalogo-x2.service.js,
+// _extrairFabricante/_normalizarFabricante — não é um dado novo). Devolve
+// o mesmo formato `{linha, itens}` que _construirSequenciaConteudoPromocional
+// já espera (aqui `linha` carrega o NOME DO FABRICANTE, não da Linha) — não
+// duplica a função de sequência/paginação, só troca o critério de
+// agrupamento antes dela.
+function _agruparPorFabricante(produtos) {
+  const grupos = new Map();
+  produtos.forEach((produto) => {
+    const chave = String(produto.fabricante || "Sem fabricante identificado").trim() || "Sem fabricante identificado";
     if (!grupos.has(chave)) grupos.set(chave, []);
     grupos.get(chave).push(produto);
   });
@@ -1606,15 +1743,32 @@ function _construirSequenciaConteudo(grupos) {
 // dentro de um sub-grupo de marca). `primeiroIndicePorGrupo` continua com o
 // mesmo papel de sempre: índice em `sequencia` onde cada Linha começa, pro
 // cálculo de página do índice/sumário.
+// 2026-08-31 (modo "fabricante" — ver comentário em gerarPdfCatalogoPromocional):
+// o 1º bloco "card" de cada grupo recebe `inicioDeGrupo: true`. Sozinho não
+// muda nada (o modo "linha" ignora essa marcação — continua empacotando
+// Linhas diferentes na mesma página, comportamento de sempre); só
+// `_calcularLayoutConteudo` com `forcarQuebraEntreGrupos=true` (passado só
+// quando modo==="fabricante", ver gerarPdfCatalogoPromocional) usa essa
+// marcação pra forçar quebra de página — sem isso, 2 fabricantes pequenos
+// (ex.: 4-5 produtos cada) cairiam na MESMA página, com o cabeçalho
+// mostrando só o nome do 1º fabricante enquanto cards do 2º apareciam
+// embaixo sem header próprio — inaceitável no modo "fabricante" (pedido do
+// usuário: "por fabricante todos os produtos serão de fabricante
+// especifico", ao contrário do modo "linha" onde isso é só organizacional).
 function _construirSequenciaConteudoPromocional(grupos) {
   const sequencia = [];
   const primeiroIndicePorGrupo = [];
   grupos.forEach(({ linha, itens }) => {
     primeiroIndicePorGrupo.push(sequencia.length);
+    let primeiroCardDoGrupo = true;
     for (let inicio = 0; inicio < itens.length; inicio += COLS_COMPLETO) {
       const leva = itens.slice(inicio, inicio + COLS_COMPLETO);
       leva.forEach((produto, colIndex) => {
-        sequencia.push({ tipo: "card", linha, produto, colIndex, colsLinha: COLS_COMPLETO });
+        sequencia.push({
+          tipo: "card", linha, produto, colIndex, colsLinha: COLS_COMPLETO,
+          inicioDeGrupo: primeiroCardDoGrupo && colIndex === 0,
+        });
+        primeiroCardDoGrupo = false;
       });
       for (let colIndex = leva.length; colIndex < COLS_COMPLETO; colIndex += 1) {
         sequencia.push({ tipo: "cardVazio", linha, colIndex, colsLinha: COLS_COMPLETO });
@@ -1650,7 +1804,7 @@ function _construirSequenciaConteudoPromocional(grupos) {
 //   dois (cabeçalho + 1ª linha de cards) vão pra página seguinte, pra não
 //   deixar um cabeçalho sozinho colado no rodapé sem nenhum produto
 //   embaixo até a próxima página.
-function _calcularLayoutConteudo(sequencia, geometria, alturaHeaderMarca) {
+function _calcularLayoutConteudo(sequencia, geometria, alturaHeaderMarca, forcarQuebraEntreGrupos = false) {
   const { cardWidth, cardHeight, areaTopoY, areaFimY } = geometria;
   const posicoes = [];
   let pagina = -1;
@@ -1712,6 +1866,13 @@ function _calcularLayoutConteudo(sequencia, geometria, alturaHeaderMarca) {
           novaPagina();
           headerRepetidoY = linhaY;
           linhaY += alturaHeaderMarca + MARCA_HEADER_GAP_DEPOIS;
+        } else if (forcarQuebraEntreGrupos && bloco.inicioDeGrupo && linhaY > areaTopoY + 0.5) {
+          // Modo "fabricante" (ver comentário em _construirSequenciaConteudoPromocional):
+          // mesmo cabendo na página atual, um novo grupo (fabricante) força
+          // página nova se já tem conteúdo de OUTRO grupo acima — o
+          // cabeçalho da página precisa sempre corresponder a TODOS os
+          // cards que aparecem nela.
+          novaPagina();
         }
       }
       const x = PAGE_MARGIN + bloco.colIndex * (cardWidth + GAP);
@@ -2152,15 +2313,33 @@ function gerarPdfCatalogoCompleto(produtos, fabricante, destino) {
  * dentro da grade) continua exatamente como no Catálogo Completo, por
  * pedido explícito do usuário ("Mantém cabeçalho de Linha, remove só
  * Marca").
+ *
+ * 2026-08-31 (pedido do usuário: "o catalogo promocional poderá ser por
+ * linha ou por fabricante"): novo parâmetro `modo` ("linha" | "fabricante",
+ * default "linha" — mantém o comportamento de sempre se quem chamar não
+ * passar nada, ver controller). Troca DUAS coisas em conjunto, nunca uma
+ * sem a outra:
+ *   1. Critério de agrupamento — _agruparPorLinha (por Linha/Seção, pode
+ *      misturar fabricantes) vs. _agruparPorFabricante (por
+ *      `produto.fabricante`, todos os cards do grupo são do mesmo
+ *      fabricante) — ver comentário em _agruparPorFabricante.
+ *   2. Arte de cabeçalho/rodapé — _desenharCabecalhoPromo/_desenharRodapePromo
+ *      escolhem a arte certa (PROMO_CABECALHO_LINHA_IMG vs.
+ *      PROMO_CABECALHO_FABRICANTE_IMG, ver comentário lá) a partir do MESMO
+ *      `modo`, então o título de cada página (nome da Linha ou do
+ *      Fabricante, dependendo do modo) sempre bate com a arte usada.
+ * O índice/sumário continua listando o mesmo `grupo.linha` de sempre — só
+ * que agora ele carrega o nome do Fabricante quando `modo==="fabricante"`
+ * (mesmo campo, significado diferente por modo — ver _agruparPorFabricante).
  */
-function gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino) {
+function gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino, modo = "linha") {
   const doc = new PDFDocument({ size: "A4", margin: 0, autoFirstPage: false, bufferPages: true });
   doc.pipe(destino);
   doc.registerFont(TITULO_FONTE, TITULO_FONTE_ARQUIVO);
   doc.registerFont(QUICKSAND_BOLD, QUICKSAND_BOLD_ARQUIVO);
   doc.registerFont(QUICKSAND_MEDIUM, QUICKSAND_MEDIUM_ARQUIVO);
 
-  const grupos = _agruparPorLinha(produtos);
+  const grupos = modo === "fabricante" ? _agruparPorFabricante(produtos) : _agruparPorLinha(produtos);
 
   // --- Pré-cálculo da paginação do índice (mesmo princípio de
   // gerarPdfCatalogoCompleto, ver comentário lá) ---
@@ -2177,7 +2356,10 @@ function gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino) {
   // sem duplicar a lógica de paginação/quebra de página.
   const { sequencia, primeiroIndicePorGrupo } = _construirSequenciaConteudoPromocional(grupos);
   const geometriaCompleto = _geometriaGrid(doc, COLS_COMPLETO, ROWS_POR_PAGINA_COMPLETO, true);
-  const { posicoes, preenchimentoFinal } = _calcularLayoutConteudo(sequencia, geometriaCompleto, 0);
+  // forcarQuebraEntreGrupos só no modo "fabricante" (ver comentário em
+  // _construirSequenciaConteudoPromocional) — modo "linha" mantém a
+  // paginação contínua de sempre, sem quebra forçada entre Linhas.
+  const { posicoes, preenchimentoFinal } = _calcularLayoutConteudo(sequencia, geometriaCompleto, 0, modo === "fabricante");
   const paginaInicialPorGrupo = primeiroIndicePorGrupo.map(
     (idx) => paginasIndice + 1 + posicoes[idx].pagina
   );
@@ -2188,8 +2370,15 @@ function gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino) {
   for (let p = 0; p < paginasIndice; p += 1) {
     doc.addPage();
     pagina += 1;
-    _desenharCabecalhoIndice(doc);
-    _desenharRodape(doc, pagina);
+    // 2026-08-31: página de índice usa a MESMA arte nova (cabeçalho +
+    // rodapé dedicados do Catálogo Promocional, ver PROMO_CABECALHO_*/
+    // PROMO_RODAPE_*), só com título fixo "ÍNDICE" em vez do nome de um
+    // grupo — evita misturar a arte antiga (cunha cinza do Catálogo
+    // Completo, _desenharCabecalhoIndice) com a nova dentro do MESMO
+    // documento, o que ficaria visualmente inconsistente numa exportação
+    // que É especificamente sobre padronizar esse cabeçalho/rodapé.
+    _desenharCabecalhoPromo(doc, "Índice", modo);
+    _desenharRodapePromo(doc, pagina, modo);
 
     const offset = p * linhasPorPaginaIndice;
     const linhasDestaPagina = grupos.slice(offset, offset + linhasPorPaginaIndice);
@@ -2217,8 +2406,8 @@ function gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino) {
       paginaLocalAtual = pos.pagina;
       doc.addPage();
       pagina += 1;
-      _desenharCabecalho(doc, bloco.linha);
-      _desenharRodape(doc, pagina);
+      _desenharCabecalhoPromo(doc, bloco.linha, modo);
+      _desenharRodapePromo(doc, pagina, modo);
     }
 
     if (bloco.tipo === "cardVazio") {

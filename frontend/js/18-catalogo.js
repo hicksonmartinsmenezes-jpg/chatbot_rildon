@@ -1307,6 +1307,25 @@ async function catalogoPromoImportarArquivo(file) {
   }
 }
 
+// 2026-08-31 (pedido do usuário: "o catalogo promocional poderá ser por
+// linha ou por fabricante"): grupo de radio "catalogo-promo-modo" em
+// frontend/index.html — lê o valor marcado, "linha" como default seguro se
+// por algum motivo nenhum radio existir/estiver marcado no DOM (nunca
+// quebra o preview/export por causa disso). Muda o critério de
+// agrupamento E a arte de cabeçalho/rodapé no PDF (ver `modo` em
+// gerarPdfCatalogoPromocional, catalogo-pdf.service.js).
+function _catalogoPromoModoAtual() {
+  const marcado = document.querySelector('input[name="catalogo-promo-modo"]:checked');
+  return marcado?.value === "fabricante" ? "fabricante" : "linha";
+}
+
+// Trocar o modo (Linha/Fabricante) refaz a pré-visualização — o PDF muda de
+// agrupamento E de arte de cabeçalho/rodapé, então a prévia velha ficaria
+// enganosa se não recarregasse.
+document.querySelectorAll('input[name="catalogo-promo-modo"]').forEach((radio) => {
+  radio.addEventListener("change", () => _agendarPreviewCatalogoPromocional());
+});
+
 // Pré-visualização automática (pedido do usuário, 2026-08-29): mesmo padrão
 // de _atualizarPreviewCatalogoCompleto (blob do PDF vira src de <iframe>),
 // mas aqui a "seleção" muda a cada clique de Adicionar/Remover/CSV — sem
@@ -1365,6 +1384,7 @@ async function _atualizarPreviewCatalogoPromocional() {
   try {
     const formData = new FormData();
     formData.append("codigos", JSON.stringify(codigos));
+    formData.append("modo", _catalogoPromoModoAtual());
     const csvFile = document.getElementById("catalogo-promo-csv")?.files?.[0];
     if (csvFile) formData.append("csv", csvFile);
 
@@ -1403,6 +1423,7 @@ async function gerarCatalogoPromocionalPDF(btnEl) {
   try {
     const formData = new FormData();
     formData.append("codigos", JSON.stringify(codigos));
+    formData.append("modo", _catalogoPromoModoAtual());
     const csvFile = document.getElementById("catalogo-promo-csv")?.files?.[0];
     if (csvFile) formData.append("csv", csvFile);
 

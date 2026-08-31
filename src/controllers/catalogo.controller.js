@@ -402,6 +402,14 @@ async function exportarPdfPromocionalHandler(req, res) {
       logger.warn(`[Catálogo Promocional] Falha ao organizar aplicações com IA (seguindo sem elas): ${err.message}`);
     }
 
+    // 2026-08-31 (pedido do usuário: "poderá ser por linha ou por
+    // fabricante") — modo vem do form-data do frontend (radio "Agrupar
+    // por"), default "linha" se não vier nada (compatível com chamadas
+    // antigas do preview/export que ainda não mandam esse campo). Qualquer
+    // valor que não seja exatamente "fabricante" cai em "linha" — nunca
+    // quebra por um valor inesperado.
+    const modo = req.body.modo === "fabricante" ? "fabricante" : "linha";
+
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="catalogo-promocional-${Date.now()}.pdf"`);
     if (naoEncontrados.length) {
@@ -411,7 +419,7 @@ async function exportarPdfPromocionalHandler(req, res) {
       // que a UI adicionou ele à lista).
       res.setHeader("X-Catalogo-Codigos-Nao-Encontrados", naoEncontrados.join(","));
     }
-    gerarPdfCatalogoPromocional(produtos, precosPorCodigo, res);
+    gerarPdfCatalogoPromocional(produtos, precosPorCodigo, res, modo);
   } catch (err) {
     logger.error("❌ Erro ao exportar catálogo promocional em PDF:", err.message);
     if (!res.headersSent) res.status(500).json({ error: "Erro ao gerar PDF do catálogo promocional." });

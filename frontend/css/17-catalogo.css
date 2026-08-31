@@ -463,6 +463,44 @@
 
 .catalogo-promo-resultado-info strong { color: #f8fafc; }
 
+/* 2026-08-31 (pedido do usuário: "poderá ser por linha ou por
+   fabricante") — caixa de toggle no topo da aba Catálogo Promocional,
+   antes das 2 colunas de busca/seleção (ver frontend/index.html). Reusa
+   .catalogo-erp-box/.catalogo-box-header de sempre, só adiciona o próprio
+   layout dos 2 radios. */
+.catalogo-promo-modo-box {
+  margin-bottom: 14px;
+}
+
+.catalogo-promo-modo-opcoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+.catalogo-promo-modo-opcao {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #f8fafc;
+  cursor: pointer;
+}
+
+.catalogo-promo-modo-opcao input[type="radio"] {
+  accent-color: var(--cat-text-dim, #38bdf8);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+
+.catalogo-promo-modo-exemplo {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--cat-text-dim);
+}
+
 .catalogo-promo-resultado-meta {
   font-size: 11.5px;
   font-weight: 600;

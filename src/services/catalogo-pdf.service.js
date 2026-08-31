@@ -147,7 +147,7 @@ const PROMO_RODAPE_LINHA_RATIO = 1083 / 57;
 const PROMO_CABECALHO_FABRICANTE_IMG = fs.readFileSync(path.join(__dirname, "../assets/catalogo-promocional-cabecalho-fabricante.png"));
 const PROMO_CABECALHO_FABRICANTE_RATIO = 1099 / 193;
 const PROMO_RODAPE_FABRICANTE_IMG = fs.readFileSync(path.join(__dirname, "../assets/catalogo-promocional-rodape-fabricante.png"));
-const PROMO_RODAPE_FABRICANTE_RATIO = 1073 / 149;
+const PROMO_RODAPE_FABRICANTE_RATIO = 1131 / 149;
 
 // Área segura pro título dinâmico (fração da largura/altura do cabeçalho,
 // medida pixel a pixel na arte já sem margem — mesmo princípio de
@@ -163,7 +163,15 @@ const PROMO_TITULO_AREA = {
 // cor escura que o mockup já usava ali.
 const PROMO_PAGINA_AREA = {
   linha: { xFrac: 0.943, yFrac: 0.561, cor: "#0b3a5c" },
-  fabricante: { xFrac: 0.946, yFrac: 0.72, cor: "#0b3a5c" },
+  // 2026-08-31 (correção do usuário: "o canto direito do rodapé... foi
+  // alterado, não está igual o que enviei"): o rodapé fabricante tinha o
+  // mesmo bug já corrigido 2x na arte linha — o corte original apagava uma
+  // margem real de ~32px nos DOIS lados (não só direita) do mockup
+  // original, "esticando" a caixa amarela de "Página N" até a borda da
+  // página. Recortado de novo preservando as margens reais (medidas pixel
+  // a pixel em full_footer_fabricante_src.png) — xFrac/yFrac recalculados
+  // pro novo asset (1131×149, era 1073×149).
+  fabricante: { xFrac: 0.923, yFrac: 0.718, cor: "#0b3a5c" },
 };
 
 // Pedido do usuário (2026-07-29): "coloque exatamente isso sem alterações

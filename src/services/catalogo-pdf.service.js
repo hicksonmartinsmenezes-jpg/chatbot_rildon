@@ -993,12 +993,21 @@ function _desenharCardVazio(doc, x, y, w, h) {
 // página cada cabeçalho de marca cai) ANTES de desenhar a página de
 // índice, que é a 1ª coisa desenhada no documento — sem essa troca,
 // _geometriaGrid não podia ser chamada cedo o bastante pra isso.
-function _geometriaGrid(doc, cols, rows, comAplicacao = false) {
+// 2026-08-31 (Catálogo Promocional — pedido do usuário: "reduza mais esse
+// espaço e suba mais um pouco o rodapé"): `overrides` permite recalcular
+// areaTopoY/areaFimY com a altura REAL do cabeçalho/rodapé de outro modo
+// (aqui, o Promocional — ver PROMO_CABECALHO_*/PROMO_RODAPE_* e a chamada em
+// gerarPdfCatalogoPromocional), em vez das constantes AREA_TOPO_Y/
+// FOOTER_HEIGHT fixas abaixo, que foram calculadas pro cabeçalho/rodapé do
+// Catálogo padrão (bem mais altos) e sobravam um vão enorme quando
+// reusadas pro Promocional. Sem overrides, comportamento idêntico a antes —
+// gerarPdfCatalogo/gerarPdfCatalogoCompleto não são afetados.
+function _geometriaGrid(doc, cols, rows, comAplicacao = false, overrides = null) {
   const larguraUtil = A4_LARGURA - PAGE_MARGIN * 2;
   const cardWidth = (larguraUtil - (cols - 1) * GAP) / cols;
   const photoBoxWidth = cardWidth - PAD_CARD * 2;
-  const areaTopoY = AREA_TOPO_Y;
-  const areaFimY = A4_ALTURA - FOOTER_HEIGHT - 8;
+  const areaTopoY = overrides?.areaTopoY ?? AREA_TOPO_Y;
+  const areaFimY = overrides?.areaFimY ?? (A4_ALTURA - FOOTER_HEIGHT - 8);
   const alturaDisponivel = areaFimY - areaTopoY;
   const cardHeightMax = (alturaDisponivel - (rows - 1) * GAP) / rows;
 
@@ -2362,7 +2371,24 @@ function gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino, modo = 
   // comentário acima no JSDoc) só pra esta função; `gerarPdfCatalogoCompleto`
   // continua com índice normalmente, não é afetado.
   const { sequencia } = _construirSequenciaConteudoPromocional(grupos);
-  const geometriaCompleto = _geometriaGrid(doc, COLS_COMPLETO, ROWS_POR_PAGINA_COMPLETO, true);
+  // 2026-08-31 (pedido do usuário: "reduza mais esse espaço e suba mais um
+  // pouco o rodapé"): a grade do Promocional reusava AREA_TOPO_Y/
+  // FOOTER_HEIGHT do Catálogo padrão (cabeçalho/rodapé bem mais altos),
+  // sobrando ~75pt de vão acima dos cards e ~44pt acima do rodapé, mesmo
+  // com o cabeçalho/rodapé PRÓPRIOS do Promocional (bem mais baixos — a
+  // arte já traz o título dentro dela, ver _desenharCabecalhoPromo) sendo
+  // bem menores. Aqui a altura real do cabeçalho/rodapé do modo atual é
+  // calculada (mesma conta de _desenharCabecalhoPromo/_desenharRodapePromo:
+  // largura da página / ratio do arquivo) e usada como base, com só um
+  // respiro pequeno (mesmo GAP das colunas) antes do 1º card e antes do
+  // rodapé.
+  const ehFabricantePromo = modo === "fabricante";
+  const alturaCabecalhoPromo = A4_LARGURA / (ehFabricantePromo ? PROMO_CABECALHO_FABRICANTE_RATIO : PROMO_CABECALHO_LINHA_RATIO);
+  const alturaRodapePromo = A4_LARGURA / (ehFabricantePromo ? PROMO_RODAPE_FABRICANTE_RATIO : PROMO_RODAPE_LINHA_RATIO);
+  const geometriaCompleto = _geometriaGrid(doc, COLS_COMPLETO, ROWS_POR_PAGINA_COMPLETO, true, {
+    areaTopoY: alturaCabecalhoPromo + GAP,
+    areaFimY: A4_ALTURA - alturaRodapePromo - GAP,
+  });
   // forcarQuebraEntreGrupos só no modo "fabricante" (ver comentário em
   // _construirSequenciaConteudoPromocional) — modo "linha" mantém a
   // paginação contínua de sempre, sem quebra forçada entre Linhas.

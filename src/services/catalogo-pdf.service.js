@@ -652,6 +652,18 @@ const TITULO_TAMANHO = 17;
 const PROMO_TITULO_FONTE_ARQUIVO = path.join(__dirname, "../assets/fonts/Montserrat-BoldItalic.ttf");
 const PROMO_TITULO_FONTE = "Montserrat-BoldItalic";
 const PROMO_TITULO_TAMANHO = 40;
+// 2026-08-31 (pedido do usuário: comparou o cabeçalho fabricante renderizado
+// ["SEM FABRICANTE IDENTIFICADO"] com o mockup ["Catálogo de marca"] e achou
+// "distorcido" — o fundo (png) bate exato pixel a pixel com o mockup
+// (conferido), a diferença real é só o título: 40px + nomes de fabricante
+// mais longos que "Catálogo de marca" (18 caracteres) força o loop de
+// auto-encolher a reduzir bastante a fonte, ficando desproporcional ao
+// mockup. Usuário escolheu, entre as opções oferecidas: fonte máxima menor
+// e fixa (em vez de partir de 40 e só encolher), sem centralizar tanto —
+// só o modo "fabricante" muda; "linha" continua 40px centralizado (pedido
+// explícito da 5ª rodada, ver PROMO_TITULO_AREA/histórico no início do
+// arquivo).
+const PROMO_TITULO_TAMANHO_FABRICANTE = 24;
 
 // Pedido do usuário (2026-08-27): "esse catalogo que estou usando de
 // referencia [3-RHO.pdf original], observe as descriçoes e como estão as
@@ -1586,19 +1598,30 @@ function _desenharCabecalhoPromo(doc, titulo, modo) {
 
   const tituloTexto = String(titulo || "").toUpperCase();
   // 2026-08-31 (pedido do usuário: "padronize fonte montserrat 40px" +
-  // "centralize o nome da categoria"): tamanho fixo em PROMO_TITULO_TAMANHO
-  // (40) e centralizado dentro da área segura — só encolhe abaixo de 40 se
-  // o nome não couber (Linha/Fabricante é texto livre do X2, alguns são
-  // bem longos, ex.: "INTERRUPTORES SENSORES E VÁLVULAS"), nunca aumenta
-  // acima de 40 mesmo pra nomes curtos.
-  let fonte = Math.min(PROMO_TITULO_TAMANHO, alturaArea * 0.9);
+  // "centralize o nome da categoria") pro modo LINHA: tamanho fixo em
+  // PROMO_TITULO_TAMANHO (40) e centralizado dentro da área segura — só
+  // encolhe abaixo de 40 se o nome não couber, nunca aumenta acima de 40
+  // mesmo pra nomes curtos.
+  //
+  // 2026-08-31, mesmo dia — modo FABRICANTE tratado diferente: comparando
+  // o cabeçalho renderizado ("SEM FABRICANTE IDENTIFICADO") lado a lado
+  // com o mockup ("Catálogo de marca"), o usuário achou "distorcido" — o
+  // fundo batia pixel a pixel (conferido), mas nomes de fabricante mais
+  // longos que o texto curto do mockup forçavam o loop de auto-encolher a
+  // reduzir bastante a fonte de 40, ficando desproporcional. Usuário
+  // escolheu fonte máxima menor e fixa (PROMO_TITULO_TAMANHO_FABRICANTE,
+  // 24) + alinhado à esquerda (não centralizado) — mais parecido com o
+  // peso visual do mockup mesmo em nomes de fabricante longos.
+  const tamanhoMaximo = ehFabricante ? PROMO_TITULO_TAMANHO_FABRICANTE : PROMO_TITULO_TAMANHO;
+  const alinhamento = ehFabricante ? "left" : "center";
+  let fonte = Math.min(tamanhoMaximo, alturaArea * 0.9);
   doc.font(PROMO_TITULO_FONTE);
   while (fonte > 10 && doc.fontSize(fonte).widthOfString(tituloTexto) > larguraTexto) {
     fonte -= 1;
   }
   const yTexto = yTopo + (alturaArea - fonte) / 2;
   doc.fillColor(area.cor).font(PROMO_TITULO_FONTE).fontSize(fonte)
-    .text(tituloTexto, x, yTexto, { width: larguraTexto, height: fonte * 1.3, align: "center", ellipsis: true, lineBreak: false });
+    .text(tituloTexto, x, yTexto, { width: larguraTexto, height: fonte * 1.3, align: alinhamento, ellipsis: true, lineBreak: false });
 
   doc.fillColor("#111827").font("Helvetica");
 }

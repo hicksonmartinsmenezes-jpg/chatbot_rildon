@@ -141,9 +141,9 @@ const RODAPE_IMG_RATIO = 1372 / 156;
 // _desenharCabecalhoPromo/_desenharRodapePromo, igual ao padrão já usado em
 // _desenharCabecalho/_desenharRodape pro Catálogo Completo.
 const PROMO_CABECALHO_LINHA_IMG = fs.readFileSync(path.join(__dirname, "../assets/catalogo-promocional-cabecalho-linha.png"));
-const PROMO_CABECALHO_LINHA_RATIO = 1108 / 151;
+const PROMO_CABECALHO_LINHA_RATIO = 1085 / 151;
 const PROMO_RODAPE_LINHA_IMG = fs.readFileSync(path.join(__dirname, "../assets/catalogo-promocional-rodape-linha.png"));
-const PROMO_RODAPE_LINHA_RATIO = 1087 / 57;
+const PROMO_RODAPE_LINHA_RATIO = 1083 / 57;
 const PROMO_CABECALHO_FABRICANTE_IMG = fs.readFileSync(path.join(__dirname, "../assets/catalogo-promocional-cabecalho-fabricante.png"));
 const PROMO_CABECALHO_FABRICANTE_RATIO = 1099 / 193;
 const PROMO_RODAPE_FABRICANTE_IMG = fs.readFileSync(path.join(__dirname, "../assets/catalogo-promocional-rodape-fabricante.png"));
@@ -154,7 +154,7 @@ const PROMO_RODAPE_FABRICANTE_RATIO = 1073 / 149;
 // RODAPE_NUM_X_FRACAO/Y_FRACAO abaixo): retângulo onde dá pra escrever texto
 // sem invadir a faixa amarela/diagonal decorativa da arte.
 const PROMO_TITULO_AREA = {
-  linha: { xFrac0: 0.026, yFrac0: 0.18, xFrac1: 0.82, yFrac1: 0.72, cor: "#ffffff" },
+  linha: { xFrac0: 0.014, yFrac0: 0.053, xFrac1: 0.746, yFrac1: 0.642, cor: "#ffffff" },
   fabricante: { xFrac0: 0.02, yFrac0: 0.06, xFrac1: 0.67, yFrac1: 0.94, cor: "#ffffff" },
 };
 // Centro do texto "Página N" (fração da largura/altura do rodapé) — mesma
@@ -162,7 +162,7 @@ const PROMO_TITULO_AREA = {
 // (não só o número) pra bater exatamente com o mockup original, na mesma
 // cor escura que o mockup já usava ali.
 const PROMO_PAGINA_AREA = {
-  linha: { xFrac: 0.945, yFrac: 0.49, cor: "#0b3a5c" },
+  linha: { xFrac: 0.943, yFrac: 0.561, cor: "#0b3a5c" },
   fabricante: { xFrac: 0.946, yFrac: 0.72, cor: "#0b3a5c" },
 };
 
@@ -632,6 +632,18 @@ function _desenharBadgePreco(doc, preco, xConteudo, yTopo, larguraConteudo, larg
 const TITULO_FONTE_ARQUIVO = path.join(__dirname, "../assets/fonts/Futura-Md-BT-Bold-Italic.ttf");
 const TITULO_FONTE = "FuturaMdBT-BoldItalic";
 const TITULO_TAMANHO = 17;
+// 2026-08-31 (pedido do usuário: "padronize fonte montserrat 40px" pro
+// título do cabeçalho do Catálogo Promocional) — fonte separada de
+// TITULO_FONTE porque essa é usada em muitos outros lugares do arquivo
+// (código do produto, índice, selo de preço) que não foram tocados por
+// esse pedido; só o título grande de _desenharCabecalhoPromo usa
+// PROMO_TITULO_FONTE. Peso Bold Italic (baixado via @fontsource/montserrat
+// e convertido de woff2 pra ttf com fonttools) pra manter a inclinação
+// itálica que já existia no mockup original — se o usuário pedir reto,
+// trocar pro peso Bold normal (sem "-italic" no nome do arquivo fonte).
+const PROMO_TITULO_FONTE_ARQUIVO = path.join(__dirname, "../assets/fonts/Montserrat-BoldItalic.ttf");
+const PROMO_TITULO_FONTE = "Montserrat-BoldItalic";
+const PROMO_TITULO_TAMANHO = 40;
 
 // Pedido do usuário (2026-08-27): "esse catalogo que estou usando de
 // referencia [3-RHO.pdf original], observe as descriçoes e como estão as
@@ -1556,18 +1568,20 @@ function _desenharCabecalhoPromo(doc, titulo, modo) {
   const alturaArea = h * (area.yFrac1 - area.yFrac0);
 
   const tituloTexto = String(titulo || "").toUpperCase();
-  // Fonte auto-encolhida (mesmo princípio de _ajustarFonteSeloParaCaber):
-  // nome de Linha/Fabricante é texto livre do X2, alguns são bem longos
-  // (ex.: "INTERRUPTORES SENSORES E VÁLVULAS") — nunca deixa vazar pra fora
-  // da área segura da arte.
-  let fonte = Math.min(30, alturaArea * 0.62);
-  doc.font(TITULO_FONTE);
+  // 2026-08-31 (pedido do usuário: "padronize fonte montserrat 40px" +
+  // "centralize o nome da categoria"): tamanho fixo em PROMO_TITULO_TAMANHO
+  // (40) e centralizado dentro da área segura — só encolhe abaixo de 40 se
+  // o nome não couber (Linha/Fabricante é texto livre do X2, alguns são
+  // bem longos, ex.: "INTERRUPTORES SENSORES E VÁLVULAS"), nunca aumenta
+  // acima de 40 mesmo pra nomes curtos.
+  let fonte = Math.min(PROMO_TITULO_TAMANHO, alturaArea * 0.9);
+  doc.font(PROMO_TITULO_FONTE);
   while (fonte > 10 && doc.fontSize(fonte).widthOfString(tituloTexto) > larguraTexto) {
     fonte -= 1;
   }
   const yTexto = yTopo + (alturaArea - fonte) / 2;
-  doc.fillColor(area.cor).font(TITULO_FONTE).fontSize(fonte)
-    .text(tituloTexto, x, yTexto, { width: larguraTexto, height: fonte * 1.3, ellipsis: true, lineBreak: false });
+  doc.fillColor(area.cor).font(PROMO_TITULO_FONTE).fontSize(fonte)
+    .text(tituloTexto, x, yTexto, { width: larguraTexto, height: fonte * 1.3, align: "center", ellipsis: true, lineBreak: false });
 
   doc.fillColor("#111827").font("Helvetica");
 }
@@ -2336,6 +2350,7 @@ function gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino, modo = 
   const doc = new PDFDocument({ size: "A4", margin: 0, autoFirstPage: false, bufferPages: true });
   doc.pipe(destino);
   doc.registerFont(TITULO_FONTE, TITULO_FONTE_ARQUIVO);
+  doc.registerFont(PROMO_TITULO_FONTE, PROMO_TITULO_FONTE_ARQUIVO);
   doc.registerFont(QUICKSAND_BOLD, QUICKSAND_BOLD_ARQUIVO);
   doc.registerFont(QUICKSAND_MEDIUM, QUICKSAND_MEDIUM_ARQUIVO);
 

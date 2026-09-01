@@ -290,20 +290,65 @@ async function exportarPdfHandler(req, res) {
   }
 }
 
+// Normaliza código pra comparação (mesma regra de _normalizarCodigo em
+// catalogo-x2.service.js — não exportada de lá, replicada aqui só pra
+// comparação; a busca em si continua inteiramente dentro do service).
+function _normalizarCodigoComparacao(codigo) {
+  return String(codigo || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+// Extrai só a parte do código de uma referência tipo "FCD3061 - WEGA" (antes
+// do " - ", que é o fabricante) já normalizada pra comparação. Mesma lógica
+// de referenciaIndex em catalogo-x2.service.js, replicada aqui (ver
+// comentário de _normalizarCodigoComparacao acima).
+//
+// BUG REAL corrigido 2026-09-01 (achado junto da investigação de
+// FCD0721/FCD0727 sumindo do import/export do Catálogo Promocional): antes
+// desta função, o código comparava `_normalizarCodigoComparacao(p.referencia)`
+// direto, SEM separar o fabricante — "FCD3061 - WEGA" normalizava pra
+// "FCD3061WEGA", que nunca bate contra "FCD3061" (código do arquivo do
+// fornecedor). Essa comparação nunca disparava de verdade; só não quebrava
+// visivelmente porque o fallback `resultados[0]` já vinha certo depois do
+// fix de prioridade em buscarPorCodigo. Também normaliza o mesmo typo de
+// hífen sem espaço antes do "WEGA" já corrigido em _extrairFabricante e no
+// referenciaIndex ("FCD-0721- WEGA", "FCD0727- WEGA").
+function _extrairCodigoDaReferencia(referencia) {
+  const normalizada = String(referencia || "").replace(/(?<=\S)-(?=\s)/g, " -");
+  const parte = normalizada.includes(" - ") ? normalizada.split(" - ")[0] : normalizada;
+  return _normalizarCodigoComparacao(parte);
+}
+
 // Resolve uma lista de códigos internos pros produtos reais indexados —
 // mesma busca exata usada em /catalogo/buscar-codigo (equivalente/
-// referência/código interno). Prioriza o match EXATO do código interno (o
-// que a UI de seleção sempre manda) quando buscarPorCodigo devolver mais de
-// um resultado — caso raro de colisão entre um código interno e uma
-// referência de outro produto. Compartilhado entre exportarPdfPromocionalHandler
-// e importarArquivoPromocionalHandler (2026-08-29) — mesma lógica, evita os
-// dois divergirem com o tempo (ver princípio DRY em CLAUDE.md).
+// referência/código interno). Prioriza o match EXATO (código interno da loja
+// OU referência própria do produto — a UI de seleção manda código interno,
+// mas um arquivo de preço de fornecedor manda a referência dele) quando
+// buscarPorCodigo devolver mais de um resultado. Compartilhado entre
+// exportarPdfPromocionalHandler e importarArquivoPromocionalHandler
+// (2026-08-29) — mesma lógica, evita os dois divergirem com o tempo (ver
+// princípio DRY em CLAUDE.md).
+//
+// BUG REAL corrigido 2026-09-01 (achado testando import de preços com
+// arquivo real, "Wega Estoque.xlsx"): a comparação `String(p.codigo) ===
+// codigo` nunca podia bater, porque p.codigo é sempre o código INTERNO da
+// loja (ex: "123517") e `codigo` aqui é o código do ARQUIVO do fornecedor
+// (ex: "JFA0K14") — formatos incompatíveis por definição. Isso fazia o
+// "match exato" nunca disparar, caindo sempre em resultados[0] (que também
+// tinha ordem errada — ver fix em buscarPorCodigo/catalogo-x2.service.js).
+// Resultado: import de preço por código de fornecedor podia devolver um
+// produto de OUTRO fabricante que só cita aquele código como equivalente
+// OEM, em vez do produto certo. Fix: comparar também contra a referência
+// própria do produto (normalizada), que é o campo que de fato corresponde
+// ao código de fornecedor de um arquivo de preços.
 function _resolverProdutosPorCodigos(codigos) {
   const produtos = [];
   const naoEncontrados = [];
   codigos.forEach((codigo) => {
     const resultados = buscarPorCodigo(codigo, { limite: 10 });
-    const exato = resultados.find((p) => String(p.codigo) === codigo) || resultados[0] || null;
+    const codigoNormalizado = _normalizarCodigoComparacao(codigo);
+    const exato = resultados.find((p) =>
+      String(p.codigo) === codigo || _extrairCodigoDaReferencia(p.referencia) === codigoNormalizado
+    ) || resultados[0] || null;
     if (exato) produtos.push(exato);
     else naoEncontrados.push(codigo);
   });
@@ -330,7 +375,10 @@ function _reindexarPrecosPorCodigoInterno(precosBrutos) {
   const mapa = new Map();
   for (const [codigoArquivo, preco] of precosBrutos) {
     const resultados = buscarPorCodigo(codigoArquivo, { limite: 10 });
-    const exato = resultados.find((p) => String(p.codigo) === codigoArquivo) || resultados[0] || null;
+    const codigoNormalizado = _normalizarCodigoComparacao(codigoArquivo);
+    const exato = resultados.find((p) =>
+      String(p.codigo) === codigoArquivo || _extrairCodigoDaReferencia(p.referencia) === codigoNormalizado
+    ) || resultados[0] || null;
     if (exato) mapa.set(String(exato.codigo), preco);
   }
   return mapa;

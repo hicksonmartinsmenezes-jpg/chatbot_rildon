@@ -145,7 +145,13 @@ const PROMO_CABECALHO_LINHA_RATIO = 1085 / 151;
 const PROMO_RODAPE_LINHA_IMG = fs.readFileSync(path.join(__dirname, "../assets/catalogo-promocional-rodape-linha.png"));
 const PROMO_RODAPE_LINHA_RATIO = 1083 / 57;
 const PROMO_CABECALHO_FABRICANTE_IMG = fs.readFileSync(path.join(__dirname, "../assets/catalogo-promocional-cabecalho-fabricante.png"));
-const PROMO_CABECALHO_FABRICANTE_RATIO = 1099 / 193;
+// 2026-09-01: usuário substituiu o arquivo de arte (pedido: "remova esse
+// cabeçalho e coloque exatamente esse no lugar") por uma versão nova,
+// 727×127 (antes 1099×193 — mesmo desenho, arquivo de origem diferente).
+// RATIO precisa bater com as dimensões REAIS do arquivo atual, senão
+// _desenharCabecalhoPromo distorce a imagem ao redimensionar pra largura da
+// página (ver `h = w / ratio` lá).
+const PROMO_CABECALHO_FABRICANTE_RATIO = 727 / 127;
 const PROMO_RODAPE_FABRICANTE_IMG = fs.readFileSync(path.join(__dirname, "../assets/catalogo-promocional-rodape-fabricante.png"));
 const PROMO_RODAPE_FABRICANTE_RATIO = 1069 / 149;
 
@@ -570,15 +576,18 @@ const CAIXA_CODIGO_PAD_V = 1;
 // produto, em cada card"): badge de preço promocional, canto superior
 // DIREITO do card — o mesmo espaço que hoje fica vazio ao lado do selo do
 // código (canto superior esquerdo, ver _desenharCardCatalogoCompleto).
-// Verde (em vez do azul do selo/vermelho do OEM) só pra diferenciar
-// visualmente "preço" de "identificação" à primeira vista — mesmo padrão
-// de caixa cheia + texto branco dos outros badges do card, só cor
-// diferente. Preço é OPCIONAL por produto (usuário sobe um CSV
-// código->preço próprio, nem todo código selecionado precisa vir nele) —
-// sem preço pro código, o card simplesmente não desenha o badge (ver
-// _desenharBadgePreco), sem placeholder feio tipo "R$ --".
-const BADGE_PRECO_FUNDO = "#0f8a3c";
-const BADGE_PRECO_TEXTO = "#ffffff";
+// Preço é OPCIONAL por produto (usuário sobe um CSV código->preço próprio,
+// nem todo código selecionado precisa vir nele) — sem preço pro código, o
+// card simplesmente não desenha o badge (ver _desenharBadgePreco), sem
+// placeholder feio tipo "R$ --".
+// 2026-09-01 (pedido do usuário: "no background do preço deixe amarelo") —
+// era verde (#0f8a3c) + texto branco; amarelo (#FFCB2A, mesmo tom da faixa
+// diagonal da arte do cabeçalho/rodapé promocional, ver
+// src/assets/catalogo-promocional-cabecalho-*.png) exige texto escuro em
+// vez de branco pra manter contraste — reaproveita o #111827 já usado no
+// texto de aplicação/descrição do card, não um cinza/preto novo.
+const BADGE_PRECO_FUNDO = "#FFCB2A";
+const BADGE_PRECO_TEXTO = "#111827";
 const BADGE_PRECO_FONTE = 7;
 
 // Formata um preço numérico (Number ou string numérica) em "R$ 1.234,56" —
@@ -651,7 +660,7 @@ const TITULO_TAMANHO = 17;
 // trocar pro peso Bold normal (sem "-italic" no nome do arquivo fonte).
 const PROMO_TITULO_FONTE_ARQUIVO = path.join(__dirname, "../assets/fonts/Montserrat-BoldItalic.ttf");
 const PROMO_TITULO_FONTE = "Montserrat-BoldItalic";
-const PROMO_TITULO_TAMANHO = 40;
+const PROMO_TITULO_TAMANHO = 30;
 // 2026-08-31 (pedido do usuário: comparou o cabeçalho fabricante renderizado
 // ["SEM FABRICANTE IDENTIFICADO"] com o mockup ["Catálogo de marca"] e achou
 // "distorcido" — o fundo (png) bate exato pixel a pixel com o mockup
@@ -1372,20 +1381,10 @@ function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight
   let resumo = `${produto.codigo} - ${_nomeExibicao(produto, true).toUpperCase()}`;
 
   if (produto.aplicacaoOrganizada) {
-    // 2026-08-28: pedido do usuário "sempre que o texto couber inteiro
-    // padronize ponto final" — só entra ponto quando o texto cabe INTEIRO
-    // na linha (não seria cortado pelo "..." do ellipsis); texto cortado já
-    // sinaliza continuação com "...", não faz sentido enfiar ponto ali.
-    // pdfkit não expõe se o ellipsis disparou, então mede a largura de
-    // verdade (doc.widthOfString, precisa fonte/tamanho já setados antes de
-    // medir) — mesma técnica já usada em _ajustarFonteSeloParaCaber.
+    // 2026-09-01 (pedido do usuário: "retire pontos no final das
+    // descrições") — reverte o "padronize ponto final" de 2026-08-28: não
+    // acrescenta mais "." mesmo quando o texto cabe inteiro na linha.
     doc.font(TITULO_FONTE).fontSize(RESUMO_FONTE);
-    if (!/[.!?…]$/.test(resumo)) {
-      const resumoComPonto = resumo + ".";
-      if (doc.widthOfString(resumoComPonto) <= larguraConteudo) {
-        resumo = resumoComPonto;
-      }
-    }
     doc.fillColor("#111827").font(TITULO_FONTE).fontSize(RESUMO_FONTE)
       .text(resumo, xConteudo, yResumo, {
         width: larguraConteudo,
@@ -1408,14 +1407,11 @@ function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight
     // realmente não couber nem assim (mesma lógica "cabe inteiro" de
     // _desenharAplicacao, aqui via heightOfString em vez de widthOfString
     // porque agora é um bloco multi-linha, não mais 1 linha só).
+    // 2026-09-01 (pedido do usuário: "retire pontos no final das
+    // descrições") — mesma reversão do bloco acima, aplicada aqui pro
+    // produto sem aplicacaoOrganizada (descrição completa multi-linha).
     const alturaDescricaoCompleta = RESUMO_ALTURA + GAP_RESUMO_APLICACAO + APLICACAO_ALTURA;
     doc.font(TITULO_FONTE).fontSize(RESUMO_FONTE);
-    if (!/[.!?…]$/.test(resumo)) {
-      const resumoComPonto = resumo + ".";
-      if (doc.heightOfString(resumoComPonto, { width: larguraConteudo }) <= alturaDescricaoCompleta + 0.5) {
-        resumo = resumoComPonto;
-      }
-    }
     doc.fillColor("#111827").font(TITULO_FONTE).fontSize(RESUMO_FONTE)
       .text(resumo, xConteudo, yResumo, {
         width: larguraConteudo,
@@ -1701,6 +1697,8 @@ function _agruparPorFabricante(produtos) {
 // Segmento sem ":" (dado malformado raro, ex. "EATON; FORD: Cargo...")
 // não vira marca — esse pedaço específico só não entra em grupo nenhum,
 // sem derrubar as marcas boas do mesmo produto.
+
+
 function _extrairMarcas(textoOriginal) {
   if (!textoOriginal) return [];
   const texto = _normalizarMarcasTexto(textoOriginal);
@@ -1809,9 +1807,44 @@ function _construirSequenciaConteudo(grupos) {
 // embaixo sem header próprio — inaceitável no modo "fabricante" (pedido do
 // usuário: "por fabricante todos os produtos serão de fabricante
 // especifico", ao contrário do modo "linha" onde isso é só organizacional).
-function _construirSequenciaConteudoPromocional(grupos) {
+// `iniciarGrupoEmLinhaNova` (default true, comportamento original): cada
+// grupo sempre começa numa linha nova da grade, preenchendo a leva final
+// com cardVazio até fechar COLS_COMPLETO colunas. Necessário no modo
+// "fabricante", que também força página nova por grupo
+// (forcarQuebraEntreGrupos em _calcularLayoutConteudo) — sem a leva
+// preenchida, `bloco.colIndex === 0` podia não disparar no 1º card de um
+// grupo pequeno, e o cabeçalho da página só pode citar 1 fabricante.
+//
+// 2026-09-01 (pedido do usuário, "de novo alguns bugs de pular cards" —
+// reportado depois de ver cards sozinhos com espaço em branco do lado
+// sempre que uma Linha não fechava múltiplo de 4 itens, ex: "AKX1140"
+// isolado com 3 cards vazios): no modo "linha" (iniciarGrupoEmLinhaNova
+// = false) o próximo grupo agora continua preenchendo a MESMA linha da
+// grade em vez de sempre pular pra uma nova — colIndex vira uma contagem
+// corrida (0..COLS_COMPLETO-1) atravessando todos os grupos, sem
+// cardVazio nenhum entre eles. Isso já era a intenção declarada pro modo
+// "linha" ao nível de PÁGINA ("paginação contínua... sem quebra forçada
+// entre Linhas", ver gerarPdfCatalogoPromocional) — esta mudança só
+// estende a mesma continuidade pro nível de LINHA da grade.
+function _construirSequenciaConteudoPromocional(grupos, iniciarGrupoEmLinhaNova = true) {
   const sequencia = [];
   const primeiroIndicePorGrupo = [];
+
+  if (!iniciarGrupoEmLinhaNova) {
+    let colIndexGlobal = 0;
+    grupos.forEach(({ linha, itens }) => {
+      primeiroIndicePorGrupo.push(sequencia.length);
+      itens.forEach((produto, idx) => {
+        sequencia.push({
+          tipo: "card", linha, produto, colIndex: colIndexGlobal, colsLinha: COLS_COMPLETO,
+          inicioDeGrupo: idx === 0,
+        });
+        colIndexGlobal = (colIndexGlobal + 1) % COLS_COMPLETO;
+      });
+    });
+    return { sequencia, primeiroIndicePorGrupo };
+  }
+
   grupos.forEach(({ linha, itens }) => {
     primeiroIndicePorGrupo.push(sequencia.length);
     let primeiroCardDoGrupo = true;
@@ -1863,6 +1896,10 @@ function _calcularLayoutConteudo(sequencia, geometria, alturaHeaderMarca, forcar
   const posicoes = [];
   let pagina = -1;
   let linhaY = areaTopoY;
+  // true quando a última linha de cards desenhada ainda não "fechou" (não
+  // chegou até colsLinha-1) — ver comentário no fix de 2026-09-01 logo
+  // antes de alturaFinalPorPagina, mais abaixo.
+  let linhaEmAberto = false;
 
   // 2026-08-28 (pedido "preencha com cards vazios embaixo"): guarda o Y
   // final de CADA página assim que ela é abandonada (ver novaPagina) —
@@ -1918,8 +1955,29 @@ function _calcularLayoutConteudo(sequencia, geometria, alturaHeaderMarca, forcar
           novaPagina();
         } else if (linhaY + cardHeight > areaFimY + 0.5) {
           novaPagina();
-          headerRepetidoY = linhaY;
-          linhaY += alturaHeaderMarca + MARCA_HEADER_GAP_DEPOIS;
+          // BUG REAL achado 2026-09-01 (Catálogo Promocional, modo
+          // "fabricante" — usuário reportou "sobra parte branca no fim da
+          // página, sempre preencha"): esta função é COMPARTILHADA com o
+          // Catálogo Completo, que TEM sub-agrupamento por marca de
+          // veículo (alturaHeaderMarca > 0, repete o cabeçalho da marca no
+          // topo da página nova). O Catálogo Promocional NÃO tem esse
+          // sub-agrupamento (chama com alturaHeaderMarca=0 — ver
+          // gerarPdfCatalogoPromocional), mas o código reservava o espaço
+          // MARCA_HEADER_GAP_DEPOIS (6pt) de qualquer jeito, mesmo sem
+          // cabeçalho nenhum pra desenhar ali — 6pt perdidos no topo de
+          // TODA página de continuação. Como cardHeight é calculado pra
+          // caber ROWS_POR_PAGINA_COMPLETO linhas EXATAS sem folga nenhuma
+          // (ver _geometriaGrid), esses 6pt bastavam pra empurrar a
+          // verificação "cabe mais 1 linha?" (aqui e em preenchimentoFinal
+          // logo abaixo) pro lado errado — a grade sempre "perdia" a
+          // última linha da página, tanto de produto real quanto de
+          // preenchimento, ficando em branco. Fix: só reserva o espaço (e
+          // marca headerRepetidoY) quando existe de fato um cabeçalho de
+          // marca pra repetir.
+          if (alturaHeaderMarca > 0) {
+            headerRepetidoY = linhaY;
+            linhaY += alturaHeaderMarca + MARCA_HEADER_GAP_DEPOIS;
+          }
         } else if (forcarQuebraEntreGrupos && bloco.inicioDeGrupo && linhaY > areaTopoY + 0.5) {
           // Modo "fabricante" (ver comentário em _construirSequenciaConteudoPromocional):
           // mesmo cabendo na página atual, um novo grupo (fabricante) força
@@ -1937,12 +1995,32 @@ function _calcularLayoutConteudo(sequencia, geometria, alturaHeaderMarca, forcar
       });
       if (bloco.colIndex === bloco.colsLinha - 1) {
         linhaY += cardHeight + GAP;
+        linhaEmAberto = false;
+      } else {
+        linhaEmAberto = true;
       }
     }
   });
 
   // A última página não passa por novaPagina() de novo (não tem próximo
   // bloco pra disparar a troca) — grava o Y final dela aqui, fora do loop.
+  //
+  // BUG REAL corrigido 2026-09-01 (Catálogo Promocional modo "linha",
+  // depois da mudança "fluxo contínuo entre grupos" — ver
+  // _construirSequenciaConteudoPromocional): `linhaY` só avança quando o
+  // ÚLTIMO bloco de uma linha da grade é desenhado (colIndex===colsLinha-1,
+  // acima). Antes da mudança de fluxo contínuo, a sequência sempre incluía
+  // blocos "cardVazio" explícitos preenchendo o resto de CADA linha, então
+  // a última linha do documento sempre acabava fechada. Com o fluxo
+  // contínuo, a última linha pode terminar com um item real "solto" numa
+  // coluna que não é a última (ex: 1 produto sozinho na coluna 0) — nesse
+  // caso `linhaY` nunca avançava, e o preenchimentoFinal (calculado a
+  // seguir a partir de `alturaFinalPorPagina`) desenhava uma linha inteira
+  // de cardVazio EXATAMENTE por cima dessa última linha real, escondendo o
+  // produto (reportado pelo usuário como "card sumiu"/"pulou card"). Fix:
+  // se a última linha ficou "em aberto" (teve conteúdo mas não fechou),
+  // avança linhaY mais uma vez antes de gravar a altura final da página.
+  if (linhaEmAberto) linhaY += cardHeight + GAP;
   if (pagina >= 0) alturaFinalPorPagina[pagina] = linhaY;
 
   // 2026-08-28 (pedido "preencha com cards vazios embaixo"): pra cada
@@ -2401,7 +2479,7 @@ function gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino, modo = 
   // reverte a decisão anterior ("Mantém cabeçalho de Linha" via índice, ver
   // comentário acima no JSDoc) só pra esta função; `gerarPdfCatalogoCompleto`
   // continua com índice normalmente, não é afetado.
-  const { sequencia } = _construirSequenciaConteudoPromocional(grupos);
+  const { sequencia } = _construirSequenciaConteudoPromocional(grupos, modo === "fabricante");
   // 2026-08-31 (pedido do usuário: "reduza mais esse espaço e suba mais um
   // pouco o rodapé"): a grade do Promocional reusava AREA_TOPO_Y/
   // FOOTER_HEIGHT do Catálogo padrão (cabeçalho/rodapé bem mais altos),

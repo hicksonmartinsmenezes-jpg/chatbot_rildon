@@ -97,7 +97,23 @@ let totalProdutosIndexados = 0;
 // no parsing — produto fica sem fabricante identificado, mas continua
 // aparecendo normalmente em qualquer busca por veículo/categoria.
 function _extrairFabricante(nome) {
-  const partes = String(nome || "").split(" - ");
+  // BUG REAL achado 2026-09-01 (testando import do Catálogo Promocional com
+  // arquivo real do usuário, "Wega Estoque.xlsx"): produto "ELEMENTO
+  // FILTRANTE DE CABINE PEUGEOT 207/ 206/ HOGGAR- WEGA - AKX35157" (código
+  // 123621) tem "WEGA" bem ali no nome, mas caía em "Sem fabricante
+  // identificado" — o separador " - " (espaço-hífen-espaço) que o parsing
+  // exige tinha um typo de cadastro no X2 (falta espaço ANTES do hífen:
+  // "HOGGAR- WEGA" em vez de "HOGGAR - WEGA"), então o split(" - ") virava
+  // 2 blocos em vez de 3. Escaneando o catálogo inteiro (23.475 produtos,
+  // 2026-09-01) esse mesmo padrão de typo afeta 207 produtos reais
+  // (fabricantes válidos como FRONTEC/TIGER/SEG/BOSCH/GAUSS/IKRO ficando
+  // ocultos) — zero regressão nos que já tinham fabricante certo. Fix:
+  // normaliza o hífen "colado" ANTES de splitar — só insere espaço quando o
+  // hífen já tem espaço DEPOIS mas não ANTES. Nunca mexe em hífen de código
+  // composto (ex: "AKX1445-2", "FAP4054/2"), que não têm espaço nenhum ao
+  // redor — continuam sem fabricante identificado, como já era o caso.
+  const normalizado = String(nome || "").replace(/(?<=\S)-(?=\s)/g, " -");
+  const partes = normalizado.split(" - ");
   if (partes.length !== 3) return null;
   return partes[1].trim();
 }
@@ -218,7 +234,17 @@ function _indexarProduto(p) {
   // do " - " (o código de verdade); o texto completo continua guardado em
   // `referencia` pra exibição, sem mudança.
   if (ficha.referencia) {
-    const refCodigoParte = ficha.referencia.includes(" - ") ? ficha.referencia.split(" - ")[0] : ficha.referencia;
+    // BUG REAL achado 2026-09-01 testando import de preço com "Wega
+    // Estoque.xlsx" real (FCD0721/FCD0727 sumindo de busca por código e do
+    // Catálogo Promocional): mesmo typo de digitação do X2 já corrigido em
+    // _extrairFabricante — hífen sem espaço antes ("FCD-0721- WEGA",
+    // "FCD0727- WEGA" em vez de "FCD0721 - WEGA"/"FCD0727 - WEGA") fazia
+    // `.includes(" - ")` falhar, então refCodigoParte ficava com o "- WEGA"
+    // grudado e _normalizarCodigo produzia "FCD0721WEGA"/"FCD0727WEGA" —
+    // nunca batendo com o código "FCD0721"/"FCD0727" do arquivo de preço.
+    // Normaliza o hífen ANTES de checar/splitar em " - ", mesma técnica.
+    const referenciaNormalizada = ficha.referencia.replace(/(?<=\S)-(?=\s)/g, " -");
+    const refCodigoParte = referenciaNormalizada.includes(" - ") ? referenciaNormalizada.split(" - ")[0] : referenciaNormalizada;
     const refNorm = _normalizarCodigo(refCodigoParte);
     if (refNorm.length >= 4 && !referenciaIndex.has(refNorm)) {
       referenciaIndex.set(refNorm, base);
@@ -541,12 +567,24 @@ function buscarPorCodigo(codigoBruto, { limite = 30 } = {}) {
   // real, onde código interno é sempre numérico e longo).
   if (!codigo) return [];
 
+  // ORDEM IMPORTA: Set preserva ordem de inserção, e resultado[0] é usado
+  // como "melhor match" em vários pontos (ex: _resolverProdutosPorCodigos
+  // no catalogo.controller.js). BUG REAL achado 2026-09-01 testando import
+  // de preços com arquivo real (Wega Estoque.xlsx): equivalente (OEM de
+  // OUTRO fabricante que só CITA este código como referência cruzada) era
+  // inserido ANTES do match exato da própria referência/código interno —
+  // então buscar "JFA0K14" (referência própria do produto Wega 123517)
+  // devolvia primeiro o produto 129168 (Filtros Brasil, EAFB114), que só
+  // lista JFA0K14 como equivalente OEM. Preço do arquivo caía certo (o
+  // valor buscado era o mesmo), mas o PRODUTO exibido/cadastrado ficava
+  // errado. Fix: match exato (código interno da loja ou referência própria
+  // do produto) sempre vem primeiro; equivalente/OEM só como fallback.
   const codigosInternos = new Set();
+  if (produtosPorCodigoIndex.has(codigo)) codigosInternos.add(codigo);
+  if (referenciaIndex.has(codigo)) codigosInternos.add(_normalizarCodigo(referenciaIndex.get(codigo).codigo));
   for (const item of (equivalenteIndex.get(codigo) || [])) {
     codigosInternos.add(_normalizarCodigo(item.codigo));
   }
-  if (referenciaIndex.has(codigo)) codigosInternos.add(_normalizarCodigo(referenciaIndex.get(codigo).codigo));
-  if (produtosPorCodigoIndex.has(codigo)) codigosInternos.add(codigo);
 
   const resultado = [];
   for (const cod of codigosInternos) {

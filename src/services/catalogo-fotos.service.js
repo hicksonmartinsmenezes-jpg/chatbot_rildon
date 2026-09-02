@@ -192,29 +192,108 @@ function _reordenarFotos(codigo, lista) {
   return reordenada;
 }
 
+// PEDIDO DO USUÁRIO (2026-09-02, Issue de foto técnica no lugar da foto
+// real): a reordenação automática (_reordenarFotos) não consegue distinguir
+// ficha técnica de foto real quando o X2 salva as duas na mesma resolução
+// (ex: produto 114927 — todas as 3 fotos em ~150px). Tentativa de critério
+// por cor/textura testada com só 2 exemplos não deu sinal confiável o
+// bastante pra arriscar trocar foto errada em produção. Em vez de um
+// classificador especulativo, override MANUAL: o atendente escolhe direto
+// no painel qual foto é a principal pra aquele produto (ver
+// definirFotoPreferida) — sempre vence a ordenação automática, e fica
+// salvo em disco (sobrevive a reinício/recarregar índice, que SÓ mexe no
+// índice de zips, nunca nas preferências manuais).
+const PREFERENCIAS_PATH = path.join(__dirname, "../config/catalogo-x2/fotos-preferencias.json");
+
+let preferencias = null; // Map<codigo, nomeArquivo> — lazy, carregado do disco na 1ª chamada.
+
+function _garantirPreferencias() {
+  if (preferencias) return preferencias;
+  preferencias = new Map();
+  try {
+    const bruto = JSON.parse(fs.readFileSync(PREFERENCIAS_PATH, "utf8"));
+    for (const [codigo, nomeArquivo] of Object.entries(bruto)) preferencias.set(String(codigo), String(nomeArquivo));
+  } catch (e) {
+    if (e.code !== "ENOENT") {
+      console.error("[catalogo-fotos.service] falha ao ler fotos-preferencias.json:", e.message);
+    }
+  }
+  return preferencias;
+}
+
+function _salvarPreferencias() {
+  const obj = Object.fromEntries(preferencias);
+  fs.writeFileSync(PREFERENCIAS_PATH, JSON.stringify(obj, null, 2) + "\n", "utf8");
+}
+
+// Aplica a preferência (se existir e apontar pra um arquivo que ainda está
+// na lista) movendo essa foto pro índice 0 — sempre por cima da ordenação
+// automática. Preferência que não bate com nenhum arquivo da lista atual
+// (foto removida do X2 num resync, por exemplo) é ignorada silenciosamente,
+// sem quebrar a exibição — cai de volta na ordenação automática.
+function _aplicarPreferencia(codigo, lista) {
+  const prefs = _garantirPreferencias();
+  const preferido = prefs.get(String(codigo));
+  if (!preferido) return lista;
+  const idx = lista.findIndex(item => path.basename(item.entrada.name) === preferido);
+  if (idx <= 0) return lista; // não achou, ou já está em 1º — nada a fazer
+  const copia = lista.slice();
+  const [item] = copia.splice(idx, 1);
+  copia.unshift(item);
+  return copia;
+}
+
 /**
  * Lista as fotos disponíveis de um produto (sem carregar os bytes) — já na
- * ordem reordenada (foto real primeiro, ver _reordenarFotos). Retorna
+ * ordem final (preferência manual > reordenação automática, ver
+ * _aplicarPreferencia/_reordenarFotos). Retorna
  * [{ indice: 0, nomeArquivo: "9839.jpg" }, ...].
  */
 function listarFotos(codigoProduto) {
   const idx = _garantirIndice();
   const codigo = String(codigoProduto);
-  const lista = _reordenarFotos(codigo, idx.get(codigo) || []);
+  const lista = _aplicarPreferencia(codigo, _reordenarFotos(codigo, idx.get(codigo) || []));
   return lista.map((item, i) => ({ indice: i, nomeArquivo: path.basename(item.entrada.name) }));
 }
 
 /**
- * Extrai uma foto específica de um produto (índice já na ordem reordenada
- * — ver _reordenarFotos). Retorna { buffer, mimetype } ou null se o
- * produto/índice de foto não existir.
+ * Define (ou remove, se nomeArquivo for null/vazio) a foto preferida de um
+ * produto — sempre exibida em 1º, por cima da ordenação automática. Lança
+ * erro se nomeArquivo não corresponder a nenhuma foto real do produto
+ * (evita salvar uma preferência que nunca vai bater com nada).
+ */
+function definirFotoPreferida(codigoProduto, nomeArquivo) {
+  const idx = _garantirIndice();
+  const codigo = String(codigoProduto);
+  const prefs = _garantirPreferencias();
+
+  if (!nomeArquivo) {
+    prefs.delete(codigo);
+    _salvarPreferencias();
+    return listarFotos(codigo);
+  }
+
+  const original = idx.get(codigo) || [];
+  const existe = original.some(item => path.basename(item.entrada.name) === nomeArquivo);
+  if (!existe) {
+    throw new Error(`"${nomeArquivo}" não é uma foto cadastrada do produto ${codigo}.`);
+  }
+  prefs.set(codigo, String(nomeArquivo));
+  _salvarPreferencias();
+  return listarFotos(codigo);
+}
+
+/**
+ * Extrai uma foto específica de um produto (índice já na ordem final —
+ * preferência manual > reordenação automática). Retorna
+ * { buffer, mimetype } ou null se o produto/índice de foto não existir.
  */
 function obterFoto(codigoProduto, indiceFoto = 0) {
   const idx = _garantirIndice();
   const codigo = String(codigoProduto);
   const original = idx.get(codigo);
   if (!original) return null;
-  const lista = _reordenarFotos(codigo, original);
+  const lista = _aplicarPreferencia(codigo, _reordenarFotos(codigo, original));
   if (!lista[indiceFoto]) return null;
 
   const { zipPath, entrada } = lista[indiceFoto];
@@ -239,7 +318,9 @@ function obterFoto(codigoProduto, indiceFoto = 0) {
 function recarregarIndice() {
   indice = null;
   ordemCache = null; // fotos novas podem mudar qual índice é "a grande"
+  // preferencias NÃO é zerado aqui de propósito — é escolha manual do
+  // atendente, independente do índice de zips ser reconstruído.
   return _garantirIndice();
 }
 
-module.exports = { listarFotos, obterFoto, recarregarIndice };
+module.exports = { listarFotos, obterFoto, definirFotoPreferida, recarregarIndice };

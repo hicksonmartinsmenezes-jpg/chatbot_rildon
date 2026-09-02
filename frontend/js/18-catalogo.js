@@ -775,7 +775,7 @@ function _catalogoCardHTML(produto, mostrarBadgeNeutro) {
   // checar existência.
   return `
     <article class="catalogo-card">
-      <div class="catalogo-card-photo">
+      <div class="catalogo-card-photo" data-foto-codigo="${escapeAttr(produto.codigo)}">
         <i class="fa-solid fa-image catalogo-card-photo-fallback"></i>
         <img
           src="/api/catalogo/produtos/${encodeURIComponent(produto.codigo)}/fotos/0"
@@ -785,6 +785,14 @@ function _catalogoCardHTML(produto, mostrarBadgeNeutro) {
           onclick="event.stopPropagation(); window.open(this.currentSrc || this.src, '_blank');"
           title="Clique pra abrir a foto em outra página"
         >
+        <button
+          type="button"
+          class="catalogo-card-photo-trocar"
+          title="Essa não é a foto certa? Trocar foto principal"
+          onclick="event.stopPropagation(); abrirSeletorFotoCatalogo('${produto.codigo}');"
+        >
+          <i class="fa-solid fa-arrows-rotate"></i> Trocar foto
+        </button>
       </div>
       <div class="catalogo-card-body">
         <div class="catalogo-card-head">
@@ -818,6 +826,85 @@ function _catalogoCardHTML(produto, mostrarBadgeNeutro) {
       </div>
     </article>
   `;
+}
+
+// Pedido do usuário (2026-09-02): quando a foto que aparece em 1º lugar é
+// uma ficha técnica/desenho em vez da foto real do produto (a ordenação
+// automática por tamanho de arquivo não distingue quando as duas vêm na
+// mesma resolução — ver catalogo-fotos.service.js), o atendente escolhe
+// manualmente qual das fotos cadastradas do produto é a principal, direto
+// no card de busca. Reusa o modal genérico (_openModal/15-modal.js).
+async function abrirSeletorFotoCatalogo(codigo) {
+  let data;
+  try {
+    const res = await fetch(`/api/catalogo/produtos/${encodeURIComponent(codigo)}/fotos`, { credentials: "include" });
+    if (!res.ok) throw new Error("Erro ao carregar fotos do produto.");
+    data = await res.json();
+  } catch (err) {
+    showToast?.(err.message || "Erro ao carregar fotos do produto.", "error");
+    return;
+  }
+
+  const fotos = data.fotos || [];
+  if (fotos.length <= 1) {
+    showToast?.("Esse produto só tem 1 foto cadastrada — nada pra trocar.", "info");
+    return;
+  }
+
+  const grade = fotos.map(f => `
+    <button
+      type="button"
+      class="catalogo-foto-opcao ${f.indice === 0 ? "catalogo-foto-opcao-atual" : ""}"
+      data-nome-arquivo="${escapeAttr(f.nomeArquivo)}"
+      title="${f.indice === 0 ? "Foto atual" : "Usar essa como foto principal"}"
+    >
+      <img src="/api/catalogo/produtos/${encodeURIComponent(codigo)}/fotos/${f.indice}" alt="Opção de foto ${f.indice + 1}" loading="lazy">
+      ${f.indice === 0 ? '<span class="catalogo-foto-opcao-badge">Atual</span>' : ""}
+    </button>
+  `).join("");
+
+  _openModal(`
+    <div class="modal-header">
+      <strong>Escolher foto principal</strong>
+      <button class="modal-close-btn" type="button" data-modal-close aria-label="Fechar modal">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="margin-bottom:12px;">Clique na foto certa — ela passa a ser a exibida no card e nos PDFs do catálogo.</p>
+      <div class="catalogo-foto-opcoes-grid">${grade}</div>
+    </div>
+    <div class="modal-footer">
+      <button class="modal-btn modal-btn-secondary" type="button" data-modal-close>Fechar</button>
+    </div>
+  `);
+
+  document.querySelectorAll(".catalogo-foto-opcao").forEach(btn => {
+    btn.addEventListener("click", () => _definirFotoPreferidaCatalogo(codigo, btn.dataset.nomeArquivo));
+  });
+}
+
+async function _definirFotoPreferidaCatalogo(codigo, nomeArquivo) {
+  try {
+    const res = await fetch(`/api/catalogo/produtos/${encodeURIComponent(codigo)}/foto-preferida`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nomeArquivo }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || "Erro ao trocar a foto.");
+
+    _closeModal();
+    showToast?.("Foto principal atualizada.", "success");
+
+    // Cache-bust: o navegador tem a URL antiga (/fotos/0) em cache — sem o
+    // parâmetro novo, a troca não apareceria na tela até um refresh manual.
+    const marcador = Date.now();
+    document.querySelectorAll(`.catalogo-card-photo[data-foto-codigo="${CSS.escape(String(codigo))}"] img`).forEach(img => {
+      img.src = `/api/catalogo/produtos/${encodeURIComponent(codigo)}/fotos/0?t=${marcador}`;
+    });
+  } catch (err) {
+    showToast?.(err.message || "Erro ao trocar a foto.", "error");
+  }
 }
 
 async function buscarCatalogo(event) {

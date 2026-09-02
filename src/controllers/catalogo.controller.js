@@ -1,6 +1,6 @@
 const ExcelJS = require("exceljs");
 const logger = require("../utils/logger");
-const { listarFotos, obterFoto, recarregarIndice: recarregarIndiceFotos } = require("../services/catalogo-fotos.service");
+const { listarFotos, obterFoto, definirFotoPreferida, recarregarIndice: recarregarIndiceFotos } = require("../services/catalogo-fotos.service");
 const { buscarProdutosPainel, buscarPorCodigo, buscarPorNomePainel, listarFabricantes, recarregarIndices: recarregarIndicesProdutos } = require("../services/catalogo-x2.service");
 const { listarSecoes, listarLinhasPorSecao } = require("../services/catalogo.service");
 const { gerarPdfCatalogo, gerarPdfCatalogoCompleto, gerarPdfCatalogoPromocional, limparCacheBboxFotos } = require("../services/catalogo-pdf.service");
@@ -641,6 +641,39 @@ async function servirFotoHandler(req, res) {
   }
 }
 
+// POST /api/catalogo/produtos/:codigo/foto-preferida — pedido do usuário
+// (2026-09-02): quando a foto que aparece em 1º é uma ficha técnica/desenho
+// em vez da foto real (ver comentário em catalogo-fotos.service.js —
+// alguns produtos têm ficha técnica e foto real na MESMA resolução, aí o
+// critério automático por tamanho não consegue distinguir as duas), o
+// atendente escolhe manualmente qual foto é a principal, direto no painel.
+// Body: { nomeArquivo }. nomeArquivo vazio/null REMOVE a preferência
+// (volta pra ordenação automática) — mesmo endpoint faz as duas coisas pra
+// não precisar de rota DELETE separada só pra isso.
+function _nomeArquivoValido(nome) {
+  return nome === null || nome === undefined || nome === "" || /^[A-Za-z0-9_.-]{1,80}$/.test(String(nome));
+}
+
+async function definirFotoPreferidaHandler(req, res) {
+  try {
+    const { codigo } = req.params;
+    if (!_codigoValido(codigo)) {
+      return res.status(400).json({ error: "Código de produto inválido." });
+    }
+    const nomeArquivo = req.body?.nomeArquivo ?? null;
+    if (!_nomeArquivoValido(nomeArquivo)) {
+      return res.status(400).json({ error: "Nome de arquivo inválido." });
+    }
+    const fotos = definirFotoPreferida(codigo, nomeArquivo || null);
+    res.json({ ok: true, codigo, fotos });
+  } catch (err) {
+    // definirFotoPreferida lança erro "de negócio" (nomeArquivo não bate
+    // com nenhuma foto do produto) — 400, não 500, é erro de entrada, não
+    // falha do servidor.
+    res.status(400).json({ error: err.message || "Erro ao definir foto preferida." });
+  }
+}
+
 // GET /api/catalogo/linhas?secao=X — alimenta o dropdown dependente "Linha"
 // (só habilita depois que uma Seção é escolhida, estilo ERP).
 async function listarLinhasHandler(req, res) {
@@ -706,6 +739,7 @@ async function recarregarCatalogoHandler(req, res) {
 module.exports = {
   listarFotosHandler,
   servirFotoHandler,
+  definirFotoPreferidaHandler,
   buscarProdutosHandler,
   recarregarEstoqueHandler,
   recarregarCatalogoHandler,

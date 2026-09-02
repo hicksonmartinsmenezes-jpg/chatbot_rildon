@@ -5,6 +5,7 @@ const { uploadLimiter } = require("../middlewares/rate-limiters");
 const {
   listarFotosHandler,
   servirFotoHandler,
+  definirFotoPreferidaHandler,
   buscarProdutosHandler,
   listarSecoesHandler,
   listarLinhasHandler,
@@ -100,5 +101,8 @@ router.get("/catalogo/produtos/:codigo/fotos", listarFotosHandler);
 // Protegida por authSession (aplicado em app.js), igual à rota de mídia do
 // histórico — dado interno da loja, não público.
 router.get("/catalogo/produtos/:codigo/fotos/:indice", servirFotoHandler);
+// Escolhe manualmente qual foto é a principal de um produto (pedido do
+// usuário, 2026-09-02) — ver comentário no handler/catalogo-fotos.service.js.
+router.post("/catalogo/produtos/:codigo/foto-preferida", definirFotoPreferidaHandler);
 
 module.exports = router;

@@ -880,6 +880,16 @@ async function abrirSeletorFotoCatalogo(codigo) {
   document.querySelectorAll(".catalogo-foto-opcao").forEach(btn => {
     btn.addEventListener("click", () => _definirFotoPreferidaCatalogo(codigo, btn.dataset.nomeArquivo));
   });
+
+  // BUG REAL corrigido 2026-09-02 (usuário reportou "não vejo fotos
+  // cadastradas quando vou trocar" — reproduzido ao vivo): toda <img
+  // loading="lazy"> no painel nasce com opacity:0 (ver 19-motion.css) e só
+  // fica visível quando o JS adiciona a classe .is-loaded, via
+  // bindLazyImageFade (01-utils.js) — a grade de busca normal chama isso
+  // depois de renderizar (buscarCatalogo/buscarCatalogoPorCodigo), mas essa
+  // chamada faltava aqui. As fotos carregavam plenamente (confirmado via
+  // canvas: bytes e pixels corretos) só que ficavam brancas pra sempre.
+  bindLazyImageFade(document.getElementById("_global-modal-overlay"));
 }
 
 async function _definirFotoPreferidaCatalogo(codigo, nomeArquivo) {

@@ -60,7 +60,9 @@ describe("GET /api/catalogo/buscar", () => {
     const res = await request(buildApp()).get("/api/catalogo/buscar").query({ categoria: "ABRAÇADEIRA DE NYLON" });
     expect(res.status).toBe(200);
     expect(buscarProdutosPainel).toHaveBeenCalledWith({
-      marca: "", modelo: "", ano: null, categoria: "ABRAÇADEIRA DE NYLON", fabricante: "",
+      marca: "", modelo: "", ano: null, anoInicio: null, anoFim: null, motor: "",
+      categoria: "ABRAÇADEIRA DE NYLON", fabricante: "", tipoCompleto: null,
+      limite: 400, offset: 0,
     });
   });
 
@@ -71,7 +73,9 @@ describe("GET /api/catalogo/buscar", () => {
     const res = await request(buildApp()).get("/api/catalogo/buscar").query({ fabricante: "MOBENSANI" });
     expect(res.status).toBe(200);
     expect(buscarProdutosPainel).toHaveBeenCalledWith({
-      marca: "", modelo: "", ano: null, categoria: "", fabricante: "MOBENSANI",
+      marca: "", modelo: "", ano: null, anoInicio: null, anoFim: null, motor: "",
+      categoria: "", fabricante: "MOBENSANI", tipoCompleto: null,
+      limite: 400, offset: 0,
     });
   });
 
@@ -94,9 +98,11 @@ describe("GET /api/catalogo/buscar", () => {
       .query({ marca: "GM", modelo: "Astra", ano: "2005", categoria: "alternador" });
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ total: 1, produtos: [{ codigo: "P1" }] });
+    expect(res.body).toEqual({ total: 1, produtos: [{ codigo: "P1" }], pagina: 1, limite: 400 });
     expect(buscarProdutosPainel).toHaveBeenCalledWith({
-      marca: "GM", modelo: "Astra", ano: 2005, categoria: "alternador", fabricante: "",
+      marca: "GM", modelo: "Astra", ano: 2005, anoInicio: null, anoFim: null, motor: "",
+      categoria: "alternador", fabricante: "", tipoCompleto: null,
+      limite: 400, offset: 0,
     });
   });
 
@@ -105,7 +111,9 @@ describe("GET /api/catalogo/buscar", () => {
     const res = await request(buildApp()).get("/api/catalogo/buscar").query({ modelo: "Corolla" });
     expect(res.status).toBe(200);
     expect(buscarProdutosPainel).toHaveBeenCalledWith({
-      marca: "", modelo: "Corolla", ano: null, categoria: "", fabricante: "",
+      marca: "", modelo: "Corolla", ano: null, anoInicio: null, anoFim: null, motor: "",
+      categoria: "", fabricante: "", tipoCompleto: null,
+      limite: 400, offset: 0,
     });
   });
 
@@ -116,8 +124,38 @@ describe("GET /api/catalogo/buscar", () => {
       .query({ marca: "GM", modelo: "Vectra", fabricante: "FABRICANTEX" });
     expect(res.status).toBe(200);
     expect(buscarProdutosPainel).toHaveBeenCalledWith({
-      marca: "GM", modelo: "Vectra", ano: null, categoria: "", fabricante: "FABRICANTEX",
+      marca: "GM", modelo: "Vectra", ano: null, anoInicio: null, anoFim: null, motor: "",
+      categoria: "", fabricante: "FABRICANTEX", tipoCompleto: null,
+      limite: 400, offset: 0,
     });
+  });
+
+  // Paginação (pedido do usuário, 2026-09-02 — trazida de volta em 2026-09-08
+  // depois de ficar esquecida numa branch sem merge): "pagina" na query
+  // vira offset repassado pro service; resposta inclui pagina/limite pro
+  // frontend montar o pager.
+  test("?pagina=2 → calcula offset e devolve pagina/limite na resposta", async () => {
+    buscarProdutosPainel.mockReturnValue({ total: 566, produtos: [{ codigo: "P900" }] });
+    const res = await request(buildApp())
+      .get("/api/catalogo/buscar")
+      .query({ fabricante: "GAUSS", pagina: "2" });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ total: 566, produtos: [{ codigo: "P900" }], pagina: 2, limite: 400 });
+    expect(buscarProdutosPainel).toHaveBeenCalledWith({
+      marca: "", modelo: "", ano: null, anoInicio: null, anoFim: null, motor: "",
+      categoria: "", fabricante: "GAUSS", tipoCompleto: null,
+      limite: 400, offset: 400,
+    });
+  });
+
+  test("?pagina inválida (0, negativa ou não numérica) → cai pra página 1", async () => {
+    buscarProdutosPainel.mockReturnValue({ total: 12, produtos: [] });
+    const res = await request(buildApp())
+      .get("/api/catalogo/buscar")
+      .query({ fabricante: "MOBENSANI", pagina: "abc" });
+    expect(res.status).toBe(200);
+    expect(res.body.pagina).toBe(1);
+    expect(buscarProdutosPainel).toHaveBeenCalledWith(expect.objectContaining({ offset: 0 }));
   });
 
   test("erro interno do service → 500 genérico", async () => {

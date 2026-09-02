@@ -1280,7 +1280,6 @@ async function buscarCatalogo(event) {
   }
 
   const modoNavegacao = !marca && !modelo; // só categoria/fabricante — não é busca por veículo
-  wrap.innerHTML = renderSkeletonGrid(8);
 
   const params = new URLSearchParams();
   if (marca)      params.set("marca", marca);
@@ -1290,6 +1289,30 @@ async function buscarCatalogo(event) {
   if (motor)      params.set("motor", motor);
   if (categoria)  params.set("categoria", categoria);
   if (fabricante) params.set("fabricante", fabricante);
+
+  await _catalogoExecutarBusca(wrap, params, modoNavegacao);
+
+  } finally {
+    setButtonBusy(searchBtn, false);
+  }
+}
+
+// Pedido do usuário (2026-09-02): "Critérios de Pesquisa" cortava em 200
+// sem jeito de ver o resto do resultado. Extraído de dentro de
+// buscarCatalogo pra ser reusado tanto pela 1ª busca (sempre página 1,
+// implícito — sem "pagina" na URL o backend assume 1) quanto pelos botões
+// Anterior/Próxima (_catalogoIrParaPagina abaixo), que só trocam o número
+// da página sem o usuário precisar preencher o formulário de novo.
+async function _catalogoExecutarBusca(wrap, params, modoNavegacao) {
+  wrap.innerHTML = renderSkeletonGrid(8);
+
+  const marca      = params.get("marca") || "";
+  const modelo     = params.get("modelo") || "";
+  const anoInicio  = params.get("anoInicio") || "";
+  const anoFim     = params.get("anoFim") || "";
+  const motor      = params.get("motor") || "";
+  const categoria  = params.get("categoria") || "";
+  const fabricante = params.get("fabricante") || "";
 
   try {
     const res = await apiFetch(`/api/catalogo/buscar?${params.toString()}`);
@@ -1322,8 +1345,15 @@ async function buscarCatalogo(event) {
       return;
     }
 
+    // Paginação de verdade (antes só cortava em 200 sem avisar como ver o
+    // resto): total sempre reflete a contagem real, limite/pagina vêm do
+    // backend (ver buscarProdutosHandler, LIMITE_PAGINA_PAINEL=400).
+    const limite = data.limite || produtos.length;
+    const paginaAtual = data.pagina || 1;
+    const totalPaginas = Math.max(1, Math.ceil(data.total / limite));
+
     const totalTexto = `${data.total} peça${data.total === 1 ? "" : "s"} encontrada${data.total === 1 ? "" : "s"}`;
-    const recorte = data.total > produtos.length ? ` — mostrando as ${produtos.length} mais relevantes` : "";
+    const recorte = totalPaginas > 1 ? ` — página ${paginaAtual} de ${totalPaginas}` : "";
 
     const resumoBar = `
       <div class="catalogo-resumo-bar">
@@ -1334,20 +1364,43 @@ async function buscarCatalogo(event) {
     `;
     _catalogoIndexarProdutos(produtos);
     const grid = `<div class="catalogo-grid">${produtos.map(p => _catalogoCardHTML(p, !modoNavegacao)).join("")}</div>`;
-    wrap.innerHTML = resumoBar + grid;
-    // Guarda os critérios desta busca pro botão de exportar (pedido do
-    // usuário, 2026-07-28) — exporta TODOS os resultados do filtro, não só
-    // os "produtos.length" mostrados na tela (ver MAX_EXPORT_PDF no backend).
+    const pagerHTML = totalPaginas > 1 ? _catalogoPagerHTML(paginaAtual, totalPaginas) : "";
+    wrap.innerHTML = resumoBar + grid + pagerHTML;
+    // Guarda os critérios desta busca (SEM "pagina") pro botão de exportar
+    // (pedido do usuário, 2026-07-28) — exporta TODOS os resultados do
+    // filtro, não só a página mostrada na tela (ver MAX_EXPORT_PDF no
+    // backend) — e pro pager reconstruir a URL de outra página sem precisar
+    // reler o formulário (que pode ter mudado desde essa busca).
     wrap.dataset.exportQuery = params.toString();
+    wrap.dataset.modoNavegacao = modoNavegacao ? "1" : "";
     applyStaggerIn(wrap.querySelector(".catalogo-grid"));
     bindLazyImageFade(wrap);
   } catch (err) {
     wrap.innerHTML = _catalogoEmptyState("fa-circle-exclamation", "Erro ao buscar peças. Tente novamente.", "catalogo-error-state");
   }
+}
 
-  } finally {
-    setButtonBusy(searchBtn, false);
-  }
+function _catalogoPagerHTML(paginaAtual, totalPaginas) {
+  return `
+    <div class="catalogo-pager">
+      <button type="button" class="catalogo-pager-btn" ${paginaAtual <= 1 ? "disabled" : ""} onclick="_catalogoIrParaPagina(${paginaAtual - 1})">
+        <i class="fa-solid fa-chevron-left"></i> Anterior
+      </button>
+      <span class="catalogo-pager-info">Página ${paginaAtual} de ${totalPaginas}</span>
+      <button type="button" class="catalogo-pager-btn" ${paginaAtual >= totalPaginas ? "disabled" : ""} onclick="_catalogoIrParaPagina(${paginaAtual + 1})">
+        Próxima <i class="fa-solid fa-chevron-right"></i>
+      </button>
+    </div>
+  `;
+}
+
+async function _catalogoIrParaPagina(pagina) {
+  const wrap = document.getElementById("catalogo-resultados");
+  if (!wrap || !wrap.dataset.exportQuery) return;
+  const params = new URLSearchParams(wrap.dataset.exportQuery);
+  params.set("pagina", pagina);
+  await _catalogoExecutarBusca(wrap, params, wrap.dataset.modoNavegacao === "1");
+  wrap.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 // Busca isolada por código de fabricante/referência/código interno (Task

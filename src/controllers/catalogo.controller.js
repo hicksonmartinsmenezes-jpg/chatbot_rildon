@@ -43,6 +43,14 @@ const ANO_MINIMO = 1950;
 // segurança contra um filtro genérico demais.
 const MAX_EXPORT_PDF = 1000;
 
+// Pedido do usuário (2026-09-02): "Critérios de Pesquisa" mostrava só as
+// primeiras 200 peças sem jeito de ver o resto — subiu pra 400 por página,
+// com paginação de verdade (ver `offset` em buscarProdutosPainel/
+// catalogo-x2.service.js) em vez de só cortar. `total` sempre reflete a
+// contagem real antes do corte, então o frontend calcula quantas páginas
+// existem e mostra "Página X de Y".
+const LIMITE_PAGINA_PAINEL = 400;
+
 // 2026-08-29 ("Catálogo Promocional", nova função): teto separado de
 // MAX_EXPORT_PDF — aqui a lista é curada produto a produto pelo atendente
 // (não um filtro amplo que pode trazer centenas sem querer), então um teto
@@ -212,8 +220,15 @@ async function buscarProdutosHandler(req, res) {
       return res.status(400).json({ error: "Ano inicial não pode ser maior que o ano final." });
     }
 
-    const resultado = buscarProdutosPainel({ marca, modelo, ano, anoInicio, anoFim, motor, categoria, fabricante, tipoCompleto });
-    res.json(resultado);
+    // Paginação (pedido do usuário, 2026-09-02): "pagina" é 1-based, vindo
+    // do seletor de página no painel — qualquer valor inválido/ausente cai
+    // em 1, nunca quebra a busca.
+    const paginaNum = parseInt(req.query.pagina, 10);
+    const pagina = Number.isInteger(paginaNum) && paginaNum > 0 ? paginaNum : 1;
+    const offset = (pagina - 1) * LIMITE_PAGINA_PAINEL;
+
+    const resultado = buscarProdutosPainel({ marca, modelo, ano, anoInicio, anoFim, motor, categoria, fabricante, tipoCompleto, limite: LIMITE_PAGINA_PAINEL, offset });
+    res.json({ ...resultado, pagina, limite: LIMITE_PAGINA_PAINEL });
   } catch (err) {
     logger.error("❌ Erro ao buscar produtos do catálogo:", err.message);
     res.status(500).json({ error: "Erro ao buscar produtos." });

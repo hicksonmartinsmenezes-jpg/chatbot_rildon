@@ -1298,7 +1298,15 @@ function buscarPorNomePainel(nomeBusca, { limite = 200 } = {}) {
 // informados, marca funciona como reforço de ranking (marcaCompativel),
 // nunca como filtro de exclusão. Ano segue a mesma lógica (ver
 // _anoCompativel acima).
-function buscarProdutosPainel({ marca = "", modelo = "", ano = null, anoInicio = null, anoFim = null, motor = "", categoria = "", fabricante = "", tipoCompleto = null, limite = 200 } = {}) {
+//
+// `offset` (pedido do usuário, 2026-09-02): "Critérios de Pesquisa" cortava
+// em 200 sem jeito nenhum de ver o resto — atendente com busca ampla (ex:
+// só Seção, sem marca/modelo) perdia peça sem saber. `limite`+`offset`
+// dão paginação de verdade: o controller (buscarProdutosHandler) usa um
+// limite maior (400) e calcula offset a partir da página pedida — `total`
+// sempre reflete a contagem real (antes do corte), então o frontend sabe
+// quantas páginas existem.
+function buscarProdutosPainel({ marca = "", modelo = "", ano = null, anoInicio = null, anoFim = null, motor = "", categoria = "", fabricante = "", tipoCompleto = null, limite = 200, offset = 0 } = {}) {
   const marcaTokens  = _tokens(marca);
   const modeloTokens = _tokens(modelo);
   // PEDIDO DO USUÁRIO (2026-09-04, referência KKI Vendas): campo único "Ano"
@@ -1372,7 +1380,7 @@ function buscarProdutosPainel({ marca = "", modelo = "", ano = null, anoInicio =
     encontrados.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
 
     const total = encontrados.length;
-    const produtos = encontrados.slice(0, limite).map(p => ({
+    const produtos = encontrados.slice(offset, offset + limite).map(p => ({
       codigo: p.codigo,
       nome: p.nome,
       secao: p.secao,
@@ -1460,7 +1468,7 @@ function buscarProdutosPainel({ marca = "", modelo = "", ano = null, anoInicio =
   });
 
   const total = encontrados.length;
-  const produtos = encontrados.slice(0, limite).map(({ p, marcaCompativel, anoCompativel }) => ({
+  const produtos = encontrados.slice(offset, offset + limite).map(({ p, marcaCompativel, anoCompativel }) => ({
     codigo: p.codigo,
     nome: p.nome,
     secao: p.secao,

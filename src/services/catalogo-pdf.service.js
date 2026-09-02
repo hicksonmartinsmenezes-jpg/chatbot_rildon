@@ -1139,35 +1139,75 @@ function _geometriaGrid(doc, cols, rows, comAplicacao = false, overrides = null)
 // fit antigo (imagem inteira), sem quebrar a geração do PDF.
 const LIMIAR_BRANCO_BBOX_FOTO = 245;
 
-function _bboxConteudoFoto(buffer, mimetype) {
+// BUG REAL corrigido 2026-09-02 (usuário reportou de novo "catálogo completo
+// não gera" mesmo depois do fix de event-loop-yield do dia anterior): medido
+// ao vivo que o gargalo de verdade não é o desenho do PDF (doc.image/doc.text
+// somam <2% do tempo), é ESTA função — decodifica o JPEG inteiro em pixels
+// (jpeg-js, puro JS, sem aceleração nativa) só pra medir a margem branca.
+// Perfilado com --cpu-prof: pra fotos WEGA reais de 1440×1440px (maioria do
+// fabricante), cada decode+varredura de pixel leva ~230ms — e ISSO SE REPETE
+// DO ZERO em toda geração de PDF (preview automático ao trocar fabricante +
+// clique em "Gerar catálogo completo" geram o MESMO PDF duas vezes seguidas,
+// sem contar buscas/exportações repetidas de dias diferentes). Pra 682
+// produtos da WEGA, só essa parte já passa de 2 minutos.
+// Fix: cache do resultado (não do buffer decodificado inteiro — só o bbox,
+// um objeto pequeno) por código de produto, em memória, persistente entre
+// chamadas de geração de PDF (não por-request). Photo bytes não mudam
+// durante a vida do processo (mesma garantia que catalogo-fotos.service já
+// assume pro índice de fotos) — invalidado explicitamente por
+// limparCacheBboxFotos(), chamado no mesmo endpoint de recarregar
+// catálogo/fotos (ver recarregarCatalogoHandler em catalogo.controller.js).
+const _bboxCache = new Map();
+
+function limparCacheBboxFotos() {
+  _bboxCache.clear();
+}
+
+function _bboxConteudoFoto(buffer, mimetype, cacheKey = null) {
   if (mimetype !== "image/jpeg") return null;
+  if (cacheKey !== null && _bboxCache.has(cacheKey)) return _bboxCache.get(cacheKey);
+
+  let resultado;
   let decodificada;
   try {
     decodificada = jpeg.decode(buffer, { useTArray: true });
   } catch {
-    return null;
+    decodificada = null;
   }
-  const { width, height, data } = decodificada;
-  let minX = width, maxX = -1, minY = height, maxY = -1;
-  for (let y = 0; y < height; y++) {
-    const linhaBase = y * width * 4;
-    for (let x = 0; x < width; x++) {
-      const i = linhaBase + x * 4;
-      if (data[i] > LIMIAR_BRANCO_BBOX_FOTO && data[i + 1] > LIMIAR_BRANCO_BBOX_FOTO && data[i + 2] > LIMIAR_BRANCO_BBOX_FOTO) continue;
-      if (x < minX) minX = x;
-      if (x > maxX) maxX = x;
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
+  if (!decodificada) {
+    resultado = null;
+  } else {
+    const { width, height, data } = decodificada;
+    let minX = width, maxX = -1, minY = height, maxY = -1;
+    for (let y = 0; y < height; y++) {
+      const linhaBase = y * width * 4;
+      for (let x = 0; x < width; x++) {
+        const i = linhaBase + x * 4;
+        if (data[i] > LIMIAR_BRANCO_BBOX_FOTO && data[i + 1] > LIMIAR_BRANCO_BBOX_FOTO && data[i + 2] > LIMIAR_BRANCO_BBOX_FOTO) continue;
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+    if (maxX < minX || maxY < minY) {
+      resultado = null; // imagem inteiramente branca
+    } else {
+      const conteudoLargura = maxX - minX + 1;
+      const conteudoAltura = maxY - minY + 1;
+      // Se o conteúdo já cobre quase o arquivo inteiro (foto normal, sem
+      // margem embutida relevante), não vale mexer — evita ampliar por causa
+      // de 1-2px de ruído de compressão JPEG na borda.
+      if (conteudoLargura >= width * 0.97 && conteudoAltura >= height * 0.97) {
+        resultado = null;
+      } else {
+        resultado = { x: minX, y: minY, width: conteudoLargura, height: conteudoAltura, imgWidth: width, imgHeight: height };
+      }
     }
   }
-  if (maxX < minX || maxY < minY) return null; // imagem inteiramente branca
-  const conteudoLargura = maxX - minX + 1;
-  const conteudoAltura = maxY - minY + 1;
-  // Se o conteúdo já cobre quase o arquivo inteiro (foto normal, sem
-  // margem embutida relevante), não vale mexer — evita ampliar por causa
-  // de 1-2px de ruído de compressão JPEG na borda.
-  if (conteudoLargura >= width * 0.97 && conteudoAltura >= height * 0.97) return null;
-  return { x: minX, y: minY, width: conteudoLargura, height: conteudoAltura, imgWidth: width, imgHeight: height };
+
+  if (cacheKey !== null) _bboxCache.set(cacheKey, resultado);
+  return resultado;
 }
 
 // Desenha a foto ajustada ao quadro (x,y,boxWidth,boxHeight) usando o
@@ -1178,8 +1218,8 @@ function _bboxConteudoFoto(buffer, mimetype) {
 // (imagem inteira). Precisa de clip porque a imagem inteira (com a
 // margem branca embutida) fica MAIOR que o quadro depois do zoom no
 // conteúdo — sem isso vazaria por cima dos cards vizinhos.
-function _desenharFotoAjustada(doc, buffer, mimetype, x, y, boxWidth, boxHeight) {
-  const bbox = _bboxConteudoFoto(buffer, mimetype);
+function _desenharFotoAjustada(doc, buffer, mimetype, x, y, boxWidth, boxHeight, cacheKey = null) {
+  const bbox = _bboxConteudoFoto(buffer, mimetype, cacheKey);
   if (!bbox) {
     doc.image(buffer, x, y, { fit: [boxWidth, boxHeight], align: "center", valign: "center" });
     return;
@@ -1385,7 +1425,7 @@ function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight
   try {
     const foto = obterFoto(produto.codigo, 0);
     if (foto && (foto.mimetype === "image/jpeg" || foto.mimetype === "image/png")) {
-      _desenharFotoAjustada(doc, foto.buffer, foto.mimetype, xConteudo, yFoto, larguraConteudo, photoBoxHeight);
+      _desenharFotoAjustada(doc, foto.buffer, foto.mimetype, xConteudo, yFoto, larguraConteudo, photoBoxHeight, produto.codigo);
     } else {
       doc.font("Helvetica").fontSize(7).fillColor("#9ca3af")
         .text("sem foto", xConteudo, yFoto + photoBoxHeight / 2 - 5, { width: larguraConteudo, align: "center" });
@@ -1474,7 +1514,7 @@ function _desenharCard(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth,
   try {
     const foto = obterFoto(produto.codigo, 0);
     if (foto && (foto.mimetype === "image/jpeg" || foto.mimetype === "image/png")) {
-      _desenharFotoAjustada(doc, foto.buffer, foto.mimetype, xFoto, yFoto, photoBoxWidth, photoBoxHeight);
+      _desenharFotoAjustada(doc, foto.buffer, foto.mimetype, xFoto, yFoto, photoBoxWidth, photoBoxHeight, produto.codigo);
     } else {
       doc.font("Helvetica").fontSize(7).fillColor("#9ca3af")
         .text("sem foto", xFoto, yFoto + photoBoxHeight / 2 - 5, { width: photoBoxWidth, align: "center" });
@@ -2585,4 +2625,4 @@ async function gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino, m
   doc.end();
 }
 
-module.exports = { gerarPdfCatalogo, gerarPdfCatalogoCompleto, gerarPdfCatalogoPromocional };
+module.exports = { gerarPdfCatalogo, gerarPdfCatalogoCompleto, gerarPdfCatalogoPromocional, limparCacheBboxFotos };

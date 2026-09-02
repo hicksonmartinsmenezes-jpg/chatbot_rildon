@@ -3,7 +3,7 @@ const logger = require("../utils/logger");
 const { listarFotos, obterFoto, recarregarIndice: recarregarIndiceFotos } = require("../services/catalogo-fotos.service");
 const { buscarProdutosPainel, buscarPorCodigo, buscarPorNomePainel, listarFabricantes, recarregarIndices: recarregarIndicesProdutos } = require("../services/catalogo-x2.service");
 const { listarSecoes, listarLinhasPorSecao } = require("../services/catalogo.service");
-const { gerarPdfCatalogo, gerarPdfCatalogoCompleto, gerarPdfCatalogoPromocional } = require("../services/catalogo-pdf.service");
+const { gerarPdfCatalogo, gerarPdfCatalogoCompleto, gerarPdfCatalogoPromocional, limparCacheBboxFotos } = require("../services/catalogo-pdf.service");
 const { carregarEstoque, statusCache } = require("../services/estoque.service");
 const { anexarAplicacoesOrganizadas } = require("../services/catalogo-aplicacao-ia.service");
 
@@ -691,6 +691,11 @@ async function recarregarCatalogoHandler(req, res) {
   try {
     recarregarIndicesProdutos();
     const idx = recarregarIndiceFotos();
+    // 2026-09-02: fotos podem ter sido substituídas (mesmo código, imagem
+    // nova) — sem isso, o cache de bbox (catalogo-pdf.service, ver
+    // limparCacheBboxFotos) continuaria servindo o recorte calculado em
+    // cima da foto ANTIGA até o processo reiniciar.
+    limparCacheBboxFotos();
     res.json({ ok: true, produtosComFoto: idx.size });
   } catch (err) {
     logger.error("❌ Erro ao recarregar catálogo/fotos:", err.message);

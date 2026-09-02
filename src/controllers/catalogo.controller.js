@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const ExcelJS = require("exceljs");
 const logger = require("../utils/logger");
 const { listarFotos, obterFoto, definirFotoPreferida, recarregarIndice: recarregarIndiceFotos } = require("../services/catalogo-fotos.service");
@@ -632,8 +633,29 @@ async function servirFotoHandler(req, res) {
       return res.status(404).json({ error: "Foto não encontrada." });
     }
 
+    // BUG REAL corrigido 2026-09-02 (usuário reportou "troquei a foto, ela
+    // até troca mas não fica salva como principal"): max-age=86400 fixo era
+    // seguro enquanto a mesma URL (/fotos/0) SEMPRE devolvia o mesmo
+    // arquivo pra sempre — deixou de ser verdade quando a troca manual de
+    // foto principal (ver definirFotoPreferida) passou a mudar o que
+    // /fotos/0 devolve pro MESMO produto. O navegador continuava servindo
+    // do cache local a versão de ANTES da troca em qualquer carregamento
+    // novo (nova busca, F5) sem nem perguntar pro servidor — só o clique
+    // que troca (usa uma URL com ?t=timestamp, sempre nova) escapava do
+    // cache. Fix: ETag (hash do conteúdo real) + must-revalidate — o
+    // navegador AGORA sempre pergunta pro servidor "isso mudou?" antes de
+    // reusar o cache; se não mudou, servidor responde 304 (barato, sem
+    // reenviar a foto); se mudou (troca de preferência), ETag bate
+    // diferente e o navegador busca de novo. Mantém o ganho de banda sem
+    // arriscar mostrar foto desatualizada.
+    const etag = `"${crypto.createHash("md5").update(foto.buffer).digest("hex")}"`;
+    res.setHeader("ETag", etag);
+    res.setHeader("Cache-Control", "private, max-age=0, must-revalidate");
+    if (req.headers["if-none-match"] === etag) {
+      return res.status(304).end();
+    }
+
     res.setHeader("Content-Type", foto.mimetype);
-    res.setHeader("Cache-Control", "private, max-age=86400");
     res.send(foto.buffer);
   } catch (err) {
     logger.error("❌ Erro ao servir foto do catálogo:", err.message);

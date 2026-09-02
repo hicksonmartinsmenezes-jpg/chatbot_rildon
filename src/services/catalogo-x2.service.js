@@ -410,7 +410,16 @@ function _tokenBateAplicacao(token, aplicacaoPalavras) {
 // algo), _carregarIndices tentava iterar esse objeto com `for...of` e
 // derrubava o boot inteiro do bot com "TypeError: data is not iterable" —
 // mesma classe de bug do cod-fornecedor.json em 2026-08-13, mesmo fix.
-const ARQUIVOS_NAO_PRODUTO = new Set(["cod-fornecedor.json", "aplicacao-ia-cache.json"]);
+// 2026-09-02: fotos-preferencias.json (Catálogo — trocar foto principal
+// manualmente, catalogo-fotos.service.js) entrou na lista pelo MESMO motivo
+// dos dois de cima — mora no mesmo diretório, é um objeto código→nome de
+// arquivo, não array de produtos. Reproduzido ao vivo: assim que o
+// atendente usa a troca de foto pela 1ª vez, o arquivo passa a existir e a
+// PRÓXIMA vez que o índice de produtos for (re)carregado (reiniciar o bot,
+// ou POST /catalogo/produtos/recarregar) quebra com "TypeError: data is not
+// iterable", igual aconteceu com os outros dois — o catálogo INTEIRO para
+// de carregar, não só a foto.
+const ARQUIVOS_NAO_PRODUTO = new Set(["cod-fornecedor.json", "aplicacao-ia-cache.json", "fotos-preferencias.json"]);
 
 function _carregarIndices() {
   let arquivos;

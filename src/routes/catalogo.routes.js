@@ -6,6 +6,7 @@ const {
   listarFotosHandler,
   servirFotoHandler,
   definirFotoPreferidaHandler,
+  versaoFotosHandler,
   buscarProdutosHandler,
   listarSecoesHandler,
   listarLinhasHandler,
@@ -104,5 +105,9 @@ router.get("/catalogo/produtos/:codigo/fotos/:indice", servirFotoHandler);
 // Escolhe manualmente qual foto é a principal de um produto (pedido do
 // usuário, 2026-09-02) — ver comentário no handler/catalogo-fotos.service.js.
 router.post("/catalogo/produtos/:codigo/foto-preferida", definirFotoPreferidaHandler);
+// Versão global do "estado das fotos" — o frontend embute como ?v=<versao>
+// em toda URL de foto pra garantir cache-busting real (ver comentário em
+// versaoFotosHandler/catalogo-fotos.service.js).
+router.get("/catalogo/fotos-versao", versaoFotosHandler);
 
 module.exports = router;

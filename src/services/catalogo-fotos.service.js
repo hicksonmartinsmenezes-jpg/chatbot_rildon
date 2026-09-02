@@ -207,6 +207,32 @@ const PREFERENCIAS_PATH = path.join(__dirname, "../config/catalogo-x2/fotos-pref
 
 let preferencias = null; // Map<codigo, nomeArquivo> — lazy, carregado do disco na 1ª chamada.
 
+// BUG REAL corrigido 2026-09-02 (usuário testou ao vivo: trocou a foto,
+// funcionou na hora, mas voltou pra foto errada depois de recarregar a
+// página — mesmo com o fix de ETag/must-revalidate já aplicado): o problema
+// não é o CABEÇALHO que o servidor manda agora — é que qualquer navegador
+// que já tinha visto /fotos/0 daquele produto ANTES desse fix guardou a
+// resposta em disco com a validade antiga (max-age=86400) e simplesmente
+// NUNCA pergunta pro servidor de novo até essa validade vencer (24h) — nem
+// um refresh forçado (Ctrl+Shift+R) limpa isso pra imagens carregadas via
+// busca (só limpa recurso da carga inicial da página). Ou seja, trocar o
+// Cache-Control não corrige entradas que JÁ estão no cache do navegador com
+// o cabeçalho velho — só a URL em si mudar força um pedido novo de verdade.
+// Fix: versão global (timestamp), incrementada toda vez que QUALQUER
+// preferência de foto é salva — o controller expõe isso em
+// GET /api/catalogo/fotos-versao e no retorno de POST .../foto-preferida, e
+// o frontend embute como ?v=<versao> em toda URL de foto do painel. Trocar
+// uma preferência muda a versão, que muda a URL, que garante um pedido novo
+// ao servidor não importa o que esteja cacheado. Escala (5 atendentes,
+// trocas raras) não justifica versão por produto — uma versão global é
+// simples e resolve, mesmo custando bustar o cache de OUTRAS fotos também
+// quando uma muda (efeito colateral aceitável nesse volume).
+let versaoFotos = Date.now();
+
+function obterVersaoFotos() {
+  return versaoFotos;
+}
+
 function _garantirPreferencias() {
   if (preferencias) return preferencias;
   preferencias = new Map();
@@ -224,6 +250,7 @@ function _garantirPreferencias() {
 function _salvarPreferencias() {
   const obj = Object.fromEntries(preferencias);
   fs.writeFileSync(PREFERENCIAS_PATH, JSON.stringify(obj, null, 2) + "\n", "utf8");
+  versaoFotos = Date.now();
 }
 
 // Aplica a preferência (se existir e apontar pra um arquivo que ainda está
@@ -323,4 +350,4 @@ function recarregarIndice() {
   return _garantirIndice();
 }
 
-module.exports = { listarFotos, obterFoto, definirFotoPreferida, recarregarIndice };
+module.exports = { listarFotos, obterFoto, definirFotoPreferida, recarregarIndice, obterVersaoFotos };

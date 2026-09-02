@@ -15,6 +15,38 @@ let _catalogoFabricantesCarregados = false;
 // pra não duplicar a chamada a /api/catalogo/fabricantes.
 let _catalogoFabricantesLista = null;
 
+// BUG REAL corrigido 2026-09-02 (testado ao vivo: trocar a foto principal
+// funciona na hora, mas some depois de recarregar a página): não basta
+// mandar Cache-Control novo — qualquer navegador que já tinha visto
+// /fotos/0 daquele produto ANTES desse fix guardou a resposta em disco com
+// a validade antiga (24h) e nunca mais pergunta pro servidor, nem com
+// refresh forçado (Ctrl+Shift+R não limpa fotos carregadas via busca, só
+// recurso da carga inicial da página). A única forma de garantir um pedido
+// novo é a URL em si mudar. _catalogoFotoVersao é buscado uma vez (GET
+// /api/catalogo/fotos-versao, ver versaoFotosHandler) e embutido como
+// ?v=<versao> em toda URL de foto do painel via _catalogoFotoUrl — trocar
+// uma preferência muda a versão no servidor, o que muda a URL na próxima
+// renderização, o que força um pedido de verdade não importa o que já
+// esteja cacheado.
+let _catalogoFotoVersao = null;
+
+(async function _catalogoCarregarFotoVersaoInicial() {
+  try {
+    const res = await apiFetch("/api/catalogo/fotos-versao");
+    if (res.ok) {
+      const data = await res.json();
+      _catalogoFotoVersao = data.versao ?? null;
+    }
+  } catch (err) {
+    console.warn("[catalogo] falha ao carregar versão de fotos:", err.message);
+  }
+})();
+
+function _catalogoFotoUrl(codigo, indice = 0) {
+  const base = `/api/catalogo/produtos/${encodeURIComponent(codigo)}/fotos/${indice}`;
+  return _catalogoFotoVersao !== null ? `${base}?v=${_catalogoFotoVersao}` : base;
+}
+
 async function _catalogoBuscarFabricantesLista() {
   if (_catalogoFabricantesLista) return _catalogoFabricantesLista;
   try {
@@ -564,7 +596,7 @@ function _catalogoRefBannerHTML(produto) {
       <div class="catalogo-ref-banner-photo">
         <i class="fa-solid fa-image catalogo-ref-banner-photo-fallback"></i>
         <img
-          src="/api/catalogo/produtos/${encodeURIComponent(produto.codigo)}/fotos/0"
+          src="${_catalogoFotoUrl(produto.codigo)}"
           alt="${safe(produto.nome)}"
           loading="lazy"
           onerror="this.remove();"
@@ -603,7 +635,7 @@ function _catalogoRefEquivCardHTML(det) {
       <div class="catalogo-ref-banner-photo">
         <i class="fa-solid fa-image catalogo-ref-banner-photo-fallback"></i>
         <img
-          src="/api/catalogo/produtos/${encodeURIComponent(p.codigo)}/fotos/0"
+          src="${_catalogoFotoUrl(p.codigo)}"
           alt="${safe(p.nome)}"
           loading="lazy"
           onerror="this.remove();"
@@ -778,7 +810,7 @@ function _catalogoCardHTML(produto, mostrarBadgeNeutro) {
       <div class="catalogo-card-photo" data-foto-codigo="${escapeAttr(produto.codigo)}">
         <i class="fa-solid fa-image catalogo-card-photo-fallback"></i>
         <img
-          src="/api/catalogo/produtos/${encodeURIComponent(produto.codigo)}/fotos/0"
+          src="${_catalogoFotoUrl(produto.codigo)}"
           alt="${safe(produto.nome)}"
           loading="lazy"
           onerror="this.remove();"
@@ -858,7 +890,7 @@ async function abrirSeletorFotoCatalogo(codigo) {
       data-nome-arquivo="${escapeAttr(f.nomeArquivo)}"
       title="${f.indice === 0 ? "Foto atual" : "Usar essa como foto principal"}"
     >
-      <img src="/api/catalogo/produtos/${encodeURIComponent(codigo)}/fotos/${f.indice}" alt="Opção de foto ${f.indice + 1}" loading="lazy">
+      <img src="${_catalogoFotoUrl(codigo, f.indice)}" alt="Opção de foto ${f.indice + 1}" loading="lazy">
       ${f.indice === 0 ? '<span class="catalogo-foto-opcao-badge">Atual</span>' : ""}
     </button>
   `).join("");
@@ -906,11 +938,14 @@ async function _definirFotoPreferidaCatalogo(codigo, nomeArquivo) {
     _closeModal();
     showToast?.("Foto principal atualizada.", "success");
 
-    // Cache-bust: o navegador tem a URL antiga (/fotos/0) em cache — sem o
-    // parâmetro novo, a troca não apareceria na tela até um refresh manual.
-    const marcador = Date.now();
+    // Atualiza a versão local com a que o servidor acabou de gerar (ver
+    // _catalogoFotoVersao/_catalogoFotoUrl no topo do arquivo) — troca a URL
+    // de TODA foto do painel a partir de agora, não só desse produto, o que
+    // garante que nenhuma renderização futura na sessão reuse cache velho,
+    // nem daquela mesma foto vista antes desse fix existir.
+    if (body.versao !== undefined) _catalogoFotoVersao = body.versao;
     document.querySelectorAll(`.catalogo-card-photo[data-foto-codigo="${CSS.escape(String(codigo))}"] img`).forEach(img => {
-      img.src = `/api/catalogo/produtos/${encodeURIComponent(codigo)}/fotos/0?t=${marcador}`;
+      img.src = _catalogoFotoUrl(codigo);
     });
   } catch (err) {
     showToast?.(err.message || "Erro ao trocar a foto.", "error");

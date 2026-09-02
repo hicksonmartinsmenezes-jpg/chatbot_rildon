@@ -1,7 +1,7 @@
 const crypto = require("crypto");
 const ExcelJS = require("exceljs");
 const logger = require("../utils/logger");
-const { listarFotos, obterFoto, definirFotoPreferida, recarregarIndice: recarregarIndiceFotos } = require("../services/catalogo-fotos.service");
+const { listarFotos, obterFoto, definirFotoPreferida, recarregarIndice: recarregarIndiceFotos, obterVersaoFotos } = require("../services/catalogo-fotos.service");
 const { buscarProdutosPainel, buscarPorCodigo, buscarPorNomePainel, listarFabricantes, recarregarIndices: recarregarIndicesProdutos } = require("../services/catalogo-x2.service");
 const { listarSecoes, listarLinhasPorSecao } = require("../services/catalogo.service");
 const { gerarPdfCatalogo, gerarPdfCatalogoCompleto, gerarPdfCatalogoPromocional, limparCacheBboxFotos } = require("../services/catalogo-pdf.service");
@@ -687,12 +687,33 @@ async function definirFotoPreferidaHandler(req, res) {
       return res.status(400).json({ error: "Nome de arquivo inválido." });
     }
     const fotos = definirFotoPreferida(codigo, nomeArquivo || null);
-    res.json({ ok: true, codigo, fotos });
+    // versao junto na resposta: o frontend atualiza sua cópia local na hora,
+    // sem precisar de outro round-trip pra /catalogo/fotos-versao (ver
+    // versaoFotosHandler abaixo e o comentário em catalogo-fotos.service.js
+    // sobre por que a URL precisa mudar de verdade, não só o Cache-Control).
+    res.json({ ok: true, codigo, fotos, versao: obterVersaoFotos() });
   } catch (err) {
     // definirFotoPreferida lança erro "de negócio" (nomeArquivo não bate
     // com nenhuma foto do produto) — 400, não 500, é erro de entrada, não
     // falha do servidor.
     res.status(400).json({ error: err.message || "Erro ao definir foto preferida." });
+  }
+}
+
+// GET /api/catalogo/fotos-versao — pedido do usuário (2026-09-02, teste ao
+// vivo): confirmar troca de foto principal funciona na hora mas some depois
+// de recarregar a página, porque URLs de foto já vistas antes desse fix
+// ficam presas no cache do navegador com a validade antiga (24h) e nem um
+// refresh forçado limpa isso pra imagens carregadas via busca. O frontend
+// busca essa versão uma vez por sessão e embute como ?v=<versao> em toda
+// URL de foto — muda a URL, força pedido novo de verdade, não importa o que
+// já esteja cacheado (ver obterVersaoFotos em catalogo-fotos.service.js).
+async function versaoFotosHandler(req, res) {
+  try {
+    res.json({ versao: obterVersaoFotos() });
+  } catch (err) {
+    logger.error("❌ Erro ao obter versão de fotos do catálogo:", err.message);
+    res.status(500).json({ error: "Erro ao obter versão de fotos." });
   }
 }
 
@@ -762,6 +783,7 @@ module.exports = {
   listarFotosHandler,
   servirFotoHandler,
   definirFotoPreferidaHandler,
+  versaoFotosHandler,
   buscarProdutosHandler,
   recarregarEstoqueHandler,
   recarregarCatalogoHandler,

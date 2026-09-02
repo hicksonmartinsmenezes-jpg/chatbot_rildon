@@ -58,6 +58,38 @@ const DIAGRAM_MAX_DIM = 300;
 // verdade). Retorna null pra qualquer coisa que não seja um JPEG válido —
 // nesse caso a foto simplesmente não é reordenada (mantém a posição
 // original), nunca quebra a extração.
+// BUG REAL corrigido 2026-09-02 (usuário mandou print mostrando desenho
+// técnico ainda na posição 0 do card, meses depois do fix de 2026-08-28
+// acima): a amostragem que definiu DIAGRAM_MAX_DIM só cobriu JPEG — mas o
+// X2 também lista desenho técnico/ficha de especificação como PNG (ex:
+// produto 114927 "INTERRUPTOR DE EMBREAGEM": foto 0 é "24303.png", um
+// cartão de ficha técnica 111×97px; a foto REAL do produto é "31797.jpg",
+// mas fica em 2º lugar porque _dimensoesJpeg devolve null pra qualquer
+// arquivo que não comece com o marcador JPEG — incluindo PNG — e
+// `_reordenarFotos` trata "não deu pra medir" como "trata como grande,
+// mantém posição", nunca como pequena). Resultado: TODA foto técnica
+// salva como PNG (não só a genérica "sem foto", ficha técnica também)
+// escapava do reordenamento e ficava sempre em primeiro. Fix: mesma ideia
+// do cabeçalho JPEG, mas pro cabeçalho PNG (assinatura fixa de 8 bytes +
+// chunk IHDR, que é sempre o primeiro chunk do arquivo — 8 bytes de
+// largura/altura big-endian logo em seguida, sem precisar decodificar
+// nada).
+function _dimensoesPng(buffer) {
+  if (!buffer || buffer.length < 24) return null;
+  const ASSINATURA_PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+  for (let i = 0; i < 8; i++) if (buffer[i] !== ASSINATURA_PNG[i]) return null;
+  if (buffer.toString("ascii", 12, 16) !== "IHDR") return null;
+  return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
+}
+
+// Dispatcher usado por _reordenarFotos — tenta JPEG, depois PNG (os dois
+// formatos que aparecem nos zips, ver MIME_POR_EXT). Qualquer outra coisa
+// (gif, arquivo corrompido) devolve null e a foto não é reordenada, mesmo
+// comportamento de segurança de sempre.
+function _dimensoesImagem(buffer) {
+  return _dimensoesJpeg(buffer) || _dimensoesPng(buffer);
+}
+
 function _dimensoesJpeg(buffer) {
   if (!buffer || buffer.length < 4 || buffer[0] !== 0xff || buffer[1] !== 0xd8) return null;
   let offset = 2;
@@ -146,7 +178,7 @@ function _reordenarFotos(codigo, lista) {
     let ehPequena = false;
     try {
       const buffer = extrairArquivo(item.zipPath, item.entrada);
-      const dim = _dimensoesJpeg(buffer);
+      const dim = _dimensoesImagem(buffer);
       if (dim && Math.max(dim.width, dim.height) < DIAGRAM_MAX_DIM) ehPequena = true;
     } catch {
       // Falha ao extrair/ler o cabeçalho — trata como "grande" (mantém

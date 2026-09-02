@@ -715,6 +715,34 @@ const AREA_TOPO_Y = HEADER_HEIGHT + TITULO_GAP_TOPO + TITULO_TAMANHO + TITULO_GA
 const COLS_COMPLETO = 4;
 const ROWS_POR_PAGINA_COMPLETO = 5;
 
+// BUG REAL corrigido 2026-09-01 (usuário reportou "catálogo completo não
+// está gerando" — na real ficava carregando pra sempre): as 3 funções que
+// geram PDF (gerarPdfCatalogo, gerarPdfCatalogoCompleto,
+// gerarPdfCatalogoPromocional) desenhavam TODOS os cards num laço síncrono
+// só, sem devolver o controle ao event loop em nenhum momento. Medido ao
+// vivo: um fabricante grande (WEGA, 682 produtos) leva mais de 2 minutos
+// pra desenhar — e o Node é single-threaded, então esses 2 minutos travam
+// o processo INTEIRO (bot do WhatsApp para de responder, painel trava pra
+// todo mundo, não só quem pediu o PDF), não só a resposta HTTP de quem
+// pediu o catálogo. Pedido explícito do usuário: catálogo tem que
+// continuar completo (sem cortar produto nenhum) — a correção não reduz
+// quantidade, só devolve o controle ao event loop periodicamente durante o
+// desenho, deixando o servidor respirar entre lotes de cards. O tempo
+// total de geração continua parecido; o que muda é que o resto do sistema
+// não fica mais refém disso.
+// 2026-09-01 (medido ao vivo): a 1ª tentativa cedia a cada 20 blocos
+// (~1 página) supondo que desenhar 20 cards fosse rápido — na prática um
+// lote de 20 chegou a levar 4,6s (foto grande/decodificação variam muito
+// de card pra card), o que ainda deixava o event loop preso por segundos
+// de cada vez. Cede a cada bloco: overhead de setImmediate é
+// desprezível (microssegundos) comparado ao tempo de desenhar 1 card
+// (dezenas a centenas de ms), e isso garante que o servidor nunca fica
+// mais que ~1 card de tempo sem poder atender outra coisa.
+const CEDER_A_CADA_N_BLOCOS = 1;
+function _cederEventLoop() {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
 // 2026-08-28: pedido do usuário — mostrando um catálogo de referência
 // (outro material da loja) que separa os produtos em seções por MARCA DE
 // VEÍCULO (ex. "MERCEDES-BENZ"), pediu pra usar esse padrão de referência
@@ -2197,7 +2225,7 @@ function _desenharLinhaIndice(doc, textoLinha, numeroPagina, y, larguraTotal) {
  * chama já seta os headers de Content-Type/Content-Disposition antes).
  * Não retorna Promise: o próprio doc.end() encerra a escrita/resposta.
  */
-function gerarPdfCatalogo(produtos, tituloBusca, destino) {
+async function gerarPdfCatalogo(produtos, tituloBusca, destino) {
   const doc = new PDFDocument({ size: "A4", margin: 0, autoFirstPage: false, bufferPages: true });
   doc.pipe(destino);
   // Registrada uma vez por documento — precisa vir antes de qualquer
@@ -2226,7 +2254,8 @@ function gerarPdfCatalogo(produtos, tituloBusca, destino) {
   let col = 0;
   let linhaY = doc.y;
 
-  produtos.forEach((produto) => {
+  for (let i = 0; i < produtos.length; i += 1) {
+    const produto = produtos[i];
     // Epsilon de 0.5pt: como cardHeight é calculado pra preencher
     // EXATAMENTE o espaço disponível (ver _geometriaGrid), a soma
     // acumulada de ROWS_POR_PAGINA linhas bate matematicamente igual a
@@ -2250,7 +2279,12 @@ function gerarPdfCatalogo(produtos, tituloBusca, destino) {
       col = 0;
       linhaY += cardHeight + GAP;
     }
-  });
+
+    // Ver comentário de CEDER_A_CADA_N_BLOCOS no topo do arquivo — devolve
+    // o controle ao event loop periodicamente pra não travar o servidor
+    // inteiro durante uma exportação grande.
+    if (i > 0 && i % CEDER_A_CADA_N_BLOCOS === 0) await _cederEventLoop();
+  }
 
   doc.end();
 }
@@ -2276,7 +2310,7 @@ function gerarPdfCatalogo(produtos, tituloBusca, destino) {
  * primeiro e só depois escrevendo o número. Ver A4_LARGURA/A4_ALTURA no
  * topo do arquivo.
  */
-function gerarPdfCatalogoCompleto(produtos, fabricante, destino) {
+async function gerarPdfCatalogoCompleto(produtos, fabricante, destino) {
   const doc = new PDFDocument({ size: "A4", margin: 0, autoFirstPage: false, bufferPages: true });
   doc.pipe(destino);
   doc.registerFont(TITULO_FONTE, TITULO_FONTE_ARQUIVO);
@@ -2367,7 +2401,8 @@ function gerarPdfCatalogoCompleto(produtos, fabricante, destino) {
       .forEach((p) => _desenharCardVazio(doc, p.x, p.y, p.cardWidth, p.cardHeight));
   }
 
-  sequencia.forEach((bloco, i) => {
+  for (let i = 0; i < sequencia.length; i += 1) {
+    const bloco = sequencia[i];
     const pos = posicoes[i];
     if (pos.pagina !== paginaLocalAtual) {
       if (paginaLocalAtual !== -1) _desenharPreenchimentoDaPagina(paginaLocalAtual);
@@ -2400,7 +2435,10 @@ function gerarPdfCatalogoCompleto(produtos, fabricante, destino) {
         );
       }
     }
-  });
+
+    // Ver comentário de CEDER_A_CADA_N_BLOCOS no topo do arquivo.
+    if (i > 0 && i % CEDER_A_CADA_N_BLOCOS === 0) await _cederEventLoop();
+  }
 
   // Preenchimento da ÚLTIMA página — não passa pela troca de página do
   // loop acima (não tem próximo bloco depois dela), desenha aqui.
@@ -2464,7 +2502,7 @@ function gerarPdfCatalogoCompleto(produtos, fabricante, destino) {
  * que agora ele carrega o nome do Fabricante quando `modo==="fabricante"`
  * (mesmo campo, significado diferente por modo — ver _agruparPorFabricante).
  */
-function gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino, modo = "linha") {
+async function gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino, modo = "linha") {
   const doc = new PDFDocument({ size: "A4", margin: 0, autoFirstPage: false, bufferPages: true });
   doc.pipe(destino);
   doc.registerFont(TITULO_FONTE, TITULO_FONTE_ARQUIVO);
@@ -2515,7 +2553,8 @@ function gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino, modo = 
       .forEach((p) => _desenharCardVazio(doc, p.x, p.y, p.cardWidth, p.cardHeight));
   }
 
-  sequencia.forEach((bloco, i) => {
+  for (let i = 0; i < sequencia.length; i += 1) {
+    const bloco = sequencia[i];
     const pos = posicoes[i];
     if (pos.pagina !== paginaLocalAtual) {
       if (paginaLocalAtual !== -1) _desenharPreenchimentoDaPagina(paginaLocalAtual);
@@ -2536,7 +2575,10 @@ function gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino, modo = 
         geometriaCompleto.photoBoxWidth, geometriaCompleto.photoBoxHeight, true, null, preco
       );
     }
-  });
+
+    // Ver comentário de CEDER_A_CADA_N_BLOCOS no topo do arquivo.
+    if (i > 0 && i % CEDER_A_CADA_N_BLOCOS === 0) await _cederEventLoop();
+  }
 
   if (paginaLocalAtual !== -1) _desenharPreenchimentoDaPagina(paginaLocalAtual);
 

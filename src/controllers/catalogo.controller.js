@@ -279,10 +279,10 @@ async function exportarPdfHandler(req, res) {
     res.setHeader("Content-Type", "application/pdf");
     if (modoCompleto) {
       res.setHeader("Content-Disposition", `attachment; filename="catalogo-completo-${Date.now()}.pdf"`);
-      gerarPdfCatalogoCompleto(produtos, fabricanteCompleto, res);
+      await gerarPdfCatalogoCompleto(produtos, fabricanteCompleto, res);
     } else {
       res.setHeader("Content-Disposition", `attachment; filename="catalogo-expresso-${Date.now()}.pdf"`);
-      gerarPdfCatalogo(produtos, tituloBusca, res);
+      await gerarPdfCatalogo(produtos, tituloBusca, res);
     }
   } catch (err) {
     logger.error("❌ Erro ao exportar catálogo em PDF:", err.message);
@@ -467,7 +467,7 @@ async function exportarPdfPromocionalHandler(req, res) {
       // que a UI adicionou ele à lista).
       res.setHeader("X-Catalogo-Codigos-Nao-Encontrados", naoEncontrados.join(","));
     }
-    gerarPdfCatalogoPromocional(produtos, precosPorCodigo, res, modo);
+    await gerarPdfCatalogoPromocional(produtos, precosPorCodigo, res, modo);
   } catch (err) {
     logger.error("❌ Erro ao exportar catálogo promocional em PDF:", err.message);
     if (!res.headersSent) res.status(500).json({ error: "Erro ao gerar PDF do catálogo promocional." });

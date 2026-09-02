@@ -1,7 +1,7 @@
 const crypto = require("crypto");
 const ExcelJS = require("exceljs");
 const logger = require("../utils/logger");
-const { listarFotos, obterFoto, definirFotoPreferida, recarregarIndice: recarregarIndiceFotos, obterVersaoFotos } = require("../services/catalogo-fotos.service");
+const { listarFotos, obterFoto, obterFotoPorNome, definirFotoPreferida, ocultarFoto, recarregarIndice: recarregarIndiceFotos, obterVersaoFotos } = require("../services/catalogo-fotos.service");
 const { buscarProdutosPainel, buscarPorCodigo, buscarPorNomePainel, listarFabricantes, recarregarIndices: recarregarIndicesProdutos } = require("../services/catalogo-x2.service");
 const { listarSecoes, listarLinhasPorSecao } = require("../services/catalogo.service");
 const { gerarPdfCatalogo, gerarPdfCatalogoCompleto, gerarPdfCatalogoPromocional, limparCacheBboxFotos } = require("../services/catalogo-pdf.service");
@@ -606,18 +606,52 @@ async function listarSecoesHandler(req, res) {
   }
 }
 
+// incluirOcultas=1 na query é usado só pelo modal "Escolher foto
+// principal" (precisa mostrar as ocultas também, pra dar pra restaurar —
+// ver ocultarFotoHandler abaixo); o resto do painel (card, PDF) nunca
+// manda esse parâmetro e continua só vendo as visíveis, como sempre.
 async function listarFotosHandler(req, res) {
   try {
     const { codigo } = req.params;
     if (!_codigoValido(codigo)) {
       return res.status(400).json({ error: "Código de produto inválido." });
     }
-    const fotos = listarFotos(codigo);
+    const incluirOcultas = req.query.incluirOcultas === "1";
+    const fotos = listarFotos(codigo, { incluirOcultas });
     res.json({ codigo, total: fotos.length, fotos });
   } catch (err) {
     logger.error("❌ Erro ao listar fotos do catálogo:", err.message);
     res.status(500).json({ error: "Erro ao listar fotos." });
   }
+}
+
+// BUG REAL corrigido 2026-09-02 (usuário reportou "troquei a foto, ela até
+// troca mas não fica salva como principal"): max-age=86400 fixo era
+// seguro enquanto a mesma URL (/fotos/0) SEMPRE devolvia o mesmo arquivo
+// pra sempre — deixou de ser verdade quando a troca manual de foto
+// principal (ver definirFotoPreferida) passou a mudar o que /fotos/0
+// devolve pro MESMO produto. O navegador continuava servindo do cache
+// local a versão de ANTES da troca em qualquer carregamento novo (nova
+// busca, F5) sem nem perguntar pro servidor — só o clique que troca (usa
+// uma URL com ?t=timestamp, sempre nova) escapava do cache. Fix: ETag
+// (hash do conteúdo real) + must-revalidate — o navegador AGORA sempre
+// pergunta pro servidor "isso mudou?" antes de reusar o cache; se não
+// mudou, servidor responde 304 (barato, sem reenviar a foto); se mudou
+// (troca de preferência), ETag bate diferente e o navegador busca de
+// novo. Mantém o ganho de banda sem arriscar mostrar foto desatualizada.
+// Extraído (2026-09-02, feature de ocultar foto) porque servirFotoHandler
+// e servirFotoPorNomeHandler abaixo precisam exatamente do mesmo
+// comportamento de cache, só mudando como a foto é localizada (índice vs.
+// nome de arquivo).
+function _responderFoto(req, res, foto) {
+  const etag = `"${crypto.createHash("md5").update(foto.buffer).digest("hex")}"`;
+  res.setHeader("ETag", etag);
+  res.setHeader("Cache-Control", "private, max-age=0, must-revalidate");
+  if (req.headers["if-none-match"] === etag) {
+    return res.status(304).end();
+  }
+  res.setHeader("Content-Type", foto.mimetype);
+  res.send(foto.buffer);
 }
 
 async function servirFotoHandler(req, res) {
@@ -632,33 +666,32 @@ async function servirFotoHandler(req, res) {
     if (!foto) {
       return res.status(404).json({ error: "Foto não encontrada." });
     }
-
-    // BUG REAL corrigido 2026-09-02 (usuário reportou "troquei a foto, ela
-    // até troca mas não fica salva como principal"): max-age=86400 fixo era
-    // seguro enquanto a mesma URL (/fotos/0) SEMPRE devolvia o mesmo
-    // arquivo pra sempre — deixou de ser verdade quando a troca manual de
-    // foto principal (ver definirFotoPreferida) passou a mudar o que
-    // /fotos/0 devolve pro MESMO produto. O navegador continuava servindo
-    // do cache local a versão de ANTES da troca em qualquer carregamento
-    // novo (nova busca, F5) sem nem perguntar pro servidor — só o clique
-    // que troca (usa uma URL com ?t=timestamp, sempre nova) escapava do
-    // cache. Fix: ETag (hash do conteúdo real) + must-revalidate — o
-    // navegador AGORA sempre pergunta pro servidor "isso mudou?" antes de
-    // reusar o cache; se não mudou, servidor responde 304 (barato, sem
-    // reenviar a foto); se mudou (troca de preferência), ETag bate
-    // diferente e o navegador busca de novo. Mantém o ganho de banda sem
-    // arriscar mostrar foto desatualizada.
-    const etag = `"${crypto.createHash("md5").update(foto.buffer).digest("hex")}"`;
-    res.setHeader("ETag", etag);
-    res.setHeader("Cache-Control", "private, max-age=0, must-revalidate");
-    if (req.headers["if-none-match"] === etag) {
-      return res.status(304).end();
-    }
-
-    res.setHeader("Content-Type", foto.mimetype);
-    res.send(foto.buffer);
+    _responderFoto(req, res, foto);
   } catch (err) {
     logger.error("❌ Erro ao servir foto do catálogo:", err.message);
+    res.status(500).json({ error: "Erro ao carregar foto." });
+  }
+}
+
+// GET /api/catalogo/produtos/:codigo/fotos/nome/:nomeArquivo — pedido do
+// usuário (2026-09-02, feature de ocultar foto): a lista de fotos OCULTAS
+// (ver ocultarFotoHandler) não tem índice estável na lista visível (é por
+// isso que /fotos/:indice não serve pra elas) — esse endpoint busca por
+// nome de arquivo direto, usado pela miniatura de cada foto oculta na
+// grade "Escolher foto principal", pra dar pra ver antes de restaurar.
+async function servirFotoPorNomeHandler(req, res) {
+  try {
+    const { codigo, nomeArquivo } = req.params;
+    if (!_codigoValido(codigo) || !nomeArquivo || !_nomeArquivoValido(nomeArquivo)) {
+      return res.status(400).json({ error: "Parâmetros inválidos." });
+    }
+    const foto = obterFotoPorNome(codigo, nomeArquivo);
+    if (!foto) {
+      return res.status(404).json({ error: "Foto não encontrada." });
+    }
+    _responderFoto(req, res, foto);
+  } catch (err) {
+    logger.error("❌ Erro ao servir foto por nome do catálogo:", err.message);
     res.status(500).json({ error: "Erro ao carregar foto." });
   }
 }
@@ -697,6 +730,35 @@ async function definirFotoPreferidaHandler(req, res) {
     // com nenhuma foto do produto) — 400, não 500, é erro de entrada, não
     // falha do servidor.
     res.status(400).json({ error: err.message || "Erro ao definir foto preferida." });
+  }
+}
+
+// POST /api/catalogo/produtos/:codigo/foto-ocultar — pedido do usuário
+// (2026-09-02, mesma leva do "trocar foto principal"): às vezes uma das
+// fotos cadastradas no X2 pra um produto está simplesmente ERRADA (foto de
+// outra peça, borrada, etc.) — o atendente esconde ela da exibição (card,
+// modal, PDF) sem apagar nada do zip/X2 de verdade (ver
+// ocultarFoto/catalogo-fotos.service.js). Body: { nomeArquivo, oculta }.
+// oculta=false RESTAURA (mesmo endpoint faz as duas coisas, igual
+// definirFotoPreferidaHandler acima) — default true se omitido.
+async function ocultarFotoHandler(req, res) {
+  try {
+    const { codigo } = req.params;
+    if (!_codigoValido(codigo)) {
+      return res.status(400).json({ error: "Código de produto inválido." });
+    }
+    const nomeArquivo = req.body?.nomeArquivo;
+    if (!nomeArquivo || !_nomeArquivoValido(nomeArquivo)) {
+      return res.status(400).json({ error: "Nome de arquivo inválido." });
+    }
+    const oculta = req.body?.oculta !== false;
+    const fotos = ocultarFoto(codigo, nomeArquivo, oculta);
+    res.json({ ok: true, codigo, fotos, versao: obterVersaoFotos() });
+  } catch (err) {
+    // ocultarFoto lança erro "de negócio" (nomeArquivo não bate com
+    // nenhuma foto do produto, ou tentativa de ocultar a última foto
+    // visível) — 400, não 500, é erro de entrada, não falha do servidor.
+    res.status(400).json({ error: err.message || "Erro ao ocultar foto." });
   }
 }
 
@@ -782,7 +844,9 @@ async function recarregarCatalogoHandler(req, res) {
 module.exports = {
   listarFotosHandler,
   servirFotoHandler,
+  servirFotoPorNomeHandler,
   definirFotoPreferidaHandler,
+  ocultarFotoHandler,
   versaoFotosHandler,
   buscarProdutosHandler,
   recarregarEstoqueHandler,

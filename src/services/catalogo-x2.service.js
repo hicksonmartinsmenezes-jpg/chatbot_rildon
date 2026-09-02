@@ -419,7 +419,12 @@ function _tokenBateAplicacao(token, aplicacaoPalavras) {
 // ou POST /catalogo/produtos/recarregar) quebra com "TypeError: data is not
 // iterable", igual aconteceu com os outros dois — o catálogo INTEIRO para
 // de carregar, não só a foto.
-const ARQUIVOS_NAO_PRODUTO = new Set(["cod-fornecedor.json", "aplicacao-ia-cache.json", "fotos-preferencias.json"]);
+// fotos-ocultas.json (2026-09-02, feature de ocultar foto) adicionado aqui
+// de propósito — mesmo bug real já corrigido pra fotos-preferencias.json:
+// esse loop varre TODO .json da pasta catalogo-x2/ achando que é um arquivo
+// de produtos; qualquer JSON novo de config/estado que caia nessa mesma
+// pasta tem que entrar nessa lista, senão quebra o catálogo inteiro.
+const ARQUIVOS_NAO_PRODUTO = new Set(["cod-fornecedor.json", "aplicacao-ia-cache.json", "fotos-preferencias.json", "fotos-ocultas.json"]);
 
 function _carregarIndices() {
   let arquivos;

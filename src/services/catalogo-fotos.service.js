@@ -270,17 +270,117 @@ function _aplicarPreferencia(codigo, lista) {
   return copia;
 }
 
+// PEDIDO DO USUÁRIO (2026-09-02, mesma leva de "trocar foto principal"): às
+// vezes uma das fotos cadastradas no X2 pra um produto está simplesmente
+// ERRADA (foto de outra peça, borrada, etc.) — o atendente esconde ela da
+// exibição (card, modal, PDF) sem apagar nada do zip/X2 de verdade (mesma
+// filosofia não-destrutiva de definirFotoPreferida acima: fica só num JSON
+// à parte, reversível, sobrevive a reinício/recarregar índice). Guardado
+// separado de fotos-preferencias.json (arquivos com propósitos diferentes,
+// mais simples que migrar o schema de um pra caber os dois).
+const OCULTAS_PATH = path.join(__dirname, "../config/catalogo-x2/fotos-ocultas.json");
+
+let ocultas = null; // Map<codigo, Set<nomeArquivo>> — lazy, carregado do disco na 1ª chamada.
+
+function _garantirOcultas() {
+  if (ocultas) return ocultas;
+  ocultas = new Map();
+  try {
+    const bruto = JSON.parse(fs.readFileSync(OCULTAS_PATH, "utf8"));
+    for (const [codigo, lista] of Object.entries(bruto)) {
+      ocultas.set(String(codigo), new Set((lista || []).map(String)));
+    }
+  } catch (e) {
+    if (e.code !== "ENOENT") {
+      console.error("[catalogo-fotos.service] falha ao ler fotos-ocultas.json:", e.message);
+    }
+  }
+  return ocultas;
+}
+
+function _salvarOcultas() {
+  const obj = {};
+  for (const [codigo, set] of ocultas) {
+    if (set.size > 0) obj[codigo] = Array.from(set);
+  }
+  fs.writeFileSync(OCULTAS_PATH, JSON.stringify(obj, null, 2) + "\n", "utf8");
+  versaoFotos = Date.now();
+}
+
 /**
- * Lista as fotos disponíveis de um produto (sem carregar os bytes) — já na
- * ordem final (preferência manual > reordenação automática, ver
- * _aplicarPreferencia/_reordenarFotos). Retorna
- * [{ indice: 0, nomeArquivo: "9839.jpg" }, ...].
+ * Lista as fotos de um produto (sem carregar os bytes) — já na ordem final
+ * (preferência manual > reordenação automática, ver
+ * _aplicarPreferencia/_reordenarFotos). Por padrão só devolve as VISÍVEIS
+ * (não ocultas); { incluirOcultas: true } (usado só pelo modal de
+ * gerenciar fotos no painel) devolve as ocultas também, no fim da lista,
+ * com indice:-1 (não têm posição na ordem visível — pra pegar os bytes de
+ * uma foto oculta use obterFotoPorNome, não obterFoto/indice).
+ * Retorna [{ indice, nomeArquivo, oculta }, ...].
  */
-function listarFotos(codigoProduto) {
+function listarFotos(codigoProduto, { incluirOcultas = false } = {}) {
   const idx = _garantirIndice();
   const codigo = String(codigoProduto);
-  const lista = _aplicarPreferencia(codigo, _reordenarFotos(codigo, idx.get(codigo) || []));
-  return lista.map((item, i) => ({ indice: i, nomeArquivo: path.basename(item.entrada.name) }));
+  const bruta = idx.get(codigo) || [];
+  const setOcultas = _garantirOcultas().get(codigo) || new Set();
+
+  const brutaVisivel = bruta.filter(item => !setOcultas.has(path.basename(item.entrada.name)));
+  const lista = _aplicarPreferencia(codigo, _reordenarFotos(codigo, brutaVisivel));
+  const resultado = lista.map((item, i) => ({ indice: i, nomeArquivo: path.basename(item.entrada.name), oculta: false }));
+
+  if (incluirOcultas) {
+    for (const item of bruta) {
+      const nomeArquivo = path.basename(item.entrada.name);
+      if (setOcultas.has(nomeArquivo)) resultado.push({ indice: -1, nomeArquivo, oculta: true });
+    }
+  }
+  return resultado;
+}
+
+/**
+ * Oculta (oculta=true) ou restaura (oculta=false) uma foto do produto.
+ * Nunca deixa ocultar a ÚLTIMA foto visível (trava contra o produto ficar
+ * sem NENHUMA foto por acidente). Se a foto ocultada era a preferida
+ * manual (ver definirFotoPreferida), a preferência é removida junto — não
+ * faz sentido ficar "presa" numa foto que não aparece mais. Lança erro
+ * "de negócio" (nomeArquivo inválido / última foto) — quem chama trata
+ * como 400, não 500.
+ */
+function ocultarFoto(codigoProduto, nomeArquivo, oculta = true) {
+  const idx = _garantirIndice();
+  const codigo = String(codigoProduto);
+  const original = idx.get(codigo) || [];
+  const existe = original.some(item => path.basename(item.entrada.name) === nomeArquivo);
+  if (!existe) {
+    throw new Error(`"${nomeArquivo}" não é uma foto cadastrada do produto ${codigo}.`);
+  }
+
+  const todasOcultas = _garantirOcultas();
+  const setCodigo = todasOcultas.get(codigo) || new Set();
+
+  if (oculta) {
+    const aindaVisiveisDepois = original.filter(item => {
+      const nome = path.basename(item.entrada.name);
+      return nome !== nomeArquivo && !setCodigo.has(nome);
+    }).length;
+    if (aindaVisiveisDepois === 0) {
+      throw new Error("Não é possível ocultar a última foto do produto.");
+    }
+    setCodigo.add(nomeArquivo);
+    todasOcultas.set(codigo, setCodigo);
+
+    const prefs = _garantirPreferencias();
+    if (prefs.get(codigo) === nomeArquivo) {
+      prefs.delete(codigo);
+      _salvarPreferencias();
+    }
+  } else {
+    setCodigo.delete(nomeArquivo);
+    if (setCodigo.size === 0) todasOcultas.delete(codigo);
+  }
+
+  if (ordemCache) ordemCache.delete(codigo);
+  _salvarOcultas();
+  return listarFotos(codigo, { incluirOcultas: true });
 }
 
 /**
@@ -320,7 +420,9 @@ function obterFoto(codigoProduto, indiceFoto = 0) {
   const codigo = String(codigoProduto);
   const original = idx.get(codigo);
   if (!original) return null;
-  const lista = _aplicarPreferencia(codigo, _reordenarFotos(codigo, original));
+  const setOcultas = _garantirOcultas().get(codigo) || new Set();
+  const visiveis = original.filter(item => !setOcultas.has(path.basename(item.entrada.name)));
+  const lista = _aplicarPreferencia(codigo, _reordenarFotos(codigo, visiveis));
   if (!lista[indiceFoto]) return null;
 
   const { zipPath, entrada } = lista[indiceFoto];
@@ -336,6 +438,32 @@ function obterFoto(codigoProduto, indiceFoto = 0) {
   return { buffer, mimetype };
 }
 
+/**
+ * Extrai uma foto pelo NOME do arquivo em vez do índice — usada pra
+ * mostrar a miniatura de uma foto OCULTA (ver ocultarFoto acima), que não
+ * tem posição estável na lista visível (por isso obterFoto/indice não
+ * serve pra ela). Busca na lista BRUTA (sem filtrar ocultas), então também
+ * funciona pra foto visível — reaproveitável.
+ */
+function obterFotoPorNome(codigoProduto, nomeArquivo) {
+  const idx = _garantirIndice();
+  const codigo = String(codigoProduto);
+  const original = idx.get(codigo) || [];
+  const item = original.find(it => path.basename(it.entrada.name) === nomeArquivo);
+  if (!item) return null;
+
+  let buffer;
+  try {
+    buffer = extrairArquivo(item.zipPath, item.entrada);
+  } catch (e) {
+    console.error(`[catalogo-fotos.service] falha ao extrair foto por nome (codigo=${codigoProduto}, nome=${nomeArquivo}):`, e.message);
+    return null;
+  }
+  const ext = path.extname(item.entrada.name).slice(1).toLowerCase();
+  const mimetype = MIME_POR_EXT[ext] || "application/octet-stream";
+  return { buffer, mimetype };
+}
+
 // PEDIDO DO USUÁRIO (2026-08-12): mesmo motivo de recarregarIndices() em
 // catalogo-x2.service.js — "Atualizar Fotos" rodando sozinha (agendada)
 // baixava fotos novas pro zip, mas esse índice (lazy, construído só na
@@ -345,9 +473,9 @@ function obterFoto(codigoProduto, indiceFoto = 0) {
 function recarregarIndice() {
   indice = null;
   ordemCache = null; // fotos novas podem mudar qual índice é "a grande"
-  // preferencias NÃO é zerado aqui de propósito — é escolha manual do
-  // atendente, independente do índice de zips ser reconstruído.
+  // preferencias e ocultas NÃO são zeradas aqui de propósito — são escolha
+  // manual do atendente, independente do índice de zips ser reconstruído.
   return _garantirIndice();
 }
 
-module.exports = { listarFotos, obterFoto, definirFotoPreferida, recarregarIndice, obterVersaoFotos };
+module.exports = { listarFotos, obterFoto, obterFotoPorNome, definirFotoPreferida, ocultarFoto, recarregarIndice, obterVersaoFotos };

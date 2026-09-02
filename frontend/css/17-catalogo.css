@@ -852,10 +852,19 @@
 
 .catalogo-foto-opcao {
   position: relative;
+  height: 96px;
+}
+
+/* Botão "escolher como principal" — pedido do usuário (2026-09-02, feature
+   de ocultar foto): antes .catalogo-foto-opcao ERA o botão inteiro; agora
+   ele só embrulha (position:relative) o botão de escolher + o botão de
+   ocultar no canto, que precisam de área de clique própria e separada. */
+.catalogo-foto-opcao-escolher {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 96px;
+  width: 100%;
+  height: 100%;
   padding: 8px;
   box-sizing: border-box;
   background: #ffffff;
@@ -865,10 +874,10 @@
   transition: border-color var(--transition-fast), transform var(--transition-fast);
 }
 
-.catalogo-foto-opcao:hover { border-color: var(--primary, #1d6cf5); transform: scale(1.03); }
-.catalogo-foto-opcao-atual { border-color: var(--primary, #1d6cf5); }
+.catalogo-foto-opcao-escolher:hover { border-color: var(--primary, #1d6cf5); transform: scale(1.03); }
+.catalogo-foto-opcao-atual .catalogo-foto-opcao-escolher { border-color: var(--primary, #1d6cf5); }
 
-.catalogo-foto-opcao img {
+.catalogo-foto-opcao-escolher img {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
@@ -884,7 +893,59 @@
   color: #fff;
   background: var(--primary, #1d6cf5);
   border-radius: 999px;
+  pointer-events: none;
 }
+
+/* Botão de ocultar/restaurar no canto de cada miniatura — pedido do
+   usuário (2026-09-02): opção de remover uma foto errada da exibição sem
+   apagar do X2 (ver ocultarFoto/catalogo-fotos.service.js). Fundo escuro
+   fixo funciona em cima de qualquer foto, tema claro ou escuro. */
+.catalogo-foto-opcao-ocultar,
+.catalogo-foto-opcao-restaurar {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #fff;
+  font-size: 10px;
+  cursor: pointer;
+  transition: background var(--transition-fast), transform var(--transition-fast);
+}
+
+.catalogo-foto-opcao-ocultar:hover { background: #ef4444; transform: scale(1.1); }
+.catalogo-foto-opcao-restaurar:hover { background: var(--primary, #1d6cf5); transform: scale(1.1); }
+
+/* Foto OCULTA na grade: mesmo espaço, mas "apagada" visualmente (opaca +
+   cinza) e sem botão de escolher — só dá pra restaurar. */
+.catalogo-foto-opcao-oculta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 8px;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.04);
+  border: 2px dashed rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+}
+
+.catalogo-foto-opcao-oculta img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  opacity: 0.35;
+  filter: grayscale(1);
+}
+
+.catalogo-foto-opcao-badge-oculta { background: #64748b; }
 
 .catalogo-card-body {
   /* flex:1 faz o corpo preencher toda a altura do card (o grid já estica os

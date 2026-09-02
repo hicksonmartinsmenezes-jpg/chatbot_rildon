@@ -5,7 +5,9 @@ const { uploadLimiter } = require("../middlewares/rate-limiters");
 const {
   listarFotosHandler,
   servirFotoHandler,
+  servirFotoPorNomeHandler,
   definirFotoPreferidaHandler,
+  ocultarFotoHandler,
   versaoFotosHandler,
   buscarProdutosHandler,
   listarSecoesHandler,
@@ -102,9 +104,18 @@ router.get("/catalogo/produtos/:codigo/fotos", listarFotosHandler);
 // Protegida por authSession (aplicado em app.js), igual à rota de mídia do
 // histórico — dado interno da loja, não público.
 router.get("/catalogo/produtos/:codigo/fotos/:indice", servirFotoHandler);
+// Serve os bytes de uma foto por NOME de arquivo em vez de índice — só usada
+// pra miniatura de foto OCULTA (ver foto-ocultar abaixo), que não tem
+// posição estável na lista visível. Rota mais específica ("/fotos/nome/...")
+// não colide com "/fotos/:indice" acima (segmentos diferentes).
+router.get("/catalogo/produtos/:codigo/fotos/nome/:nomeArquivo", servirFotoPorNomeHandler);
 // Escolhe manualmente qual foto é a principal de um produto (pedido do
 // usuário, 2026-09-02) — ver comentário no handler/catalogo-fotos.service.js.
 router.post("/catalogo/produtos/:codigo/foto-preferida", definirFotoPreferidaHandler);
+// Oculta (ou restaura, com { oculta:false }) uma foto do produto — nunca
+// deleta do zip/X2, só esconde da exibição (pedido do usuário, 2026-09-02;
+// ver ocultarFoto/catalogo-fotos.service.js).
+router.post("/catalogo/produtos/:codigo/foto-ocultar", ocultarFotoHandler);
 // Versão global do "estado das fotos" — o frontend embute como ?v=<versao>
 // em toda URL de foto pra garantir cache-busting real (ver comentário em
 // versaoFotosHandler/catalogo-fotos.service.js).

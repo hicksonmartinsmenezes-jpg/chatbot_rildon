@@ -47,6 +47,16 @@ function _catalogoFotoUrl(codigo, indice = 0) {
   return _catalogoFotoVersao !== null ? `${base}?v=${_catalogoFotoVersao}` : base;
 }
 
+// Igual _catalogoFotoUrl acima, mas por NOME de arquivo — usada só pra
+// miniatura de foto OCULTA no modal "Escolher foto principal" (pedido do
+// usuário, 2026-09-02): foto oculta não tem índice estável na lista
+// visível, então /fotos/:indice não serve pra ela (ver
+// servirFotoPorNomeHandler/catalogo.controller.js).
+function _catalogoFotoUrlPorNome(codigo, nomeArquivo) {
+  const base = `/api/catalogo/produtos/${encodeURIComponent(codigo)}/fotos/nome/${encodeURIComponent(nomeArquivo)}`;
+  return _catalogoFotoVersao !== null ? `${base}?v=${_catalogoFotoVersao}` : base;
+}
+
 async function _catalogoBuscarFabricantesLista() {
   if (_catalogoFabricantesLista) return _catalogoFabricantesLista;
   try {
@@ -869,7 +879,11 @@ function _catalogoCardHTML(produto, mostrarBadgeNeutro) {
 async function abrirSeletorFotoCatalogo(codigo) {
   let data;
   try {
-    const res = await fetch(`/api/catalogo/produtos/${encodeURIComponent(codigo)}/fotos`, { credentials: "include" });
+    // incluirOcultas=1: esse modal é o único lugar do painel que precisa
+    // ver as fotos OCULTAS também (pra dar pra restaurar, ver
+    // ocultarFotoHandler/catalogo.controller.js) — card e PDF nunca pedem
+    // isso, só veem as visíveis.
+    const res = await fetch(`/api/catalogo/produtos/${encodeURIComponent(codigo)}/fotos?incluirOcultas=1`, { credentials: "include" });
     if (!res.ok) throw new Error("Erro ao carregar fotos do produto.");
     data = await res.json();
   } catch (err) {
@@ -883,17 +897,7 @@ async function abrirSeletorFotoCatalogo(codigo) {
     return;
   }
 
-  const grade = fotos.map(f => `
-    <button
-      type="button"
-      class="catalogo-foto-opcao ${f.indice === 0 ? "catalogo-foto-opcao-atual" : ""}"
-      data-nome-arquivo="${escapeAttr(f.nomeArquivo)}"
-      title="${f.indice === 0 ? "Foto atual" : "Usar essa como foto principal"}"
-    >
-      <img src="${_catalogoFotoUrl(codigo, f.indice)}" alt="Opção de foto ${f.indice + 1}" loading="lazy">
-      ${f.indice === 0 ? '<span class="catalogo-foto-opcao-badge">Atual</span>' : ""}
-    </button>
-  `).join("");
+  const grade = fotos.map(f => f.oculta ? _catalogoFotoOpcaoOcultaHTML(codigo, f) : _catalogoFotoOpcaoHTML(codigo, f)).join("");
 
   _openModal(`
     <div class="modal-header">
@@ -901,7 +905,7 @@ async function abrirSeletorFotoCatalogo(codigo) {
       <button class="modal-close-btn" type="button" data-modal-close aria-label="Fechar modal">&times;</button>
     </div>
     <div class="modal-body">
-      <p style="margin-bottom:12px;">Clique na foto certa — ela passa a ser a exibida no card e nos PDFs do catálogo.</p>
+      <p style="margin-bottom:12px;">Clique na foto certa pra usar como principal, ou no ícone de lixeira pra ocultar uma foto errada (não apaga do X2 — dá pra restaurar depois).</p>
       <div class="catalogo-foto-opcoes-grid">${grade}</div>
     </div>
     <div class="modal-footer">
@@ -909,8 +913,14 @@ async function abrirSeletorFotoCatalogo(codigo) {
     </div>
   `);
 
-  document.querySelectorAll(".catalogo-foto-opcao").forEach(btn => {
+  document.querySelectorAll(".catalogo-foto-opcao-escolher").forEach(btn => {
     btn.addEventListener("click", () => _definirFotoPreferidaCatalogo(codigo, btn.dataset.nomeArquivo));
+  });
+  document.querySelectorAll(".catalogo-foto-opcao-ocultar").forEach(btn => {
+    btn.addEventListener("click", () => _ocultarFotoCatalogo(codigo, btn.dataset.nomeArquivo, true));
+  });
+  document.querySelectorAll(".catalogo-foto-opcao-restaurar").forEach(btn => {
+    btn.addEventListener("click", () => _ocultarFotoCatalogo(codigo, btn.dataset.nomeArquivo, false));
   });
 
   // BUG REAL corrigido 2026-09-02 (usuário reportou "não vejo fotos
@@ -922,6 +932,95 @@ async function abrirSeletorFotoCatalogo(codigo) {
   // chamada faltava aqui. As fotos carregavam plenamente (confirmado via
   // canvas: bytes e pixels corretos) só que ficavam brancas pra sempre.
   bindLazyImageFade(document.getElementById("_global-modal-overlay"));
+}
+
+function _catalogoFotoOpcaoHTML(codigo, f) {
+  return `
+    <div class="catalogo-foto-opcao ${f.indice === 0 ? "catalogo-foto-opcao-atual" : ""}">
+      <button
+        type="button"
+        class="catalogo-foto-opcao-escolher"
+        data-nome-arquivo="${escapeAttr(f.nomeArquivo)}"
+        title="${f.indice === 0 ? "Foto atual" : "Usar essa como foto principal"}"
+      >
+        <img src="${_catalogoFotoUrl(codigo, f.indice)}" alt="Opção de foto ${f.indice + 1}" loading="lazy">
+        ${f.indice === 0 ? '<span class="catalogo-foto-opcao-badge">Atual</span>' : ""}
+      </button>
+      <button
+        type="button"
+        class="catalogo-foto-opcao-ocultar"
+        data-nome-arquivo="${escapeAttr(f.nomeArquivo)}"
+        title="Ocultar essa foto (não aparece mais pro cliente nem no PDF)"
+      >
+        <i class="fa-solid fa-trash-can"></i>
+      </button>
+    </div>
+  `;
+}
+
+function _catalogoFotoOpcaoOcultaHTML(codigo, f) {
+  return `
+    <div class="catalogo-foto-opcao catalogo-foto-opcao-oculta" title="Foto oculta — não aparece pro cliente nem no PDF">
+      <img src="${_catalogoFotoUrlPorNome(codigo, f.nomeArquivo)}" alt="Foto oculta" loading="lazy">
+      <span class="catalogo-foto-opcao-badge catalogo-foto-opcao-badge-oculta">Oculta</span>
+      <button
+        type="button"
+        class="catalogo-foto-opcao-restaurar"
+        data-nome-arquivo="${escapeAttr(f.nomeArquivo)}"
+        title="Restaurar essa foto"
+      >
+        <i class="fa-solid fa-rotate-left"></i>
+      </button>
+    </div>
+  `;
+}
+
+// Ocultar é uma ação que muda o que o cliente vê — pede confirmação (modal
+// genérico, ver 15-modal.js). Restaurar é reversível na hora e sem
+// consequência pro cliente, não precisa confirmar.
+function _ocultarFotoCatalogo(codigo, nomeArquivo, oculta) {
+  if (!oculta) {
+    _executarOcultarFotoCatalogo(codigo, nomeArquivo, false);
+    return;
+  }
+  showConfirmModal({
+    title: "Ocultar foto",
+    message: "Essa foto deixa de aparecer no card, pro cliente e no PDF do catálogo. Não apaga nada do X2 — dá pra restaurar depois. Confirma?",
+    confirmText: "Ocultar",
+    danger: true,
+    onConfirm: () => _executarOcultarFotoCatalogo(codigo, nomeArquivo, true),
+  });
+}
+
+async function _executarOcultarFotoCatalogo(codigo, nomeArquivo, oculta) {
+  try {
+    const res = await fetch(`/api/catalogo/produtos/${encodeURIComponent(codigo)}/foto-ocultar`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nomeArquivo, oculta }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || "Erro ao ocultar foto.");
+
+    showToast?.(oculta ? "Foto ocultada." : "Foto restaurada.", "success");
+    if (body.versao !== undefined) _catalogoFotoVersao = body.versao;
+
+    // Card na grade de busca pode estar mostrando a foto que acabou de ser
+    // ocultada/restaurada (o índice 0 pode ter mudado) — mesma lógica de
+    // _definirFotoPreferidaCatalogo abaixo.
+    document.querySelectorAll(`.catalogo-card-photo[data-foto-codigo="${CSS.escape(String(codigo))}"] img`).forEach(img => {
+      img.src = _catalogoFotoUrl(codigo);
+    });
+  } catch (err) {
+    showToast?.(err.message || "Erro ao ocultar foto.", "error");
+  } finally {
+    // Reabre o modal já com o estado real vindo do servidor — funciona
+    // tanto no sucesso (foto migrou de seção visível<->oculta) quanto no
+    // erro (ex: última foto visível — o modal volta do jeito que estava,
+    // sem fingir que a ação deu certo).
+    abrirSeletorFotoCatalogo(codigo);
+  }
 }
 
 async function _definirFotoPreferidaCatalogo(codigo, nomeArquivo) {

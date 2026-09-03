@@ -674,6 +674,64 @@ const PROMO_TITULO_TAMANHO = 30;
 // arquivo).
 const PROMO_TITULO_TAMANHO_FABRICANTE = 24;
 
+// --- Estilo "Mecânica" do Catálogo Completo (pedido do usuário, 2026-09-03) ---
+// Até aqui o Catálogo Completo tinha UM template visual só (o "estilo
+// elétrica", calibrado a partir do 3-RHO.pdf original — ver TITULO_FONTE/
+// CAIXA_CODIGO_FUNDO/COLS_COMPLETO/ROWS_POR_PAGINA_COMPLETO acima, e o
+// histórico de comentários no topo do arquivo). Usuário mandou um 2º
+// conjunto de mockups (grade com guias de medição do CorelDRAW, igual à
+// técnica já usada pra calibrar o estilo elétrica) pra um "estilo
+// mecânica" — usado no catálogo do fabricante PERFECT (ver
+// _estiloCatalogoCompleto abaixo). Medido pixel a pixel nos mockups
+// ("Marcação de Cards de Produtos Mecânica - 01/02.png", 406×577 —
+// proporção A4 quase exata, 0.704 vs 0.707 real):
+//   - Selo do código: NÃO é mais um selo pequeno ajustado ao texto (como
+//     no estilo elétrica, ver CAIXA_CODIGO_FUNDO) — é uma barra AMARELA
+//     que ocupa a largura inteira do card, texto centralizado.
+//   - Cores medidas direto nos pixels do mockup (amostra em x=350,
+//     y=74-86 pra amarelo/laranja, y=39-52 pra navy do título de seção):
+//     amarelo #ffca01, laranja/vermelho #f1471b (acento, não usado ainda
+//     nesta 1ª versão — ver limitações no PR), navy #001760.
+//   - Grade: mesmas 4 colunas do estilo elétrica (COLS_COMPLETO já serve,
+//     não precisa de uma constante de colunas separada), mas só 4 linhas
+//     por página (era 5) — cabeçalho "PERFECT AUTOMOTIVE" do mockup é mais
+//     alto que a cunha fina do cabeçalho elétrica, sobra menos altura útil.
+//   - Fonte do título de seção: arquivo novo enviado junto (Montserrat
+//     ExtraBold, family completa baixada do Google Fonts pelo usuário —
+//     bem maior que os outros .ttf estáticos deste projeto, 191KB vs
+//     ~35-49KB, mas ainda um TTF estático comum, registra normal no
+//     pdfkit).
+// LIMITAÇÃO CONHECIDA (documentada no PR): o cabeçalho/rodapé de PÁGINA
+// (arte "PERFECT AUTOMOTIVE" cheia, cunha decorativa, rodapé da marca)
+// ainda NÃO tem asset próprio — o usuário confirmou que "já temos o
+// design das páginas" e que o pedido desta rodada é especificamente
+// alinhar os CARDS às grades tracejadas, não extrair/recriar a arte de
+// cabeçalho a partir do mockup (que tem linhas de medição sobrepostas,
+// não é arte limpa). Catálogo do fabricante PERFECT continua usando
+// CABECALHO_IMG/RODAPE_IMG (arte Rildon padrão) até o usuário mandar a
+// arte definitiva — só o GRID DE CARDS (selo, cores, 4×4) e o TÍTULO DE
+// SEÇÃO (barra navy) usam o estilo novo.
+const MECANICA_BADGE_FUNDO = "#ffca01";
+const MECANICA_BADGE_TEXTO = "#001760";
+const MECANICA_TITULO_FUNDO = "#001760";
+const MECANICA_TITULO_TEXTO = "#ffffff";
+const ROWS_POR_PAGINA_COMPLETO_MECANICA = 4;
+const MECANICA_TITULO_FONTE_ARQUIVO = path.join(__dirname, "../assets/fonts/Montserrat-ExtraBold.ttf");
+const MECANICA_TITULO_FONTE = "Montserrat-ExtraBold";
+
+// Decide qual estilo visual o Catálogo Completo usa pra um fabricante —
+// fixo por fabricante (decisão do usuário: "3RHO sempre usa o template
+// elétrica, PERFECT sempre usa o template mecânica"). Qualquer fabricante
+// que não seja PERFECT cai no estilo elétrica (comportamento de sempre,
+// nenhuma mudança pros outros ~3600 fabricantes cadastrados). Comparação
+// por "includes" (não igualdade exata) pra tolerar variação de digitação
+// no nome do fabricante extraído do nome do produto (ver
+// catalogo-x2.service.js) — ex.: "PERFECT" isolado ou dentro de um nome
+// mais longo continuam batendo.
+function _estiloCatalogoCompleto(fabricante) {
+  return String(fabricante || "").toUpperCase().includes("PERFECT") ? "mecanica" : "eletrica";
+}
+
 // Pedido do usuário (2026-08-27): "esse catalogo que estou usando de
 // referencia [3-RHO.pdf original], observe as descriçoes e como estão as
 // aplicações, a ideia e que fique exatamente igual". O selo/descrição/
@@ -1360,7 +1418,7 @@ function _desenharAplicacao(doc, textoOriginal, x, y, largura, altura, marcaPrio
   doc.restore();
 }
 
-function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth, photoBoxHeight, marcaAtual = null, preco = null) {
+function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth, photoBoxHeight, marcaAtual = null, preco = null, estilo = "eletrica") {
   const larguraConteudo = photoBoxWidth; // = cardWidth - PAD_CARD*2, já calculado em _geometriaGrid
   const xConteudo = x + PAD_CARD;
   const yTopo = y + PAD_CARD;
@@ -1375,28 +1433,62 @@ function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight
   // (_ajustarFonteSeloParaCaber logo abaixo) é uma propriedade do SELO em
   // si, não do código específico que está nele — vale do mesmo jeito.
   const rotulo = _rotuloProduto(produto);
-  // 2026-08-27: "por mais que ele seja grande nunca deixe '...' sempre
-  // coloque completo nem que precise reduzir tamanho" — em vez de cortar
-  // com ellipsis quando o texto não cabe em larguraMaximaSelo, encolhe o
-  // fontSize até caber (_ajustarFonteSeloParaCaber); a caixa então se
-  // ajusta exatamente ao texto (já garantido caber), nunca corta. Sem mais
-  // descrição disputando espaço na mesma linha, o teto pode ser bem mais
-  // generoso (85% em vez de 50%) — só entra em jogo em código raro/enorme.
-  const larguraMaximaSelo = larguraConteudo * 0.85;
-  const { tamanho: tamanhoSelo, largura: larguraTextoSelo } = _ajustarFonteSeloParaCaber(doc, rotulo, larguraMaximaSelo);
-  const larguraSelo = larguraTextoSelo + CAIXA_CODIGO_PAD_H * 2 + 1.5;
-  doc.font(TITULO_FONTE).fontSize(tamanhoSelo);
-  const alturaLinhaSelo = doc.currentLineHeight();
-  const alturaSelo = alturaLinhaSelo + CAIXA_CODIGO_PAD_V * 2;
 
-  doc.rect(xConteudo, yTopo, larguraSelo, alturaSelo).fillColor(CAIXA_CODIGO_FUNDO).fill();
-  doc.fillColor(CAIXA_CODIGO_TEXTO).font(TITULO_FONTE).fontSize(tamanhoSelo)
-    .text(rotulo, xConteudo + CAIXA_CODIGO_PAD_H, yTopo + CAIXA_CODIGO_PAD_V, {
-      width: larguraSelo - CAIXA_CODIGO_PAD_H * 2,
-      height: alturaLinhaSelo,
-      lineBreak: false,
-      align: "center",
-    });
+  // larguraSelo também declarada no escopo de fora (não só dentro do else)
+  // porque _desenharBadgePreco logo abaixo precisa dela pra posicionar o
+  // preço ENCOSTADO no selo, não importa qual estilo desenhou o selo.
+  let alturaSelo;
+  let larguraSelo;
+  if (estilo === "mecanica") {
+    // Estilo mecânica (fabricante PERFECT, pedido do usuário 2026-09-03):
+    // selo vira uma BARRA que ocupa a largura INTEIRA do card (medido no
+    // mockup — não é mais um selo ajustado ao texto, ver estilo elétrica
+    // logo abaixo), fundo amarelo/texto navy (MECANICA_BADGE_FUNDO/TEXTO).
+    // Mesma regra de nunca truncar o código (_ajustarFonteSeloParaCaber),
+    // só que aqui a largura disponível já É a largura do card inteiro, não
+    // precisa calcular a largura do texto pra dimensionar a caixa.
+    const { tamanho: tamanhoSeloMec } = _ajustarFonteSeloParaCaber(doc, rotulo, larguraConteudo * 0.9);
+    doc.font(TITULO_FONTE).fontSize(tamanhoSeloMec);
+    const alturaLinhaSeloMec = doc.currentLineHeight();
+    alturaSelo = alturaLinhaSeloMec + CAIXA_CODIGO_PAD_V * 2;
+    larguraSelo = larguraConteudo; // barra ocupa o card inteiro, ver comentário acima
+
+    doc.rect(xConteudo, yTopo, larguraConteudo, alturaSelo).fillColor(MECANICA_BADGE_FUNDO).fill();
+    doc.fillColor(MECANICA_BADGE_TEXTO).font(TITULO_FONTE).fontSize(tamanhoSeloMec)
+      .text(rotulo, xConteudo, yTopo + CAIXA_CODIGO_PAD_V, {
+        width: larguraConteudo,
+        height: alturaLinhaSeloMec,
+        lineBreak: false,
+        align: "center",
+      });
+  } else {
+    // Estilo elétrica (padrão — todo fabricante que não seja PERFECT, ver
+    // _estiloCatalogoCompleto): selo pequeno, largura ajustada ao texto do
+    // código, canto superior esquerdo do card. Comportamento de sempre,
+    // sem mudança nenhuma.
+    // 2026-08-27: "por mais que ele seja grande nunca deixe '...' sempre
+    // coloque completo nem que precise reduzir tamanho" — em vez de cortar
+    // com ellipsis quando o texto não cabe em larguraMaximaSelo, encolhe o
+    // fontSize até caber (_ajustarFonteSeloParaCaber); a caixa então se
+    // ajusta exatamente ao texto (já garantido caber), nunca corta. Sem mais
+    // descrição disputando espaço na mesma linha, o teto pode ser bem mais
+    // generoso (85% em vez de 50%) — só entra em jogo em código raro/enorme.
+    const larguraMaximaSelo = larguraConteudo * 0.85;
+    const { tamanho: tamanhoSelo, largura: larguraTextoSelo } = _ajustarFonteSeloParaCaber(doc, rotulo, larguraMaximaSelo);
+    larguraSelo = larguraTextoSelo + CAIXA_CODIGO_PAD_H * 2 + 1.5;
+    doc.font(TITULO_FONTE).fontSize(tamanhoSelo);
+    const alturaLinhaSelo = doc.currentLineHeight();
+    alturaSelo = alturaLinhaSelo + CAIXA_CODIGO_PAD_V * 2;
+
+    doc.rect(xConteudo, yTopo, larguraSelo, alturaSelo).fillColor(CAIXA_CODIGO_FUNDO).fill();
+    doc.fillColor(CAIXA_CODIGO_TEXTO).font(TITULO_FONTE).fontSize(tamanhoSelo)
+      .text(rotulo, xConteudo + CAIXA_CODIGO_PAD_H, yTopo + CAIXA_CODIGO_PAD_V, {
+        width: larguraSelo - CAIXA_CODIGO_PAD_H * 2,
+        height: alturaLinhaSelo,
+        lineBreak: false,
+        align: "center",
+      });
+  }
 
   // --- Preço promocional (canto superior direito, ver _desenharBadgePreco)
   // — só desenha se `preco` foi passado (Catálogo Promocional); nos outros
@@ -1500,11 +1592,11 @@ function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight
 // catálogo comum mantém o desenho original (selo sobre a foto + nome
 // abaixo), Catálogo Completo usa o cabeçalho novo (selo+descrição lado a
 // lado + OEM em vermelho + foto maior + aplicação em preto).
-function _desenharCard(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth, photoBoxHeight, comAplicacao = false, marcaAtual = null, preco = null) {
+function _desenharCard(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth, photoBoxHeight, comAplicacao = false, marcaAtual = null, preco = null, estilo = "eletrica") {
   _desenharCardVidro(doc, x, y, cardWidth, cardHeight);
 
   if (comAplicacao) {
-    _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth, photoBoxHeight, marcaAtual, preco);
+    _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth, photoBoxHeight, marcaAtual, preco, estilo);
     return;
   }
 
@@ -1550,7 +1642,7 @@ function _desenharCard(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth,
   doc.font("Helvetica");
 }
 
-function _desenharCabecalho(doc, tituloBusca) {
+function _desenharCabecalho(doc, tituloBusca, estilo = "eletrica") {
   const w = doc.page.width;
 
   // Pedido do usuário (2026-07-29): "coloque exatamente isso sem alterações
@@ -1588,6 +1680,30 @@ function _desenharCabecalho(doc, tituloBusca) {
   // sobreposto à imagem, então não tem como "encostar" no cinza da arte.
   const tituloY = HEADER_HEIGHT + TITULO_GAP_TOPO;
   const tituloLargura = w - PAGE_MARGIN * 2;
+
+  // Estilo "Mecânica" (pedido do usuário, 2026-09-03, fabricante PERFECT —
+  // ver _estiloCatalogoCompleto/MECANICA_* no topo do arquivo): barra sólida
+  // azul-marinho ocupando a MESMA largura da grade de cards (tituloX/
+  // tituloLargura, já alinhados ao PAGE_MARGIN igual o grid — pedido
+  // literal do usuário foi "alinhar os cards de acordo com as grades
+  // tracejadas", não redesenhar a arte do cabeçalho), texto branco em
+  // Montserrat ExtraBold, sem sombra (a sombra do estilo elétrica existe
+  // pra destacar texto colorido sobre o cabeçalho cinza; aqui o texto já
+  // tem contraste total contra o navy). LIMITAÇÃO conhecida: a arte do
+  // cabeçalho/rodapé (CABECALHO_IMG) continua sendo a genérica Rildon —
+  // usuário confirmou "já temos o design das páginas", fora de escopo
+  // deste round.
+  if (estilo === "mecanica") {
+    const barraAltura = TITULO_TAMANHO + 10;
+    const barraY = tituloY - 3;
+    doc.rect(tituloX, barraY, tituloLargura, barraAltura).fill(MECANICA_TITULO_FUNDO);
+    doc.fillColor(MECANICA_TITULO_TEXTO).font(MECANICA_TITULO_FONTE).fontSize(TITULO_TAMANHO)
+      .text(tituloTexto, tituloX + 10, barraY + (barraAltura - TITULO_TAMANHO) / 2 - 1, {
+        width: tituloLargura - 20,
+      });
+    doc.fillColor("#111827").font("Helvetica");
+    return;
+  }
 
   // Sombra simples (pedido do usuário 2026-07-30): cópia do texto em cinza
   // escuro, levemente deslocada embaixo/direita, desenhada ANTES do texto
@@ -2351,6 +2467,12 @@ async function gerarPdfCatalogo(produtos, tituloBusca, destino) {
  * topo do arquivo.
  */
 async function gerarPdfCatalogoCompleto(produtos, fabricante, destino) {
+  // Estilo "Mecânica" (pedido do usuário, 2026-09-03) — fixo por fabricante,
+  // ver _estiloCatalogoCompleto/MECANICA_* no topo do arquivo. Todo o resto
+  // desta função continua igual pro estilo "eletrica" (padrão, ~3600
+  // fabricantes restantes).
+  const estilo = _estiloCatalogoCompleto(fabricante);
+
   const doc = new PDFDocument({ size: "A4", margin: 0, autoFirstPage: false, bufferPages: true });
   doc.pipe(destino);
   doc.registerFont(TITULO_FONTE, TITULO_FONTE_ARQUIVO);
@@ -2359,6 +2481,10 @@ async function gerarPdfCatalogoCompleto(produtos, fabricante, destino) {
   // busca expressa) não registra essas fontes de propósito, não é afetado.
   doc.registerFont(QUICKSAND_BOLD, QUICKSAND_BOLD_ARQUIVO);
   doc.registerFont(QUICKSAND_MEDIUM, QUICKSAND_MEDIUM_ARQUIVO);
+  // Só precisa existir no documento quando o estilo mecânica realmente
+  // desenhar algo com ela (_desenharCabecalho/_desenharCardCatalogoCompleto),
+  // mas registrar sempre é barato e evita esquecer em algum branch futuro.
+  doc.registerFont(MECANICA_TITULO_FONTE, MECANICA_TITULO_FONTE_ARQUIVO);
 
   const grupos = _agruparPorLinha(produtos);
 
@@ -2383,7 +2509,13 @@ async function gerarPdfCatalogoCompleto(produtos, fabricante, destino) {
   // ser pura/determinística).
   const alturaHeaderMarca = _alturaCabecalhoMarca(doc);
   const { sequencia, primeiroIndicePorGrupo } = _construirSequenciaConteudo(grupos);
-  const geometriaCompleto = _geometriaGrid(doc, COLS_COMPLETO, ROWS_POR_PAGINA_COMPLETO, true);
+  // 2026-09-03: linhas por página variam por estilo (medido no mockup —
+  // Mecânica só cabe 4, não 5, ver ROWS_POR_PAGINA_COMPLETO_MECANICA). Único
+  // ponto que precisa saber disso — _calcularLayoutConteudo é puramente
+  // geométrica (ver comentário na função), então index/paginação real se
+  // ajustam sozinhos a partir daqui.
+  const rowsCompleto = estilo === "mecanica" ? ROWS_POR_PAGINA_COMPLETO_MECANICA : ROWS_POR_PAGINA_COMPLETO;
+  const geometriaCompleto = _geometriaGrid(doc, COLS_COMPLETO, rowsCompleto, true);
   const { posicoes, preenchimentoFinal } = _calcularLayoutConteudo(sequencia, geometriaCompleto, alturaHeaderMarca);
   const paginaInicialPorGrupo = primeiroIndicePorGrupo.map(
     (idx) => paginasIndice + 1 + posicoes[idx].pagina
@@ -2449,7 +2581,7 @@ async function gerarPdfCatalogoCompleto(produtos, fabricante, destino) {
       paginaLocalAtual = pos.pagina;
       doc.addPage();
       pagina += 1;
-      _desenharCabecalho(doc, bloco.linha);
+      _desenharCabecalho(doc, bloco.linha, estilo);
       _desenharRodape(doc, pagina);
     }
 
@@ -2471,7 +2603,8 @@ async function gerarPdfCatalogoCompleto(produtos, fabricante, destino) {
         _desenharCard(
           doc, bloco.produto, pos.x, pos.y,
           geometriaCompleto.cardWidth, geometriaCompleto.cardHeight,
-          geometriaCompleto.photoBoxWidth, geometriaCompleto.photoBoxHeight, true, bloco.marca
+          geometriaCompleto.photoBoxWidth, geometriaCompleto.photoBoxHeight, true, bloco.marca,
+          null, estilo
         );
       }
     }

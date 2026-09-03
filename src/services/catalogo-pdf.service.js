@@ -367,31 +367,7 @@ const TITULO_GAP_TOPO = 8;
 // encostando nos produtos, deixe a distância parecida como a das colunas" —
 // a distância entre o título e o topo dos cards é EXATAMENTE o mesmo valor
 // do respiro entre colunas (GAP), em vez de um número arbitrário.
-//
-// 2026-09-03 (pedido do usuário, olhando um PDF real de Catálogo Completo):
-// "puxe mais pra baixo com um tipo de margin-bottom do cabeçalho pra
-// arrastar da linha pro último card um pouco mais pra baixo" — o respiro
-// original (=GAP, 10pt) ficava justo demais entre o título/cabeçalho de
-// marca e a 1ª linha de cards. Valor dobrado (+10pt) — like um
-// margin-bottom extra só no cabeçalho, empurra a grade inteira (de
-// AREA_TOPO_Y pra baixo) sem mudar nada dentro da grade em si (GAP entre
-// cards continua 10pt). Afeta os 3 fluxos que usam AREA_TOPO_Y
-// (gerarPdfCatalogo, gerarPdfCatalogoCompleto elétrica/mecânica) — o
-// Catálogo Promocional tem seu próprio cálculo de área/respiro
-// (alturaCabecalhoPromo + GAP em gerarPdfCatalogoPromocional), não é
-// afetado por esta constante.
-//
-// 2026-09-03 (mesmo dia, pedido seguinte, olhando outro PDF real —
-// "INTERRUPTOR DE EMBREAGEM"): +10pt não foi suficiente, pediu mais um
-// pouco. +10pt de novo (total +20pt sobre o GAP original de 10pt).
-//
-// 2026-09-03 (mesmo dia, 3º pedido, olhando "INTERRUPTOR DE DIREÇÃO
-// HIDRÁULICA"): "arraste linha + cards um pouco mais próximo do rodapé
-// pra dar uma folga entre cabeçalho e linha" — mais +10pt (total +30pt),
-// desta vez em conjunto com MARCA_HEADER_GAP_DEPOIS reduzido (acima),
-// pra empurrar o conteúdo mais perto do rodapé sem colar cabeçalho de
-// marca nos cards.
-const TITULO_GAP_CARDS = GAP + 30;
+const TITULO_GAP_CARDS = GAP;
 
 // Pedido do usuário (2026-07-28): 4 linhas de card por página em A4 (antes
 // cabiam só 3). A altura da foto NÃO é mais uma escala fixa — é calculada
@@ -856,16 +832,7 @@ const MARCA_HEADER_FONTE = 12;
 // cabeçalho novo (separa do sub-grupo anterior), pouco respiro DEPOIS
 // (liga o cabeçalho às suas próprias cards).
 const MARCA_HEADER_GAP_ANTES = 18; // espaço extra antes de um cabeçalho de marca que não é o 1º da página
-// 2026-09-03 (pedido do usuário, olhando outro PDF real —
-// "INTERRUPTOR DE DIREÇÃO HIDRÁULICA"): "reduza um pouco mais o espaço
-// entre a linha e os cards, arraste linha + cards um pouco mais próximo
-// do rodapé pra dar uma folga entre cabeçalho e linha" — dois ajustes
-// juntos, mesmo pedido: cabeçalho de marca (AUDI/CITROEN/FORD) mais
-// colado nos próprios cards (6pt → 3pt), TITULO_GAP_CARDS (acima, entre
-// o título/cabeçalho principal e a 1ª linha) aumentado de novo pra
-// compensar — o conteúdo desce mais perto do rodapé, sobrando folga no
-// topo.
-const MARCA_HEADER_GAP_DEPOIS = 3; // espaço entre o texto do cabeçalho e a 1ª linha de cards do sub-grupo
+const MARCA_HEADER_GAP_DEPOIS = 6; // espaço entre o texto do cabeçalho e a 1ª linha de cards do sub-grupo
 // Pedido do usuário (2026-08-28, follow-up "se caso uma peça aparecer
 // para ford e também kia, deixe os duplicados"): produto sem marca de
 // veículo identificável em aplicacaoOrganizada (campo vazio, ou nenhum

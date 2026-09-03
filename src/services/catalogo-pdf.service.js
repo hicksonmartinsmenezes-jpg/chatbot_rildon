@@ -1883,14 +1883,45 @@ function _agruparPorFabricante(produtos) {
 // sem derrubar as marcas boas do mesmo produto.
 
 
+// 2026-09-03 (pedido do usuário: "muitos produtos estão sendo direcionados
+// a outras aplicações mesmo tendo marcas nas suas aplicações [...] preciso
+// também da marca Universal"): investigando o cache real
+// (aplicacao-ia-cache.json), a IA (PROMPT_APLICACAO_SISTEMA em
+// ai.service.js) nem sempre devolve o formato "MARCA: modelo" — quando não
+// há modelo/especificação pra listar, ela devolve só o nome cru da marca,
+// às vezes várias separadas por ";" sem NENHUM ":" na frase inteira. Casos
+// reais encontrados no cache: "UNIVERSAL", "MBB", "AGRALE",
+// "UNIVERSAL; GM; FIAT; FORD; PEUGEOT; VW", "KOMATSU; MERCEDES BENZ" — o
+// regex antigo (só `^([^:]+):`) não reconhecia nenhum desses como marca,
+// então o produto inteiro caía em MARCA_OUTRAS mesmo citando marca(s) reais
+// (inclusive "Universal", que é tratado como um termo genérico válido pela
+// própria regra 3 do prompt, não uma ausência de marca).
+// Fix: um segmento sem ":" agora também vira marca — o segmento inteiro,
+// tal como veio — DESDE QUE pareça um nome de marca/termo curto, não uma
+// frase descritiva de verdade (ex. "Aplicado no reservatório de água do
+// radiador", "Cabos BCFLEX Auto recomendados para..."). Heurística: até 50
+// caracteres e sem terminar em pontuação de frase (. ! ?) — suficiente pra
+// cobrir os casos reais do cache sem capturar prosa solta como marca falsa.
+const MARCA_SEGMENTO_SEM_DOISPONTOS_MAX_CHARS = 50;
 function _extrairMarcas(textoOriginal) {
   if (!textoOriginal) return [];
   const texto = _normalizarMarcasTexto(textoOriginal);
   const marcas = [];
   texto.split(/;\s*/).filter(Boolean).forEach((parte) => {
-    const match = parte.match(/^([^:]+):/);
-    if (!match) return;
-    const marca = match[1].trim().toUpperCase();
+    const trimmed = parte.trim();
+    const match = trimmed.match(/^([^:]+):/);
+    let marca;
+    if (match) {
+      marca = match[1].trim().toUpperCase();
+    } else if (
+      trimmed.length > 0 &&
+      trimmed.length <= MARCA_SEGMENTO_SEM_DOISPONTOS_MAX_CHARS &&
+      !/[.!?]$/.test(trimmed)
+    ) {
+      marca = trimmed.toUpperCase();
+    } else {
+      return;
+    }
     if (marca && !marcas.includes(marca)) marcas.push(marca);
   });
   return marcas;

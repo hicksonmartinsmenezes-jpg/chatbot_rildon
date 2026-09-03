@@ -380,7 +380,11 @@ const TITULO_GAP_TOPO = 8;
 // Catálogo Promocional tem seu próprio cálculo de área/respiro
 // (alturaCabecalhoPromo + GAP em gerarPdfCatalogoPromocional), não é
 // afetado por esta constante.
-const TITULO_GAP_CARDS = GAP + 10;
+//
+// 2026-09-03 (mesmo dia, pedido seguinte, olhando outro PDF real —
+// "INTERRUPTOR DE EMBREAGEM"): +10pt não foi suficiente, pediu mais um
+// pouco. +10pt de novo (total +20pt sobre o GAP original de 10pt).
+const TITULO_GAP_CARDS = GAP + 20;
 
 // Pedido do usuário (2026-07-28): 4 linhas de card por página em A4 (antes
 // cabiam só 3). A altura da foto NÃO é mais uma escala fixa — é calculada

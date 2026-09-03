@@ -1903,6 +1903,15 @@ function _agruparPorFabricante(produtos) {
 // caracteres e sem terminar em pontuação de frase (. ! ?) — suficiente pra
 // cobrir os casos reais do cache sem capturar prosa solta como marca falsa.
 const MARCA_SEGMENTO_SEM_DOISPONTOS_MAX_CHARS = 50;
+// Pedido do usuário (2026-09-03, follow-up do fix acima): "acho melhor
+// deixar Universal / Diversos" — em vez de "UNIVERSAL" e "DIVERSOS"
+// virarem dois sub-grupos separados (ou variações como "DIVERSOS
+// MOTORES", "UNIVERSAL, USO GERAL"), unifica tudo num só cabeçalho
+// canônico. Casada em cima do valor já extraído (funciona pros dois
+// ramos da função — com ":" ou sem), então cobre tanto "Universal:
+// todos os modelos" quanto o "UNIVERSAL" cru do cache.
+const MARCA_ALIAS_UNIVERSAL_REGEX = /^(universal|diversos?)\b/i;
+const MARCA_UNIVERSAL_CANONICA = "UNIVERSAL / DIVERSOS";
 function _extrairMarcas(textoOriginal) {
   if (!textoOriginal) return [];
   const texto = _normalizarMarcasTexto(textoOriginal);
@@ -1922,6 +1931,7 @@ function _extrairMarcas(textoOriginal) {
     } else {
       return;
     }
+    if (MARCA_ALIAS_UNIVERSAL_REGEX.test(marca)) marca = MARCA_UNIVERSAL_CANONICA;
     if (marca && !marcas.includes(marca)) marcas.push(marca);
   });
   return marcas;

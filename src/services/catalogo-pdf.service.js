@@ -384,7 +384,14 @@ const TITULO_GAP_TOPO = 8;
 // 2026-09-03 (mesmo dia, pedido seguinte, olhando outro PDF real —
 // "INTERRUPTOR DE EMBREAGEM"): +10pt não foi suficiente, pediu mais um
 // pouco. +10pt de novo (total +20pt sobre o GAP original de 10pt).
-const TITULO_GAP_CARDS = GAP + 20;
+//
+// 2026-09-03 (mesmo dia, 3º pedido, olhando "INTERRUPTOR DE DIREÇÃO
+// HIDRÁULICA"): "arraste linha + cards um pouco mais próximo do rodapé
+// pra dar uma folga entre cabeçalho e linha" — mais +10pt (total +30pt),
+// desta vez em conjunto com MARCA_HEADER_GAP_DEPOIS reduzido (acima),
+// pra empurrar o conteúdo mais perto do rodapé sem colar cabeçalho de
+// marca nos cards.
+const TITULO_GAP_CARDS = GAP + 30;
 
 // Pedido do usuário (2026-07-28): 4 linhas de card por página em A4 (antes
 // cabiam só 3). A altura da foto NÃO é mais uma escala fixa — é calculada
@@ -849,7 +856,16 @@ const MARCA_HEADER_FONTE = 12;
 // cabeçalho novo (separa do sub-grupo anterior), pouco respiro DEPOIS
 // (liga o cabeçalho às suas próprias cards).
 const MARCA_HEADER_GAP_ANTES = 18; // espaço extra antes de um cabeçalho de marca que não é o 1º da página
-const MARCA_HEADER_GAP_DEPOIS = 6; // espaço entre o texto do cabeçalho e a 1ª linha de cards do sub-grupo
+// 2026-09-03 (pedido do usuário, olhando outro PDF real —
+// "INTERRUPTOR DE DIREÇÃO HIDRÁULICA"): "reduza um pouco mais o espaço
+// entre a linha e os cards, arraste linha + cards um pouco mais próximo
+// do rodapé pra dar uma folga entre cabeçalho e linha" — dois ajustes
+// juntos, mesmo pedido: cabeçalho de marca (AUDI/CITROEN/FORD) mais
+// colado nos próprios cards (6pt → 3pt), TITULO_GAP_CARDS (acima, entre
+// o título/cabeçalho principal e a 1ª linha) aumentado de novo pra
+// compensar — o conteúdo desce mais perto do rodapé, sobrando folga no
+// topo.
+const MARCA_HEADER_GAP_DEPOIS = 3; // espaço entre o texto do cabeçalho e a 1ª linha de cards do sub-grupo
 // Pedido do usuário (2026-08-28, follow-up "se caso uma peça aparecer
 // para ford e também kia, deixe os duplicados"): produto sem marca de
 // veículo identificável em aplicacaoOrganizada (campo vazio, ou nenhum

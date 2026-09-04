@@ -1383,6 +1383,27 @@ function _bboxConteudoFoto(buffer, mimetype, cacheKey = null) {
 // (imagem inteira). Precisa de clip porque a imagem inteira (com a
 // margem branca embutida) fica MAIOR que o quadro depois do zoom no
 // conteúdo — sem isso vazaria por cima dos cards vizinhos.
+// BUG REAL corrigido 2026-09-04 (usuário reportou "catálogo completo 12M
+// com cards em branco", investigado com bisecção binária desenhando cada
+// pedaço do card isoladamente até isolar o ponto exato da quebra — ver
+// PR/Issue): fotos com EXIF malformado (comum em parte do acervo real de
+// fotos da loja) fazem `doc.image()` do pdfkit lançar
+// `RangeError [ERR_OUT_OF_RANGE]` de dentro do parser de EXIF que ele usa
+// internamente (jpeg-exif) — não é um erro nosso, é uma foto real com
+// metadado quebrado. O código JÁ tinha um try/catch no chamador
+// (_desenharCardCatalogoCompleto) pra cair em "sem foto" quando isso
+// acontece, então a EXCEÇÃO em si sempre foi tratada — o bug real é que
+// essa exceção acontecia DEPOIS de doc.save()+clip() e ANTES de
+// doc.restore() (ambos abaixo), então o `restore()` nunca rodava: o clip
+// (um retângulo pequeno, só a caixa da foto) ficava PRESO ativo pro resto
+// da página inteira — todo card/cabeçalho de marca/preenchimento desenhado
+// DEPOIS daquele produto específico caía fora da área do clip e sumia
+// (página em branco, mesmo com dado computado certinho — confirmado
+// comparando o layout pré-calculado com o desenho real). Fix: try/finally
+// garante que doc.restore() sempre roda, throw ou não — o catch de fora
+// continua cuidando do fallback "sem foto" pra ESSE produto, mas o
+// vazamento de clip que quebrava TODOS os produtos seguintes na página
+// para de acontecer.
 function _desenharFotoAjustada(doc, buffer, mimetype, x, y, boxWidth, boxHeight, cacheKey = null) {
   const bbox = _bboxConteudoFoto(buffer, mimetype, cacheKey);
   if (!bbox) {
@@ -1395,9 +1416,12 @@ function _desenharFotoAjustada(doc, buffer, mimetype, x, y, boxWidth, boxHeight,
   const xDesenho = x + (boxWidth - bbox.width * escala) / 2 - bbox.x * escala;
   const yDesenho = y + (boxHeight - bbox.height * escala) / 2 - bbox.y * escala;
   doc.save();
-  doc.rect(x, y, boxWidth, boxHeight).clip();
-  doc.image(buffer, xDesenho, yDesenho, { width: larguraDesenho, height: alturaDesenho });
-  doc.restore();
+  try {
+    doc.rect(x, y, boxWidth, boxHeight).clip();
+    doc.image(buffer, xDesenho, yDesenho, { width: larguraDesenho, height: alturaDesenho });
+  } finally {
+    doc.restore();
+  }
 }
 
 // 2026-08-28: pedido do usuário "na aplicação sempre que couber inteiro

@@ -741,6 +741,104 @@ function _estiloCatalogoCompleto(fabricante, tipoCompleto = null) {
   return String(fabricante || "").toUpperCase().includes("PERFECT") ? "mecanica" : "eletrica";
 }
 
+// Pedido do usuário (2026-09-04, arquivo de referência "Mecânica.pdf" —
+// exemplo real com o fabricante "Filtros Brasil"): fundo em degradê azul
+// claro cobrindo a página INTEIRA (não só uma faixa no cabeçalho), logo do
+// FABRICANTE no topo (não a arte genérica Rildon), e rodapé trocado pra
+// "Grupo Rildon" + "OMRE+ Distribuidora de Peças Automotivas" — só nos
+// catálogos Mecânica; Elétrica continua 100% com CABECALHO_IMG/RODAPE_IMG
+// genéricos de sempre (decisão explícita do usuário nas 3 perguntas de
+// confirmação: fundo página inteira = sim, logo por fabricante = sim,
+// rodapé só na Mecânica = sim).
+//
+// Cores do degradê amostradas por pixel no PDF de referência (não é uma
+// réplica pixel-a-pixel — a arte original tem uma textura diagonal sutil
+// que o pdfkit não reproduz sem complexidade desproporcional ao ganho
+// visual; os tons/posições dos degradês batem com o original: claro nas
+// bordas topo/fundo, mais azulado no meio e antes do rodapé).
+const MECANICA_GRADIENTE_STOPS = [
+  { offset: 0, color: "#ffffff" },
+  { offset: 0.06, color: "#c7e4f2" },
+  { offset: 0.5, color: "#f7fbfe" },
+  { offset: 0.92, color: "#bbe1f4" },
+  { offset: 1, color: "#ffffff" },
+];
+
+// Mesmo navy da barra de título Mecânica (MECANICA_TITULO_FUNDO) — usado
+// também na linha fina do cabeçalho/rodapé Mecânica v2, pra manter as
+// cores consistentes entre os elementos novos e os que já existiam.
+const MECANICA_LINHA_FINA_COR = MECANICA_TITULO_FUNDO;
+const MECANICA_LINHA_FINA_ESPESSURA = 1.9; // ~8px @300dpi na referência
+
+const MECANICA_RODAPE_LOGO_RILDON_IMG = fs.readFileSync(path.join(__dirname, "../assets/catalogo-mecanica-rodape-grupo-rildon.png"));
+const MECANICA_RODAPE_LOGO_RILDON_RATIO = 473 / 125;
+const MECANICA_RODAPE_LOGO_OMRE_IMG = fs.readFileSync(path.join(__dirname, "../assets/catalogo-mecanica-rodape-omre.png"));
+const MECANICA_RODAPE_LOGO_OMRE_RATIO = 447 / 129;
+// Altura reservada pro rodapé Mecânica (linha navy + logos) — medida por
+// pixel na referência (~56pt do fim da página até a linha).
+const MECANICA_RODAPE_ALTURA = 58;
+
+// Registry de logo por fabricante pro cabeçalho Mecânica (pedido do
+// usuário: "logo de cada fabricante", 2026-09-04). Vazio de propósito:
+// nenhum arquivo de logo LIMPO (sem a grade de medição/marca d'água que
+// veio nas referências) foi fornecido ainda pra nenhum fabricante — a
+// tentativa de recortar a logo da PERFECT a partir do print de medição
+// saiu contaminada com as linhas tracejadas por cima, então não foi usada.
+// _logoFabricante() cai no fallback (nome do fabricante em texto,
+// MECANICA_TITULO_FONTE) até o usuário enviar arquivo limpo (PNG/SVG,
+// sem marca d'água) — colocar em src/assets/logos-fabricante/<chave>.png
+// e registrar aqui: "perfect": { img: fs.readFileSync(...), ratio: W/H }.
+const MECANICA_LOGOS_FABRICANTE = {};
+
+function _chaveLogoFabricante(fabricante) {
+  return String(fabricante || "")
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .toLowerCase().trim().replace(/\s+/g, "-");
+}
+
+function _logoFabricante(fabricante) {
+  return MECANICA_LOGOS_FABRICANTE[_chaveLogoFabricante(fabricante)] || null;
+}
+
+// Fundo em degradê cobrindo a página inteira — chamada uma vez por página
+// nova, ANTES de qualquer outro desenho (cabeçalho/cards/rodapé ficam por
+// cima). Só usada quando estilo === "mecanica" (ver chamadas em
+// gerarPdfCatalogoCompleto).
+function _desenharFundoGradienteMecanica(doc) {
+  const w = doc.page.width;
+  const h = doc.page.height;
+  const gradiente = doc.linearGradient(0, 0, 0, h);
+  MECANICA_GRADIENTE_STOPS.forEach((s) => gradiente.stop(s.offset, s.color));
+  doc.rect(0, 0, w, h).fill(gradiente);
+}
+
+// Logo do fabricante (ou fallback em texto) centralizada na área do
+// cabeçalho, seguida da linha fina navy — compartilhada entre
+// _desenharCabecalho e _desenharCabecalhoIndice (estilo mecânica).
+function _desenharLogoCabecalhoMecanica(doc, fabricante) {
+  const w = doc.page.width;
+  const logo = _logoFabricante(fabricante);
+  const alturaMax = HEADER_HEIGHT - 16;
+  const larguraMax = 260;
+  if (logo) {
+    let largura = larguraMax;
+    let altura = largura / logo.ratio;
+    if (altura > alturaMax) {
+      altura = alturaMax;
+      largura = altura * logo.ratio;
+    }
+    doc.image(logo.img, (w - largura) / 2, (HEADER_HEIGHT - altura) / 2, { width: largura, height: altura });
+  } else {
+    // Fallback: nome do fabricante em texto (sem logo cadastrada ainda —
+    // ver MECANICA_LOGOS_FABRICANTE acima).
+    doc.font(MECANICA_TITULO_FONTE).fontSize(22).fillColor(MECANICA_TITULO_FUNDO)
+      .text(String(fabricante || "").toUpperCase(), 0, (HEADER_HEIGHT - 22) / 2, { width: w, align: "center" });
+    doc.fillColor("#111827").font("Helvetica");
+  }
+  doc.moveTo(PAGE_MARGIN, HEADER_HEIGHT).lineTo(w - PAGE_MARGIN, HEADER_HEIGHT)
+    .lineWidth(MECANICA_LINHA_FINA_ESPESSURA).strokeColor(MECANICA_LINHA_FINA_COR).stroke();
+}
+
 // Pedido do usuário (2026-08-27): "esse catalogo que estou usando de
 // referencia [3-RHO.pdf original], observe as descriçoes e como estão as
 // aplicações, a ideia e que fique exatamente igual". O selo/descrição/
@@ -1651,28 +1749,39 @@ function _desenharCard(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth,
   doc.font("Helvetica");
 }
 
-function _desenharCabecalho(doc, tituloBusca, estilo = "eletrica") {
+function _desenharCabecalho(doc, tituloBusca, estilo = "eletrica", fabricante = "") {
   const w = doc.page.width;
 
-  // Pedido do usuário (2026-07-29): "coloque exatamente isso sem alterações
-  // como cabeçalho" — arte cinza/azul cobrindo a largura inteira da página,
-  // sem esticar/espremer (altura REAL calculada na proporção exata do
-  // arquivo — ver CABECALHO_IMG_ALTURA_REAL). É uma imagem opaca (sem
-  // transparência), então substitui de vez o retângulo cinza chapado que
-  // existia antes.
-  //
-  // Pedido do usuário (2026-07-30, 3ª rodada de "suba mais o cabeçalho"):
-  // desenhada em y NEGATIVO (sangria) — a imagem inteira, sem cortar/
-  // distorcer um pixel, só desenhada um pouco pra cima da borda da página;
-  // a fatia que passa de y=0 fica fora da página (invisível), então o
-  // cabeçalho aparece mais baixo sem alterar o arquivo de verdade.
-  //
-  // 2026-08-28: X e largura de desenho agora usam o zoom de bleed
-  // horizontal (ver CABECALHO_ESCALA_BLEED/CABECALHO_IMG_X_DESENHO acima) —
-  // a imagem começa um pouco antes de x=0 e termina um pouco depois de
-  // x=w, de propósito, pra empurrar a margem branca real do arquivo pra
-  // fora da página nos dois lados.
-  doc.image(CABECALHO_IMG, CABECALHO_IMG_X_DESENHO, -CABECALHO_SANGRIA_TOPO, { width: CABECALHO_IMG_LARGURA_DESENHO, height: CABECALHO_IMG_ALTURA_REAL });
+  // Pedido do usuário (2026-09-04, "Mecânica.pdf"): cabeçalho Mecânica v2
+  // usa a logo do FABRICANTE (ou fallback em texto) sobre o fundo em
+  // degradê já pintado por _desenharFundoGradienteMecanica, em vez da arte
+  // genérica Rildon — ver _desenharLogoCabecalhoMecanica. Sai ANTES de
+  // qualquer outra coisa porque troca o desenho do "topo" inteiro; a barra
+  // de título navy (mais abaixo, também condicionada a estilo==="mecanica")
+  // continua igual.
+  if (estilo === "mecanica") {
+    _desenharLogoCabecalhoMecanica(doc, fabricante);
+  } else {
+    // Pedido do usuário (2026-07-29): "coloque exatamente isso sem alterações
+    // como cabeçalho" — arte cinza/azul cobrindo a largura inteira da página,
+    // sem esticar/espremer (altura REAL calculada na proporção exata do
+    // arquivo — ver CABECALHO_IMG_ALTURA_REAL). É uma imagem opaca (sem
+    // transparência), então substitui de vez o retângulo cinza chapado que
+    // existia antes.
+    //
+    // Pedido do usuário (2026-07-30, 3ª rodada de "suba mais o cabeçalho"):
+    // desenhada em y NEGATIVO (sangria) — a imagem inteira, sem cortar/
+    // distorcer um pixel, só desenhada um pouco pra cima da borda da página;
+    // a fatia que passa de y=0 fica fora da página (invisível), então o
+    // cabeçalho aparece mais baixo sem alterar o arquivo de verdade.
+    //
+    // 2026-08-28: X e largura de desenho agora usam o zoom de bleed
+    // horizontal (ver CABECALHO_ESCALA_BLEED/CABECALHO_IMG_X_DESENHO acima) —
+    // a imagem começa um pouco antes de x=0 e termina um pouco depois de
+    // x=w, de propósito, pra empurrar a margem branca real do arquivo pra
+    // fora da página nos dois lados.
+    doc.image(CABECALHO_IMG, CABECALHO_IMG_X_DESENHO, -CABECALHO_SANGRIA_TOPO, { width: CABECALHO_IMG_LARGURA_DESENHO, height: CABECALHO_IMG_ALTURA_REAL });
+  }
 
   // Pedido do usuário (2026-07-30): removido "RILDON PEÇAS" / "Catálogo
   // Expresso" do cabeçalho — a arte de fundo já carrega a identidade visual,
@@ -1729,9 +1838,33 @@ function _desenharCabecalho(doc, tituloBusca, estilo = "eletrica") {
   doc.fillColor("#111827").font("Helvetica");
 }
 
-function _desenharRodape(doc, numeroPagina) {
+function _desenharRodape(doc, numeroPagina, estilo = "eletrica") {
   const w = doc.page.width;
   const h = doc.page.height;
+
+  // Pedido do usuário (2026-09-04, "Mecânica.pdf"): rodapé Mecânica v2 —
+  // linha fina navy + logo "Grupo Rildon" (esquerda) + "OMRE+ Distribuidora
+  // de Peças Automotivas" (direita) sobre o fundo em degradê, em vez do
+  // RODAPE_IMG genérico (que só continua nos catálogos Elétrica). Sem o
+  // triângulo branco da arte antiga — número de página vira texto simples
+  // no canto inferior direito.
+  if (estilo === "mecanica") {
+    const rodapeTop = h - MECANICA_RODAPE_ALTURA;
+    doc.moveTo(PAGE_MARGIN, rodapeTop).lineTo(w - PAGE_MARGIN, rodapeTop)
+      .lineWidth(MECANICA_LINHA_FINA_ESPESSURA).strokeColor(MECANICA_LINHA_FINA_COR).stroke();
+
+    const logoAreaY = rodapeTop + 10;
+    const logoAltura = MECANICA_RODAPE_ALTURA - 20;
+    const larguraRildon = logoAltura * MECANICA_RODAPE_LOGO_RILDON_RATIO;
+    doc.image(MECANICA_RODAPE_LOGO_RILDON_IMG, PAGE_MARGIN, logoAreaY, { width: larguraRildon, height: logoAltura });
+    const larguraOmre = logoAltura * MECANICA_RODAPE_LOGO_OMRE_RATIO;
+    doc.image(MECANICA_RODAPE_LOGO_OMRE_IMG, w - PAGE_MARGIN - larguraOmre, logoAreaY, { width: larguraOmre, height: logoAltura });
+
+    doc.fillColor(MECANICA_LINHA_FINA_COR).font("Helvetica-Bold").fontSize(12)
+      .text(String(numeroPagina), w - PAGE_MARGIN - 40, h - 22, { width: 40, align: "right", lineBreak: false });
+    doc.fillColor("#111827").font("Helvetica");
+    return;
+  }
 
   // Imagem real da logo Rildon cobrindo a largura inteira da página, sem
   // distorcer (altura já calculada na proporção exata do arquivo — ver
@@ -2324,18 +2457,28 @@ function _textoComSombra(doc, texto, x, y, cor, opcoes) {
 // Cabeçalho da(s) página(s) de índice — mesma arte de _desenharCabecalho,
 // só com o título fixo "ÍNDICE" em INDICE_TITULO_TAMANHO (36pt, pedido do
 // usuário) em vez do nome da busca em TITULO_TAMANHO (17pt).
-function _desenharCabecalhoIndice(doc) {
+function _desenharCabecalhoIndice(doc, estilo = "eletrica", fabricante = "") {
   const w = doc.page.width;
 
-  // 2026-08-28 (revertido — pedido do usuário "padronize o cabeçalho da
-  // primeira pagina com o restante"): era desenhada AMPLIADA (zoom 1.08x +
-  // corte simétrico nas laterais), ficando ligeiramente diferente do
-  // cabeçalho das páginas de conteúdo. Agora usa exatamente a mesma
-  // largura/altura/posição de _desenharCabecalho — mesma arte, mesmo zoom
-  // de bleed horizontal (ver CABECALHO_ESCALA_BLEED), sem corte — só o
-  // texto abaixo dela muda ("ÍNDICE" em vez do nome da busca, ver mais
-  // abaixo).
-  doc.image(CABECALHO_IMG, CABECALHO_IMG_X_DESENHO, -CABECALHO_SANGRIA_TOPO, { width: CABECALHO_IMG_LARGURA_DESENHO, height: CABECALHO_IMG_ALTURA_REAL });
+  // Pedido do usuário (2026-09-04, "Mecânica.pdf"): página de índice
+  // Mecânica também usa a logo do fabricante + linha fina navy (mesma
+  // _desenharLogoCabecalhoMecanica das páginas de conteúdo), sobre o
+  // fundo em degradê — sem a barra de título navy (não tem "Linha" numa
+  // página de índice, ver Sumário Mecânica.png de referência: só logo +
+  // linha fina antes do "ÍNDICE").
+  if (estilo === "mecanica") {
+    _desenharLogoCabecalhoMecanica(doc, fabricante);
+  } else {
+    // 2026-08-28 (revertido — pedido do usuário "padronize o cabeçalho da
+    // primeira pagina com o restante"): era desenhada AMPLIADA (zoom 1.08x +
+    // corte simétrico nas laterais), ficando ligeiramente diferente do
+    // cabeçalho das páginas de conteúdo. Agora usa exatamente a mesma
+    // largura/altura/posição de _desenharCabecalho — mesma arte, mesmo zoom
+    // de bleed horizontal (ver CABECALHO_ESCALA_BLEED), sem corte — só o
+    // texto abaixo dela muda ("ÍNDICE" em vez do nome da busca, ver mais
+    // abaixo).
+    doc.image(CABECALHO_IMG, CABECALHO_IMG_X_DESENHO, -CABECALHO_SANGRIA_TOPO, { width: CABECALHO_IMG_LARGURA_DESENHO, height: CABECALHO_IMG_ALTURA_REAL });
+  }
 
   const tituloTexto = "ÍNDICE";
   const tituloX = PAGE_MARGIN;
@@ -2579,8 +2722,9 @@ async function gerarPdfCatalogoCompleto(produtos, fabricante, destino, tipoCompl
   for (let p = 0; p < paginasIndice; p += 1) {
     doc.addPage();
     pagina += 1;
-    _desenharCabecalhoIndice(doc);
-    _desenharRodape(doc, pagina);
+    if (estilo === "mecanica") _desenharFundoGradienteMecanica(doc);
+    _desenharCabecalhoIndice(doc, estilo, fabricante);
+    _desenharRodape(doc, pagina, estilo);
 
     const offset = p * linhasPorPaginaIndice;
     const linhasDestaPagina = grupos.slice(offset, offset + linhasPorPaginaIndice);
@@ -2633,8 +2777,9 @@ async function gerarPdfCatalogoCompleto(produtos, fabricante, destino, tipoCompl
       paginaLocalAtual = pos.pagina;
       doc.addPage();
       pagina += 1;
-      _desenharCabecalho(doc, bloco.linha, estilo);
-      _desenharRodape(doc, pagina);
+      if (estilo === "mecanica") _desenharFundoGradienteMecanica(doc);
+      _desenharCabecalho(doc, bloco.linha, estilo, fabricante);
+      _desenharRodape(doc, pagina, estilo);
     }
 
     if (bloco.tipo === "cabecalhoMarca") {

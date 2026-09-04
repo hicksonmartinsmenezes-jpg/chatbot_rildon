@@ -532,6 +532,45 @@ function _tokenBateAplicacao(token, aplicacaoPalavras) {
 // pasta tem que entrar nessa lista, senão quebra o catálogo inteiro.
 const ARQUIVOS_NAO_PRODUTO = new Set(["cod-fornecedor.json", "aplicacao-ia-cache.json", "fotos-preferencias.json", "fotos-ocultas.json"]);
 
+// BUG REAL achado 2026-09-04 (usuário reportou produto após produto com
+// aplicação/produtos similares vazios no modal do Catálogo "mesmo tendo tudo
+// no sistema"): o MESMO código de produto aparece cadastrado em mais de um
+// arquivo de seção — normalmente uma cópia "de casa" com `ficha` completa
+// (aplicação/equivalentes/dados técnicos parseados) e uma cópia fantasma
+// (mesmo nome, seção errada, `ficha: null`) sobrando em outro arquivo depois
+// de alguma reorganização de seção no X2. Confirmado num scan completo dos 26
+// arquivos: 7.702 códigos duplicados desse jeito — quase metade do catálogo.
+// _carregarIndices() lia os arquivos em ORDEM ALFABÉTICA e cada _indexarProduto
+// sobrescrevia produtosPorCodigoIndex sem checar nada — então sempre que a
+// cópia vazia estava num arquivo que carregava DEPOIS da cópia boa (ordem
+// alfabética, não tem nada a ver com qual é "mais nova"), ela apagava a boa
+// da memória. Não é cache desatualizado — é bug de indexação, incondicional a
+// reload/restart. Confirmado também que nos 7.702 casos reais NUNCA existem
+// duas cópias com ficha preenchida ao mesmo tempo pro mesmo código — ou seja,
+// escolher "a que tem ficha com conteúdo" nunca é ambíguo.
+function _fichaTemConteudo(ficha) {
+  if (!ficha || typeof ficha !== "object") return false;
+  return Object.values(ficha).some(v => {
+    if (v === null || v === undefined || v === "") return false;
+    if (Array.isArray(v)) return v.length > 0;
+    if (typeof v === "object") return Object.keys(v).length > 0;
+    return true;
+  });
+}
+
+// Decide qual das duas cópias (mesmo código, arquivos diferentes) vence:
+// prioriza ter `nome` (registro de produto de verdade — ver guarda em
+// _indexarProduto) e, entre duas com nome, prioriza a que tem ficha com
+// conteúdo. Em qualquer empate mantém a primeira encontrada (estável,
+// determinístico) — só troca quando a nova é estritamente melhor.
+function _melhorRegistroDuplicado(atual, novo) {
+  if (!atual) return novo;
+  if (!atual.nome && novo.nome) return novo;
+  if (atual.nome && !novo.nome) return atual;
+  if (!_fichaTemConteudo(atual.ficha) && _fichaTemConteudo(novo.ficha)) return novo;
+  return atual;
+}
+
 function _carregarIndices() {
   let arquivos;
   try {
@@ -542,6 +581,12 @@ function _carregarIndices() {
     return;
   }
 
+  // Pré-varre TODOS os arquivos antes de indexar de verdade, resolvendo
+  // duplicatas de código entre arquivos (ver comentário acima) — só depois
+  // chama _indexarProduto uma vez por código, já com o melhor registro
+  // escolhido, em vez de indexar tudo em ordem de arquivo e deixar o último
+  // sobrescrever cegamente.
+  const melhorPorCodigo = new Map();
   for (const arquivo of arquivos) {
     let data;
     try {
@@ -550,8 +595,13 @@ function _carregarIndices() {
       console.error(`[catalogo-x2.service] falha ao ler ${arquivo}:`, e.message);
       continue;
     }
-    for (const p of data) _indexarProduto(p);
+    for (const p of data) {
+      if (!p || !p.codigo) continue;
+      melhorPorCodigo.set(p.codigo, _melhorRegistroDuplicado(melhorPorCodigo.get(p.codigo), p));
+    }
   }
+
+  for (const p of melhorPorCodigo.values()) _indexarProduto(p);
 
   console.log(
     `[catalogo-x2.service] índice pronto: ${totalProdutosIndexados} produtos, ` +

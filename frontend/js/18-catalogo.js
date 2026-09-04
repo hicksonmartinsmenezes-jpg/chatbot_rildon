@@ -620,9 +620,10 @@ async function catalogoAbrirProdutoEquivalente(codigo) {
 
 // Tabela "Produtos Similares" — reaproveita o mesmo dado de equivalentes já
 // indexado no backend (equivalentesDetalhados, ver _detalharEquivalentes em
-// catalogo-x2.service.js). Só tem Código/Descrição/Cód. Fornecedor porque é
-// o que esse dado carrega hoje — o catálogo real não tem fabricante/estoque/
-// preço por equivalente como o KKI mostra (dado que não existe na base).
+// catalogo-x2.service.js). Só tem Código/Cód. Fornecedor porque é o que esse
+// dado carrega hoje — o catálogo real não tem fabricante/estoque/preço por
+// equivalente como o KKI mostra (dado que não existe na base). Coluna
+// Descrição removida a pedido do usuário (2026-09-04).
 function _catalogoSimilaresTabelaHTML(produto) {
   const equivalentes = Array.isArray(produto.equivalentes) ? produto.equivalentes : [];
   const detalhes = Array.isArray(produto.equivalentesDetalhados) && produto.equivalentesDetalhados.length
@@ -638,14 +639,13 @@ function _catalogoSimilaresTabelaHTML(produto) {
       return `
         <tr class="catalogo-modal-similar-linha" onclick="catalogoAbrirProdutoEquivalente('${escapeAttr(det.produto.codigo)}')" title="Abrir esse produto">
           <td><strong>${safe(det.produto.codigo)}</strong></td>
-          <td>${safe(det.produto.nome)}</td>
           <td>${det.produto.referencia ? safe(det.produto.referencia) : "—"}</td>
         </tr>
       `;
     }
     return `
       <tr>
-        <td colspan="2">${safe(det.codigo)}</td>
+        <td>${safe(det.codigo)}</td>
         <td class="catalogo-modal-similar-nao-cadastrado">Não vendido pela loja</td>
       </tr>
     `;
@@ -653,7 +653,7 @@ function _catalogoSimilaresTabelaHTML(produto) {
 
   return `
     <table class="catalogo-aplicacao-tabela">
-      <thead><tr><th>Código</th><th>Descrição</th><th>Cód. Fornecedor</th></tr></thead>
+      <thead><tr><th>Código</th><th>Cód. Fornecedor</th></tr></thead>
       <tbody>${linhasHTML}</tbody>
     </table>
   `;

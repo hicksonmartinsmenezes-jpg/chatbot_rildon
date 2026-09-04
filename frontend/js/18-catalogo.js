@@ -829,11 +829,12 @@ function abrirModalDetalheProduto(codigo) {
       <div class="catalogo-modal-info">
         <div class="catalogo-modal-photo" data-foto-codigo="${escapeAttr(produto.codigo)}">
           <i class="fa-solid fa-image catalogo-card-photo-fallback"></i>
+          <span class="catalogo-modal-photo-legenda hidden">Sem foto cadastrada</span>
           <img
             src="${_catalogoFotoUrl(produto.codigo)}"
             alt="${safe(produto.nome)}"
             loading="lazy"
-            onerror="this.remove();"
+            onerror="this.remove(); this.parentElement.querySelector('.catalogo-modal-photo-legenda')?.classList.remove('hidden');"
             onclick="window.open(this.currentSrc || this.src, '_blank');"
             title="Clique pra abrir a foto em outra página"
           >
@@ -846,19 +847,25 @@ function abrirModalDetalheProduto(codigo) {
             <i class="fa-solid fa-arrows-rotate"></i> Trocar foto
           </button>
         </div>
-        <button
-          type="button"
-          class="catalogo-copy-btn"
-          title="Copiar código pra conferir no ERP"
-          onclick="copiarCodigoCatalogo('${escapeAttr(produto.codigo)}', this)"
-        >
-          <i class="fa-regular fa-copy"></i> ${safe(produto.codigo)}
-        </button>
-        ${produto.referencia ? `<span class="catalogo-card-ref">Ref: ${safe(produto.referencia)}</span>` : ""}
-        ${produto.fabricante ? `<span class="catalogo-card-fabricante"><i class="fa-solid fa-industry"></i> ${safe(produto.fabricante)}</span>` : ""}
-        <span class="catalogo-card-secao">${safe(produto.secao || "")}${produto.linha ? " · " + safe(produto.linha) : ""}</span>
-        ${badges.length ? `<div class="catalogo-card-badges">${badges.join("")}</div>` : ""}
-        ${_catalogoEstoqueHTML(produto.estoque)}
+
+        <div class="catalogo-modal-info-identidade">
+          <button
+            type="button"
+            class="catalogo-copy-btn"
+            title="Copiar código pra conferir no ERP"
+            onclick="copiarCodigoCatalogo('${escapeAttr(produto.codigo)}', this)"
+          >
+            <i class="fa-regular fa-copy"></i> ${safe(produto.codigo)}
+          </button>
+          ${produto.referencia ? `<span class="catalogo-card-ref">Ref: ${safe(produto.referencia)}</span>` : ""}
+          ${produto.fabricante ? `<span class="catalogo-card-fabricante"><i class="fa-solid fa-industry"></i> ${safe(produto.fabricante)}</span>` : ""}
+          <span class="catalogo-modal-secao">${safe(produto.secao || "")}${produto.linha ? " · " + safe(produto.linha) : ""}</span>
+        </div>
+
+        <div class="catalogo-modal-info-comercial">
+          ${badges.length ? `<div class="catalogo-card-badges">${badges.join("")}</div>` : ""}
+          ${_catalogoEstoqueHTML(produto.estoque)}
+        </div>
       </div>
 
       <div class="catalogo-modal-tabs">

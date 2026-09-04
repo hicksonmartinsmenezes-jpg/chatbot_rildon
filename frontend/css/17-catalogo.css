@@ -1245,16 +1245,17 @@ body.light-theme .catalogo-aplicacao-tabela-linha-obs td { color: #64748b; }
   border: 1px solid var(--cat-line);
 }
 
-.catalogo-badge-estoque-ok {
-  color: #bbf7d0;
-  background: rgba(34, 197, 94, 0.16);
-  border: 1px solid rgba(34, 197, 94, 0.32);
-}
-
+/* Pedido do usuário (2026-09-04): status de estoque sem bolha colorida —
+   só texto (branco no tema escuro, preto no tema claro via override abaixo)
+   + o ícone (check/alerta) já basta pra distinguir "em estoque" de "sem
+   estoque", sem precisar de verde/vermelho de fundo. */
+.catalogo-badge-estoque-ok,
 .catalogo-badge-estoque-zero {
-  color: #fecaca;
-  background: rgba(239, 68, 68, 0.16);
-  border: 1px solid rgba(239, 68, 68, 0.32);
+  padding: 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+  color: #f4f6fa;
 }
 
 .catalogo-card-precos {
@@ -1298,7 +1299,7 @@ body.light-theme .catalogo-aplicacao-tabela-linha-obs td { color: #64748b; }
 .catalogo-modal-info {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 14px;
 }
 
 .catalogo-modal-photo {
@@ -1308,8 +1309,10 @@ body.light-theme .catalogo-aplicacao-tabela-linha-obs td { color: #64748b; }
   border: 1px solid var(--cat-line);
   background: #fff;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 6px;
   overflow: hidden;
   padding: 12px;
   box-sizing: border-box;
@@ -1324,6 +1327,43 @@ body.light-theme .catalogo-aplicacao-tabela-linha-obs td { color: #64748b; }
   padding: 12px;
   box-sizing: border-box;
   cursor: pointer;
+}
+
+/* Legenda "Sem foto cadastrada" (pedido do usuário, 2026-09-04): antes só
+   sobrava o ícone genérico sem explicação nenhuma quando o produto não tem
+   foto — parecia bug. Revelada pelo onerror da <img> lá em cima
+   (abrirModalDetalheProduto/18-catalogo.js), fica escondida (.hidden) até
+   a foto de fato falhar em carregar. */
+.catalogo-modal-photo-legenda {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--cat-text-dimmer);
+}
+
+/* Identidade (código/ref/fabricante/seção) e dados comerciais (badges de
+   compatibilidade + estoque/preço) agrupados em blocos visuais separados
+   — antes era uma lista solta de spans sem hierarquia nenhuma. */
+.catalogo-modal-info-identidade {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.catalogo-modal-info-comercial {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--cat-line);
+}
+
+.catalogo-modal-secao {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--primary);
+  line-height: 1.4;
 }
 
 .catalogo-modal-tabs {
@@ -1503,6 +1543,8 @@ body.light-theme .catalogo-card:hover {
    no tema claro o fundo já é branco por padrão, nada a sobrescrever aqui. */
 body.light-theme .catalogo-card-nome { color: #0f172a; }
 body.light-theme .catalogo-card-fabricante { background: rgba(15, 23, 42, 0.03); color: #475569; }
+body.light-theme .catalogo-badge-estoque-ok,
+body.light-theme .catalogo-badge-estoque-zero { color: #0f172a; }
 body.light-theme .catalogo-modal-tab-btn:hover { color: #0f172a; }
 body.light-theme .catalogo-modal-tab-busca input { color: #0f172a; }
 

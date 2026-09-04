@@ -893,7 +893,6 @@ function abrirModalDetalheProduto(codigo) {
             <i class="fa-solid fa-magnifying-glass"></i>
             <input type="text" placeholder="Pesquisar..." oninput="_catalogoModalFiltrarTabela(this)">
           </div>
-          ${!produto.aplicacaoOrganizada && aplicacaoTexto ? '<p class="catalogo-aplicacao-tabela-aviso"><i class="fa-solid fa-circle-info"></i> Agrupamento automático (melhor esforço) — quando o texto não segue um padrão reconhecível, aparece inteiro na última coluna.</p>' : ""}
           ${_catalogoAplicacaoTabelaHTML(linhasAplicacao)}
         </div>
 

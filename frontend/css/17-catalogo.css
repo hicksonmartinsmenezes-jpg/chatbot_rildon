@@ -1128,21 +1128,6 @@
 
 /* Tabela de aplicação/similares do modal de detalhe — melhor esforço,
    ver _parseAplicacaoTabela/18-catalogo.js. */
-.catalogo-aplicacao-tabela-aviso {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin: 0 0 12px;
-  padding: 8px 10px;
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--primary) 12%, transparent);
-  color: var(--cat-text-dim);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.catalogo-aplicacao-tabela-aviso i { color: var(--primary); margin-top: 1px; }
-
 .catalogo-aplicacao-tabela {
   width: 100%;
   border-collapse: collapse;

@@ -110,15 +110,41 @@ async function loadCatalogoFabricantes() {
 // separado, sem opção "Todos" — aqui o atendente precisa escolher UM
 // fabricante específico pra gerar o PDF do catálogo inteiro dele, não faz
 // sentido "todos os fabricantes" numa exportação só.
+//
+// 2026-09-03 (pedido do usuário: "temos a divisão de peças cadastradas
+// como mecânica para esses catálogos [...] preciso que faça a separação
+// das que são elétricas e mecânicas [...] algo como Perfect - Mecânica"):
+// esse dropdown passou a usar um endpoint PRÓPRIO
+// (/api/catalogo/fabricantes-completo, não mais _catalogoBuscarFabricantesLista
+// compartilhado) que devolve "opções" já separadas por tipo quando o
+// fabricante tem peça em MECÂNICA e fora dela ao mesmo tempo — o `value`
+// de cada <option> vem pronto pra mandar direto pros endpoints de
+// contagem/exportação (ver decodificarFabricanteCompleto no backend), o
+// frontend só trata como string opaca, igual sempre tratou.
 let _catalogoFabricantesCompletoCarregados = false;
+let _catalogoFabricantesCompletoOpcoes = null;
+
+async function _catalogoBuscarFabricantesCompletoOpcoes() {
+  if (_catalogoFabricantesCompletoOpcoes) return _catalogoFabricantesCompletoOpcoes;
+  try {
+    const res = await apiFetch("/api/catalogo/fabricantes-completo");
+    if (!res.ok) return [];
+    const data = await res.json();
+    _catalogoFabricantesCompletoOpcoes = Array.isArray(data.opcoes) ? data.opcoes : [];
+    return _catalogoFabricantesCompletoOpcoes;
+  } catch (err) {
+    console.warn("[catalogo] falha ao carregar fabricantes do Catálogo Completo:", err.message);
+    return [];
+  }
+}
 
 async function loadCatalogoFabricantesCompleto() {
   if (_catalogoFabricantesCompletoCarregados) return;
-  const fabricantes = await _catalogoBuscarFabricantesLista();
+  const opcoes = await _catalogoBuscarFabricantesCompletoOpcoes();
   const select = document.getElementById("catalogo-fabricante-completo");
-  if (select && fabricantes.length) {
+  if (select && opcoes.length) {
     select.innerHTML = '<option value="">Selecione um fabricante...</option>' +
-      fabricantes.map(f => `<option value="${safe(f)}">${safe(f)}</option>`).join("");
+      opcoes.map(o => `<option value="${safe(o.value)}">${safe(o.label)}</option>`).join("");
   }
   _catalogoFabricantesCompletoCarregados = true;
 }
@@ -337,7 +363,13 @@ async function gerarCatalogoCompletoPDF(btnEl) {
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
     a.href     = url;
-    a.download = `catalogo-completo-${fabricante.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}.pdf`;
+    // fabricante pode vir como "PERFECT::mecanica" (ver
+    // listarFabricantesCatalogoCompleto/decodificarFabricanteCompleto no
+    // backend) — troca "::" por "-" só aqui, pro nome do arquivo baixado
+    // não sair com caracteres estranhos ("perfect--mecanica" em vez de
+    // "perfect::mecanica").
+    const nomeArquivo = fabricante.toLowerCase().replace(/::/g, "-").replace(/\s+/g, "-");
+    a.download = `catalogo-completo-${nomeArquivo}-${Date.now()}.pdf`;
     a.click();
     URL.revokeObjectURL(url);
   } catch (err) {

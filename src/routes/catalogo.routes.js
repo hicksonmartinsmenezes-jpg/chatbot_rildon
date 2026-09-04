@@ -13,6 +13,7 @@ const {
   listarSecoesHandler,
   listarLinhasHandler,
   listarFabricantesHandler,
+  listarFabricantesCatalogoCompletoHandler,
   buscarPorCodigoHandler,
   buscarPorNomeHandler,
   exportarPdfHandler,
@@ -66,6 +67,11 @@ router.get("/catalogo/linhas", listarLinhasHandler);
 // fabricante/referência/código interno (Task #250-253, pedido do usuário em
 // 2026-07-23).
 router.get("/catalogo/fabricantes", listarFabricantesHandler);
+// Pedido do usuário (2026-09-03): dropdown SEPARADO só pra aba "Catálogo
+// Completo" — cada fabricante que tem peça em MECÂNICA e fora dela vira
+// duas opções ("PERFECT - Mecânica" / "PERFECT - Elétrica") em vez de uma
+// só. Ver listarFabricantesCatalogoCompletoHandler/catalogo-x2.service.js.
+router.get("/catalogo/fabricantes-completo", listarFabricantesCatalogoCompletoHandler);
 router.get("/catalogo/buscar-codigo", buscarPorCodigoHandler);
 // Busca por nome/descrição da peça (pedido do usuário, 2026-08-14) — 3ª
 // forma de busca do painel, útil quando o cliente só sabe o nome da peça,

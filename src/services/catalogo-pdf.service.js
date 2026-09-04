@@ -362,12 +362,12 @@ const FOOTER_HEIGHT = 595.28 / RODAPE_IMG_RATIO;
 // é desenhado SÓ DEPOIS que a arte termina — TITULO_GAP_TOPO é o respiro
 // entre o fim da imagem e o início do título, então não tem mais como
 // encostar na arte, seja qual for o formato dela.
-const TITULO_GAP_TOPO = 8;
+const TITULO_GAP_TOPO = 15;
 // Pedido do usuário (2026-07-30, 1ª rodada): "desça mais o título, quase
 // encostando nos produtos, deixe a distância parecida como a das colunas" —
 // a distância entre o título e o topo dos cards é EXATAMENTE o mesmo valor
 // do respiro entre colunas (GAP), em vez de um número arbitrário.
-const TITULO_GAP_CARDS = GAP;
+const TITULO_GAP_CARDS = 14;
 
 // Pedido do usuário (2026-07-28): 4 linhas de card por página em A4 (antes
 // cabiam só 3). A altura da foto NÃO é mais uma escala fixa — é calculada
@@ -728,7 +728,16 @@ const MECANICA_TITULO_FONTE = "Montserrat-ExtraBold";
 // no nome do fabricante extraído do nome do produto (ver
 // catalogo-x2.service.js) — ex.: "PERFECT" isolado ou dentro de um nome
 // mais longo continuam batendo.
-function _estiloCatalogoCompleto(fabricante) {
+//
+// Pedido do usuário (2026-09-03): separação Mecânica/Elétrica dentro do
+// MESMO fabricante (ex. "PERFECT - Elétrica" só com os produtos da seção
+// X2 "MECÂNICA" excluídos, ver tipoCompleto/catalogo-x2.service.js). Sem o
+// parâmetro tipoCompleto, o "PERFECT - Elétrica" herdaria errado o estilo
+// "mecanica" só por causa do .includes("PERFECT") acima — então
+// tipoCompleto === "eletrica" força o estilo "eletrica" incondicionalmente,
+// e tipoCompleto === "mecanica"/null preserva o comportamento de sempre.
+function _estiloCatalogoCompleto(fabricante, tipoCompleto = null) {
+  if (tipoCompleto === "eletrica") return "eletrica";
   return String(fabricante || "").toUpperCase().includes("PERFECT") ? "mecanica" : "eletrica";
 }
 
@@ -2507,12 +2516,14 @@ async function gerarPdfCatalogo(produtos, tituloBusca, destino) {
  * primeiro e só depois escrevendo o número. Ver A4_LARGURA/A4_ALTURA no
  * topo do arquivo.
  */
-async function gerarPdfCatalogoCompleto(produtos, fabricante, destino) {
+async function gerarPdfCatalogoCompleto(produtos, fabricante, destino, tipoCompleto = null) {
   // Estilo "Mecânica" (pedido do usuário, 2026-09-03) — fixo por fabricante,
   // ver _estiloCatalogoCompleto/MECANICA_* no topo do arquivo. Todo o resto
   // desta função continua igual pro estilo "eletrica" (padrão, ~3600
-  // fabricantes restantes).
-  const estilo = _estiloCatalogoCompleto(fabricante);
+  // fabricantes restantes). tipoCompleto ("mecanica"/"eletrica"/null) vem do
+  // dropdown separado do Catálogo Completo quando o fabricante tem peça nos
+  // dois grupos — ver catalogo.controller.js/catalogo-x2.service.js.
+  const estilo = _estiloCatalogoCompleto(fabricante, tipoCompleto);
 
   const doc = new PDFDocument({ size: "A4", margin: 0, autoFirstPage: false, bufferPages: true });
   doc.pipe(destino);

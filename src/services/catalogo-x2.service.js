@@ -462,6 +462,15 @@ function _carregarIndices() {
 const FABRICANTE_MIN_OCORRENCIAS = 5;
 let fabricantesDisponiveis = [];
 
+// "MECÂNICA" é uma das 26 seções oficiais do X2 (ver SECOES em
+// x2-fotos-scraper.js — junto de ALTERNADOR, BUZINAS, COMPONENTES
+// ELÉTRICOS etc.). Pedido do usuário (2026-09-03): um fabricante como
+// PERFECT pode ter peças cadastradas em "MECÂNICA" E em outras seções
+// (as "elétricas", no vocabulário do usuário) ao mesmo tempo — usada por
+// listarFabricantesCatalogoCompleto/buscarProdutosPainel (tipoCompleto)
+// pra separar os dois em catálogos diferentes.
+const SECAO_MECANICA_NORM = _normalizar("MECÂNICA");
+
 // Palavras que vêm dos nomes das 26 seções (ex: "motor", "partida",
 // "alternador", "injecao", "eletronica") — nunca servem de sinal de
 // veículo, porque o texto de aplicação quase sempre cita o termo mecânico
@@ -512,6 +521,65 @@ recarregarIndices();
 // ─── Fabricante da peça (Task #250-252, pedido do usuário em 2026-07-23) ──
 function listarFabricantes() {
   return fabricantesDisponiveis;
+}
+
+// Pedido do usuário (2026-09-03): "temos a divisão de peças cadastradas
+// como mecânica para esses catálogos [...] preciso que faça a separação
+// das que são elétricas e mecânicas [...] quando eu for selecionar o
+// tipo de catálogo que eu queira preciso que tenha essa separação algo
+// como Perfect - Mecânica" — usada só pelo seletor da aba "Catálogo
+// Completo" (não pelo filtro comum de fabricante do painel, que continua
+// em listarFabricantes() sem separação). Cada fabricante vira 1 ou 2
+// "opções": se ele tem produto NA seção MECÂNICA e produto FORA dela ao
+// mesmo tempo, vira duas opções (uma pra cada tipo); se só tem um dos
+// dois, vira uma opção só — rotulada "- Mecânica" quando é esse o único
+// tipo (pra bater com o pedido "Perfect - Mecânica"), mas SEM rótulo
+// quando o único tipo é "fora de MECÂNICA" (a esmagadora maioria dos
+// fabricantes, que nunca teve nada em MECÂNICA — não faz sentido
+// rotular todo mundo de "- Elétrica" só por causa de alguns poucos que
+// têm as duas). `value` é o que o frontend devolve pra
+// /api/catalogo/buscar e /api/catalogo/exportar-pdf sem tradução
+// nenhuma — ver decodificarFabricanteCompleto, que entende o sufixo
+// "::mecanica"/"::eletrica".
+function listarFabricantesCatalogoCompleto() {
+  const porFabricante = new Map(); // fabricante -> { temMecanica, temOutras }
+  todosProdutos.forEach((p) => {
+    if (!p.fabricante) return;
+    if (!porFabricante.has(p.fabricante)) porFabricante.set(p.fabricante, { temMecanica: false, temOutras: false });
+    const info = porFabricante.get(p.fabricante);
+    if (p.secao && _normalizar(p.secao) === SECAO_MECANICA_NORM) info.temMecanica = true;
+    else info.temOutras = true;
+  });
+
+  const opcoes = [];
+  fabricantesDisponiveis.forEach((fabricante) => {
+    const info = porFabricante.get(fabricante) || { temMecanica: false, temOutras: false };
+    if (info.temMecanica && info.temOutras) {
+      opcoes.push({ value: `${fabricante}::mecanica`, label: `${fabricante} - Mecânica` });
+      opcoes.push({ value: `${fabricante}::eletrica`, label: `${fabricante} - Elétrica` });
+    } else if (info.temMecanica) {
+      opcoes.push({ value: `${fabricante}::mecanica`, label: `${fabricante} - Mecânica` });
+    } else {
+      opcoes.push({ value: fabricante, label: fabricante });
+    }
+  });
+  return opcoes;
+}
+
+// Decodifica o `value` vindo do seletor da aba "Catálogo Completo" (ver
+// listarFabricantesCatalogoCompleto acima) — separa o nome do fabricante
+// de verdade do sufixo "::mecanica"/"::eletrica", se tiver algum. Usada
+// tanto por /api/catalogo/buscar (contagem antes de gerar) quanto por
+// /api/catalogo/exportar-pdf (geração de verdade), pra sempre concordarem
+// no mesmo total. "::" nunca ocorre num nome de fabricante de verdade
+// (vem sempre do dropdown, nunca de texto livre digitado), então essa
+// checagem não arrisca cortar um fabricante legítimo que tenha esses
+// caracteres por acaso.
+function decodificarFabricanteCompleto(valorBruto) {
+  const valor = String(valorBruto || "").trim();
+  const match = valor.match(/^(.*)::(mecanica|eletrica)$/);
+  if (!match) return { fabricante: valor, tipoCompleto: null };
+  return { fabricante: match[1], tipoCompleto: match[2] };
 }
 
 // ─── Busca direta por código de fabricante/referência/código interno
@@ -892,7 +960,7 @@ function buscarPorNomePainel(nomeBusca, { limite = 200 } = {}) {
 // informados, marca funciona como reforço de ranking (marcaCompativel),
 // nunca como filtro de exclusão. Ano segue a mesma lógica (ver
 // _anoCompativel acima).
-function buscarProdutosPainel({ marca = "", modelo = "", ano = null, categoria = "", fabricante = "", limite = 200 } = {}) {
+function buscarProdutosPainel({ marca = "", modelo = "", ano = null, categoria = "", fabricante = "", tipoCompleto = null, limite = 200 } = {}) {
   const marcaTokens  = _tokens(marca);
   const modeloTokens = _tokens(modelo);
   const anoNum = ano ? Number(ano) : null;
@@ -900,6 +968,17 @@ function buscarProdutosPainel({ marca = "", modelo = "", ano = null, categoria =
   // Fabricante é filtro por igualdade exata (não substring) — vem sempre do
   // dropdown já normalizado por listarFabricantes(), não de texto livre.
   const fabricanteNorm = fabricante && String(fabricante).trim() ? String(fabricante).trim().toUpperCase() : null;
+  // Pedido do usuário (2026-09-03, aba "Catálogo Completo" — ver
+  // listarFabricantesCatalogoCompleto/decodificarFabricanteCompleto): filtro
+  // adicional por tipo dentro do fabricante já escolhido — "mecanica" só
+  // produto na seção MECÂNICA, "eletrica" só produto FORA dela. `null`
+  // (padrão) não filtra nada, mesmo comportamento de sempre pro resto do
+  // painel (busca normal, filtro comum de fabricante).
+  const filtroTipoCompleto = (p) => {
+    if (tipoCompleto === "mecanica") return !!p.secao && _normalizar(p.secao) === SECAO_MECANICA_NORM;
+    if (tipoCompleto === "eletrica") return !p.secao || _normalizar(p.secao) !== SECAO_MECANICA_NORM;
+    return true;
+  };
 
   // Modo NAVEGAÇÃO: nenhum veículo informado, só Seção/Linha e/ou Fabricante
   // — usado pelo dropdown do painel pra listar o catálogo inteiro daquela
@@ -921,6 +1000,7 @@ function buscarProdutosPainel({ marca = "", modelo = "", ano = null, categoria =
         if (!secaoNorm.includes(categoriaNorm) && !linhaNorm.includes(categoriaNorm)) return false;
       }
       if (fabricanteNorm && (!p.fabricante || p.fabricante.toUpperCase() !== fabricanteNorm)) return false;
+      if (!filtroTipoCompleto(p)) return false;
       return true;
     });
 
@@ -972,6 +1052,7 @@ function buscarProdutosPainel({ marca = "", modelo = "", ano = null, categoria =
       if (!secaoNorm.includes(categoriaNorm) && !linhaNorm.includes(categoriaNorm)) continue;
     }
     if (fabricanteNorm && (!p.fabricante || p.fabricante.toUpperCase() !== fabricanteNorm)) continue;
+    if (!filtroTipoCompleto(p)) continue;
 
     // _tokenBateAplicacao aceita sinônimos de marca conhecidos (GM/General
     // Motors/Chevrolet — ver GRUPOS_ALIAS_MARCA acima).
@@ -1034,5 +1115,7 @@ module.exports = {
   buscarProdutosPainel,
   buscarPorCodigo,
   listarFabricantes,
+  listarFabricantesCatalogoCompleto,
+  decodificarFabricanteCompleto,
   recarregarIndices,
 };

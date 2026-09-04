@@ -2,7 +2,7 @@ const crypto = require("crypto");
 const ExcelJS = require("exceljs");
 const logger = require("../utils/logger");
 const { listarFotos, obterFoto, obterFotoPorNome, definirFotoPreferida, ocultarFoto, recarregarIndice: recarregarIndiceFotos, obterVersaoFotos } = require("../services/catalogo-fotos.service");
-const { buscarProdutosPainel, buscarPorCodigo, buscarPorNomePainel, listarFabricantes, recarregarIndices: recarregarIndicesProdutos } = require("../services/catalogo-x2.service");
+const { buscarProdutosPainel, buscarPorCodigo, buscarPorNomePainel, listarFabricantes, listarFabricantesCatalogoCompleto, decodificarFabricanteCompleto, recarregarIndices: recarregarIndicesProdutos } = require("../services/catalogo-x2.service");
 const { listarSecoes, listarLinhasPorSecao } = require("../services/catalogo.service");
 const { gerarPdfCatalogo, gerarPdfCatalogoCompleto, gerarPdfCatalogoPromocional, limparCacheBboxFotos } = require("../services/catalogo-pdf.service");
 const { carregarEstoque, statusCache } = require("../services/estoque.service");
@@ -165,7 +165,14 @@ async function buscarProdutosHandler(req, res) {
     const marca      = String(req.query.marca || "").trim();
     const modelo     = String(req.query.modelo || "").trim();
     const categoria  = String(req.query.categoria || "").trim();
-    const fabricante = String(req.query.fabricante || "").trim();
+    // Pedido do usuário (2026-09-03): o seletor da aba "Catálogo Completo"
+    // pode mandar um valor composto tipo "PERFECT::mecanica" (ver
+    // listarFabricantesCatalogoCompleto/decodificarFabricanteCompleto em
+    // catalogo-x2.service.js) — decodifica ANTES de usar, senão vira um
+    // fabricante desconhecido de verdade e a contagem dá 0. O filtro comum
+    // do painel nunca manda "::" num fabricante de texto livre, então essa
+    // decodificação não afeta em nada o uso normal.
+    const { fabricante, tipoCompleto } = decodificarFabricanteCompleto(req.query.fabricante || "");
     const anoStr     = String(req.query.ano || "").trim();
 
     // Modo navegação (pedido do usuário, 2026-07-22, estendido em 2026-07-23
@@ -187,7 +194,7 @@ async function buscarProdutosHandler(req, res) {
       ano = anoNum;
     }
 
-    const resultado = buscarProdutosPainel({ marca, modelo, ano, categoria, fabricante });
+    const resultado = buscarProdutosPainel({ marca, modelo, ano, categoria, fabricante, tipoCompleto });
     res.json(resultado);
   } catch (err) {
     logger.error("❌ Erro ao buscar produtos do catálogo:", err.message);
@@ -215,6 +222,14 @@ async function exportarPdfHandler(req, res) {
     // manual via marca+modelo+categoria) continuam exatamente como estavam.
     let modoCompleto = false;
     let fabricanteCompleto = "";
+    // Pedido do usuário (2026-09-03, separação Mecânica/Elétrica): guardado
+    // à parte de fabricanteCompleto de propósito — _estiloCatalogoCompleto
+    // (catalogo-pdf.service.js) decide o estilo visual "Mecânica" olhando o
+    // NOME do fabricante (hoje só PERFECT); sem esse controle, "PERFECT -
+    // Elétrica" (os 10 produtos de PERFECT que NÃO são da seção MECÂNICA)
+    // herdaria por engano o mesmo estilo visual pensado só pro catálogo de
+    // referência da seção MECÂNICA.
+    let tipoCompletoSelecionado = null;
 
     if (codigo) {
       produtos = buscarPorCodigo(codigo, { limite: Infinity });
@@ -226,7 +241,12 @@ async function exportarPdfHandler(req, res) {
       const marca      = String(req.query.marca || "").trim();
       const modelo     = String(req.query.modelo || "").trim();
       const categoria  = String(req.query.categoria || "").trim();
-      const fabricante = String(req.query.fabricante || "").trim();
+      // Pedido do usuário (2026-09-03): mesma decodificação de
+      // buscarProdutosHandler acima — o seletor da aba "Catálogo Completo"
+      // manda "PERFECT::mecanica" quando esse fabricante tem peça nos dois
+      // tipos (ver listarFabricantesCatalogoCompleto/
+      // decodificarFabricanteCompleto em catalogo-x2.service.js).
+      const { fabricante, tipoCompleto } = decodificarFabricanteCompleto(req.query.fabricante || "");
       const anoStr     = String(req.query.ano || "").trim();
 
       if (!marca && !modelo && !categoria && !fabricante) {
@@ -243,13 +263,19 @@ async function exportarPdfHandler(req, res) {
         ano = anoNum;
       }
 
-      const resultado = buscarProdutosPainel({ marca, modelo, ano, categoria, fabricante, limite: Infinity });
+      const resultado = buscarProdutosPainel({ marca, modelo, ano, categoria, fabricante, tipoCompleto, limite: Infinity });
       produtos = resultado.produtos;
 
       modoCompleto = !marca && !modelo && !categoria && !!fabricante;
       fabricanteCompleto = fabricante;
+      tipoCompletoSelecionado = tipoCompleto;
 
-      const partes = [marca, modelo, anoStr, categoria, fabricante].filter(Boolean);
+      // Rótulo com o tipo pendurado (ex: "PERFECT - Mecânica") só pra
+      // exibição em tituloBusca — NÃO usado pra decidir estilo visual (ver
+      // tipoCompletoSelecionado acima, passado à parte pra
+      // gerarPdfCatalogoCompleto).
+      const sufixoTipo = tipoCompleto === "mecanica" ? " - Mecânica" : tipoCompleto === "eletrica" ? " - Elétrica" : "";
+      const partes = [marca, modelo, anoStr, categoria, fabricante ? `${fabricante}${sufixoTipo}` : fabricante].filter(Boolean);
       tituloBusca = partes.length ? partes.join(" · ") : "Catálogo completo";
     }
 
@@ -280,7 +306,7 @@ async function exportarPdfHandler(req, res) {
     res.setHeader("Content-Type", "application/pdf");
     if (modoCompleto) {
       res.setHeader("Content-Disposition", `attachment; filename="catalogo-completo-${Date.now()}.pdf"`);
-      await gerarPdfCatalogoCompleto(produtos, fabricanteCompleto, res);
+      await gerarPdfCatalogoCompleto(produtos, fabricanteCompleto, res, tipoCompletoSelecionado);
     } else {
       res.setHeader("Content-Disposition", `attachment; filename="catalogo-expresso-${Date.now()}.pdf"`);
       await gerarPdfCatalogo(produtos, tituloBusca, res);
@@ -550,6 +576,28 @@ async function listarFabricantesHandler(req, res) {
     res.json({ fabricantes: listarFabricantes() });
   } catch (err) {
     logger.error("❌ Erro ao listar fabricantes do catálogo:", err.message);
+    res.status(500).json({ error: "Erro ao listar fabricantes." });
+  }
+}
+
+// GET /api/catalogo/fabricantes-completo — só pra aba "Catálogo Completo"
+// (pedido do usuário, 2026-09-03: "temos a divisão de peças cadastradas
+// como mecânica para esses catálogos [...] preciso que faça a separação
+// das que são elétricas e mecânicas [...] quando eu for selecionar o tipo
+// de catálogo que eu queira preciso que tenha essa separação algo como
+// Perfect - Mecânica"). Diferente de /catalogo/fabricantes (usado pelo
+// filtro comum do painel, sem separação): aqui cada fabricante que tem
+// peça na seção MECÂNICA e peça fora dela ao mesmo tempo vira DUAS opções
+// ("PERFECT - Mecânica" / "PERFECT - Elétrica"); o resto (a maioria) some
+// como uma opção só. Ver listarFabricantesCatalogoCompleto/
+// decodificarFabricanteCompleto em catalogo-x2.service.js pro resto do
+// fluxo (contagem em /catalogo/buscar e geração em /catalogo/exportar-pdf
+// já entendem o `value` composto que essa lista devolve).
+async function listarFabricantesCatalogoCompletoHandler(req, res) {
+  try {
+    res.json({ opcoes: listarFabricantesCatalogoCompleto() });
+  } catch (err) {
+    logger.error("❌ Erro ao listar fabricantes do Catálogo Completo:", err.message);
     res.status(500).json({ error: "Erro ao listar fabricantes." });
   }
 }
@@ -854,6 +902,7 @@ module.exports = {
   listarSecoesHandler,
   listarLinhasHandler,
   listarFabricantesHandler,
+  listarFabricantesCatalogoCompletoHandler,
   buscarPorCodigoHandler,
   buscarPorNomeHandler,
   exportarPdfHandler,

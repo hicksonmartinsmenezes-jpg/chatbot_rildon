@@ -142,6 +142,45 @@ function _normalizarFabricante(bruto) {
   return FABRICANTE_ALIASES[upper] || upper;
 }
 
+// PEDIDO DO USUÁRIO (2026-09-04): "algumas aplicações podem aparecer também
+// nas descrições" — vários produtos sem `ficha.aplicacao` preenchida têm a
+// marca do veículo/máquina compatível já citada no PRÓPRIO NOME (ex: "FILTRO
+// DE OLEO FORD FIESTA 1.6 96/02"), mas ficavam 100% fora de busca por
+// veículo e caíam em "Outras Aplicações" no Catálogo Completo por causa
+// disso. Esta lista NÃO foi inventada à mão — foi extraída escaneando os
+// textos de `ficha.aplicacao` REAIS já cadastrados em todo o catálogo
+// (~14.183 produtos com aplicação preenchida), pegando o token antes do
+// primeiro ":" de cada segmento separado por ";" (ex: "FORD: FIESTA 1.6
+// 96/02;" -> "FORD") e contando frequência — só entrou marca com 2+
+// ocorrências reais no catálogo, e depois de filtrar manualmente ruído de
+// regex (palavras genéricas tipo "ALTERNADOR", "DIVERSOS", "VEICULOS
+// IMPORTADOS" que também caem nesse formato mas não são marca nenhuma).
+// Guarda só PALAVRA INTEIRA (não substring) pelo mesmo motivo documentado
+// acima em GRUPOS_ALIAS_MARCA (GOL/GOLF) — comparação é sempre contra
+// _normalizar(nome).split(" "), nunca .includes() de string crua.
+const MARCAS_VEICULO_CONHECIDAS = new Set([
+  "FORD", "FIAT", "VW", "GM", "MERCEDES", "RENAULT", "VOLKSWAGEN", "VOLKSWAGEM",
+  "CHEVROLET", "TOYOTA", "HYUNDAI", "AUDI", "AGRALE", "CITROEN", "CASE",
+  "VOLVO", "SCANIA", "HONDA", "IVECO", "MITSUBISHI", "NISSAN", "KIA",
+  "CATERPILLAR", "SEAT", "CUMMINS", "CHERY", "PEUGEOT", "MB", "MBB", "BMW",
+  "CHRYSLER", "MAXION", "VALMET", "OPEL", "DEUTZ", "DEERE", "ATLAS", "COPCO",
+  "BOBCAT", "DAEWOO", "EATON", "GURGEL", "MF", "MWM", "PORSCHE", "HYSTER",
+  "ISUZU", "KOMATSU", "CLARK", "VALTRA", "DAIHATSU", "AGCO", "JEEP", "SUZUKI",
+  "ROVER", "DODGE", "SSANGYONG", "SKODA", "LIFAN", "MAFERSA", "PERKINS",
+  "LEXUS", "MAZDA", "DAF", "INFINITI", "BELL", "CARRIER", "JCB", "FARYMANN",
+  "JAC", "BOMAG", "TEREX", "MAN", "EFFA", "BOSCH", "FREIGHTLINER", "VAUXHALL",
+  "LADA", "TROLLER", "JAGUAR", "ALFA", "ROMEO", "WILLYS", "HOLLAND", "MASSEY",
+  "FERGUSON", "ASIA", "ACURA",
+]);
+
+function _contemMarcaConhecida(nomeNormalizado) {
+  if (!nomeNormalizado) return false;
+  for (const palavra of nomeNormalizado.split(" ")) {
+    if (MARCAS_VEICULO_CONHECIDAS.has(palavra)) return true;
+  }
+  return false;
+}
+
 function _indexarProduto(p) {
   // BUG REAL corrigido (2026-08-13, achado testando ao vivo busca por
   // código original no painel: "F00M111601" devolvia card com estoque/
@@ -322,6 +361,27 @@ function _indexarProduto(p) {
       aplicacaoPalavras,
       faixasAno: _extrairFaixasDeAno(ficha.aplicacao),
       universal,
+    };
+    produtosComAplicacao.push(item);
+    todosProdutos.push(item);
+  } else if (_contemMarcaConhecida(nomeNormalizado)) {
+    // Fallback (pedido do usuário, 2026-09-04): sem `ficha.aplicacao`, mas o
+    // NOME do produto já cita uma marca de veículo/máquina conhecida (ver
+    // MARCAS_VEICULO_CONHECIDAS acima) — usa o próprio nome como texto de
+    // aplicação, com o MESMO tratamento do bloco acima (palavras/faixa de
+    // ano), pra passar a valer tanto na busca por veículo do painel quanto
+    // no agrupamento por marca do Catálogo Completo/organizarAplicacaoIA
+    // (antes caía direto em "Outras Aplicações", mesmo já tendo a marca
+    // escrita ali no nome).
+    const aplicacaoNormalizada = nomeNormalizado;
+    const aplicacaoPalavras = new Set(aplicacaoNormalizada.split(" "));
+    item = {
+      ...base,
+      aplicacao: p.nome,
+      aplicacaoNormalizada,
+      aplicacaoPalavras,
+      faixasAno: _extrairFaixasDeAno(p.nome),
+      universal: false,
     };
     produtosComAplicacao.push(item);
     todosProdutos.push(item);

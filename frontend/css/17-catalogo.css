@@ -1126,8 +1126,21 @@
   font-size: 8px;
 }
 
-/* Tabela de aplicação/similares do modal de detalhe — melhor esforço,
-   ver _parseAplicacaoTabela/18-catalogo.js. */
+/* Texto puro da aba Aplicação do modal de detalhe (pedido do usuário,
+   2026-09-04: removida a tentativa de tabela Montadora/Veículo/Motor/Ano
+   por "melhor esforço" — texto cru do X2 direto, pre-line preserva as
+   quebras de linha originais). */
+.catalogo-modal-aplicacao-texto {
+  margin: 0;
+  color: #d7dce6;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-line;
+}
+
+body.light-theme .catalogo-modal-aplicacao-texto { color: #334155; }
+
+/* Tabela de produtos similares do modal de detalhe. */
 .catalogo-aplicacao-tabela {
   width: 100%;
   border-collapse: collapse;
@@ -1153,12 +1166,6 @@
 
 .catalogo-aplicacao-tabela tbody tr:hover { background: color-mix(in srgb, var(--cat-line) 40%, transparent); }
 
-.catalogo-aplicacao-tabela-linha-obs td {
-  color: var(--cat-text-dim);
-  font-style: italic;
-  white-space: pre-line;
-}
-
 .catalogo-aplicacao-tabela-vazio {
   margin: 0;
   color: var(--cat-text-dim);
@@ -1166,7 +1173,6 @@
 }
 
 body.light-theme .catalogo-aplicacao-tabela td { color: #334155; }
-body.light-theme .catalogo-aplicacao-tabela-linha-obs td { color: #64748b; }
 
 .catalogo-card-badges {
   display: flex;

@@ -830,10 +830,23 @@ function abrirModalDetalheProduto(codigo) {
         <div class="catalogo-modal-photo" data-foto-codigo="${escapeAttr(produto.codigo)}">
           <i class="fa-solid fa-image catalogo-card-photo-fallback"></i>
           <span class="catalogo-modal-photo-legenda hidden">Sem foto cadastrada</span>
+          <!-- BUG REAL corrigido 2026-09-04 (usuário reportou 'a foto tá baixada e
+               aparece certinho no card, mas no modal não aparece nada' — testado com
+               produto 126630, foto confirmada existir e renderizar no card): SEM
+               loading=lazy aqui de propósito. _openModal() (15-modal.js) faz
+               overlay.innerHTML = ... (cria esta img com o ancestral
+               #_global-modal-overlay ainda display:none) e só DEPOIS adiciona a
+               classe que muda pra display:flex. Carregamento nativo 'lazy' de
+               imagem inserida num ancestral escondido nunca dispara o fetch nesse
+               momento — e como o modal não tem scroll nem outro evento de layout
+               que reavalie depois, a imagem fica pra sempre sem carregar, mesmo com
+               o arquivo existindo e a MESMA URL funcionando perfeitamente no card
+               (fora do modal, sempre visível). Lazy loading não faz sentido aqui
+               mesmo: o modal mostra 1 foto só, sob demanda — sem a lista de 200+
+               cards que justifica adiar o carregamento na grade. -->
           <img
             src="${_catalogoFotoUrl(produto.codigo)}"
             alt="${safe(produto.nome)}"
-            loading="lazy"
             onerror="this.remove(); this.parentElement.querySelector('.catalogo-modal-photo-legenda')?.classList.remove('hidden');"
             onclick="window.open(this.currentSrc || this.src, '_blank');"
             title="Clique pra abrir a foto em outra página"

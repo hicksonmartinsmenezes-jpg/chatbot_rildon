@@ -2,7 +2,7 @@ const crypto = require("crypto");
 const ExcelJS = require("exceljs");
 const logger = require("../utils/logger");
 const { listarFotos, obterFoto, obterFotoPorNome, definirFotoPreferida, ocultarFoto, recarregarIndice: recarregarIndiceFotos, obterVersaoFotos } = require("../services/catalogo-fotos.service");
-const { buscarProdutosPainel, buscarPorCodigo, buscarPorNomePainel, listarFabricantes, listarFabricantesCatalogoCompleto, decodificarFabricanteCompleto, recarregarIndices: recarregarIndicesProdutos } = require("../services/catalogo-x2.service");
+const { buscarProdutosPainel, buscarPorCodigo, buscarPorNomePainel, listarFabricantes, listarFabricantesCatalogoCompleto, listarMarcasVeiculoConhecidas, decodificarFabricanteCompleto, recarregarIndices: recarregarIndicesProdutos } = require("../services/catalogo-x2.service");
 const { listarSecoes, listarLinhasPorSecao } = require("../services/catalogo.service");
 const { gerarPdfCatalogo, gerarPdfCatalogoCompleto, gerarPdfCatalogoPromocional, limparCacheBboxFotos } = require("../services/catalogo-pdf.service");
 const { carregarEstoque, statusCache } = require("../services/estoque.service");
@@ -173,7 +173,14 @@ async function buscarProdutosHandler(req, res) {
     // do painel nunca manda "::" num fabricante de texto livre, então essa
     // decodificação não afeta em nada o uso normal.
     const { fabricante, tipoCompleto } = decodificarFabricanteCompleto(req.query.fabricante || "");
-    const anoStr     = String(req.query.ano || "").trim();
+    const anoStr        = String(req.query.ano || "").trim();
+    // PEDIDO DO USUÁRIO (2026-09-04, referência KKI Vendas): campo único
+    // "Ano" virou "Ano Inicial"/"Ano Final" no formulário — `ano` continua
+    // aceito (compat com quem ainda manda só um ano, ex: chamadas antigas
+    // salvas em favoritos/histórico do navegador do atendente).
+    const anoInicioStr  = String(req.query.anoInicio || "").trim();
+    const anoFimStr     = String(req.query.anoFim || "").trim();
+    const motor         = String(req.query.motor || "").trim();
 
     // Modo navegação (pedido do usuário, 2026-07-22, estendido em 2026-07-23
     // pra incluir fabricante): sem marca/modelo, uma categoria (Seção ou
@@ -184,17 +191,28 @@ async function buscarProdutosHandler(req, res) {
       return res.status(400).json({ error: "Informe marca/modelo do veículo, ou selecione uma Seção/Fabricante pra navegar pelo catálogo." });
     }
 
-    let ano = null;
-    if (anoStr) {
-      const anoNum = parseInt(anoStr, 10);
-      const anoMaximo = new Date().getFullYear() + 1;
-      if (!Number.isInteger(anoNum) || anoNum < ANO_MINIMO || anoNum > anoMaximo) {
-        return res.status(400).json({ error: `Ano inválido (use um valor entre ${ANO_MINIMO} e ${anoMaximo}).` });
+    const anoMaximo = new Date().getFullYear() + 1;
+    function _validarAno(str, rotulo) {
+      if (!str) return null;
+      const n = parseInt(str, 10);
+      if (!Number.isInteger(n) || n < ANO_MINIMO || n > anoMaximo) {
+        res.status(400).json({ error: `${rotulo} inválido (use um valor entre ${ANO_MINIMO} e ${anoMaximo}).` });
+        return undefined; // sinaliza "já respondeu, aborta"
       }
-      ano = anoNum;
+      return n;
     }
 
-    const resultado = buscarProdutosPainel({ marca, modelo, ano, categoria, fabricante, tipoCompleto });
+    const ano = _validarAno(anoStr, "Ano");
+    if (ano === undefined) return;
+    const anoInicio = _validarAno(anoInicioStr, "Ano inicial");
+    if (anoInicio === undefined) return;
+    const anoFim = _validarAno(anoFimStr, "Ano final");
+    if (anoFim === undefined) return;
+    if (anoInicio && anoFim && anoInicio > anoFim) {
+      return res.status(400).json({ error: "Ano inicial não pode ser maior que o ano final." });
+    }
+
+    const resultado = buscarProdutosPainel({ marca, modelo, ano, anoInicio, anoFim, motor, categoria, fabricante, tipoCompleto });
     res.json(resultado);
   } catch (err) {
     logger.error("❌ Erro ao buscar produtos do catálogo:", err.message);
@@ -580,6 +598,21 @@ async function listarFabricantesHandler(req, res) {
   }
 }
 
+// GET /api/catalogo/montadoras — pedido do usuário (2026-09-04, referência
+// do concorrente KKI Vendas): sugestões pro campo "Montadora" da busca
+// avançada (datalist, não trava o atendente num valor fixo — continua
+// aceitando texto livre, ver buscarProdutosPainel). Lista curada extraída
+// de dado REAL do catálogo (ver MARCAS_VEICULO_CONHECIDAS em
+// catalogo-x2.service.js), não inventada à mão.
+async function listarMontadorasHandler(req, res) {
+  try {
+    res.json({ montadoras: listarMarcasVeiculoConhecidas() });
+  } catch (err) {
+    logger.error("❌ Erro ao listar montadoras conhecidas do catálogo:", err.message);
+    res.status(500).json({ error: "Erro ao listar montadoras." });
+  }
+}
+
 // GET /api/catalogo/fabricantes-completo — só pra aba "Catálogo Completo"
 // (pedido do usuário, 2026-09-03: "temos a divisão de peças cadastradas
 // como mecânica para esses catálogos [...] preciso que faça a separação
@@ -897,6 +930,7 @@ module.exports = {
   ocultarFotoHandler,
   versaoFotosHandler,
   buscarProdutosHandler,
+  listarMontadorasHandler,
   recarregarEstoqueHandler,
   recarregarCatalogoHandler,
   listarSecoesHandler,

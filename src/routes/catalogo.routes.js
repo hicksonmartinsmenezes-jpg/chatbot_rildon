@@ -13,6 +13,7 @@ const {
   listarSecoesHandler,
   listarLinhasHandler,
   listarFabricantesHandler,
+  listarMontadorasHandler,
   listarFabricantesCatalogoCompletoHandler,
   buscarPorCodigoHandler,
   buscarPorNomeHandler,
@@ -67,6 +68,9 @@ router.get("/catalogo/linhas", listarLinhasHandler);
 // fabricante/referência/código interno (Task #250-253, pedido do usuário em
 // 2026-07-23).
 router.get("/catalogo/fabricantes", listarFabricantesHandler);
+// Sugestões (datalist, texto livre continua aceito) pro campo "Montadora" da
+// busca avançada — pedido do usuário (2026-09-04, referência KKI Vendas).
+router.get("/catalogo/montadoras", listarMontadorasHandler);
 // Pedido do usuário (2026-09-03): dropdown SEPARADO só pra aba "Catálogo
 // Completo" — cada fabricante que tem peça em MECÂNICA e fora dela vira
 // duas opções ("PERFECT - Mecânica" / "PERFECT - Elétrica") em vez de uma

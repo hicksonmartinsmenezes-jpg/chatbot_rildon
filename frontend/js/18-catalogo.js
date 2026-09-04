@@ -106,6 +106,36 @@ async function loadCatalogoFabricantes() {
   _catalogoFabricantesCarregados = true;
 }
 
+// PEDIDO DO USUÁRIO (2026-09-04, referência do concorrente KKI Vendas):
+// sugestões (datalist) pro campo "Montadora" — texto livre continua
+// funcionando igual antes (a busca no backend não muda), isso só ajuda o
+// atendente a acertar a grafia mais rápido. Lista curada com dado real do
+// catálogo (ver MARCAS_VEICULO_CONHECIDAS/listarMarcasVeiculoConhecidas em
+// catalogo-x2.service.js), não uma lista inventada à parte.
+let _catalogoMontadorasCarregadas = false;
+// Set (palavras em MAIÚSCULO) reaproveitado pelo parser _parseAplicacaoTabela
+// abaixo — mesma lista, dois usos (sugestão de digitação + reconhecimento de
+// marca dentro do texto de aplicação), sem duplicar a fonte de dado.
+let _catalogoMontadorasSet = new Set();
+async function loadCatalogoMontadoras() {
+  if (_catalogoMontadorasCarregadas) return;
+  try {
+    const res = await apiFetch("/api/catalogo/montadoras");
+    if (res.ok) {
+      const data = await res.json();
+      const lista = Array.isArray(data.montadoras) ? data.montadoras : [];
+      const datalist = document.getElementById("catalogo-montadoras-list");
+      if (datalist) {
+        datalist.innerHTML = lista.map(m => `<option value="${safe(m)}"></option>`).join("");
+      }
+      _catalogoMontadorasSet = new Set(lista.map(m => String(m).toUpperCase()));
+    }
+    _catalogoMontadorasCarregadas = true;
+  } catch (err) {
+    console.warn("[catalogo] falha ao carregar montadoras:", err.message);
+  }
+}
+
 // Aba "Catálogo Completo" (pedido do usuário, 2026-08-26): dropdown
 // separado, sem opção "Todos" — aqui o atendente precisa escolher UM
 // fabricante específico pra gerar o PDF do catálogo inteiro dele, não faz
@@ -458,7 +488,7 @@ function catalogoMostrarAbaPromocional() {
 // Limpa os campos do formulário e volta o painel de resultados pro estado
 // inicial — atalho pra começar uma nova busca do zero (pedido de UX).
 function limparCatalogoForm() {
-  ["catalogo-marca", "catalogo-modelo", "catalogo-ano"].forEach(id => {
+  ["catalogo-marca", "catalogo-modelo", "catalogo-ano-inicio", "catalogo-ano-fim", "catalogo-motor"].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
@@ -475,7 +505,7 @@ function limparCatalogoForm() {
 
   const wrap = document.getElementById("catalogo-resultados");
   if (wrap) {
-    wrap.innerHTML = _catalogoEmptyState("fa-magnifying-glass-chart", "Preencha marca/modelo pra buscar por veículo, ou selecione uma Seção/Fabricante pra navegar pelo catálogo.");
+    wrap.innerHTML = _catalogoEmptyState("fa-magnifying-glass-chart", "Preencha montadora/modelo pra buscar por veículo, ou selecione uma Seção/Fabricante pra navegar pelo catálogo.");
   }
   document.getElementById("catalogo-marca")?.focus();
 }
@@ -579,6 +609,163 @@ function toggleCatalogoAplicacao(btnEl) {
   btnEl.innerHTML = vaiExpandir
     ? '<i class="fa-solid fa-chevron-up"></i> Ver menos'
     : '<i class="fa-solid fa-chevron-down"></i> Ver aplicação completa';
+}
+
+// ─── Tabela de aplicação (pedido do usuário, 2026-09-04, referência do
+// concorrente KKI Vendas) ────────────────────────────────────────────────
+// O KKI mostra a aplicação (veículos compatíveis) numa TABELA de verdade
+// (Montadora/Veículo/Motor/Ano/Obs) em vez de um parágrafo corrido. O
+// catálogo real da loja não tem esse dado estruturado — só o texto cru do
+// X2, em pelo menos 6 formatos diferentes coexistindo na mesma base (ver
+// levantamento da Issue: "FABRICANTE: modelo1, modelo2; OUTRO: ..." /
+// linha por modelo sem ":" / frase solta / texto genérico / nome do
+// produto copiado como aplicação quando o campo vem vazio). Decisão do
+// usuário: "melhor esforço" via regex/split, SEM chamar IA (custaria
+// reprocessar milhares de textos à toa) — o que não encaixa em nenhum
+// padrão reconhecido cai numa única linha com o texto INTEIRO em Obs, que
+// nunca é pior do que o parágrafo corrido que já existia antes.
+const _APLICACAO_TABELA_MARCA_RE = /^\s*([^:;]{2,40}):\s*(.+)$/;
+// Formatos de ano observados na amostra real: faixa "1998 > 2011" / "94->96"
+// / "2000>2013" (com ou sem espaço ao redor do separador), faixa aberta
+// "2000>" ("ainda em linha"), e datas completas "01/02/2014 31/12/2015"
+// (usa só os 2 anos de 4 dígitos, ignora dia/mês) — cobre a maioria dos
+// casos reais sem tentar validar o formato inteiro (isso aqui é só pra
+// EXIBIÇÃO, não pra lógica de negócio — quem decide "ano compatível" de
+// verdade é _anoCompativel no backend).
+const _APLICACAO_TABELA_ANO_RE = /\b((?:19|20)\d{2})\s*(?:>|->|-)\s*((?:19|20)\d{2})?\b/;
+const _APLICACAO_TABELA_MOTOR_RE = /\b\d[.,]\d\s*L?\b[^;,\n]{0,25}?(?:\d{1,2}V|DOHC|SOHC|MPI|TDI|TDCI|FLEX|GASOLINA|DIESEL|[ÁA]LCOOL|TURBO)\b|\b(?:DOHC|SOHC|MPI|TDI|TDCI|TURBO)\b/i;
+// Achado testando contra amostra real: texto tipo "Veículos Nacionais:
+// Escort; Fiesta; ...; Veículos Importados: Ford; ..." casa com o padrão
+// "X: resto" mas "Veículos Nacionais"/"Veículos Importados" não é marca
+// nenhuma — mesma categoria de ruído já filtrada na hora de montar
+// MARCAS_VEICULO_CONHECIDAS no backend (catalogo-x2.service.js). Guarda
+// rápida: se o texto ANTES do ":" contiver uma dessas palavras genéricas,
+// não trata como montadora — cai como Obs, igual um segmento sem ":" que
+// não bateu marca nenhuma.
+const _APLICACAO_TABELA_RUIDO_RE = /\b(VEICULOS?|IMPORTADOS?|NACIONAIS?|DIVERSOS?|GERAL|APLICACAO|SUBSTITUI)\b/i;
+
+// Quebra o texto de aplicação em linhas { montadora, veiculo, motor, ano, obs }.
+// Puramente heurístico — nunca lança erro, sempre devolve algo exibível
+// (na pior hipótese, 1 linha só com o texto original em Obs).
+function _parseAplicacaoTabela(texto) {
+  const bruto = String(texto || "").trim();
+  if (!bruto) return [];
+
+  // Segmenta por ";" e por quebra de linha — os 2 separadores usados nos
+  // formatos reais observados entre "blocos" de veículo/montadora.
+  const segmentos = bruto.split(/[;\n]+/).map(s => s.trim()).filter(Boolean);
+  if (!segmentos.length) return [{ montadora: "", veiculo: "", motor: "", ano: "", obs: bruto }];
+
+  const linhas = [];
+  for (const seg of segmentos) {
+    const m = seg.match(_APLICACAO_TABELA_MARCA_RE);
+    let montadora = "";
+    let resto = seg;
+
+    if (m && !_APLICACAO_TABELA_RUIDO_RE.test(m[1])) {
+      montadora = m[1].trim();
+      resto = m[2].trim();
+    } else if (!m) {
+      // Sem ":" — tenta achar uma montadora conhecida como 1ª palavra do
+      // segmento (formato "Hyundai Hb20 ... 01/02/2014 31/12/2015", sem
+      // dois-pontos nenhum). Reusa a MESMA lista curada do datalist
+      // "Montadora" (ver loadCatalogoMontadoras acima) — dado real, não
+      // uma lista inventada só pro parser.
+      const primeiraPalavra = seg.split(/\s+/)[0] || "";
+      if (primeiraPalavra && _catalogoMontadorasSet.has(primeiraPalavra.toUpperCase())) {
+        montadora = primeiraPalavra;
+        resto = seg.slice(primeiraPalavra.length).trim();
+      }
+    }
+
+    if (!montadora) {
+      // Sem montadora reconhecível — não força estrutura nenhuma, cai como
+      // Obs pura (mesmo texto que já aparecia no card antes desta feature).
+      linhas.push({ montadora: "", veiculo: "", motor: "", ano: "", obs: seg });
+      continue;
+    }
+
+    const anoMatch   = resto.match(_APLICACAO_TABELA_ANO_RE);
+    const motorMatch = resto.match(_APLICACAO_TABELA_MOTOR_RE);
+    linhas.push({
+      montadora,
+      veiculo: resto,
+      motor: motorMatch ? motorMatch[0].trim() : "",
+      ano: anoMatch ? anoMatch[0].replace(/\s+/g, " ").trim() : "",
+      obs: "",
+    });
+  }
+
+  return linhas;
+}
+
+function _catalogoAplicacaoTabelaHTML(linhas) {
+  if (!linhas.length) {
+    return '<p class="catalogo-aplicacao-tabela-vazio">Nenhuma aplicação cadastrada pra esse produto.</p>';
+  }
+  const linhasHTML = linhas.map(l => {
+    if (!l.montadora) {
+      // Linha sem estrutura reconhecida — mostra o texto INTEIRO numa
+      // célula só (colspan), em vez de espalhar em colunas erradas.
+      return `<tr class="catalogo-aplicacao-tabela-linha-obs"><td colspan="4">${safe(l.obs)}</td></tr>`;
+    }
+    return `
+      <tr>
+        <td><strong>${safe(l.montadora)}</strong></td>
+        <td>${l.veiculo ? safe(l.veiculo) : "—"}</td>
+        <td>${l.motor ? safe(l.motor) : "—"}</td>
+        <td>${l.ano ? safe(l.ano) : "—"}</td>
+      </tr>
+    `;
+  }).join("");
+
+  return `
+    <table class="catalogo-aplicacao-tabela">
+      <thead>
+        <tr><th>Montadora</th><th>Veículo</th><th>Motor</th><th>Ano</th></tr>
+      </thead>
+      <tbody>${linhasHTML}</tbody>
+    </table>
+  `;
+}
+
+// Abre o modal com a aplicação em formato de tabela — pedido do usuário
+// (2026-09-04, referência KKI Vendas). Lê o texto direto do DOM do card
+// (mesmo texto já mostrado em .catalogo-aplicacao-completa) + o texto já
+// reorganizado pela IA quando disponível (data-aplicacao-organizada, mais
+// uniforme — ver aplicacaoOrganizada em buscarProdutosPainel/
+// catalogo-x2.service.js) em vez de duplicar o dado num objeto JS à parte.
+function abrirModalAplicacaoTabela(btnEl) {
+  const card = btnEl.closest(".catalogo-card");
+  const nome = btnEl.dataset.nome || "";
+  const aplicacaoOrganizada = btnEl.dataset.aplicacaoOrganizada || "";
+  const aplicacaoCrua = card?.querySelector(".catalogo-aplicacao-completa")?.textContent
+    || card?.querySelector(".catalogo-aplicacao-curta")?.textContent
+    || "";
+  // Prefere o texto já reorganizado pela IA quando existir — segue o
+  // formato "MONTADORA: modelo1, modelo2" de forma mais consistente que o
+  // texto cru do X2, então o parser abaixo acerta em mais casos.
+  const texto = aplicacaoOrganizada || aplicacaoCrua;
+  const linhas = _parseAplicacaoTabela(texto);
+
+  _openModal(`
+    <div class="modal-header">
+      <strong>Aplicação — ${safe(nome)}</strong>
+      <button class="modal-close-btn" type="button" data-modal-close aria-label="Fechar modal">&times;</button>
+    </div>
+    <div class="modal-body">
+      ${aplicacaoOrganizada ? "" : '<p class="catalogo-aplicacao-tabela-aviso"><i class="fa-solid fa-circle-info"></i> Agrupamento automático (melhor esforço) — quando o texto não segue um padrão reconhecível, aparece inteiro na última coluna.</p>'}
+      ${_catalogoAplicacaoTabelaHTML(linhas)}
+    </div>
+    <div class="modal-footer">
+      <button class="modal-btn modal-btn-secondary" type="button" data-modal-close>Fechar</button>
+    </div>
+  `);
+
+  // O modal padrão nasce estreito (pensado pra confirm/prompt, ver
+  // 15-modal.js) — uma tabela de 4 colunas precisa de mais espaço.
+  const box = document.querySelector("#_global-modal-overlay ._modal-box");
+  if (box) box.style.width = "min(760px, 95vw)";
 }
 
 // "Ver referências" (pedido do usuário, 2026-07-30, inspirado na tela
@@ -888,11 +1075,20 @@ function _catalogoCardHTML(produto, mostrarBadgeNeutro) {
 
         <p class="catalogo-card-aplicacao catalogo-aplicacao-curta">${safe(aplicacaoCurta)}</p>
         <p class="catalogo-card-aplicacao catalogo-aplicacao-completa hidden">${safe(aplicacaoCompleta)}</p>
-        ${precisaExpandir ? `
-          <button type="button" class="catalogo-expand-btn" onclick="toggleCatalogoAplicacao(this)">
-            <i class="fa-solid fa-chevron-down"></i> Ver aplicação completa
-          </button>
-        ` : ""}
+        <div class="catalogo-aplicacao-acoes">
+          ${precisaExpandir ? `
+            <button type="button" class="catalogo-expand-btn" onclick="toggleCatalogoAplicacao(this)">
+              <i class="fa-solid fa-chevron-down"></i> Ver aplicação completa
+            </button>
+          ` : ""}
+          ${aplicacaoCompleta ? `
+            <button type="button" class="catalogo-expand-btn" onclick="abrirModalAplicacaoTabela(this)"
+              data-nome="${escapeAttr(produto.nome)}"
+              data-aplicacao-organizada="${escapeAttr(produto.aplicacaoOrganizada || "")}">
+              <i class="fa-solid fa-table"></i> Ver aplicação em tabela
+            </button>
+          ` : ""}
+        </div>
 
         <div class="catalogo-card-badges">${badges.join("")}</div>
         ${_catalogoEstoqueHTML(produto.estoque)}
@@ -1088,9 +1284,13 @@ async function buscarCatalogo(event) {
   const searchBtn = event?.target?.querySelector?.(".catalogo-erp-search-btn");
   setButtonBusy(searchBtn, true, "Buscando...");
 
-  const marca  = document.getElementById("catalogo-marca")?.value.trim()  || "";
-  const modelo = document.getElementById("catalogo-modelo")?.value.trim() || "";
-  const ano    = document.getElementById("catalogo-ano")?.value.trim()    || "";
+  const marca      = document.getElementById("catalogo-marca")?.value.trim()      || "";
+  const modelo     = document.getElementById("catalogo-modelo")?.value.trim()     || "";
+  // PEDIDO DO USUÁRIO (2026-09-04, referência KKI Vendas): campo único "Ano"
+  // virou "Ano Inicial"/"Ano Final" (faixa) + campo novo "Motor".
+  const anoInicio  = document.getElementById("catalogo-ano-inicio")?.value.trim() || "";
+  const anoFim     = document.getElementById("catalogo-ano-fim")?.value.trim()    || "";
+  const motor      = document.getElementById("catalogo-motor")?.value.trim()      || "";
 
   // Linha (mais específica) tem prioridade sobre Seção quando ambas estão
   // preenchidas — o backend aceita um único parâmetro "categoria" e casa
@@ -1111,20 +1311,24 @@ async function buscarCatalogo(event) {
   // sem texto de aplicação/veículo (ex: abraçadeira, parafuso), que a busca
   // por veículo abaixo nunca alcançaria.
   if (!marca && !modelo && !categoria && !fabricante) {
-    wrap.innerHTML = _catalogoEmptyState("fa-triangle-exclamation", "Informe marca/modelo do veículo, ou selecione uma Seção/Fabricante pra navegar pelo catálogo.", "catalogo-warn-state");
+    wrap.innerHTML = _catalogoEmptyState("fa-triangle-exclamation", "Informe montadora/modelo do veículo, ou selecione uma Seção/Fabricante pra navegar pelo catálogo.", "catalogo-warn-state");
     return;
   }
 
   // Pedido do usuário (2026-07-31): Modelo é o único campo que o backend usa
-  // pra FILTRAR de verdade uma busca por veículo (Marca só ranqueia depois —
-  // ver comentário em buscarProdutosPainel, catalogo-x2.service.js). Buscar
-  // só por Marca (ex: "Ford", sem Modelo) faz a mesma busca ampla contra
-  // TODO o texto de aplicação, só que sem nem o Modelo pra restringir —
-  // ainda mais resultado solto. Por isso, sempre que Marca e/ou Ano forem
-  // usados (ou seja, é uma busca por veículo, não navegação por Seção/
+  // pra FILTRAR de verdade uma busca por veículo (Montadora só ranqueia
+  // depois — ver comentário em buscarProdutosPainel, catalogo-x2.service.js).
+  // Buscar só por Montadora (ex: "Ford", sem Modelo) faz a mesma busca ampla
+  // contra TODO o texto de aplicação, só que sem nem o Modelo pra restringir
+  // — ainda mais resultado solto. Por isso, sempre que Montadora/Ano/Motor
+  // forem usados (ou seja, é uma busca por veículo, não navegação por Seção/
   // Fabricante), exige Modelo preenchido também.
-  if ((marca || ano) && !modelo) {
-    wrap.innerHTML = _catalogoEmptyState("fa-triangle-exclamation", "Informe o Modelo pra buscar por veículo — só Marca/Ano sozinhos trazem resultado amplo demais.", "catalogo-warn-state");
+  if ((marca || anoInicio || anoFim || motor) && !modelo) {
+    wrap.innerHTML = _catalogoEmptyState("fa-triangle-exclamation", "Informe o Modelo pra buscar por veículo — Montadora/Ano/Motor sozinhos trazem resultado amplo demais.", "catalogo-warn-state");
+    return;
+  }
+  if (anoInicio && anoFim && Number(anoInicio) > Number(anoFim)) {
+    wrap.innerHTML = _catalogoEmptyState("fa-triangle-exclamation", "Ano inicial não pode ser maior que o ano final.", "catalogo-warn-state");
     return;
   }
 
@@ -1134,7 +1338,9 @@ async function buscarCatalogo(event) {
   const params = new URLSearchParams();
   if (marca)      params.set("marca", marca);
   if (modelo)     params.set("modelo", modelo);
-  if (ano)        params.set("ano", ano);
+  if (anoInicio)  params.set("anoInicio", anoInicio);
+  if (anoFim)     params.set("anoFim", anoFim);
+  if (motor)      params.set("motor", motor);
   if (categoria)  params.set("categoria", categoria);
   if (fabricante) params.set("fabricante", fabricante);
 
@@ -1153,10 +1359,14 @@ async function buscarCatalogo(event) {
     // Chips mostrando os critérios usados nessa busca — ajuda a lembrar o
     // que foi filtrado ao rolar uma lista longa de resultados.
     const chips = [];
-    if (marca)      chips.push(`<span class="catalogo-chip"><i class="fa-solid fa-car-side"></i> ${safe(marca)}</span>`);
+    if (marca)      chips.push(`<span class="catalogo-chip"><i class="fa-solid fa-flag"></i> ${safe(marca)}</span>`);
     if (modelo)     chips.push(`<span class="catalogo-chip"><i class="fa-solid fa-car"></i> ${safe(modelo)}</span>`);
-    if (ano)        chips.push(`<span class="catalogo-chip"><i class="fa-solid fa-calendar-day"></i> ${safe(ano)}</span>`);
-    if (categoria)  chips.push(`<span class="catalogo-chip"><i class="fa-solid fa-gears"></i> ${safe(categoria)}</span>`);
+    if (anoInicio || anoFim) {
+      const faixaAno = anoInicio && anoFim && anoInicio !== anoFim ? `${anoInicio} – ${anoFim}` : (anoInicio || anoFim);
+      chips.push(`<span class="catalogo-chip"><i class="fa-solid fa-calendar-day"></i> ${safe(faixaAno)}</span>`);
+    }
+    if (motor)      chips.push(`<span class="catalogo-chip"><i class="fa-solid fa-gears"></i> ${safe(motor)}</span>`);
+    if (categoria)  chips.push(`<span class="catalogo-chip"><i class="fa-solid fa-table-cells"></i> ${safe(categoria)}</span>`);
     if (fabricante) chips.push(`<span class="catalogo-chip"><i class="fa-solid fa-industry"></i> ${safe(fabricante)}</span>`);
     const chipsHTML = chips.length ? `<div class="catalogo-chips">${chips.join("")}</div>` : "";
 

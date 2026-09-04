@@ -143,4 +143,18 @@ async function anexarAplicacoesOrganizadas(produtos, { maxNovos = 10 } = {}) {
   return { totalUnicos, jaEmCache, novosProcessados: processados, novosComSucesso: novosProcessadosComSucesso };
 }
 
-module.exports = { anexarAplicacoesOrganizadas };
+// PEDIDO DO USUÁRIO (2026-09-04, referência KKI Vendas): a busca do painel
+// (buscarProdutosPainel, catalogo-x2.service.js) é SÍNCRONA — precisa ler o
+// cache sem passar por anexarAplicacoesOrganizadas (que é `async`, mesmo
+// rodando 100% síncrono internamente quando maxNovos:0 nunca bate um
+// `await` de verdade — não dá pra depender disso silenciosamente). Getter
+// dedicado, só leitura de cache, nunca dispara IA nem grava nada em disco.
+function obterAplicacaoOrganizadaCache(texto) {
+  const t = String(texto || "").trim();
+  if (!t) return null;
+  const cache = _carregarCache();
+  const organizado = cache.get(_hash(t));
+  return organizado || null; // undefined (nunca tentado) e "" (tentado, sem aplicação) viram null aqui — ambos "nada pra mostrar"
+}
+
+module.exports = { anexarAplicacoesOrganizadas, obterAplicacaoOrganizadaCache };

@@ -2030,8 +2030,9 @@ Como podemos ajudar você hoje?
           </div>
 
           <div class="catalogo-erp-row">
-            <label for="catalogo-marca"><i class="fa-solid fa-industry"></i> Fabricante</label>
-            <input type="text" id="catalogo-marca" autocomplete="off">
+            <label for="catalogo-marca"><i class="fa-solid fa-flag"></i> Montadora</label>
+            <input type="text" id="catalogo-marca" list="catalogo-montadoras-list" autocomplete="off" placeholder="Ex: Ford, Fiat, Volvo...">
+            <datalist id="catalogo-montadoras-list"></datalist>
           </div>
 
           <div class="catalogo-erp-row">
@@ -2039,9 +2040,20 @@ Como podemos ajudar você hoje?
             <input type="text" id="catalogo-modelo" autocomplete="off">
           </div>
 
+          <div class="catalogo-erp-row catalogo-erp-row-split">
+            <div class="catalogo-erp-row-split-item">
+              <label for="catalogo-ano-inicio"><i class="fa-solid fa-calendar-days"></i> Ano Inicial</label>
+              <input type="number" id="catalogo-ano-inicio" min="1950" autocomplete="off">
+            </div>
+            <div class="catalogo-erp-row-split-item">
+              <label for="catalogo-ano-fim">Ano Final</label>
+              <input type="number" id="catalogo-ano-fim" min="1950" autocomplete="off">
+            </div>
+          </div>
+
           <div class="catalogo-erp-row">
-            <label for="catalogo-ano"><i class="fa-solid fa-calendar-days"></i> Ano</label>
-            <input type="number" id="catalogo-ano" min="1950" autocomplete="off">
+            <label for="catalogo-motor"><i class="fa-solid fa-gears"></i> Motor</label>
+            <input type="text" id="catalogo-motor" autocomplete="off" placeholder="Ex: 1.6 16V, MPI, Diesel...">
           </div>
         </div>
 
@@ -2415,7 +2427,7 @@ Como podemos ajudar você hoje?
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1"></script>
 
   <!-- JS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <script src="dist/bundle.16427154ce.js"></script>
+  <script src="dist/bundle.a20babcb67.js"></script>
   <!-- JS_BUNDLE_END -->
 
 

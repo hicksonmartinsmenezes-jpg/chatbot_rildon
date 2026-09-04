@@ -43,6 +43,29 @@ const path = require("path");
 // nesse caso obterEstoque() devolve null e o produto aparece normalmente,
 // só sem o badge.
 const estoqueService = require("./estoque.service");
+// PEDIDO DO USUÁRIO (2026-09-04, referência do concorrente KKI Vendas):
+// anexa a versão já reorganizada pela IA (ver organizarAplicacaoIA em
+// ai.service.js) quando já estiver em CACHE — melhora a tabela de aplicação
+// do modal de detalhe (formato mais uniforme "FABRICANTE: modelos" que o
+// texto cru do X2) sem custar nada (só leitura, síncrona, de um Map em
+// memória). Nunca dispara chamada de IA nova aqui — isso só acontece nos
+// fluxos de PDF, de propósito, pra não gastar crédito a cada busca do painel.
+//
+// Require ADIADO (não no topo do arquivo): catalogo-aplicacao-ia.service.js
+// exige ai.service.js, que por sua vez exige ESTE arquivo
+// (buscarPorCodigoOriginal/buscarPorVeiculo/buscarPorNomeProduto) — um
+// require direto aqui no topo cria dependência circular de verdade, e se
+// catalogo-x2.service.js for o primeiro módulo carregado na cadeia de boot,
+// ai.service.js pega um module.exports ainda vazio (undefined nas 3
+// funções). Adiar o require pra dentro da função só resolve na 1ª chamada
+// real (depois que todo o boot já terminou), sem esse risco.
+let _obterAplicacaoOrganizadaCache = null;
+function _aplicacaoOrganizadaCache(texto) {
+  if (!_obterAplicacaoOrganizadaCache) {
+    _obterAplicacaoOrganizadaCache = require("./catalogo-aplicacao-ia.service").obterAplicacaoOrganizadaCache;
+  }
+  return _obterAplicacaoOrganizadaCache(texto);
+}
 
 const DIR_CATALOGO = path.join(__dirname, "../config/catalogo-x2");
 
@@ -179,6 +202,15 @@ function _contemMarcaConhecida(nomeNormalizado) {
     if (MARCAS_VEICULO_CONHECIDAS.has(palavra)) return true;
   }
   return false;
+}
+
+// PEDIDO DO USUÁRIO (2026-09-04, referência do concorrente KKI Vendas): a
+// aba "Critérios de Pesquisa" do painel ganhou um campo "Montadora" com
+// sugestões — em vez de inventar uma lista à parte, reaproveita a MESMA
+// MARCAS_VEICULO_CONHECIDAS já validada contra dado real do catálogo (ver
+// comentário acima). Ordenada pra exibição no <datalist> do frontend.
+function listarMarcasVeiculoConhecidas() {
+  return [...MARCAS_VEICULO_CONHECIDAS].sort((a, b) => a.localeCompare(b, "pt-BR"));
 }
 
 function _indexarProduto(p) {
@@ -418,9 +450,23 @@ function _extrairFaixasDeAno(texto) {
   return faixas;
 }
 
-function _anoCompativel(faixas, anoBuscado) {
-  if (!anoBuscado || !faixas || !faixas.length) return false;
-  return faixas.some(f => anoBuscado >= f.inicio && (f.fim === null || anoBuscado <= f.fim));
+// PEDIDO DO USUÁRIO (2026-09-04, referência KKI Vendas): campo único "Ano"
+// virou "Ano Inicial"/"Ano Final" (faixa) no painel — estende a assinatura
+// pra aceitar uma faixa buscada, checando INTERSEÇÃO com a faixa do produto
+// em vez de um ano exato. Quando só `anoInicio` é passado (uso antigo,
+// buscarPorNomePainel/rotas legadas), `anoFim` cai pro mesmo valor e o
+// resultado é IDÊNTICO ao comportamento anterior — mesma matemática, só
+// que anoBuscado passa a se chamar anoInicio===anoFim. Continua sendo
+// critério de RANKING, nunca de exclusão (mesma decisão documentada acima
+// em buscarProdutosPainel: produto sem ano cadastrado nunca é cortado).
+function _anoCompativel(faixas, anoInicio, anoFim = null) {
+  const buscaInicio = anoInicio || anoFim;
+  const buscaFim = anoFim || anoInicio;
+  if (!buscaInicio || !faixas || !faixas.length) return false;
+  return faixas.some(f => {
+    const fimFaixa = f.fim === null ? Infinity : f.fim;
+    return buscaInicio <= fimFaixa && buscaFim >= f.inicio;
+  });
 }
 
 function _tokens(texto) {
@@ -1020,10 +1066,22 @@ function buscarPorNomePainel(nomeBusca, { limite = 200 } = {}) {
 // informados, marca funciona como reforço de ranking (marcaCompativel),
 // nunca como filtro de exclusão. Ano segue a mesma lógica (ver
 // _anoCompativel acima).
-function buscarProdutosPainel({ marca = "", modelo = "", ano = null, categoria = "", fabricante = "", tipoCompleto = null, limite = 200 } = {}) {
+function buscarProdutosPainel({ marca = "", modelo = "", ano = null, anoInicio = null, anoFim = null, motor = "", categoria = "", fabricante = "", tipoCompleto = null, limite = 200 } = {}) {
   const marcaTokens  = _tokens(marca);
   const modeloTokens = _tokens(modelo);
-  const anoNum = ano ? Number(ano) : null;
+  // PEDIDO DO USUÁRIO (2026-09-04, referência KKI Vendas): campo único "Ano"
+  // do painel virou "Ano Inicial"/"Ano Final". `ano` continua aceito por
+  // compatibilidade (chamadores antigos/rotas que não migraram) — quando só
+  // ele vem preenchido, funciona como sempre funcionou (ano único).
+  const anoIni = anoInicio ? Number(anoInicio) : (ano ? Number(ano) : null);
+  const anoF   = anoFim ? Number(anoFim) : null;
+  // PEDIDO DO USUÁRIO (2026-09-04, referência KKI Vendas): campo novo
+  // "Motor" — filtro ADICIONAL (só entra em jogo quando preenchido), por
+  // substring (não palavra inteira) contra o texto de aplicação já
+  // normalizado, porque especificação de motor no texto real varia demais
+  // pra exigir token exato ("1.6 16V DOHC L4", "MPI - gasolina", "2.0 8V")
+  // — mesma lógica de tolerância já usada em buscarPorNomePainel.
+  const motorNorm = motor && String(motor).trim() ? _normalizar(motor) : null;
   const categoriaNorm = categoria && String(categoria).trim() ? _normalizar(categoria) : null;
   // Fabricante é filtro por igualdade exata (não substring) — vem sempre do
   // dropdown já normalizado por listarFabricantes(), não de texto livre.
@@ -1075,6 +1133,7 @@ function buscarProdutosPainel({ marca = "", modelo = "", ano = null, categoria =
       referencia: p.referencia,
       fabricante: p.fabricante,
       aplicacao: p.aplicacao,
+      aplicacaoOrganizada: _aplicacaoOrganizadaCache(p.aplicacao),
       equivalentes: p.equivalentes || [],
       equivalentesDetalhados: _detalharEquivalentes(p.equivalentes),
       referenciasCruzadas: p.referenciasCruzadas || null,
@@ -1113,6 +1172,12 @@ function buscarProdutosPainel({ marca = "", modelo = "", ano = null, categoria =
     }
     if (fabricanteNorm && (!p.fabricante || p.fabricante.toUpperCase() !== fabricanteNorm)) continue;
     if (!filtroTipoCompleto(p)) continue;
+    // PEDIDO DO USUÁRIO (2026-09-04, referência KKI Vendas): filtro por
+    // Motor é EXCLUDENTE (diferente de marca/ano, que só ranqueiam) — só
+    // entra em jogo quando preenchido, e aí sim corta quem não bate, porque
+    // é um campo NOVO e opcional: quem não usar não muda em nada o
+    // comportamento de busca já validado antes.
+    if (motorNorm && !(p.aplicacaoNormalizada || "").includes(motorNorm)) continue;
 
     // _tokenBateAplicacao aceita sinônimos de marca conhecidos (GM/General
     // Motors/Chevrolet — ver GRUPOS_ALIAS_MARCA acima).
@@ -1126,7 +1191,7 @@ function buscarProdutosPainel({ marca = "", modelo = "", ano = null, categoria =
     if (!universalRelevante && matchesObrigatorios < minMatches) continue;
 
     const marcaCompativel = marcaTokens.length ? marcaTokens.some(t => _tokenBateAplicacao(t, p.aplicacaoPalavras)) : false;
-    const anoCompativel = _anoCompativel(p.faixasAno, anoNum);
+    const anoCompativel = _anoCompativel(p.faixasAno, anoIni, anoF);
 
     encontrados.push({ p, matchesObrigatorios, marcaCompativel, anoCompativel });
   }
@@ -1155,6 +1220,7 @@ function buscarProdutosPainel({ marca = "", modelo = "", ano = null, categoria =
     referencia: p.referencia,
     fabricante: p.fabricante,
     aplicacao: p.aplicacao,
+    aplicacaoOrganizada: _aplicacaoOrganizadaCache(p.aplicacao),
     equivalentes: p.equivalentes || [],
     equivalentesDetalhados: _detalharEquivalentes(p.equivalentes),
     referenciasCruzadas: p.referenciasCruzadas || null,
@@ -1176,6 +1242,7 @@ module.exports = {
   buscarPorCodigo,
   listarFabricantes,
   listarFabricantesCatalogoCompleto,
+  listarMarcasVeiculoConhecidas,
   decodificarFabricanteCompleto,
   recarregarIndices,
 };

@@ -264,6 +264,14 @@ function _indexarProduto(p) {
     codigo: p.codigo, nome: p.nome, secao: p.secao, linha: p.linha,
     referencia: ficha.referencia || null, fabricante,
     equivalentes, referenciasCruzadas,
+    // BUG REAL corrigido 2026-09-04 (usuário reportou aba "Especificação
+    // Técnica" do modal sempre vazia, mesmo com dado real no X2 — ex:
+    // AMPERIMETRO 30.304-12M tem "3. Dados Técnicos: 50A TAMANHO: 52MM" no
+    // X2): ficha.dadosTecnicos nunca tinha sido incluído em `base`, então
+    // nenhuma busca (buscarPorCodigo/buscarPorNomePainel/buscarProdutosPainel)
+    // devolvia esse campo pro painel — a aba estava com um texto FIXO de
+    // "sem dados" no frontend, não checava dado nenhum de verdade.
+    dadosTecnicos: ficha.dadosTecnicos || null,
     // Código de barras (pedido do usuário, 2026-07-30): usado no cabeçalho
     // do painel "Ver referências", que reproduz o mesmo cartão visual da
     // tela "Equivalentes" do X2 (Código Produto / Código Barras / Código
@@ -836,6 +844,7 @@ function buscarPorCodigo(codigoBruto, { limite = 30 } = {}) {
       referencia: item.referencia,
       fabricante: item.fabricante,
       aplicacao: item.aplicacao,
+      dadosTecnicos: item.dadosTecnicos || null,
       equivalentes: item.equivalentes || [],
       equivalentesDetalhados: _detalharEquivalentes(item.equivalentes),
       referenciasCruzadas: item.referenciasCruzadas || null,
@@ -1088,6 +1097,7 @@ function buscarPorNomePainel(nomeBusca, { limite = 200 } = {}) {
     referencia: p.referencia,
     fabricante: p.fabricante,
     aplicacao: p.aplicacao,
+    dadosTecnicos: p.dadosTecnicos || null,
     equivalentes: p.equivalentes || [],
     equivalentesDetalhados: _detalharEquivalentes(p.equivalentes),
     referenciasCruzadas: p.referenciasCruzadas || null,
@@ -1184,6 +1194,7 @@ function buscarProdutosPainel({ marca = "", modelo = "", ano = null, anoInicio =
       fabricante: p.fabricante,
       aplicacao: p.aplicacao,
       aplicacaoOrganizada: _aplicacaoOrganizadaCache(p.aplicacao),
+      dadosTecnicos: p.dadosTecnicos || null,
       equivalentes: p.equivalentes || [],
       equivalentesDetalhados: _detalharEquivalentes(p.equivalentes),
       referenciasCruzadas: p.referenciasCruzadas || null,

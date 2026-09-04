@@ -779,7 +779,9 @@ function abrirModalDetalheProduto(codigo) {
         </div>
 
         <div class="catalogo-modal-tab-panel hidden" data-aba="especificacao">
-          <p class="catalogo-aplicacao-tabela-vazio">Sem dados técnicos cadastrados pra essa peça.</p>
+          ${produto.dadosTecnicos
+            ? `<p class="catalogo-modal-aplicacao-texto">${safe(produto.dadosTecnicos)}</p>`
+            : '<p class="catalogo-aplicacao-tabela-vazio">Sem dados técnicos cadastrados pra essa peça.</p>'}
         </div>
       </div>
     </div>

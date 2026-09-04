@@ -776,14 +776,11 @@
   animation: catalogoFadeInUp 0.3s ease both;
 }
 
-/* Pedido do usuário (2026-07-30): com "Ver referências" aberto, o card
-   estica pra ocupar o grid inteiro (senão fica espremido na largura de UMA
-   coluna, com bastante espaço vazio sobrando à direita quando há poucos
-   resultados). */
-.catalogo-card-expandido {
-  grid-column: 1 / -1;
-}
-
+/* Card inteiro é clicável desde 2026-09-04 (abre o modal de detalhe, ver
+   abrirModalDetalheProduto/18-catalogo.js) — cursor de ponteiro no corpo,
+   os botões internos (foto, trocar foto, copiar código) têm stopPropagation
+   pra não abrir o modal junto quando clicados. */
+.catalogo-card { cursor: pointer; }
 
 .catalogo-card:hover {
   transform: translateY(-4px);
@@ -1129,97 +1126,7 @@
   font-size: 8px;
 }
 
-/* ─── Prévia de códigos originais/equivalentes (pedido do usuário,
-   2026-08-13) — antes ficavam escondidos atrás do clique em "Ver
-   referências" lá embaixo; agora os 3 primeiros aparecem direto aqui,
-   perto do nome/fabricante. Clicável (abre o painel completo). ─────── */
-.catalogo-card-equiv-previa {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 5px;
-  width: fit-content;
-  max-width: 100%;
-  padding: 5px 9px;
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--primary) 8%, transparent);
-  border: 1px dashed color-mix(in srgb, var(--primary) 32%, var(--cat-line));
-  cursor: pointer;
-  transition: background var(--transition-fast), border-color var(--transition-fast);
-}
-
-.catalogo-card-equiv-previa:hover {
-  background: color-mix(in srgb, var(--primary) 14%, transparent);
-  border-color: var(--primary);
-}
-
-.catalogo-card-equiv-previa i {
-  color: var(--primary);
-  font-size: 10px;
-  flex-shrink: 0;
-}
-
-.catalogo-equiv-previa-label {
-  font-size: 10.5px;
-  font-weight: 700;
-  color: var(--cat-text-dim);
-  letter-spacing: 0.01em;
-  flex-shrink: 0;
-}
-
-.catalogo-equiv-previa-chip {
-  padding: 2px 8px;
-  border-radius: var(--radius-full);
-  background: var(--cat-bg-1);
-  border: 1px solid var(--cat-line);
-  font-size: 10.5px;
-  font-weight: 700;
-  color: var(--cat-text-dim);
-}
-
-.catalogo-equiv-previa-mais {
-  font-size: 10.5px;
-  font-weight: 800;
-  color: var(--primary);
-}
-
-.catalogo-card-aplicacao {
-  margin: 5px 0 0;
-  font-size: 12.5px;
-  color: #9aa5bd;
-  line-height: 1.55;
-  white-space: pre-line;
-}
-
-.catalogo-expand-btn {
-  align-self: flex-start;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin-top: 3px;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--primary);
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: opacity var(--transition-fast);
-}
-
-.catalogo-expand-btn:hover { text-decoration: underline; opacity: 0.85; }
-
-/* PEDIDO DO USUÁRIO (2026-09-04, referência KKI Vendas): os 2 botões de
-   aplicação (texto completo / tabela) lado a lado, sem empilhar um embaixo
-   do outro feio quando os 2 aparecem no mesmo card. */
-.catalogo-aplicacao-acoes {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  align-items: center;
-}
-
-/* Tabela de aplicação (modal "Ver aplicação em tabela") — melhor esforço,
+/* Tabela de aplicação/similares do modal de detalhe — melhor esforço,
    ver _parseAplicacaoTabela/18-catalogo.js. */
 .catalogo-aplicacao-tabela-aviso {
   display: flex;
@@ -1377,161 +1284,114 @@ body.light-theme .catalogo-aplicacao-tabela-linha-obs td { color: #64748b; }
   color: var(--green);
 }
 
-/* ─── "Ver referências" (pedido do usuário, 2026-07-30) ───────────
-   Botão some pro rodapé junto dos badges (mesmo margin-top:auto do pai,
-   .catalogo-card-badges); o painel expandido fica logo abaixo, com os
-   códigos equivalentes/OEM em chips copiáveis (mesma ideia do botão de
-   copiar código do produto, .catalogo-copy-btn). */
-.catalogo-ref-btn {
-  margin-top: auto;
-  padding-top: 10px;
+/* ─── Modal de detalhe do produto (pedido do usuário, 2026-09-04,
+   referência KKI Vendas) — 2 colunas: info fixa à esquerda (foto/código/
+   fabricante/estoque), abas à direita (Aplicação/Produtos Similares/
+   Especificação Técnica). ver abrirModalDetalheProduto/18-catalogo.js. */
+.catalogo-modal-detalhe {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 20px;
+  align-items: start;
 }
 
-.catalogo-referencias {
-  margin-top: 8px;
-  padding: 10px 12px;
+.catalogo-modal-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.catalogo-modal-photo {
+  position: relative;
+  height: 150px;
   border-radius: var(--radius-md);
   border: 1px solid var(--cat-line);
-  background: var(--cat-bg-0);
-}
-
-/* Banner "Código Produto / Código Barras / Código Fornecedor" — reproduz
-   o cartão cinza da tela "Equivalentes" do X2 (print do usuário,
-   2026-07-30). */
-.catalogo-ref-banner {
-  display: flex;
-  gap: 12px;
-  padding: 10px;
-  margin-bottom: 10px;
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--cat-text-dim) 8%, var(--cat-bg-1));
-  border: 1px solid var(--cat-line);
-}
-
-.catalogo-ref-banner-photo {
-  position: relative;
-  flex-shrink: 0;
-  width: 64px;
-  height: 64px;
-  border-radius: 8px;
-  overflow: hidden;
   background: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
+  padding: 12px;
+  box-sizing: border-box;
 }
 
-.catalogo-ref-banner-photo-fallback {
-  color: var(--cat-text-dimmer);
-  font-size: 20px;
-}
-
-.catalogo-ref-banner-photo img {
+.catalogo-modal-photo img {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: contain;
-  background: #fff;
+  padding: 12px;
+  box-sizing: border-box;
+  cursor: pointer;
 }
 
-.catalogo-ref-banner-info {
+.catalogo-modal-tabs {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 6px;
+  gap: 12px;
   min-width: 0;
 }
 
-.catalogo-ref-banner-title {
-  font-size: 13px;
-  color: #f4f6fa;
-  line-height: 1.3;
-}
-
-.catalogo-ref-banner-title-link {
-  cursor: pointer;
-  transition: color var(--transition-fast);
-}
-
-.catalogo-ref-banner-title-link:hover {
-  color: var(--primary);
-  text-decoration: underline;
-}
-
-.catalogo-ref-banner-title i {
-  color: var(--cat-text-dimmer);
-  font-size: 12px;
-  margin-left: 4px;
-}
-
-.catalogo-ref-banner-meta {
+.catalogo-modal-tab-strip {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px 16px;
-  font-size: 11.5px;
+  border-bottom: 1px solid var(--cat-line);
+}
+
+.catalogo-modal-tab-btn {
+  padding: 9px 16px;
+  border: none;
+  background: none;
   color: var(--cat-text-dim);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
 }
 
-.catalogo-ref-banner-meta i {
-  color: var(--cat-text-dimmer);
-  margin-right: 4px;
+.catalogo-modal-tab-btn:hover { color: #f4f6fa; }
+
+.catalogo-modal-tab-btn.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
 }
 
-/* Lista de cards completos (foto+dados) pra cada equivalente que a loja
-   também revende — pedido do usuário (2026-07-30): "cada equivalente devia
-   ter um card completo", não só o código cru. */
-.catalogo-ref-equiv-cards {
+.catalogo-modal-tab-panel.hidden { display: none; }
+
+.catalogo-modal-tab-busca {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 8px;
   margin-bottom: 10px;
-}
-
-.catalogo-ref-equiv-card {
-  margin-bottom: 0;
-  align-items: center;
-}
-
-.catalogo-ref-equiv-copy {
-  flex-shrink: 0;
-  margin-left: auto;
-}
-
-.catalogo-referencias-label {
-  display: block;
-  font-size: 10.5px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  color: var(--cat-text-dimmer);
-  margin-bottom: 7px;
-}
-
-.catalogo-referencias-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.catalogo-ref-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 9px;
+  padding: 7px 12px;
   border-radius: var(--radius-full);
   border: 1px solid var(--cat-line);
-  background: var(--cat-bg-1);
-  color: var(--cat-text-dim);
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: color var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast);
+  background: var(--cat-bg-0);
 }
 
-.catalogo-ref-chip:hover {
-  color: var(--primary);
-  border-color: var(--primary);
+.catalogo-modal-tab-busca i { color: var(--cat-text-dimmer); font-size: 12px; }
+
+.catalogo-modal-tab-busca input {
+  flex: 1;
+  border: none;
+  background: none;
+  outline: none;
+  color: #f4f6fa;
+  font-size: 13px;
+}
+
+.catalogo-modal-similar-linha { cursor: pointer; }
+.catalogo-modal-similar-linha:hover { background: color-mix(in srgb, var(--primary) 8%, transparent); }
+
+.catalogo-modal-similar-nao-cadastrado {
+  color: var(--cat-text-dimmer);
+  font-style: italic;
+}
+
+@media (max-width: 640px) {
+  .catalogo-modal-detalhe { grid-template-columns: 1fr; }
 }
 
 /* ─── Responsivo ───────────────────────────────────────────────── */
@@ -1642,12 +1502,11 @@ body.light-theme .catalogo-card:hover {
 /* .catalogo-card-photo já é branco fixo no tema escuro (ver base acima) —
    no tema claro o fundo já é branco por padrão, nada a sobrescrever aqui. */
 body.light-theme .catalogo-card-nome { color: #0f172a; }
-body.light-theme .catalogo-card-aplicacao { color: #475569; }
 body.light-theme .catalogo-card-fabricante { background: rgba(15, 23, 42, 0.03); color: #475569; }
+body.light-theme .catalogo-modal-tab-btn:hover { color: #0f172a; }
+body.light-theme .catalogo-modal-tab-busca input { color: #0f172a; }
 
 body.light-theme .catalogo-copy-btn {
   background: #f8fafc;
   color: #475569;
 }
-
-body.light-theme .catalogo-ref-banner-title { color: #0f172a; }

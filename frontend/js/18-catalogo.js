@@ -593,24 +593,6 @@ async function copiarCodigoCatalogo(codigo, btnEl) {
   }
 }
 
-// Expande/recolhe o texto completo de aplicação (fica truncado no card por
-// padrão pra não estourar o layout — alguns produtos citam dezenas de
-// veículos no mesmo texto).
-function toggleCatalogoAplicacao(btnEl) {
-  const card = btnEl.closest(".catalogo-card");
-  if (!card) return;
-  const curta    = card.querySelector(".catalogo-aplicacao-curta");
-  const completa = card.querySelector(".catalogo-aplicacao-completa");
-  if (!curta || !completa) return;
-
-  const vaiExpandir = completa.classList.contains("hidden");
-  completa.classList.toggle("hidden");
-  curta.classList.toggle("hidden");
-  btnEl.innerHTML = vaiExpandir
-    ? '<i class="fa-solid fa-chevron-up"></i> Ver menos'
-    : '<i class="fa-solid fa-chevron-down"></i> Ver aplicação completa';
-}
-
 // ─── Tabela de aplicação (pedido do usuário, 2026-09-04, referência do
 // concorrente KKI Vendas) ────────────────────────────────────────────────
 // O KKI mostra a aplicação (veículos compatíveis) numa TABELA de verdade
@@ -729,79 +711,16 @@ function _catalogoAplicacaoTabelaHTML(linhas) {
   `;
 }
 
-// Abre o modal com a aplicação em formato de tabela — pedido do usuário
-// (2026-09-04, referência KKI Vendas). Lê o texto direto do DOM do card
-// (mesmo texto já mostrado em .catalogo-aplicacao-completa) + o texto já
-// reorganizado pela IA quando disponível (data-aplicacao-organizada, mais
-// uniforme — ver aplicacaoOrganizada em buscarProdutosPainel/
-// catalogo-x2.service.js) em vez de duplicar o dado num objeto JS à parte.
-function abrirModalAplicacaoTabela(btnEl) {
-  const card = btnEl.closest(".catalogo-card");
-  const nome = btnEl.dataset.nome || "";
-  const aplicacaoOrganizada = btnEl.dataset.aplicacaoOrganizada || "";
-  const aplicacaoCrua = card?.querySelector(".catalogo-aplicacao-completa")?.textContent
-    || card?.querySelector(".catalogo-aplicacao-curta")?.textContent
-    || "";
-  // Prefere o texto já reorganizado pela IA quando existir — segue o
-  // formato "MONTADORA: modelo1, modelo2" de forma mais consistente que o
-  // texto cru do X2, então o parser abaixo acerta em mais casos.
-  const texto = aplicacaoOrganizada || aplicacaoCrua;
-  const linhas = _parseAplicacaoTabela(texto);
-
-  _openModal(`
-    <div class="modal-header">
-      <strong>Aplicação — ${safe(nome)}</strong>
-      <button class="modal-close-btn" type="button" data-modal-close aria-label="Fechar modal">&times;</button>
-    </div>
-    <div class="modal-body">
-      ${aplicacaoOrganizada ? "" : '<p class="catalogo-aplicacao-tabela-aviso"><i class="fa-solid fa-circle-info"></i> Agrupamento automático (melhor esforço) — quando o texto não segue um padrão reconhecível, aparece inteiro na última coluna.</p>'}
-      ${_catalogoAplicacaoTabelaHTML(linhas)}
-    </div>
-    <div class="modal-footer">
-      <button class="modal-btn modal-btn-secondary" type="button" data-modal-close>Fechar</button>
-    </div>
-  `);
-
-  // O modal padrão nasce estreito (pensado pra confirm/prompt, ver
-  // 15-modal.js) — uma tabela de 4 colunas precisa de mais espaço.
-  const box = document.querySelector("#_global-modal-overlay ._modal-box");
-  if (box) box.style.width = "min(760px, 95vw)";
-}
-
-// "Ver referências" (pedido do usuário, 2026-07-30, inspirado na tela
-// "Equivalentes" do X2): mostra os códigos de outros fabricantes cadastrados
-// como equivalentes dessa mesma peça (ficha.equivalentesLista, já indexado
-// em catalogo-x2.service.js). Fica escondido por padrão — só expande ao
-// clicar, mesmo padrão de toggleCatalogoAplicacao acima.
-function toggleCatalogoReferencias(btnEl) {
-  const card = btnEl.closest(".catalogo-card");
-  if (!card) return;
-  const painel = card.querySelector(".catalogo-referencias");
-  if (!painel) return;
-
-  const vaiExpandir = painel.classList.contains("hidden");
-  painel.classList.toggle("hidden");
-  // Pedido do usuário (2026-07-30): o painel de referências ficava espremido
-  // na largura de UMA coluna do grid (.catalogo-grid é auto-fill, então com
-  // poucos resultados sobra muito espaço vazio à direita). Enquanto aberto,
-  // o card estica pra ocupar o grid inteiro (grid-column: 1 / -1), dando
-  // espaço de verdade pros cards de equivalentes com foto.
-  card.classList.toggle("catalogo-card-expandido", vaiExpandir);
-  btnEl.innerHTML = vaiExpandir
-    ? '<i class="fa-solid fa-chevron-up"></i> Ocultar referências'
-    : `<i class="fa-solid fa-link"></i> Ver referências (${btnEl.dataset.total})`;
-}
-
 // Pedido do usuário (2026-07-30): clicar no nome de um produto equivalente
 // (dentro do card com foto) deve abrir esse produto direto, sem precisar
 // pesquisar de novo manualmente. Reaproveita a aba "Busca por Código" já
 // existente (buscarCatalogoPorCodigo), só preenchendo o campo e disparando
-// a busca pelo código interno do produto encontrado. Também abre
-// automaticamente o "Ver referências" desse produto encontrado (pedido do
-// usuário logo em seguida: "não mostrou as referências também dessa peça
-// que selecionei") — sem isso o usuário chegava no produto com o painel
-// fechado, precisando clicar de novo pra continuar navegando pela cadeia
-// de equivalentes.
+// a busca pelo código interno do produto encontrado. Depois de encontrado,
+// já abre o modal de detalhe desse produto (2026-09-04: antes abria o
+// painel "Ver referências" inline, que deixou de existir — ver
+// abrirModalDetalheProduto) — sem isso o usuário chegava no produto sem
+// nenhum contexto extra, precisando clicar de novo pra continuar navegando
+// pela cadeia de equivalentes.
 async function catalogoAbrirProdutoEquivalente(codigo) {
   catalogoMostrarAbaCodigo();
   const input = document.getElementById("catalogo-codigo-busca");
@@ -811,163 +730,172 @@ async function catalogoAbrirProdutoEquivalente(codigo) {
   const wrap = document.getElementById("catalogo-resultados");
   wrap?.scrollIntoView({ behavior: "smooth", block: "start" });
 
-  const refBtn = wrap?.querySelector(".catalogo-card .catalogo-ref-btn");
-  if (refBtn) toggleCatalogoReferencias(refBtn);
+  abrirModalDetalheProduto(codigo);
 }
 
-// Cartão de cabeçalho igual à tela "Equivalentes" do X2 (foto + "Código
-// Produto X - NOME" + Código Barras + Código Fornecedor) — pedido do
-// usuário (2026-07-30): "quando eu clicar, apareça uma lista exatamente
-// assim embaixo". Usa os mesmos dados já indexados (barras, referencia).
-function _catalogoRefBannerHTML(produto) {
-  return `
-    <div class="catalogo-ref-banner">
-      <div class="catalogo-ref-banner-photo">
-        <i class="fa-solid fa-image catalogo-ref-banner-photo-fallback"></i>
-        <img
-          src="${_catalogoFotoUrl(produto.codigo)}"
-          alt="${safe(produto.nome)}"
-          loading="lazy"
-          onerror="this.remove();"
-        >
-      </div>
-      <div class="catalogo-ref-banner-info">
-        <strong
-          class="catalogo-ref-banner-title catalogo-ref-banner-title-link"
-          title="Abrir esse produto"
-          onclick="event.stopPropagation(); catalogoAbrirProdutoEquivalente('${escapeAttr(produto.codigo)}')"
-        >
-          Código Produto ${safe(produto.codigo)} - ${safe(produto.nome)}
-          <i class="fa-regular fa-file-lines"></i>
-        </strong>
-        <div class="catalogo-ref-banner-meta">
-          ${produto.barras ? `<span><i class="fa-solid fa-barcode"></i> Código Barras - ${safe(produto.barras)}</span>` : ""}
-          ${produto.referencia ? `<span><i class="fa-solid fa-user"></i> Código Fornecedor - ${safe(produto.referencia)}</span>` : ""}
-        </div>
-      </div>
-    </div>
-  `;
-}
+// ─── Modal de detalhe do produto (pedido do usuário, 2026-09-04, referência
+// direta do concorrente KKI Vendas) ────────────────────────────────────────
+// Clicar em qualquer parte do card abre esse modal com as mesmas 3 abas do
+// site de referência: Aplicação / Produtos Similares / Especificação
+// Técnica. Substitui os 3 controles que existiam soltos no card (toggle de
+// texto de aplicação, botão "Ver aplicação em tabela", "Ver referências") —
+// decisão do usuário: card fica limpo, tudo concentrado aqui agora.
 
-// Card completo (foto + Código Produto + Código Barras + Código Fornecedor)
-// pra cada código equivalente que a própria loja também revende — pedido do
-// usuário (2026-07-30): "cada equivalente devia ter um card completo", não
-// só o código cru. Reaproveita o mesmo visual do banner do produto
-// principal (_catalogoRefBannerHTML), só adiciona o botão de copiar código
-// equivalente (o código usado na busca pode ser diferente do código interno
-// do produto encontrado — ex: FK1324 aponta pra um produto cujo código
-// interno de catálogo é outro).
-function _catalogoRefEquivCardHTML(det) {
-  const p = det.produto;
-  return `
-    <div class="catalogo-ref-banner catalogo-ref-equiv-card">
-      <div class="catalogo-ref-banner-photo">
-        <i class="fa-solid fa-image catalogo-ref-banner-photo-fallback"></i>
-        <img
-          src="${_catalogoFotoUrl(p.codigo)}"
-          alt="${safe(p.nome)}"
-          loading="lazy"
-          onerror="this.remove();"
-        >
-      </div>
-      <div class="catalogo-ref-banner-info">
-        <strong
-          class="catalogo-ref-banner-title catalogo-ref-banner-title-link"
-          title="Abrir esse produto"
-          onclick="event.stopPropagation(); catalogoAbrirProdutoEquivalente('${escapeAttr(p.codigo)}')"
-        >Código Produto ${safe(p.codigo)} - ${safe(p.nome)}</strong>
-        <div class="catalogo-ref-banner-meta">
-          ${p.barras ? `<span><i class="fa-solid fa-barcode"></i> Código Barras - ${safe(p.barras)}</span>` : ""}
-          ${p.referencia ? `<span><i class="fa-solid fa-user"></i> Código Fornecedor - ${safe(p.referencia)}</span>` : ""}
-        </div>
-      </div>
-      <button
-        type="button"
-        class="catalogo-ref-chip catalogo-ref-equiv-copy"
-        title="Copiar código"
-        onclick="event.stopPropagation(); copiarCodigoCatalogo('${escapeAttr(det.codigo)}', this)"
-      >
-        <i class="fa-regular fa-copy"></i> ${safe(det.codigo)}
-      </button>
-    </div>
-  `;
-}
-
-// Chip simples (só o código) — usado quando o código equivalente é de um
-// fabricante que a loja não revende, então não existe produto cadastrado
-// pra montar o card completo acima.
-function _catalogoRefChipHTML(det) {
-  return `
-    <button
-      type="button"
-      class="catalogo-ref-chip"
-      title="Copiar código"
-      onclick="event.stopPropagation(); copiarCodigoCatalogo('${escapeAttr(det.codigo)}', this)"
-    >
-      <i class="fa-regular fa-copy"></i> ${safe(det.codigo)}
-    </button>
-  `;
-}
-
-// Prévia de códigos originais/equivalentes sempre visível no card (pedido
-// do usuário, 2026-08-13): antes esses códigos só apareciam escondidos
-// atrás do clique em "Ver referências" lá embaixo — o atendente não tinha
-// como saber, só olhando a lista, se uma peça tinha equivalente sem abrir
-// cada card. Mostra os 3 primeiros direto; clicar abre o mesmo painel
-// completo de _catalogoReferenciasHTML (aciona o botão .catalogo-ref-btn
-// de verdade, então o texto do botão e o estado expandido continuam
-// corretos).
-const CATALOGO_EQUIV_PREVIA_MAX = 3;
-
-function _catalogoEquivalentesPreviaHTML(produto) {
+// Tabela "Produtos Similares" — reaproveita o mesmo dado de equivalentes já
+// indexado no backend (equivalentesDetalhados, ver _detalharEquivalentes em
+// catalogo-x2.service.js). Só tem Código/Descrição/Cód. Fornecedor porque é
+// o que esse dado carrega hoje — o catálogo real não tem fabricante/estoque/
+// preço por equivalente como o KKI mostra (dado que não existe na base).
+function _catalogoSimilaresTabelaHTML(produto) {
   const equivalentes = Array.isArray(produto.equivalentes) ? produto.equivalentes : [];
-  if (!equivalentes.length) return "";
-
-  const previa = equivalentes.slice(0, CATALOGO_EQUIV_PREVIA_MAX);
-  const resto = equivalentes.length - previa.length;
-  const chips = previa.map(codigo => `<span class="catalogo-equiv-previa-chip">${safe(codigo)}</span>`).join("");
-
-  return `
-    <div
-      class="catalogo-card-equiv-previa"
-      onclick="event.stopPropagation(); this.closest('.catalogo-card')?.querySelector('.catalogo-ref-btn')?.click();"
-      title="Ver todos os códigos originais/equivalentes"
-    >
-      <i class="fa-solid fa-link"></i>
-      <span class="catalogo-equiv-previa-label">Códigos originais:</span>
-      ${chips}
-      ${resto > 0 ? `<span class="catalogo-equiv-previa-mais">+${resto}</span>` : ""}
-    </div>
-  `;
-}
-
-function _catalogoReferenciasHTML(produto) {
-  const equivalentes = Array.isArray(produto.equivalentes) ? produto.equivalentes : [];
-  if (!equivalentes.length) return "";
-
-  // equivalentesDetalhados (novo, 2026-07-30): cada código equivalente já
-  // vem com o produto de verdade resolvido, se a loja também vender essa
-  // peça (ver _resolverEquivalente em catalogo-x2.service.js). Fallback pro
-  // formato antigo (só código cru) se o backend ainda não tiver sido
-  // reiniciado / bundle antigo em cache.
   const detalhes = Array.isArray(produto.equivalentesDetalhados) && produto.equivalentesDetalhados.length
     ? produto.equivalentesDetalhados
     : equivalentes.map(codigo => ({ codigo, produto: null }));
 
-  const cards = detalhes.filter(d => d.produto).map(_catalogoRefEquivCardHTML).join("");
-  const chips = detalhes.filter(d => !d.produto).map(_catalogoRefChipHTML).join("");
+  if (!detalhes.length) {
+    return '<p class="catalogo-aplicacao-tabela-vazio">Nenhum produto similar cadastrado pra essa peça.</p>';
+  }
+
+  const linhasHTML = detalhes.map(det => {
+    if (det.produto) {
+      return `
+        <tr class="catalogo-modal-similar-linha" onclick="catalogoAbrirProdutoEquivalente('${escapeAttr(det.produto.codigo)}')" title="Abrir esse produto">
+          <td><strong>${safe(det.produto.codigo)}</strong></td>
+          <td>${safe(det.produto.nome)}</td>
+          <td>${det.produto.referencia ? safe(det.produto.referencia) : "—"}</td>
+        </tr>
+      `;
+    }
+    return `
+      <tr>
+        <td colspan="2">${safe(det.codigo)}</td>
+        <td class="catalogo-modal-similar-nao-cadastrado">Não vendido pela loja</td>
+      </tr>
+    `;
+  }).join("");
 
   return `
-    <button type="button" class="catalogo-expand-btn catalogo-ref-btn" data-total="${equivalentes.length}" onclick="toggleCatalogoReferencias(this)">
-      <i class="fa-solid fa-link"></i> Ver referências (${equivalentes.length})
-    </button>
-    <div class="catalogo-referencias hidden">
-      ${_catalogoRefBannerHTML(produto)}
-      <span class="catalogo-referencias-label">Códigos equivalentes (outros fabricantes):</span>
-      ${cards ? `<div class="catalogo-ref-equiv-cards">${cards}</div>` : ""}
-      ${chips ? `<div class="catalogo-referencias-list">${chips}</div>` : ""}
-    </div>
+    <table class="catalogo-aplicacao-tabela">
+      <thead><tr><th>Código</th><th>Descrição</th><th>Cód. Fornecedor</th></tr></thead>
+      <tbody>${linhasHTML}</tbody>
+    </table>
   `;
+}
+
+// Troca de aba dentro do modal de detalhe — mesmo padrão simples de
+// toggle usado no resto do arquivo, sem nenhuma lib de tabs.
+function catalogoModalTrocarAba(btnEl, aba) {
+  const container = btnEl.closest(".catalogo-modal-tabs");
+  if (!container) return;
+  container.querySelectorAll(".catalogo-modal-tab-btn").forEach(b => b.classList.toggle("active", b === btnEl));
+  container.querySelectorAll(".catalogo-modal-tab-panel").forEach(p => p.classList.toggle("hidden", p.dataset.aba !== aba));
+}
+
+// Campo "Pesquisar..." de cada aba (igual ao KKI) — filtro client-side puro
+// por texto visível da linha, sem chamada nenhuma (os dados já estão todos
+// no DOM da aba).
+function _catalogoModalFiltrarTabela(inputEl) {
+  const panel = inputEl.closest(".catalogo-modal-tab-panel");
+  const termo = inputEl.value.trim().toLowerCase();
+  panel?.querySelectorAll("tbody tr").forEach(row => {
+    row.classList.toggle("hidden", termo !== "" && !row.textContent.toLowerCase().includes(termo));
+  });
+}
+
+// Abre o modal de detalhe — recebe só o código porque o produto completo já
+// está em memória (ver _catalogoIndexarProdutos, chamado toda vez que um
+// resultado de busca é renderizado), sem precisar de chamada nova ao
+// backend nem duplicar o objeto inteiro em atributos data-* do card.
+function abrirModalDetalheProduto(codigo) {
+  const produto = _catalogoProdutosPorCodigo.get(String(codigo));
+  if (!produto) {
+    showToast?.("Não foi possível abrir os detalhes desse produto.", "error");
+    return;
+  }
+
+  const aplicacaoTexto = produto.aplicacaoOrganizada || produto.aplicacao || "";
+  const linhasAplicacao = _parseAplicacaoTabela(aplicacaoTexto);
+
+  const badges = [];
+  if (produto.marcaCompativel) badges.push('<span class="catalogo-badge catalogo-badge-marca"><i class="fa-solid fa-check"></i> Marca confere</span>');
+  if (produto.anoCompativel) badges.push('<span class="catalogo-badge catalogo-badge-ano"><i class="fa-solid fa-check"></i> Ano compatível</span>');
+
+  _openModal(`
+    <div class="modal-header">
+      <strong>${safe(produto.nome)}</strong>
+      <button class="modal-close-btn" type="button" data-modal-close aria-label="Fechar modal">&times;</button>
+    </div>
+    <div class="modal-body catalogo-modal-detalhe">
+      <div class="catalogo-modal-info">
+        <div class="catalogo-modal-photo" data-foto-codigo="${escapeAttr(produto.codigo)}">
+          <i class="fa-solid fa-image catalogo-card-photo-fallback"></i>
+          <img
+            src="${_catalogoFotoUrl(produto.codigo)}"
+            alt="${safe(produto.nome)}"
+            loading="lazy"
+            onerror="this.remove();"
+            onclick="window.open(this.currentSrc || this.src, '_blank');"
+            title="Clique pra abrir a foto em outra página"
+          >
+          <button
+            type="button"
+            class="catalogo-card-photo-trocar"
+            title="Essa não é a foto certa? Trocar foto principal"
+            onclick="abrirSeletorFotoCatalogo('${escapeAttr(produto.codigo)}');"
+          >
+            <i class="fa-solid fa-arrows-rotate"></i> Trocar foto
+          </button>
+        </div>
+        <button
+          type="button"
+          class="catalogo-copy-btn"
+          title="Copiar código pra conferir no ERP"
+          onclick="copiarCodigoCatalogo('${escapeAttr(produto.codigo)}', this)"
+        >
+          <i class="fa-regular fa-copy"></i> ${safe(produto.codigo)}
+        </button>
+        ${produto.referencia ? `<span class="catalogo-card-ref">Ref: ${safe(produto.referencia)}</span>` : ""}
+        ${produto.fabricante ? `<span class="catalogo-card-fabricante"><i class="fa-solid fa-industry"></i> ${safe(produto.fabricante)}</span>` : ""}
+        <span class="catalogo-card-secao">${safe(produto.secao || "")}${produto.linha ? " · " + safe(produto.linha) : ""}</span>
+        ${badges.length ? `<div class="catalogo-card-badges">${badges.join("")}</div>` : ""}
+        ${_catalogoEstoqueHTML(produto.estoque)}
+      </div>
+
+      <div class="catalogo-modal-tabs">
+        <div class="catalogo-modal-tab-strip">
+          <button type="button" class="catalogo-modal-tab-btn active" onclick="catalogoModalTrocarAba(this, 'aplicacao')">Aplicação</button>
+          <button type="button" class="catalogo-modal-tab-btn" onclick="catalogoModalTrocarAba(this, 'similares')">Produtos Similares</button>
+          <button type="button" class="catalogo-modal-tab-btn" onclick="catalogoModalTrocarAba(this, 'especificacao')">Especificação Técnica</button>
+        </div>
+
+        <div class="catalogo-modal-tab-panel" data-aba="aplicacao">
+          <div class="catalogo-modal-tab-busca">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input type="text" placeholder="Pesquisar..." oninput="_catalogoModalFiltrarTabela(this)">
+          </div>
+          ${!produto.aplicacaoOrganizada && aplicacaoTexto ? '<p class="catalogo-aplicacao-tabela-aviso"><i class="fa-solid fa-circle-info"></i> Agrupamento automático (melhor esforço) — quando o texto não segue um padrão reconhecível, aparece inteiro na última coluna.</p>' : ""}
+          ${_catalogoAplicacaoTabelaHTML(linhasAplicacao)}
+        </div>
+
+        <div class="catalogo-modal-tab-panel hidden" data-aba="similares">
+          <div class="catalogo-modal-tab-busca">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input type="text" placeholder="Pesquisar..." oninput="_catalogoModalFiltrarTabela(this)">
+          </div>
+          ${_catalogoSimilaresTabelaHTML(produto)}
+        </div>
+
+        <div class="catalogo-modal-tab-panel hidden" data-aba="especificacao">
+          <p class="catalogo-aplicacao-tabela-vazio">Sem dados técnicos cadastrados pra essa peça.</p>
+        </div>
+      </div>
+    </div>
+  `);
+
+  // O modal padrão nasce estreito (pensado pra confirm/prompt, ver
+  // 15-modal.js) — esse aqui tem 2 colunas + tabela, precisa de bem mais espaço.
+  const box = document.querySelector("#_global-modal-overlay ._modal-box");
+  if (box) box.style.width = "min(920px, 96vw)";
 }
 
 // mostrarBadgeNeutro: só faz sentido quando a busca envolveu marca/modelo
@@ -1014,6 +942,19 @@ function _catalogoEstoqueHTML(estoque) {
   `;
 }
 
+// Índice em memória do último(s) conjunto(s) de resultados renderizados —
+// pedido do usuário (2026-09-04): clicar no card abre um modal com o
+// produto inteiro (aplicação/similares/especificação), então precisamos
+// achar o objeto completo de volta a partir só do código (o card não carrega
+// o produto inteiro em atributos data-*, custaria caro pra produtos com
+// aplicação/equivalentes grandes). Guarda por código normalizado da API —
+// cada nova busca reindexada por cima, não cresce sem limite.
+let _catalogoProdutosPorCodigo = new Map();
+
+function _catalogoIndexarProdutos(produtos) {
+  (produtos || []).forEach(p => { if (p?.codigo) _catalogoProdutosPorCodigo.set(String(p.codigo), p); });
+}
+
 function _catalogoCardHTML(produto, mostrarBadgeNeutro) {
   const badges = [];
   if (produto.marcaCompativel) {
@@ -1026,16 +967,14 @@ function _catalogoCardHTML(produto, mostrarBadgeNeutro) {
     badges.push('<span class="catalogo-badge catalogo-badge-neutro"><i class="fa-solid fa-circle-info"></i> Confirme ano/marca com o cliente</span>');
   }
 
-  const aplicacaoCompleta = String(produto.aplicacao || "");
-  const aplicacaoCurta    = cutText(aplicacaoCompleta, 160);
-  const precisaExpandir   = aplicacaoCompleta.length > 160;
-
-  // Foto: aponta direto pro endpoint já existente (catalogo.controller.js).
-  // Se o produto não tiver foto cadastrada, a rota devolve 404 e o onerror
-  // remove a img (sobra o ícone de fallback) — sem chamada extra só pra
-  // checar existência.
+  // Card enxuto (pedido do usuário, 2026-09-04, referência KKI Vendas):
+  // aplicação/similares/especificação saíram do card e foram pro modal de
+  // detalhe (clique em qualquer parte do card abre — ver
+  // abrirModalDetalheProduto). Foto/trocar-foto/copiar-código continuam com
+  // stopPropagation pra não abrir o modal por engano num clique que já tem
+  // ação própria.
   return `
-    <article class="catalogo-card">
+    <article class="catalogo-card" onclick="abrirModalDetalheProduto('${escapeAttr(produto.codigo)}')" title="Ver detalhes desse produto">
       <div class="catalogo-card-photo" data-foto-codigo="${escapeAttr(produto.codigo)}">
         <i class="fa-solid fa-image catalogo-card-photo-fallback"></i>
         <img
@@ -1062,7 +1001,7 @@ function _catalogoCardHTML(produto, mostrarBadgeNeutro) {
             type="button"
             class="catalogo-copy-btn"
             title="Copiar código pra conferir no ERP"
-            onclick="copiarCodigoCatalogo('${produto.codigo}', this)"
+            onclick="event.stopPropagation(); copiarCodigoCatalogo('${produto.codigo}', this)"
           >
             <i class="fa-regular fa-copy"></i> ${safe(produto.codigo)}
           </button>
@@ -1071,28 +1010,9 @@ function _catalogoCardHTML(produto, mostrarBadgeNeutro) {
         <h4 class="catalogo-card-nome">${safe(produto.nome)}</h4>
         ${produto.referencia ? `<span class="catalogo-card-ref">Ref: ${safe(produto.referencia)}</span>` : ""}
         ${produto.fabricante ? `<span class="catalogo-card-fabricante"><i class="fa-solid fa-industry"></i> ${safe(produto.fabricante)}</span>` : ""}
-        ${_catalogoEquivalentesPreviaHTML(produto)}
-
-        <p class="catalogo-card-aplicacao catalogo-aplicacao-curta">${safe(aplicacaoCurta)}</p>
-        <p class="catalogo-card-aplicacao catalogo-aplicacao-completa hidden">${safe(aplicacaoCompleta)}</p>
-        <div class="catalogo-aplicacao-acoes">
-          ${precisaExpandir ? `
-            <button type="button" class="catalogo-expand-btn" onclick="toggleCatalogoAplicacao(this)">
-              <i class="fa-solid fa-chevron-down"></i> Ver aplicação completa
-            </button>
-          ` : ""}
-          ${aplicacaoCompleta ? `
-            <button type="button" class="catalogo-expand-btn" onclick="abrirModalAplicacaoTabela(this)"
-              data-nome="${escapeAttr(produto.nome)}"
-              data-aplicacao-organizada="${escapeAttr(produto.aplicacaoOrganizada || "")}">
-              <i class="fa-solid fa-table"></i> Ver aplicação em tabela
-            </button>
-          ` : ""}
-        </div>
 
         <div class="catalogo-card-badges">${badges.join("")}</div>
         ${_catalogoEstoqueHTML(produto.estoque)}
-        ${_catalogoReferenciasHTML(produto)}
       </div>
     </article>
   `;
@@ -1385,6 +1305,7 @@ async function buscarCatalogo(event) {
         ${_catalogoExportBtnHTML()}
       </div>
     `;
+    _catalogoIndexarProdutos(produtos);
     const grid = `<div class="catalogo-grid">${produtos.map(p => _catalogoCardHTML(p, !modoNavegacao)).join("")}</div>`;
     wrap.innerHTML = resumoBar + grid;
     // Guarda os critérios desta busca pro botão de exportar (pedido do
@@ -1452,6 +1373,7 @@ async function buscarCatalogoPorCodigo(event) {
     `;
     // mostrarBadgeNeutro=false: busca por código é exata, não tem
     // marca/ano pra comparar — o aviso "confirme com o cliente" não se aplica.
+    _catalogoIndexarProdutos(produtos);
     const grid = `<div class="catalogo-grid">${produtos.map(p => _catalogoCardHTML(p, false)).join("")}</div>`;
     wrap.innerHTML = resumoBar + grid;
     wrap.dataset.exportQuery = `codigo=${encodeURIComponent(codigo)}`;
@@ -1518,6 +1440,7 @@ async function buscarCatalogoPorNome(event) {
     `;
     // mostrarBadgeNeutro=false: busca por nome não tem marca/ano pra
     // comparar — o aviso "confirme com o cliente" não se aplica.
+    _catalogoIndexarProdutos(produtos);
     const grid = `<div class="catalogo-grid">${produtos.map(p => _catalogoCardHTML(p, false)).join("")}</div>`;
     wrap.innerHTML = resumoBar + grid;
     wrap.dataset.exportQuery = `nome=${encodeURIComponent(nome)}`;

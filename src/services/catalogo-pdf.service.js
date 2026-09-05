@@ -70,6 +70,7 @@ const path = require("path");
 const PDFDocument = require("pdfkit");
 const jpeg = require("jpeg-js");
 const { obterFoto } = require("./catalogo-fotos.service");
+const { listarMarcasVeiculoConhecidas } = require("./catalogo-x2.service");
 
 // Mapa codigo -> "Cód. Fornecedor" (2026-07-29): fonte extraída direto da
 // própria tela de busca do X2 (mesma técnica/arquivo já usado antes pra
@@ -2078,6 +2079,33 @@ const MARCA_SEGMENTO_SEM_DOISPONTOS_MAX_CHARS = 50;
 // todos os modelos" quanto o "UNIVERSAL" cru do cache.
 const MARCA_ALIAS_UNIVERSAL_REGEX = /^(universal|diversos?)\b/i;
 const MARCA_UNIVERSAL_CANONICA = "UNIVERSAL / DIVERSOS";
+
+// Pedido do usuário (2026-09-05): "quando algum produto estiver sem marca
+// na descrição ou na aplicação coloca como outras aplicações" — exemplo
+// real reportado: aplicação "Tratores" (sem ":") virava um cabeçalho de
+// marca "TRATORES" no Catálogo Completo, quando "Tratores" não é marca
+// nenhuma (é o tipo de MÁQUINA, não o fabricante) e deveria cair em
+// MARCA_OUTRAS como qualquer outro produto sem marca de verdade
+// identificável. BUG REAL: o ramo "sem dois-pontos" de _extrairMarcas (ver
+// comentário 2026-09-03 logo acima, sobre "UNIVERSAL"/"MBB"/"AGRALE" soltos
+// sem ":") aceitava QUALQUER segmento curto sem pontuação de frase como
+// marca — bom pras marcas reais soltas que motivaram o fix original, mas
+// também aceitava termo genérico de categoria ("Tratores", "Máquina",
+// "Empilhadeiras" etc.) como se fosse marca. Fix: reaproveita
+// MARCAS_VEICULO_CONHECIDAS (já validada contra dado real do catálogo em
+// catalogo-x2.service.js, mesma lista usada no filtro "Montadora" da busca
+// — ver listarMarcasVeiculoConhecidas) pra só aceitar o segmento sem ":"
+// quando ele É (ou contém) uma marca de verdade da lista, ou é o alias
+// Universal/Diversos. O ramo COM ":" ("MARCA: modelo") continua confiando
+// no formato explícito, sem essa validação — mudar isso teria mais risco
+// de rejeitar marca real ainda não catalogada na lista fixa.
+const MARCAS_VEICULO_CONHECIDAS_SET = new Set(listarMarcasVeiculoConhecidas());
+function _pareceMarcaConhecida(candidato) {
+  if (MARCA_ALIAS_UNIVERSAL_REGEX.test(candidato)) return true;
+  if (MARCAS_VEICULO_CONHECIDAS_SET.has(candidato)) return true;
+  return candidato.split(/\s+/).some((palavra) => MARCAS_VEICULO_CONHECIDAS_SET.has(palavra));
+}
+
 function _extrairMarcas(textoOriginal) {
   if (!textoOriginal) return [];
   const texto = _normalizarMarcasTexto(textoOriginal);
@@ -2091,7 +2119,8 @@ function _extrairMarcas(textoOriginal) {
     } else if (
       trimmed.length > 0 &&
       trimmed.length <= MARCA_SEGMENTO_SEM_DOISPONTOS_MAX_CHARS &&
-      !/[.!?]$/.test(trimmed)
+      !/[.!?]$/.test(trimmed) &&
+      _pareceMarcaConhecida(trimmed.toUpperCase())
     ) {
       marca = trimmed.toUpperCase();
     } else {

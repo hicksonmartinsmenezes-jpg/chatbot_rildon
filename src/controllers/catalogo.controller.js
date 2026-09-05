@@ -306,13 +306,26 @@ async function exportarPdfHandler(req, res) {
     // Promocional continuam como estavam (o Promocional já filtra por CSV
     // de preço à parte, tem outra lógica própria).
     if (modoCompleto) {
-      const totalAntesDoFiltro = produtos.length;
+      const totalAntesDoPreco = produtos.length;
       produtos = produtos.filter(p => p.estoque && (p.estoque.precoVarejo != null || p.estoque.precoAtacado != null));
       if (!produtos.length) {
         return res.status(404).json({
-          error: totalAntesDoFiltro
-            ? `${totalAntesDoFiltro} peça(s) encontrada(s) pra "${fabricanteCompleto}", mas nenhuma tem preço cadastrado no estoque — nada pra exportar.`
+          error: totalAntesDoPreco
+            ? `${totalAntesDoPreco} peça(s) encontrada(s) pra "${fabricanteCompleto}", mas nenhuma tem preço cadastrado no estoque — nada pra exportar.`
             : "Nenhuma peça encontrada pra exportar com esses critérios.",
+        });
+      }
+
+      // Pedido do usuário (2026-09-05): também só entra produto com foto —
+      // listarFotos é metadados só (índice em memória, sem ler bytes),
+      // barato de chamar por produto mesmo em listas grandes. Aplicado
+      // DEPOIS do filtro de preço, com mensagem própria, pra distinguir no
+      // erro qual dos dois filtros zerou o resultado.
+      const totalAntesDaFoto = produtos.length;
+      produtos = produtos.filter(p => listarFotos(p.codigo).length > 0);
+      if (!produtos.length) {
+        return res.status(404).json({
+          error: `${totalAntesDaFoto} peça(s) com preço encontrada(s) pra "${fabricanteCompleto}", mas nenhuma tem foto cadastrada — nada pra exportar.`,
         });
       }
     }

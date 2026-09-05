@@ -10,7 +10,11 @@
 --
 -- Por que uma tabela nova (não um campo dentro de src/config/catalogo-x2/
 -- *.json): o catálogo (17.417 produtos, JSON estático extraído 1x) e o
--- estoque (5.224 produtos, muda todo dia) têm ciclo de vida DIFERENTE —
+-- estoque (muda todo dia — export real de 2026-09-05 trouxe 17.569
+-- produtos, praticamente o catálogo inteiro; o "5.224" citado aqui antes
+-- era de um export truncado por um bug no scraper, fixado 2026-08-10 em
+-- scripts/x2-estoque-export.js, nunca revalidado até agora) têm ciclo de
+-- vida DIFERENTE —
 -- reescrever os 26 JSONs do catálogo a cada snapshot de estoque seria
 -- lento e arriscaria corromper o catálogo por um problema no CSV de
 -- estoque. `codigo` é a chave de junção — bate 1:1 com o campo `codigo`

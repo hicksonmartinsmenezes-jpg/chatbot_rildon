@@ -888,8 +888,14 @@ function _resolverEquivalente(codigoBruto) {
 }
 
 // Formato exposto ao frontend: { qtd, unidade, precoVarejo, precoAtacado }
-// ou null (sem dado de estoque pra esse código — a maioria dos ~17.400
-// produtos do catálogo, já que o Relatório de Estoque cobre só ~5.200).
+// ou null (sem dado de estoque pra esse código). Cobertura real (export
+// de 2026-09-05, ver src/data/estoque-latest.csv): 17.569 produtos, 100%
+// com preço — bem perto do catálogo inteiro. O "cobre só ~5.200 de
+// 17.400" documentado aqui antes vinha de um export truncado por um bug
+// no scraper (fixado 2026-08-10, ver scripts/x2-estoque-export.js) que
+// ninguém tinha revalidado com uma rodada nova até agora — não é mais
+// verdade, mas como é um export do dia (roda de novo periodicamente),
+// null continua sendo um caso real e esperado, não bug.
 // custoMedio fica de fora de propósito (preço de custo não deve aparecer
 // pro atendente na tela de venda).
 function _anexarEstoque(codigo) {

@@ -1215,9 +1215,14 @@ body.light-theme .catalogo-aplicacao-tabela td { color: #334155; }
 }
 
 /* ─── Estoque ao vivo (pedido do usuário, 2026-08-07) ───────────────────
-   Só aparece quando o produto tem dado do Relatório de Estoque do X2
-   (~5.200 dos 17.400 produtos) — sem dado nenhum, não mostra nada (não dá
-   pra afirmar "sem estoque" sem ter consultado). */
+   Só aparece quando o produto tem dado do Relatório de Estoque do X2 —
+   sem dado nenhum, não mostra nada (não dá pra afirmar "sem estoque" sem
+   ter consultado). Cobertura: um export real de 2026-09-05 trouxe 17.569
+   produtos (praticamente o catálogo inteiro), 100% com preço — número
+   bem maior que o "~5.200 de 17.400" documentado antes aqui, que era de
+   um export truncado por um bug (fixado 2026-08-10, ver
+   scripts/x2-estoque-export.js) nunca revalidado até então. Ainda assim
+   é um export do dia — pode variar. */
 /* Reorganizado (pedido do usuário, 2026-08-13): antes o preço era um texto
    corrido pequeno e cinza na mesma linha do badge de estoque, disputando
    espaço e quebrando de forma inconsistente. Agora os dois blocos vivem

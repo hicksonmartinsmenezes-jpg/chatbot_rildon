@@ -926,9 +926,13 @@ async function _salvarCategoriaCatalogo(codigo, novaLinha) {
 // navegação (só Seção/Linha, sem veículo informado) não tem comparação
 // nenhuma sendo feita — mostrar o aviso em toda peça listada seria ruído.
 // PEDIDO DO USUÁRIO (2026-08-07): "Estoque ao vivo no Catálogo/orçamento" —
-// produto.estoque vem null pra ~2/3 dos produtos (Relatório de Estoque do
-// X2 cobre ~5.200 dos 17.400 do catálogo) — nesse caso não mostra nada
-// (sem dado ≠ zero produtos, não dá pra afirmar "sem estoque" sem saber).
+// produto.estoque vem null quando o produto não tem dado do Relatório de
+// Estoque do X2 — nesse caso não mostra nada (sem dado ≠ zero produtos,
+// não dá pra afirmar "sem estoque" sem saber). Cobertura real (export de
+// 2026-09-05): 17.569 produtos, 100% com preço — o "~2/3 sem dado" citado
+// aqui antes vinha de um export truncado por bug (fixado 2026-08-10) que
+// ninguém tinha revalidado ainda; hoje é bem perto do catálogo inteiro,
+// mas continua sendo um export do dia, pode variar.
 function _formatarPrecoBRL(valor) {
   if (valor === null || valor === undefined) return null;
   return "R$ " + Number(valor).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });

@@ -499,6 +499,23 @@ const OEM_COR = "#dc2626"; // mesmo vermelho de VERMELHO_CATEGORIA
 const OEM_ALTURA = 8;      // 1 linha
 const GAP_BADGE_OEM = 3;   // respiro vertical entre o selo e o código OEM
 const GAP_HEADER_FOTO = 6; // respiro entre o cabeçalho (selo+OEM) e a foto
+
+// Pedido do usuário (2026-09-05): o código OEM/equivalente em vermelho
+// (acima) às vezes vem do X2 com acento, vírgula ou traço dentro do valor
+// (ex: "CITROËN:1525VZ", "YN-AMGM015") — aqui padroniza só a EXIBIÇÃO desse
+// selo específico, sem tocar no dado bruto (produto.equivalentes/
+// ficha.equivalentesLista continuam intactos em catalogo-x2.service.js —
+// usados também pra busca por código equivalente, que já ignora pontuação
+// nessa comparação via _normalizarCodigo, então não tinha bug funcional
+// aqui, só estética no PDF). Acento removido via NFD (mesma técnica de
+// _chaveLogoFabricante, acima); vírgula e traço removidos por substituição
+// direta.
+function _limparCodigoOemParaExibicao(texto) {
+  return String(texto || "")
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[,-]/g, "")
+    .trim();
+}
 // Linha de resumo abaixo da foto: "código da loja + descrição resumida",
 // 1 linha só (a descrição completa saiu daqui — ficou "resumida" mesmo,
 // corta com "..." se não couber; ver TITULO_FONTE em
@@ -1646,7 +1663,7 @@ function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight
   const oem = Array.isArray(produto.equivalentes) && produto.equivalentes.length ? produto.equivalentes[0] : null;
   if (oem) {
     doc.fillColor(OEM_COR).font("Helvetica-Bold").fontSize(OEM_FONTE)
-      .text(String(oem), xConteudo, yTopo + alturaSelo + GAP_BADGE_OEM, {
+      .text(_limparCodigoOemParaExibicao(oem), xConteudo, yTopo + alturaSelo + GAP_BADGE_OEM, {
         width: larguraConteudo,
         height: OEM_ALTURA,
         ellipsis: true,

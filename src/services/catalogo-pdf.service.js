@@ -2552,11 +2552,21 @@ function _alturaCabecalhoMarca(doc) {
   return doc.currentLineHeight();
 }
 
-function _desenharCabecalhoMarca(doc, marca, x, y, largura, altura) {
+// `alinhamento` (pedido do usuário, 2026-09-05): "center" de sempre pro
+// cabeçalho de marca normal; "left" só quando esse bloco também está
+// anunciando o INÍCIO de uma Linha nova no meio da página (sem quebra de
+// página — ver trocouDeLinhaSemTitulo/gerarPdfCatalogoCompleto) — alinhado
+// à esquerda, no canto superior, pra ficar mais parecido com o título
+// grande de página (que é sempre alinhado à esquerda), sem aumentar o
+// fontSize (MARCA_HEADER_FONTE já cabe exatamente na altura reservada,
+// ver _alturaCabecalhoMarca — usar o tamanho do título grande aqui
+// arriscaria sobrepor a foto dos cards logo abaixo, calculados assumindo
+// essa altura menor).
+function _desenharCabecalhoMarca(doc, marca, x, y, largura, altura, alinhamento = "center") {
   doc.font(TITULO_FONTE).fontSize(MARCA_HEADER_FONTE);
   _textoComSombra(doc, String(marca || "").toUpperCase(), x, y, VERMELHO_CATEGORIA, {
     width: largura,
-    align: "center",
+    align: alinhamento,
     lineBreak: false,
   });
 
@@ -2924,7 +2934,7 @@ async function gerarPdfCatalogoCompleto(produtos, fabricante, destino, tipoCompl
       const textoCabecalhoMarca = trocouDeLinhaSemTitulo
         ? `${bloco.linha} — ${bloco.marca}`
         : bloco.marca;
-      _desenharCabecalhoMarca(doc, textoCabecalhoMarca, pos.x, pos.y, larguraUtilCompleto, alturaHeaderMarca);
+      _desenharCabecalhoMarca(doc, textoCabecalhoMarca, pos.x, pos.y, larguraUtilCompleto, alturaHeaderMarca, trocouDeLinhaSemTitulo ? "left" : "center");
     } else {
       // 2026-08-28: quando uma quebra de página acontece NO MEIO de um
       // sub-grupo (não na 1ª linha dele, ver comentário em

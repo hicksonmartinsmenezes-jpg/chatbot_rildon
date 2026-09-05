@@ -499,6 +499,10 @@ const OEM_COR = "#dc2626"; // mesmo vermelho de VERMELHO_CATEGORIA
 const OEM_ALTURA = 8;      // 1 linha
 const GAP_BADGE_OEM = 3;   // respiro vertical entre o selo e o código OEM
 const GAP_HEADER_FOTO = 6; // respiro entre o cabeçalho (selo+OEM) e a foto
+// Respiro horizontal entre as 2 fotos, quando o produto tem 2+ cadastradas
+// (pedido do usuário, 2026-09-05 — ver comentário completo junto ao
+// desenho da foto em _desenharCardCatalogoCompleto).
+const GAP_DUAS_FOTOS = 4;
 
 // Pedido do usuário (2026-09-05): o código OEM/equivalente em vermelho
 // (acima) às vezes vem do X2 com acento, vírgula ou traço dentro do valor
@@ -1675,10 +1679,29 @@ function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight
   const alturaCabecalho = alturaSelo + GAP_BADGE_OEM + OEM_ALTURA;
   const yFoto = yTopo + alturaCabecalho + GAP_HEADER_FOTO;
 
+  // Pedido do usuário (2026-09-05): "padronizar duas fotos por card" — mas
+  // só 33% dos produtos do Catálogo Completo têm 2+ fotos cadastradas
+  // (64% têm só 1). Decisão do usuário depois de ver esse número: NÃO
+  // encolher a foto única dos 64% pra abrir espaço pra uma 2ª caixa vazia
+  // — o card só vira "2 fotos lado a lado" quando o produto realmente tem
+  // uma 2ª foto; produto com 1 foto só continua exatamente como sempre foi
+  // (foto grande, ocupando a largura toda). Isso deixa o tamanho da foto
+  // inconsistente entre cards da mesma página — trade-off aceito, a
+  // alternativa (2ª caixa sempre reservada, vazia quando não existe) foi
+  // rejeitada.
   try {
-    const foto = obterFoto(produto.codigo, 0);
-    if (foto && (foto.mimetype === "image/jpeg" || foto.mimetype === "image/png")) {
-      _desenharFotoAjustada(doc, foto.buffer, foto.mimetype, xConteudo, yFoto, larguraConteudo, photoBoxHeight, produto.codigo);
+    const foto1 = obterFoto(produto.codigo, 0);
+    const foto2 = obterFoto(produto.codigo, 1);
+    const temDuasFotos =
+      foto1 && (foto1.mimetype === "image/jpeg" || foto1.mimetype === "image/png") &&
+      foto2 && (foto2.mimetype === "image/jpeg" || foto2.mimetype === "image/png");
+
+    if (temDuasFotos) {
+      const larguraMetade = (larguraConteudo - GAP_DUAS_FOTOS) / 2;
+      _desenharFotoAjustada(doc, foto1.buffer, foto1.mimetype, xConteudo, yFoto, larguraMetade, photoBoxHeight, `${produto.codigo}#0`);
+      _desenharFotoAjustada(doc, foto2.buffer, foto2.mimetype, xConteudo + larguraMetade + GAP_DUAS_FOTOS, yFoto, larguraMetade, photoBoxHeight, `${produto.codigo}#1`);
+    } else if (foto1 && (foto1.mimetype === "image/jpeg" || foto1.mimetype === "image/png")) {
+      _desenharFotoAjustada(doc, foto1.buffer, foto1.mimetype, xConteudo, yFoto, larguraConteudo, photoBoxHeight, produto.codigo);
     } else {
       doc.font("Helvetica").fontSize(7).fillColor("#9ca3af")
         .text("sem foto", xConteudo, yFoto + photoBoxHeight / 2 - 5, { width: larguraConteudo, align: "center" });

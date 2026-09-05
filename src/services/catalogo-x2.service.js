@@ -355,6 +355,29 @@ function _indexarProduto(p) {
     }
   }
 
+  // Pedido do usuário (2026-09-05, bug real): "M01.010 tem foto no X2...
+  // porém no catálogo não aparece" — produto 126619 (marca "12M",
+  // "TERMOMETRO DA AGUA... - 12M - M01.010"): o campo "Referência" do X2 pra
+  // esse produto vem formatado como "01.010 - 12M" (número primeiro, marca
+  // depois — indexado acima), mas o MESMO produto embute o código como
+  // "M01.010" (letra da marca colada no número) na 3ª parte do próprio
+  // nome — X2 usa as duas grafias pro mesmo produto de forma inconsistente
+  // (confirmado: não é erro de extração nosso, os dois valores vêm assim
+  // do próprio scrape). Sem isso, buscar EXATAMENTE como o produto aparece
+  // escrito no X2/na foto baixada ("M01.010") não achava nada — nem
+  // buscarPorCodigo nem buscarPorCodigoOriginal resolviam pro código
+  // interno 126619. Indexa a 3ª parte do nome (mesmo split de 3 blocos
+  // usado por _extrairFabricante) como alias de referência também, só
+  // quando parece um código de verdade e não colide com outra referência
+  // já cadastrada — mesmo critério de tamanho/dígito já usado acima.
+  const partesNomeParaRef = String(p.nome || "").replace(/(?<=\S)-(?=\s)/g, " -").split(" - ");
+  if (partesNomeParaRef.length === 3) {
+    const refDoNomeNorm = _normalizarCodigo(partesNomeParaRef[2]);
+    if (refDoNomeNorm.length >= 4 && /\d/.test(refDoNomeNorm) && !referenciaIndex.has(refDoNomeNorm)) {
+      referenciaIndex.set(refDoNomeNorm, base);
+    }
+  }
+
   // códigos equivalentes/OEM (já extraídos pelo parser) + os embutidos em
   // blocos de referência cruzada por família (ex: "Alternador:", "Motor de
   // Partida:" — listam código de outras marcas pro mesmo conjunto).

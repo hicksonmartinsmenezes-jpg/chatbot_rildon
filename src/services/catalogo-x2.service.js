@@ -820,9 +820,32 @@ function listarFabricantes() {
 // /api/catalogo/buscar e /api/catalogo/exportar-pdf sem tradução
 // nenhuma — ver decodificarFabricanteCompleto, que entende o sufixo
 // "::mecanica"/"::eletrica".
+// Pedido do usuário (2026-09-05): "linha diversos não existe no nosso
+// sistema [como Linha] mas a subcategoria 'Diversos' nas aplicações
+// existe [...] pegue esses produtos com linhas diversos e coloque como se
+// fosse outro Fabricante em outro catalogo mesmos com produtos de outros
+// fabricantes [...] agrupe por marca de veículo [...] em catalogo
+// completo, deixe no selection a opção diversos" — X2 usa "DIVERSOS" como
+// Linha catch-all (peça sem categoria específica, ver produto real
+// código 126633 "PORCA CONEXAO... MBB/VALMET", linha="DIVERSOS", em
+// vários fabricantes/Seções diferentes). Em vez de cada fabricante exibir
+// sua fatia de "Diversos" misturada com as Linhas de verdade dele (onde
+// vira ruído — não é uma Linha informativa), essa pseudo-opção agrega
+// TODOS os produtos linha="DIVERSOS" da base inteira (cruzando
+// fabricante) num catálogo à parte, reaproveitando a mesma tela/seletor
+// de sempre — ver buscarProdutosPainel (filtro por p.linha em vez de
+// p.fabricante quando fabricanteNorm==="DIVERSOS") e
+// gerarPdfCatalogoCompleto(agruparPorMarca=true) em catalogo-pdf.service.js
+// (agrupa por marca de veículo em vez de por Linha, já que aqui todo
+// mundo compartilha a mesma Linha catch-all — agrupar por ela seria
+// inútil).
+const PSEUDO_FABRICANTE_DIVERSOS = "DIVERSOS";
+
 function listarFabricantesCatalogoCompleto() {
   const porFabricante = new Map(); // fabricante -> { temMecanica, temOutras }
+  let temProdutoDiversos = false;
   todosProdutos.forEach((p) => {
+    if (_normalizar(p.linha) === _normalizar(PSEUDO_FABRICANTE_DIVERSOS)) temProdutoDiversos = true;
     if (!p.fabricante) return;
     if (!porFabricante.has(p.fabricante)) porFabricante.set(p.fabricante, { temMecanica: false, temOutras: false });
     const info = porFabricante.get(p.fabricante);
@@ -842,6 +865,11 @@ function listarFabricantesCatalogoCompleto() {
       opcoes.push({ value: fabricante, label: fabricante });
     }
   });
+  // Sempre por último — pseudo-opção, não é um fabricante de verdade, não
+  // faz sentido intercalada em ordem alfabética com os fabricantes reais.
+  if (temProdutoDiversos) {
+    opcoes.push({ value: PSEUDO_FABRICANTE_DIVERSOS, label: "Diversos (todos os fabricantes)" });
+  }
   return opcoes;
 }
 
@@ -1298,7 +1326,14 @@ function buscarProdutosPainel({ marca = "", modelo = "", ano = null, anoInicio =
         const linhaNorm = _normalizar(p.linha);
         if (!secaoNorm.includes(categoriaNorm) && !linhaNorm.includes(categoriaNorm)) return false;
       }
-      if (fabricanteNorm && (!p.fabricante || p.fabricante.toUpperCase() !== fabricanteNorm)) return false;
+      if (fabricanteNorm === PSEUDO_FABRICANTE_DIVERSOS) {
+        // Pseudo-fabricante "Diversos" (ver listarFabricantesCatalogoCompleto):
+        // ignora p.fabricante de propósito — agrega por p.linha="DIVERSOS"
+        // cruzando TODOS os fabricantes, não só um.
+        if (_normalizar(p.linha) !== _normalizar(PSEUDO_FABRICANTE_DIVERSOS)) return false;
+      } else if (fabricanteNorm && (!p.fabricante || p.fabricante.toUpperCase() !== fabricanteNorm)) {
+        return false;
+      }
       if (!filtroTipoCompleto(p)) return false;
       return true;
     });
@@ -1429,4 +1464,5 @@ module.exports = {
   recarregarIndices,
   listarLinhasParaEdicaoCategoria,
   definirLinhaProduto,
+  PSEUDO_FABRICANTE_DIVERSOS,
 };

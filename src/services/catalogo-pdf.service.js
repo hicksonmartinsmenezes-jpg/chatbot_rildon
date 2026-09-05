@@ -2240,13 +2240,26 @@ function _agruparPorMarca(itens) {
 // no loop de desenho (gerarPdfCatalogoCompleto) pra prefixar o nome da
 // Linha no cabeçalho de marca quando essa troca acontece sem passar por
 // _desenharCabecalho.
-function _construirSequenciaConteudo(grupos) {
+// `semSubAgrupamentoMarca` (pedido do usuário, 2026-09-05, catálogo
+// "Diversos" — ver PSEUDO_FABRICANTE_DIVERSOS/gerarPdfCatalogoCompleto):
+// quando true, `grupos` já veio agrupado por MARCA de veículo (em vez de
+// Linha — ver _agruparPorMarca remapeado no chamador), então NÃO
+// sub-agrupa de novo por marca aqui dentro (senão um produto com 2 marcas
+// citadas na aplicação, ex. "MBB, VALMAT", já classificado no grupo-topo
+// "MBB", ganharia um sub-cabeçalho redundante "VALMAT" aninhado dentro da
+// página "MBB"). `marca` de cada bloco vira igual a `linha` (mesmo nome),
+// só pra manter o mesmo formato de bloco que o resto do desenho
+// (_desenharCabecalhoMarca/gerarPdfCatalogoCompleto) já espera — o texto
+// de transição de página (trocouDeLinhaSemTitulo) detecta esse caso
+// (linha===marca) e evita duplicar o nome (ver render loop).
+function _construirSequenciaConteudo(grupos, semSubAgrupamentoMarca = false) {
   const sequencia = [];
   const primeiroIndicePorGrupo = [];
   grupos.forEach(({ linha, itens }) => {
     primeiroIndicePorGrupo.push(sequencia.length);
     let primeiroSubgrupoDaLinha = true;
-    _agruparPorMarca(itens).forEach(({ marca, produtos }) => {
+    const subgrupos = semSubAgrupamentoMarca ? [{ marca: linha, produtos: itens }] : _agruparPorMarca(itens);
+    subgrupos.forEach(({ marca, produtos }) => {
       sequencia.push({ tipo: "cabecalhoMarca", linha, marca, inicioDeLinha: primeiroSubgrupoDaLinha });
       primeiroSubgrupoDaLinha = false;
       // 2026-08-28: pedido do usuário "complete os cards por mais que só
@@ -2795,7 +2808,18 @@ async function gerarPdfCatalogo(produtos, tituloBusca, destino) {
  * primeiro e só depois escrevendo o número. Ver A4_LARGURA/A4_ALTURA no
  * topo do arquivo.
  */
-async function gerarPdfCatalogoCompleto(produtos, fabricante, destino, tipoCompleto = null) {
+// `agruparPorMarca` (pedido do usuário, 2026-09-05 — catálogo pseudo-
+// fabricante "DIVERSOS", ver PSEUDO_FABRICANTE_DIVERSOS em
+// catalogo-x2.service.js): quando true, os produtos já vêm de VÁRIOS
+// fabricantes reais compartilhando a mesma Linha catch-all
+// (linha="DIVERSOS") — agrupar por Linha aqui seria inútil (uma seção só,
+// tudo dentro dela). Em vez disso, agrupa por MARCA DE VEÍCULO (reaproveita
+// _agruparPorMarca, a mesma função usada pro sub-agrupamento normal, só
+// que aqui promovida a agrupamento de TOPO) e desliga o sub-agrupamento de
+// marca de dentro de cada grupo (semSubAgrupamentoMarca em
+// _construirSequenciaConteudo) — senão um produto com 2 marcas citadas
+// ganharia um sub-cabeçalho redundante dentro do próprio grupo-marca.
+async function gerarPdfCatalogoCompleto(produtos, fabricante, destino, tipoCompleto = null, agruparPorMarca = false) {
   // Estilo "Mecânica" (pedido do usuário, 2026-09-03) — fixo por fabricante,
   // ver _estiloCatalogoCompleto/MECANICA_* no topo do arquivo. Todo o resto
   // desta função continua igual pro estilo "eletrica" (padrão, ~3600
@@ -2817,7 +2841,9 @@ async function gerarPdfCatalogoCompleto(produtos, fabricante, destino, tipoCompl
   // mas registrar sempre é barato e evita esquecer em algum branch futuro.
   doc.registerFont(MECANICA_TITULO_FONTE, MECANICA_TITULO_FONTE_ARQUIVO);
 
-  const grupos = _agruparPorLinha(produtos);
+  const grupos = agruparPorMarca
+    ? _agruparPorMarca(produtos).map(({ marca, produtos: itens }) => ({ linha: marca, itens }))
+    : _agruparPorLinha(produtos);
 
   // --- Pré-cálculo da paginação do índice (ver comentário acima) ---
   const larguraUtilIndice = A4_LARGURA - PAGE_MARGIN * 2;
@@ -2839,7 +2865,7 @@ async function gerarPdfCatalogoCompleto(produtos, fabricante, destino, tipoCompl
   // ver comentário em _calcularLayoutConteudo sobre por que ela precisa
   // ser pura/determinística).
   const alturaHeaderMarca = _alturaCabecalhoMarca(doc);
-  const { sequencia, primeiroIndicePorGrupo } = _construirSequenciaConteudo(grupos);
+  const { sequencia, primeiroIndicePorGrupo } = _construirSequenciaConteudo(grupos, agruparPorMarca);
   // 2026-09-03: linhas por página variam por estilo (medido no mockup —
   // Mecânica só cabe 4, não 5, ver ROWS_POR_PAGINA_COMPLETO_MECANICA). Único
   // ponto que precisa saber disso — _calcularLayoutConteudo é puramente
@@ -2931,10 +2957,25 @@ async function gerarPdfCatalogoCompleto(produtos, fabricante, destino, tipoCompl
       // marca pra não parecer continuação da Linha anterior (ver comentário
       // de `inicioDeLinha` em _construirSequenciaConteudo).
       const trocouDeLinhaSemTitulo = bloco.inicioDeLinha && bloco.linha !== linhaTituloPagina;
-      const textoCabecalhoMarca = trocouDeLinhaSemTitulo
-        ? `${bloco.linha} — ${bloco.marca}`
-        : bloco.marca;
-      _desenharCabecalhoMarca(doc, textoCabecalhoMarca, pos.x, pos.y, larguraUtilCompleto, alturaHeaderMarca, trocouDeLinhaSemTitulo ? "left" : "center");
+      // bloco.marca === bloco.linha só acontece no modo "sem sub-agrupamento
+      // de marca" (catálogo Diversos — ver semSubAgrupamentoMarca em
+      // _construirSequenciaConteudo): aqui "marca" JÁ É o próprio nome do
+      // grupo-topo. Quando NÃO houve troca no meio da página
+      // (!trocouDeLinhaSemTitulo), o título grande (_desenharCabecalho) já
+      // acabou de anunciar esse mesmo nome — desenhar de novo aqui embaixo
+      // seria puramente redundante (ex: "MBB" grande, "MBB" pequeno logo
+      // abaixo, sem informação nova nenhuma), então pula o desenho. A altura
+      // continua reservada no layout (pré-calculada por
+      // _calcularLayoutConteudo, que não sabe/precisa saber disso) — só
+      // fica em branco, sem texto.
+      if (bloco.marca === bloco.linha && !trocouDeLinhaSemTitulo) {
+        // não desenha nada — ver comentário acima.
+      } else {
+        const textoCabecalhoMarca = trocouDeLinhaSemTitulo
+          ? (bloco.marca && bloco.marca !== bloco.linha ? `${bloco.linha} — ${bloco.marca}` : bloco.linha)
+          : bloco.marca;
+        _desenharCabecalhoMarca(doc, textoCabecalhoMarca, pos.x, pos.y, larguraUtilCompleto, alturaHeaderMarca, trocouDeLinhaSemTitulo ? "left" : "center");
+      }
     } else {
       // 2026-08-28: quando uma quebra de página acontece NO MEIO de um
       // sub-grupo (não na 1ª linha dele, ver comentário em

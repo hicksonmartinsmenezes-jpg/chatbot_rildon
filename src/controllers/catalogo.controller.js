@@ -2,7 +2,7 @@ const crypto = require("crypto");
 const ExcelJS = require("exceljs");
 const logger = require("../utils/logger");
 const { listarFotos, obterFoto, obterFotoPorNome, definirFotoPreferida, ocultarFoto, recarregarIndice: recarregarIndiceFotos, obterVersaoFotos } = require("../services/catalogo-fotos.service");
-const { buscarProdutosPainel, buscarPorCodigo, buscarPorNomePainel, listarFabricantes, listarFabricantesCatalogoCompleto, listarMarcasVeiculoConhecidas, decodificarFabricanteCompleto, recarregarIndices: recarregarIndicesProdutos, listarLinhasParaEdicaoCategoria, definirLinhaProduto } = require("../services/catalogo-x2.service");
+const { buscarProdutosPainel, buscarPorCodigo, buscarPorNomePainel, listarFabricantes, listarFabricantesCatalogoCompleto, listarMarcasVeiculoConhecidas, decodificarFabricanteCompleto, recarregarIndices: recarregarIndicesProdutos, listarLinhasParaEdicaoCategoria, definirLinhaProduto, PSEUDO_FABRICANTE_DIVERSOS } = require("../services/catalogo-x2.service");
 const { listarSecoes, listarLinhasPorSecao } = require("../services/catalogo.service");
 const { gerarPdfCatalogo, gerarPdfCatalogoCompleto, gerarPdfCatalogoPromocional, limparCacheBboxFotos } = require("../services/catalogo-pdf.service");
 const { carregarEstoque, statusCache } = require("../services/estoque.service");
@@ -357,7 +357,11 @@ async function exportarPdfHandler(req, res) {
     res.setHeader("Content-Type", "application/pdf");
     if (modoCompleto) {
       res.setHeader("Content-Disposition", `attachment; filename="catalogo-completo-${Date.now()}.pdf"`);
-      await gerarPdfCatalogoCompleto(produtos, fabricanteCompleto, res, tipoCompletoSelecionado);
+      // Pedido do usuário (2026-09-05): pseudo-fabricante "Diversos" agrupa
+      // por marca de veículo em vez de por Linha (ver PSEUDO_FABRICANTE_DIVERSOS
+      // acima e o comentário de agruparPorMarca em gerarPdfCatalogoCompleto).
+      const agruparPorMarca = fabricanteCompleto === PSEUDO_FABRICANTE_DIVERSOS;
+      await gerarPdfCatalogoCompleto(produtos, fabricanteCompleto, res, tipoCompletoSelecionado, agruparPorMarca);
     } else {
       res.setHeader("Content-Disposition", `attachment; filename="catalogo-expresso-${Date.now()}.pdf"`);
       await gerarPdfCatalogo(produtos, tituloBusca, res);

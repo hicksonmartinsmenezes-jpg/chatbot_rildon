@@ -748,7 +748,22 @@ function abrirModalDetalheProduto(codigo) {
           </button>
           ${produto.referencia ? `<span class="catalogo-card-ref">Ref: ${safe(produto.referencia)}</span>` : ""}
           ${produto.fabricante ? `<span class="catalogo-card-fabricante"><i class="fa-solid fa-industry"></i> ${safe(produto.fabricante)}</span>` : ""}
-          <span class="catalogo-modal-secao">${safe(produto.secao || "")}${produto.linha ? " · " + safe(produto.linha) : ""}</span>
+          <div class="catalogo-modal-secao-row">
+            <span class="catalogo-modal-secao">${safe(produto.secao || "")}${produto.linha ? " · " + safe(produto.linha) : ""}</span>
+            <!-- Editar categoria (pedido do usuário, 2026-09-05 — achado real:
+                 M02051/M02038 cadastrados como "AMPERÍMETRO" em vez de
+                 "MANÔMETRO DO ÓLEO"): corrige só a Linha, sem editar dentro do
+                 PDF (o PDF é gerado, não editável) — ver
+                 abrirEditorCategoriaCatalogo/definirLinhaProduto. -->
+            <button
+              type="button"
+              class="catalogo-modal-editar-categoria-btn"
+              title="Linha errada? Corrigir Seção/Linha desse produto"
+              onclick="abrirEditorCategoriaCatalogo('${escapeAttr(produto.codigo)}')"
+            >
+              <i class="fa-solid fa-pen"></i>
+            </button>
+          </div>
         </div>
 
         <div class="catalogo-modal-info-comercial">
@@ -791,6 +806,119 @@ function abrirModalDetalheProduto(codigo) {
   // 15-modal.js) — esse aqui tem 2 colunas + tabela, precisa de bem mais espaço.
   const box = document.querySelector("#_global-modal-overlay ._modal-box");
   if (box) box.style.width = "min(920px, 96vw)";
+}
+
+// ─── Editor de categoria (Seção/Linha) — pedido do usuário, 2026-09-05 ────
+// Achado real durante uma revisão: M02051/M02038 (Manômetro do óleo, X2)
+// apareciam agrupados sob a Linha "AMPERÍMETRO" no Catálogo Completo. Em vez
+// de "editar dentro do PDF" (o PDF é gerado a partir do JSON, não é editável
+// diretamente — expliquei isso ao usuário antes de implementar), essa tela
+// corrige a Linha na origem dos dados via overlay não-destrutivo (mesmo
+// padrão de fotos-preferencias.json — ver definirLinhaProduto/
+// catalogo-x2.service.js): nunca mexe no JSON bruto do X2, só sobrepõe na
+// leitura, e sobrevive a um re-sync do X2 (que só ACRESCENTA produto novo,
+// nunca corrige um já existente).
+async function abrirEditorCategoriaCatalogo(codigo) {
+  const produto = _catalogoProdutosPorCodigo.get(String(codigo));
+  if (!produto) {
+    showToast?.("Não foi possível abrir o editor de categoria.", "error");
+    return;
+  }
+
+  let secoes = [];
+  try {
+    const res = await fetch("/api/catalogo/categoria-linhas", { credentials: "include" });
+    if (!res.ok) throw new Error("Erro ao carregar a lista de Seções/Linhas.");
+    const data = await res.json();
+    secoes = data.secoes || [];
+  } catch (err) {
+    showToast?.(err.message || "Erro ao carregar a lista de Seções/Linhas.", "error");
+    return;
+  }
+
+  const secaoAtual = produto.secao || "";
+  const linhaAtual = produto.linha || "";
+  // Datalist com as Linhas já cadastradas na MESMA Seção do produto — texto
+  // livre continua aceito (ex: Linha nova, ou nome de Linha escrito
+  // diferente do X2), evita só digitar errado uma Linha que já existe.
+  const linhasDaSecao = (secoes.find(s => s.secao === secaoAtual)?.linhas) || [];
+
+  _openModal(`
+    <div class="modal-header">
+      <strong>Corrigir Seção/Linha</strong>
+      <button class="modal-close-btn" type="button" data-modal-close aria-label="Fechar modal">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="margin-bottom:12px;">
+        Corrige só a Linha desse produto aqui no painel — não altera nada no X2. Use quando
+        o produto aparece agrupado na Linha errada (ex: "AMPERÍMETRO" em vez de
+        "MANÔMETRO DO ÓLEO"). Fica salvo e sobrevive a uma nova sincronização do catálogo.
+      </p>
+      <label class="catalogo-editor-categoria-label">
+        Seção
+        <input type="text" value="${escapeAttr(secaoAtual)}" disabled>
+      </label>
+      <label class="catalogo-editor-categoria-label">
+        Linha correta
+        <input
+          type="text"
+          id="catalogo-editor-categoria-linha"
+          list="catalogo-editor-categoria-linhas-lista"
+          value="${escapeAttr(linhaAtual)}"
+          placeholder="Ex: MANÔMETRO DO ÓLEO"
+          autocomplete="off"
+        >
+        <datalist id="catalogo-editor-categoria-linhas-lista">
+          ${linhasDaSecao.map(l => `<option value="${escapeAttr(l)}"></option>`).join("")}
+        </datalist>
+      </label>
+    </div>
+    <div class="modal-footer">
+      <button class="modal-btn modal-btn-secondary" type="button" data-modal-close>Cancelar</button>
+      <button class="modal-btn modal-btn-primary" type="button" id="catalogo-editor-categoria-salvar">Salvar</button>
+    </div>
+  `);
+
+  document.getElementById("catalogo-editor-categoria-salvar")?.addEventListener("click", () => {
+    const novaLinha = document.getElementById("catalogo-editor-categoria-linha")?.value.trim() || "";
+    _salvarCategoriaCatalogo(codigo, novaLinha);
+  });
+}
+
+async function _salvarCategoriaCatalogo(codigo, novaLinha) {
+  if (!novaLinha) {
+    showToast?.("Informe a Linha correta (não pode ficar em branco).", "error");
+    return;
+  }
+  const btn = document.getElementById("catalogo-editor-categoria-salvar");
+  if (btn) { btn.disabled = true; btn.textContent = "Salvando..."; }
+  try {
+    const res = await fetch(`/api/catalogo/produtos/${encodeURIComponent(codigo)}/linha`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ linha: novaLinha }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || "Erro ao corrigir a categoria.");
+
+    // Atualiza só o campo `linha` do produto em memória (o resto do objeto —
+    // aplicação, estoque, badges já calculados — continua o mesmo; o backend
+    // devolve o produto "cru" indexado, não o formato "de painel" usado na
+    // busca) — reabre o modal de detalhe já com o valor novo.
+    const produtoAtualizado = body.produto;
+    if (produtoAtualizado?.codigo) {
+      const atual = _catalogoProdutosPorCodigo.get(String(produtoAtualizado.codigo));
+      if (atual) atual.linha = produtoAtualizado.linha;
+    }
+
+    _closeModal();
+    showToast?.("Linha corrigida. O card na lista de busca atualiza numa próxima busca/recarregar.", "success");
+    abrirModalDetalheProduto(codigo);
+  } catch (err) {
+    showToast?.(err.message || "Erro ao corrigir a categoria.", "error");
+    if (btn) { btn.disabled = false; btn.textContent = "Salvar"; }
+  }
 }
 
 // mostrarBadgeNeutro: só faz sentido quando a busca envolveu marca/modelo

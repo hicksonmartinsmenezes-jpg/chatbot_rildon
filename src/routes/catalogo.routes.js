@@ -22,6 +22,8 @@ const {
   importarArquivoPromocionalHandler,
   recarregarEstoqueHandler,
   recarregarCatalogoHandler,
+  listarCategoriaLinhasHandler,
+  definirLinhaProdutoHandler,
 } = require("../controllers/catalogo.controller");
 
 // CSV/XLSX de preços do "Catálogo Promocional" (nova função, 2026-08-29;
@@ -126,6 +128,14 @@ router.post("/catalogo/produtos/:codigo/foto-preferida", definirFotoPreferidaHan
 // deleta do zip/X2, só esconde da exibição (pedido do usuário, 2026-09-02;
 // ver ocultarFoto/catalogo-fotos.service.js).
 router.post("/catalogo/produtos/:codigo/foto-ocultar", ocultarFotoHandler);
+// Corrige a Linha de um produto específico (pedido do usuário, 2026-09-05 —
+// achado real: M02051/M02038 cadastrados como "AMPERÍMETRO" em vez de
+// "MANÔMETRO DO ÓLEO", confirmado ao vivo contra o próprio X2). `{ linha:
+// "" }` remove a correção manual — ver definirLinhaProduto/catalogo-x2.service.js.
+router.post("/catalogo/produtos/:codigo/linha", definirLinhaProdutoHandler);
+// Sugestões de Seção/Linha pro formulário "Editar categoria" acima — todas
+// as Linhas já cadastradas em cada Seção, evita duplicata por digitação.
+router.get("/catalogo/categoria-linhas", listarCategoriaLinhasHandler);
 // Versão global do "estado das fotos" — o frontend embute como ?v=<versao>
 // em toda URL de foto pra garantir cache-busting real (ver comentário em
 // versaoFotosHandler/catalogo-fotos.service.js).

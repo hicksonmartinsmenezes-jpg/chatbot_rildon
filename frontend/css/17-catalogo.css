@@ -1357,6 +1357,74 @@ body.light-theme .catalogo-aplicacao-tabela td { color: #334155; }
   line-height: 1.4;
 }
 
+/* Linha Seção/Linha + botão "editar categoria" (pedido do usuário,
+   2026-09-05) — mesmo espírito do catalogo-card-photo-trocar (ícone
+   pequeno, discreto, só aparece com intenção de uso, não compete visualmente
+   com o texto da Seção/Linha ao lado). */
+.catalogo-modal-secao-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.catalogo-modal-editar-categoria-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--cat-line);
+  background: var(--cat-bg-0);
+  color: var(--cat-text-dim);
+  font-size: 10px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast), transform var(--transition-fast);
+}
+
+.catalogo-modal-editar-categoria-btn:hover {
+  color: #cfe0ff;
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--cat-line));
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  transform: translateY(-1px);
+}
+
+/* Form do modal "Corrigir Seção/Linha" — mesmo padrão de label+input
+   empilhado usado no resto do painel (ver Configurações), sem reinventar
+   estilo de formulário só pra esse modal. */
+.catalogo-editor-categoria-label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--cat-text-dim);
+  margin-bottom: 14px;
+}
+
+.catalogo-editor-categoria-label input {
+  padding: 9px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--cat-line);
+  background: var(--cat-bg-0);
+  color: #d7dce6;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+body.light-theme .catalogo-editor-categoria-label input { color: #334155; }
+
+.catalogo-editor-categoria-label input:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.catalogo-editor-categoria-label input:not(:disabled):focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
 .catalogo-modal-tabs {
   display: flex;
   flex-direction: column;

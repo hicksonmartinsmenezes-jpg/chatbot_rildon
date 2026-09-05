@@ -538,7 +538,52 @@ function _tokenBateAplicacao(token, aplicacaoPalavras) {
 // esse loop varre TODO .json da pasta catalogo-x2/ achando que é um arquivo
 // de produtos; qualquer JSON novo de config/estado que caia nessa mesma
 // pasta tem que entrar nessa lista, senão quebra o catálogo inteiro.
-const ARQUIVOS_NAO_PRODUTO = new Set(["cod-fornecedor.json", "aplicacao-ia-cache.json", "fotos-preferencias.json", "fotos-ocultas.json"]);
+const ARQUIVOS_NAO_PRODUTO = new Set(["cod-fornecedor.json", "aplicacao-ia-cache.json", "fotos-preferencias.json", "fotos-ocultas.json", "categoria-correcoes.json"]);
+
+// PEDIDO DO USUÁRIO (2026-09-05, achado investigando M02051/M02038 sob a
+// Linha errada "AMPERÍMETRO"): em vez de escrever um script de reparo
+// cirúrgico cada vez que o X2 cadastra um produto na categoria errada
+// (aconteceu de verdade, confirmado ao vivo contra o X2 — ver
+// scripts/repair-linha-manometro-em-amperimetro.js), o atendente corrige
+// direto no painel. Mesmo padrão NÃO-DESTRUTIVO já usado pra foto
+// preferida/oculta (ver definirFotoPreferida/ocultarFoto em
+// catalogo-fotos.service.js): a correção fica só num JSON à parte
+// (categoria-correcoes.json), nunca sobrescreve o dado bruto do X2 nos
+// arquivos de Seção — sobrevive a recarregar índice, a reinício do bot, e
+// (diferente de editar o JSON de produto direto) sobrevive também ao caso
+// raro de um código sumir e reentrar num resync futuro (x2-catalogo-sync.js
+// nunca mexe em produto já existente, mas se o código for removido e depois
+// recadastrado como "novo", uma edição direta no arquivo de produto se
+// perderia; a correção aqui não, porque é indexada pelo próprio código).
+// Escopo v1 (decisão do usuário): só o campo `linha` — não `secao` nem
+// nenhum campo de `ficha` (aplicação/dadosTecnicos/equivalentes), que não
+// têm fonte confiável pra corrigir sem risco (ver aviso em
+// x2-catalogo-sync.js sobre dado errado em aplicação ser pior que não ter
+// ficha nenhuma).
+const CORRECOES_CATEGORIA_PATH = path.join(DIR_CATALOGO, "categoria-correcoes.json");
+
+let correcoesCategoria = null; // Map<codigo, { linha }> — lazy, carregado do disco na 1ª chamada.
+
+function _garantirCorrecoesCategoria() {
+  if (correcoesCategoria) return correcoesCategoria;
+  correcoesCategoria = new Map();
+  try {
+    const bruto = JSON.parse(fs.readFileSync(CORRECOES_CATEGORIA_PATH, "utf8"));
+    for (const [codigo, correcao] of Object.entries(bruto)) {
+      if (correcao && correcao.linha) correcoesCategoria.set(String(codigo), { linha: String(correcao.linha) });
+    }
+  } catch (e) {
+    if (e.code !== "ENOENT") {
+      console.error("[catalogo-x2.service] falha ao ler categoria-correcoes.json:", e.message);
+    }
+  }
+  return correcoesCategoria;
+}
+
+function _salvarCorrecoesCategoria() {
+  const obj = Object.fromEntries(correcoesCategoria);
+  fs.writeFileSync(CORRECOES_CATEGORIA_PATH, JSON.stringify(obj, null, 2) + "\n", "utf8");
+}
 
 // BUG REAL achado 2026-09-04 (usuário reportou produto após produto com
 // aplicação/produtos similares vazios no modal do Catálogo "mesmo tendo tudo
@@ -609,7 +654,17 @@ function _carregarIndices() {
     }
   }
 
-  for (const p of melhorPorCodigo.values()) _indexarProduto(p);
+  // Aplica correções manuais de categoria (ver comentário de
+  // CORRECOES_CATEGORIA_PATH acima) ANTES de indexar — assim a Linha
+  // corrigida propaga sozinha pra todo mundo que lê `p.linha`/`item.linha`
+  // depois (busca por veículo/nome/código, Catálogo Completo, índice do
+  // PDF, dropdown de Linhas), sem precisar duplicar a lógica em cada lugar.
+  const correcoes = _garantirCorrecoesCategoria();
+  for (const p of melhorPorCodigo.values()) {
+    const correcao = correcoes.get(String(p.codigo));
+    if (correcao) p.linha = correcao.linha;
+    _indexarProduto(p);
+  }
 
   console.log(
     `[catalogo-x2.service] índice pronto: ${totalProdutosIndexados} produtos, ` +
@@ -681,6 +736,66 @@ function recarregarIndices() {
 }
 
 recarregarIndices();
+
+// ─── Correção manual de categoria (Linha) — pedido do usuário 2026-09-05 ──
+// Ver comentário de CORRECOES_CATEGORIA_PATH acima pro porquê do overlay em
+// vez de editar o JSON de produto direto.
+
+/**
+ * Lista, pra cada Seção conhecida, as Linhas já existentes nela — usado
+ * pelo dropdown "editar categoria" do painel (escolher uma Linha existente
+ * evita criar "MANÔMETRO DO ÓLEO" e "MANOMETRO DO OLEO" como duas Linhas
+ * parecidas por erro de digitação; digitar uma Linha nova continua livre).
+ * Computado sob demanda (não fica em cache) — só é chamado quando o
+ * atendente abre o formulário de edição, não em toda busca do painel.
+ *
+ * NOME DE PROPÓSITO DIFERENTE de `listarLinhasPorSecao` (catalogo.service.js
+ * — dropdown dependente Seção→Linha da busca do painel, recebe 1 `secao` e
+ * devolve só as linhas dela, vindo das ~397 linhas genéricas cadastradas à
+ * mão, não deste catálogo X2). Nomes parecidos de propósito, serviços
+ * diferentes — não confundir/importar um pelo outro.
+ */
+function listarLinhasParaEdicaoCategoria() {
+  const porSecao = new Map();
+  for (const p of todosProdutos) {
+    if (!p.secao || !p.linha) continue;
+    if (!porSecao.has(p.secao)) porSecao.set(p.secao, new Set());
+    porSecao.get(p.secao).add(p.linha);
+  }
+  return [...porSecao.entries()]
+    .map(([secao, linhas]) => ({ secao, linhas: [...linhas].sort((a, b) => a.localeCompare(b, "pt-BR")) }))
+    .sort((a, b) => a.secao.localeCompare(b.secao, "pt-BR"));
+}
+
+/**
+ * Corrige a Linha de um produto (código interno da loja) — persiste em
+ * categoria-correcoes.json e recarrega os índices na hora pra já valer na
+ * busca/Catálogo Completo seguintes, sem precisar de reinício. Lança erro
+ * "de negócio" (código não encontrado / linha vazia) — o controller trata
+ * como 400, não 500. `novaLinha` vazia/null REMOVE a correção (volta a
+ * mostrar o valor original do X2).
+ */
+function definirLinhaProduto(codigo, novaLinha) {
+  const norm = _normalizarCodigo(codigo);
+  const produto = produtosPorCodigoIndex.get(norm);
+  if (!produto) {
+    throw new Error(`Código "${codigo}" não encontrado no catálogo.`);
+  }
+
+  const linhaLimpa = String(novaLinha || "").trim();
+  const correcoes = _garantirCorrecoesCategoria();
+
+  if (!linhaLimpa) {
+    correcoes.delete(produto.codigo);
+  } else {
+    correcoes.set(produto.codigo, { linha: linhaLimpa });
+  }
+  _salvarCorrecoesCategoria();
+  recarregarIndices();
+
+  const atualizado = produtosPorCodigoIndex.get(norm);
+  return atualizado || null;
+}
 
 // ─── Fabricante da peça (Task #250-252, pedido do usuário em 2026-07-23) ──
 function listarFabricantes() {
@@ -1306,4 +1421,6 @@ module.exports = {
   listarMarcasVeiculoConhecidas,
   decodificarFabricanteCompleto,
   recarregarIndices,
+  listarLinhasParaEdicaoCategoria,
+  definirLinhaProduto,
 };

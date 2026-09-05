@@ -2,7 +2,7 @@ const crypto = require("crypto");
 const ExcelJS = require("exceljs");
 const logger = require("../utils/logger");
 const { listarFotos, obterFoto, obterFotoPorNome, definirFotoPreferida, ocultarFoto, recarregarIndice: recarregarIndiceFotos, obterVersaoFotos } = require("../services/catalogo-fotos.service");
-const { buscarProdutosPainel, buscarPorCodigo, buscarPorNomePainel, listarFabricantes, listarFabricantesCatalogoCompleto, listarMarcasVeiculoConhecidas, decodificarFabricanteCompleto, recarregarIndices: recarregarIndicesProdutos } = require("../services/catalogo-x2.service");
+const { buscarProdutosPainel, buscarPorCodigo, buscarPorNomePainel, listarFabricantes, listarFabricantesCatalogoCompleto, listarMarcasVeiculoConhecidas, decodificarFabricanteCompleto, recarregarIndices: recarregarIndicesProdutos, listarLinhasParaEdicaoCategoria, definirLinhaProduto } = require("../services/catalogo-x2.service");
 const { listarSecoes, listarLinhasPorSecao } = require("../services/catalogo.service");
 const { gerarPdfCatalogo, gerarPdfCatalogoCompleto, gerarPdfCatalogoPromocional, limparCacheBboxFotos } = require("../services/catalogo-pdf.service");
 const { carregarEstoque, statusCache } = require("../services/estoque.service");
@@ -873,6 +873,46 @@ async function listarLinhasHandler(req, res) {
   }
 }
 
+// GET /api/catalogo/categoria-linhas — pedido do usuário (2026-09-05, achado
+// investigando M02051/M02038 na Linha errada "AMPERÍMETRO", confirmado ao
+// vivo contra o próprio X2): alimenta o dropdown do formulário "Editar
+// categoria" do painel — todas as Seções já conhecidas, com as Linhas já
+// cadastradas em cada uma (ver listarLinhasParaEdicaoCategoria/
+// catalogo-x2.service.js). Escolher uma Linha existente evita criar
+// duplicata por erro de digitação; o campo também aceita texto livre pra
+// Linha nova, então esta lista é só sugestão, não validação.
+async function listarCategoriaLinhasHandler(req, res) {
+  try {
+    res.json({ secoes: listarLinhasParaEdicaoCategoria() });
+  } catch (err) {
+    logger.error("❌ Erro ao listar categorias do catálogo X2:", err.message);
+    res.status(500).json({ error: "Erro ao listar categorias." });
+  }
+}
+
+// POST /api/catalogo/produtos/:codigo/linha — corrige a Linha de um produto
+// específico (pedido do usuário, 2026-09-05 — ver comentário acima e em
+// definirLinhaProduto/catalogo-x2.service.js pro porquê do overlay
+// não-destrutivo em vez de editar o JSON do X2 direto). `{ linha: "" }` (ou
+// omitido) REMOVE a correção manual, voltando a mostrar o valor original do
+// X2 — mesmo padrão de definirFotoPreferidaHandler (nomeArquivo null remove
+// a preferência).
+async function definirLinhaProdutoHandler(req, res) {
+  try {
+    const { codigo } = req.params;
+    if (!_codigoValido(codigo)) {
+      return res.status(400).json({ error: "Código de produto inválido." });
+    }
+    const novaLinha = req.body?.linha ?? "";
+    const produto = definirLinhaProduto(codigo, novaLinha);
+    res.json({ ok: true, codigo, produto });
+  } catch (err) {
+    // definirLinhaProduto lança erro "de negócio" (código não encontrado no
+    // catálogo) — 400, não 500, é erro de entrada, não falha do servidor.
+    res.status(400).json({ error: err.message || "Erro ao corrigir a categoria do produto." });
+  }
+}
+
 // POST /api/catalogo/estoque/recarregar — pedido do usuário (2026-08-10):
 // o cache de estoque em memória (usado pro badge do Catálogo) só recarregava
 // no boot do servidor e a cada 30min (setInterval em server.js). O import de
@@ -942,4 +982,6 @@ module.exports = {
   exportarPdfHandler,
   exportarPdfPromocionalHandler,
   importarArquivoPromocionalHandler,
+  listarCategoriaLinhasHandler,
+  definirLinhaProdutoHandler,
 };

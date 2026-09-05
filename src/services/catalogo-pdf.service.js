@@ -947,7 +947,19 @@ const MARCA_HEADER_GAP_DEPOIS = 6; // espaço entre o texto do cabeçalho e a 1�
 // segmento no formato "MARCA: modelos") não pode sumir do catálogo
 // impresso — cai num sub-grupo catch-all ao final de cada Linha, em vez
 // de ser descartado.
-const MARCA_OUTRAS = "OUTRAS APLICAÇÕES";
+//
+// 2026-09-05 (pedido do usuário "outras aplicações deixe em Universal /
+// Diversos"): o rótulo mudou de "OUTRAS APLICAÇÕES" pro mesmo texto usado
+// pra peças que já citam "Universal"/"Diversos" na aplicação
+// (MARCA_UNIVERSAL_CANONICA, definida mais abaixo em _extrairMarcas — não
+// dá pra referenciar direto aqui por causa da ordem de declaração, mas o
+// texto tem que ser IDÊNTICO de propósito). Efeito colateral desejado: se
+// uma Linha tem produto explicitamente "Universal" E produto sem marca
+// nenhuma, os dois agora caem na MESMA chave do Map em _agruparPorMarca —
+// um cabeçalho só, em vez de dois cabeçalhos idênticos um atrás do outro
+// (o mesmo tipo de confusão que o fix de troca-de-Linha-no-meio-da-página
+// resolveu um passo acima, ver `inicioDeLinha`).
+const MARCA_OUTRAS = "UNIVERSAL / DIVERSOS";
 
 // Tamanhos de fonte do índice — pedido explícito do usuário (2026-08-26):
 // "Indice deixa 36pt, pg deixa 12pt... Linhas deixa 17 pt" (17pt é o mesmo
@@ -2079,6 +2091,9 @@ const MARCA_SEGMENTO_SEM_DOISPONTOS_MAX_CHARS = 50;
 // todos os modelos" quanto o "UNIVERSAL" cru do cache.
 const MARCA_ALIAS_UNIVERSAL_REGEX = /^(universal|diversos?)\b/i;
 const MARCA_UNIVERSAL_CANONICA = "UNIVERSAL / DIVERSOS";
+// MARCA_OUTRAS (catch-all de produto sem marca nenhuma, declarada lá em
+// cima por causa da ordem de uso no arquivo) usa esse MESMO texto
+// literal, de propósito — ver comentário dela.
 
 // Pedido do usuário (2026-09-05): "quando algum produto estiver sem marca
 // na descrição ou na aplicação coloca como outras aplicações" — exemplo

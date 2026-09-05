@@ -2169,13 +2169,31 @@ function _agruparPorMarca(itens) {
 // "cabecalhoMarca", o do 1º sub-grupo de marca daquela Linha) — usado
 // depois pra descobrir em que página cada Linha começa (ver
 // _calcularLayoutConteudo), sem precisar re-varrer a sequência inteira.
+// 2026-09-05 (bug real reportado pelo usuário: print da seção "MANÔMETRO DO
+// ÓLEO" mostrando DOIS blocos "OUTRAS APLICAÇÕES" seguidos, o 2º sem
+// nenhuma indicação de que era na verdade outra Linha — "SINALIZEIRA...
+// EMPILHADEIRAS", não manômetro nenhum): o título grande da página
+// (_desenharCabecalho) só é redesenhado em quebra de página de verdade — se
+// uma Linha nova começa NO MEIO de uma página (grade contínua, ver
+// _construirSequenciaConteudo/comentário de 2026-08-27), o único sinal
+// visual da troca é o cabeçalho de marca (_desenharCabecalhoMarca), que usa
+// a MESMA cor/fonte do título da Linha (ver comentário ali). Se essa nova
+// Linha também cai em MARCA_OUTRAS, o cliente vê só mais um "OUTRAS
+// APLICAÇÕES" idêntico ao anterior, sem saber que trocou de categoria de
+// produto inteira. `inicioDeLinha: true` marca o 1º bloco "cabecalhoMarca"
+// de cada Linha (sempre existe um, mesmo Linhas com só 1 produto) — usado
+// no loop de desenho (gerarPdfCatalogoCompleto) pra prefixar o nome da
+// Linha no cabeçalho de marca quando essa troca acontece sem passar por
+// _desenharCabecalho.
 function _construirSequenciaConteudo(grupos) {
   const sequencia = [];
   const primeiroIndicePorGrupo = [];
   grupos.forEach(({ linha, itens }) => {
     primeiroIndicePorGrupo.push(sequencia.length);
+    let primeiroSubgrupoDaLinha = true;
     _agruparPorMarca(itens).forEach(({ marca, produtos }) => {
-      sequencia.push({ tipo: "cabecalhoMarca", linha, marca });
+      sequencia.push({ tipo: "cabecalhoMarca", linha, marca, inicioDeLinha: primeiroSubgrupoDaLinha });
+      primeiroSubgrupoDaLinha = false;
       // 2026-08-28: pedido do usuário "complete os cards por mais que só
       // tenham poucos produtos" — 1ª tentativa esticou a largura dos cards
       // pra preencher a linha (largura variável por leva). Usuário corrigiu
@@ -2809,6 +2827,12 @@ async function gerarPdfCatalogoCompleto(produtos, fabricante, destino, tipoCompl
   // de marca (inline) e pelo selo/código no próprio card.
   const larguraUtilCompleto = A4_LARGURA - PAGE_MARGIN * 2;
   let paginaLocalAtual = -1;
+  // 2026-09-05: ver comentário de `inicioDeLinha` em
+  // _construirSequenciaConteudo — guarda a Linha mostrada no título grande
+  // da página atual, pra saber se um "cabecalhoMarca" que abre uma Linha
+  // nova precisa repetir o nome dela (troca aconteceu no MEIO da página,
+  // sem passar por _desenharCabecalho).
+  let linhaTituloPagina = null;
 
   // 2026-08-28 (pedido "preencha com cards vazios embaixo"): desenha as
   // linhas de preenchimento de UMA página (calculadas em
@@ -2833,10 +2857,19 @@ async function gerarPdfCatalogoCompleto(produtos, fabricante, destino, tipoCompl
       if (estilo === "mecanica") _desenharFundoGradienteMecanica(doc);
       _desenharCabecalho(doc, bloco.linha, estilo, fabricante);
       _desenharRodape(doc, pagina, estilo);
+      linhaTituloPagina = bloco.linha;
     }
 
     if (bloco.tipo === "cabecalhoMarca") {
-      _desenharCabecalhoMarca(doc, bloco.marca, pos.x, pos.y, larguraUtilCompleto, alturaHeaderMarca);
+      // 2026-09-05: Linha nova começando no meio da página (não passou por
+      // _desenharCabecalho acima) — prefixa o nome da Linha no cabeçalho de
+      // marca pra não parecer continuação da Linha anterior (ver comentário
+      // de `inicioDeLinha` em _construirSequenciaConteudo).
+      const trocouDeLinhaSemTitulo = bloco.inicioDeLinha && bloco.linha !== linhaTituloPagina;
+      const textoCabecalhoMarca = trocouDeLinhaSemTitulo
+        ? `${bloco.linha} — ${bloco.marca}`
+        : bloco.marca;
+      _desenharCabecalhoMarca(doc, textoCabecalhoMarca, pos.x, pos.y, larguraUtilCompleto, alturaHeaderMarca);
     } else {
       // 2026-08-28: quando uma quebra de página acontece NO MEIO de um
       // sub-grupo (não na 1ª linha dele, ver comentário em

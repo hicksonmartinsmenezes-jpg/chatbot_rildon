@@ -1331,8 +1331,16 @@ function buscarProdutosPainel({ marca = "", modelo = "", ano = null, anoInicio =
         // ignora p.fabricante de propósito — agrega por p.linha="DIVERSOS"
         // cruzando TODOS os fabricantes, não só um.
         if (_normalizar(p.linha) !== _normalizar(PSEUDO_FABRICANTE_DIVERSOS)) return false;
-      } else if (fabricanteNorm && (!p.fabricante || p.fabricante.toUpperCase() !== fabricanteNorm)) {
-        return false;
+      } else if (fabricanteNorm) {
+        if (!p.fabricante || p.fabricante.toUpperCase() !== fabricanteNorm) return false;
+        // Pedido do usuário (2026-09-05, follow-up): produto linha="DIVERSOS"
+        // some do Catálogo Completo NORMAL de cada fabricante — ele já saiu
+        // de lá e virou o catálogo à parte "Diversos" (pseudo-fabricante
+        // acima). Sem isso, o mesmo produto aparecia nos dois lugares (bug
+        // real reportado: card "126633 - PORCA CONEXAO... MBB" ainda surgia
+        // dentro do catálogo comum de um fabricante, como transição de Linha
+        // "DIVERSOS — MBB" no meio da página).
+        if (_normalizar(p.linha) === _normalizar(PSEUDO_FABRICANTE_DIVERSOS)) return false;
       }
       if (!filtroTipoCompleto(p)) return false;
       return true;

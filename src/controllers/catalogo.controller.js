@@ -297,6 +297,26 @@ async function exportarPdfHandler(req, res) {
       tituloBusca = partes.length ? partes.join(" · ") : "Catálogo completo";
     }
 
+    // Pedido do usuário (2026-09-05): no Catálogo Completo, só entram
+    // produtos com preço cadastrado (varejo OU atacado) — ver
+    // _anexarEstoque/catalogo-x2.service.js, produto.estoque vem null (sem
+    // registro nenhum) ou { qtd, unidade, precoVarejo, precoAtacado }, e
+    // cada preço pode ser null individualmente mesmo com registro de
+    // estoque. Filtro só no modo Completo — o expresso (busca solta) e o
+    // Promocional continuam como estavam (o Promocional já filtra por CSV
+    // de preço à parte, tem outra lógica própria).
+    if (modoCompleto) {
+      const totalAntesDoFiltro = produtos.length;
+      produtos = produtos.filter(p => p.estoque && (p.estoque.precoVarejo != null || p.estoque.precoAtacado != null));
+      if (!produtos.length) {
+        return res.status(404).json({
+          error: totalAntesDoFiltro
+            ? `${totalAntesDoFiltro} peça(s) encontrada(s) pra "${fabricanteCompleto}", mas nenhuma tem preço cadastrado no estoque — nada pra exportar.`
+            : "Nenhuma peça encontrada pra exportar com esses critérios.",
+        });
+      }
+    }
+
     if (!produtos.length) {
       return res.status(404).json({ error: "Nenhuma peça encontrada pra exportar com esses critérios." });
     }

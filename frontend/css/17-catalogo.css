@@ -900,6 +900,18 @@
   gap: 6px;
 }
 
+/* BUG REAL (achado pelo usuário, print 2026-09-08): catalogo-card-photo-fallback
+   fica centralizado no meio do card inteiro (inset:0 + flex center) — no
+   layout dupla o gap das 2 fotos cai bem nesse centro, então uma fatia do
+   ícone "sem foto" aparecia espremida na fresta entre as fotos (parecia um
+   "!"). Esconder o fallback quando dupla resolve — as 2 fotos já vieram
+   validadas como jpeg/png pelo backend (temMultiplasFotos), então o caso de
+   uma delas falhar de verdade no <img onerror> é raro; nesse caso raro só
+   sobra a foto que carregou, sem fallback atrás — aceitável. */
+.catalogo-card-photo--dupla .catalogo-card-photo-fallback {
+  display: none;
+}
+
 .catalogo-card-photo--dupla img {
   flex: 1 1 0;
   width: 0; /* com flex-basis 0 + flex-grow, força as 2 imagens a dividirem o espaço igualmente */

@@ -205,6 +205,17 @@ async function rodarAcao(tipo, opcoes, { origemRotina } = {}) {
   execucao = { tipo, terminal: new TerminalVirtual(), rodando: true, aguardando: null, erro: null, origemRotina: origemRotina || null, cancelado: false };
   transmitir();
 
+  // PEDIDO DO USUÁRIO (2026-09-08): "quando utilizar a ferramenta Lançamentos
+  // já faça a captura de foto e do produto no mesmo instante" — preenchido
+  // dentro do branch `tipo === 'lancamentos-x2'` abaixo, com as Seções que
+  // tiveram lançamento nessa captura (ver mapearSecoesTocadas em
+  // x2-lancamentos-scraper.js). Disparado DEPOIS do `finally` (fora deste
+  // try/catch), pra não segurar o lock de "Lançamentos" pelos minutos que
+  // sync+baixar levam — o usuário pediu que Lançamentos continue terminando
+  // rápido (só a lista) e a captura de foto/ficha rode depois, em segundo
+  // plano, como uma nova execução visível na aba Rotinas.
+  let slugsAutoCaptura = null;
+
   // Passado pra dentro dos loops item-a-item de x2-fotos-scraper.js e
   // x2-catalogo-sync.js — ver comentário em cancelarExecucaoAtual().
   const deveParar = () => !!(execucao && execucao.cancelado);
@@ -342,13 +353,26 @@ async function rodarAcao(tipo, opcoes, { origemRotina } = {}) {
         // verdade (☰ > Compras > Catálogo de Produtos, filtro "Apenas
         // produtos com primeira entrada"). Ver x2-lancamentos-scraper.js
         // pros seletores confirmados ao vivo.
-        await lancamentosX2.rodar({
+        const snapshotLancamentos = await lancamentosX2.rodar({
           channel: 'chrome',
           confirmar: modoAutomatico ? undefined : confirmarFactory(),
           modoAutomatico,
           dataInicioRecebimento: opcoes.dataInicioRecebimento || undefined,
           dataFimRecebimento: opcoes.dataFimRecebimento || undefined,
         });
+
+        if (opcoes.semAutoCaptura) {
+          console.log('\n(--semAutoCaptura: pulando cadastro+foto automático desta captura.)');
+        } else if (snapshotLancamentos && snapshotLancamentos.produtos.length) {
+          const { slugs, naoMapeados } = lancamentosX2.mapearSecoesTocadas(snapshotLancamentos.produtos);
+          if (naoMapeados.length) {
+            console.log(`\n⚠ ${naoMapeados.length} lançamento(s) com Seção não reconhecida (fica só no Excel, sem cadastro/foto automático): ${naoMapeados.map((n) => n.codigo).join(', ')}`);
+          }
+          if (slugs.length) {
+            console.log(`\n▶ ${slugs.length} Seção(ões) com lançamento novo — cadastro de ficha + fotos serão disparados automaticamente em seguida: ${slugs.join(', ')}`);
+            slugsAutoCaptura = slugs;
+          }
+        }
       } else {
         throw new Error(`Ação desconhecida: ${tipo}`);
       }
@@ -377,6 +401,33 @@ async function rodarAcao(tipo, opcoes, { origemRotina } = {}) {
     execucao.rodando = false;
     execucao.aguardando = null;
     transmitir();
+  }
+
+  // Encadeamento automático pós-Lançamentos (ver comentário lá em cima, na
+  // declaração de `slugsAutoCaptura`) — só depois do `finally`, com o lock
+  // já liberado, pra virar uma execução NOVA e independente (visível na aba
+  // Rotinas), não uma extensão da execução de "Lançamentos" que acabou de
+  // terminar. `execucao` ainda aponta pra essa execução que acabou de
+  // terminar — `execucao.cancelado` reflete se ELA foi cancelada; se foi,
+  // não faz sentido continuar disparando cadastro/foto por trás.
+  if (slugsAutoCaptura && slugsAutoCaptura.length && !execucao.cancelado) {
+    const secoesParaAutoCaptura = slugsAutoCaptura;
+    console.log(`[x2-painel] Lançamentos: disparando cadastro de ficha + fotos automaticamente para: ${secoesParaAutoCaptura.join(', ')}`);
+    rodarAcao('sync', { secoes: secoesParaAutoCaptura, automatico: true }, {})
+      .then(() => {
+        // `execucao` ainda aponta pra execução do "sync" que acabou de
+        // terminar (baixar só reatribui a variável quando chamado a
+        // seguir) — se o usuário cancelou o cadastro de ficha, não faz
+        // sentido continuar sozinho pro download de fotos.
+        if (execucao && execucao.cancelado) {
+          console.log('[x2-painel] cadastro de ficha cancelado — pulando download de fotos automático.');
+          return null;
+        }
+        return rodarAcao('baixar', { secoes: secoesParaAutoCaptura, automatico: true }, {});
+      })
+      .catch((e) => {
+        console.error('[x2-painel] erro na captura automática de foto/ficha pós-Lançamentos:', e.message);
+      });
   }
 }
 

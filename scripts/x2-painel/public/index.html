@@ -836,6 +836,15 @@
               <button class="primary" data-action="lancamentos-x2-rodar">Buscar lançamentos no X2</button>
             </div>
           </div>
+          <!-- PEDIDO DO USUÁRIO (2026-09-08): "quando utilizar a ferramenta
+               Lançamentos já faça a captura de foto e do produto no mesmo
+               instante" — deixa isso visível ANTES do clique, não só nos logs
+               do terminal, já que o cadastro de ficha + download de fotos
+               passa a rodar sozinho por trás (ver rodarAcao/mapearSecoesTocadas
+               em server.js/x2-lancamentos-scraper.js). -->
+          <p class="descricao" style="margin:8px 0 0; font-size:.85em; opacity:.8;">
+            Depois da busca, cadastro de ficha e download de fotos das Seções com lançamento novo rodam sozinhos em seguida — acompanhe em "Rotinas".
+          </p>
         </div>
 
         <div class="card" style="margin-bottom:18px;">

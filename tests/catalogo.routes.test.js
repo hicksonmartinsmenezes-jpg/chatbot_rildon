@@ -254,7 +254,7 @@ describe("GET /api/catalogo/buscar-codigo", () => {
     buscarPorCodigo.mockReturnValue([{ codigo: "P1", nome: "ALOJAMENTO ALTER TESTE" }]);
     const res = await request(buildApp()).get("/api/catalogo/buscar-codigo").query({ codigo: "REF1" });
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ total: 1, produtos: [{ codigo: "P1", nome: "ALOJAMENTO ALTER TESTE" }] });
+    expect(res.body).toEqual({ total: 1, produtos: [{ codigo: "P1", nome: "ALOJAMENTO ALTER TESTE", duasFotos: false }] });
     expect(buscarPorCodigo).toHaveBeenCalledWith("REF1");
   });
 
@@ -288,7 +288,7 @@ describe("GET /api/catalogo/buscar-nome", () => {
     buscarPorNomePainel.mockReturnValue({ total: 1, produtos: [{ codigo: "P1", nome: "ALTERNADOR TESTE" }] });
     const res = await request(buildApp()).get("/api/catalogo/buscar-nome").query({ nome: "alternador" });
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ total: 1, produtos: [{ codigo: "P1", nome: "ALTERNADOR TESTE" }] });
+    expect(res.body).toEqual({ total: 1, produtos: [{ codigo: "P1", nome: "ALTERNADOR TESTE", duasFotos: false }] });
     expect(buscarPorNomePainel).toHaveBeenCalledWith("alternador");
   });
 

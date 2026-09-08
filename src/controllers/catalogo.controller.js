@@ -709,7 +709,7 @@ async function buscarPorCodigoHandler(req, res) {
     if (!codigo) {
       return res.status(400).json({ error: "Informe o código de fabricante, referência ou código interno da peça." });
     }
-    const produtos = buscarPorCodigo(codigo);
+    const produtos = buscarPorCodigo(codigo).map(p => ({ ...p, duasFotos: temMultiplasFotos(p.codigo) }));
     res.json({ total: produtos.length, produtos });
   } catch (err) {
     logger.error("❌ Erro ao buscar produto por código:", err.message);
@@ -732,7 +732,8 @@ async function buscarPorNomeHandler(req, res) {
       return res.status(400).json({ error: "Informe o nome ou parte do nome da peça." });
     }
     const resultado = buscarPorNomePainel(nome);
-    res.json(resultado);
+    const produtosComFlag = (resultado.produtos || []).map(p => ({ ...p, duasFotos: temMultiplasFotos(p.codigo) }));
+    res.json({ ...resultado, produtos: produtosComFlag });
   } catch (err) {
     logger.error("❌ Erro ao buscar produto por nome:", err.message);
     res.status(500).json({ error: "Erro ao buscar produto por nome." });

@@ -1787,10 +1787,25 @@ function _desenharCard(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth,
   const xFoto = x + PAD_CARD;
   const yFoto = y + PAD_CARD;
 
+  // 2026-09-08: mesma regra "2 fotos por card" do Catálogo Completo
+  // (_desenharCardCatalogoCompleto, pedido do usuário 2026-09-05), estendida
+  // pra cá — usuário notou que a exportação de Critérios de Pesquisa não
+  // tinha ganhado o mesmo comportamento na época. Produto com 2 fotos
+  // cadastradas mostra as 2 lado a lado; com 1 foto só, continua exatamente
+  // como sempre foi (foto grande, ocupando a caixa toda).
   try {
-    const foto = obterFoto(produto.codigo, 0);
-    if (foto && (foto.mimetype === "image/jpeg" || foto.mimetype === "image/png")) {
-      _desenharFotoAjustada(doc, foto.buffer, foto.mimetype, xFoto, yFoto, photoBoxWidth, photoBoxHeight, produto.codigo);
+    const foto1 = obterFoto(produto.codigo, 0);
+    const foto2 = obterFoto(produto.codigo, 1);
+    const temDuasFotos =
+      foto1 && (foto1.mimetype === "image/jpeg" || foto1.mimetype === "image/png") &&
+      foto2 && (foto2.mimetype === "image/jpeg" || foto2.mimetype === "image/png");
+
+    if (temDuasFotos) {
+      const larguraMetade = (photoBoxWidth - GAP_DUAS_FOTOS) / 2;
+      _desenharFotoAjustada(doc, foto1.buffer, foto1.mimetype, xFoto, yFoto, larguraMetade, photoBoxHeight, `${produto.codigo}#0`);
+      _desenharFotoAjustada(doc, foto2.buffer, foto2.mimetype, xFoto + larguraMetade + GAP_DUAS_FOTOS, yFoto, larguraMetade, photoBoxHeight, `${produto.codigo}#1`);
+    } else if (foto1 && (foto1.mimetype === "image/jpeg" || foto1.mimetype === "image/png")) {
+      _desenharFotoAjustada(doc, foto1.buffer, foto1.mimetype, xFoto, yFoto, photoBoxWidth, photoBoxHeight, produto.codigo);
     } else {
       doc.font("Helvetica").fontSize(7).fillColor("#9ca3af")
         .text("sem foto", xFoto, yFoto + photoBoxHeight / 2 - 5, { width: photoBoxWidth, align: "center" });

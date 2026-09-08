@@ -696,6 +696,16 @@ const PROMO_TITULO_TAMANHO = 30;
 // arquivo).
 const PROMO_TITULO_TAMANHO_FABRICANTE = 24;
 
+// Pedido do usuário (2026-09-08): "padronize essa fonte para o número nos
+// rodapés" (arquivo enviado, Gloucester MT Extra Condensed) — troca só o
+// NÚMERO DE PÁGINA que aparece no rodapé (Helvetica-Bold até aqui), nos 3
+// estilos de rodapé que o serviço desenha: elétrica e mecânica
+// (_desenharRodape) e promocional (_desenharRodapePromo). Constante única
+// reaproveitada nas 3 chamadas de doc.registerFont (uma por função
+// geradora de PDF) — mesmo padrão de TITULO_FONTE/PROMO_TITULO_FONTE acima.
+const RODAPE_NUMERO_FONTE_ARQUIVO = path.join(__dirname, "../assets/fonts/Gloucester-MT-Extra-Condensed.ttf");
+const RODAPE_NUMERO_FONTE = "GloucesterMTExtraCondensed";
+
 // --- Estilo "Mecânica" do Catálogo Completo (pedido do usuário, 2026-09-03) ---
 // Até aqui o Catálogo Completo tinha UM template visual só (o "estilo
 // elétrica", calibrado a partir do 3-RHO.pdf original — ver TITULO_FONTE/
@@ -1952,7 +1962,7 @@ function _desenharRodape(doc, numeroPagina, estilo = "eletrica") {
     const larguraOmre = logoAltura * MECANICA_RODAPE_LOGO_OMRE_RATIO;
     doc.image(MECANICA_RODAPE_LOGO_OMRE_IMG, w - PAGE_MARGIN - larguraOmre, logoAreaY, { width: larguraOmre, height: logoAltura });
 
-    doc.fillColor(MECANICA_LINHA_FINA_COR).font("Helvetica-Bold").fontSize(12)
+    doc.fillColor(MECANICA_LINHA_FINA_COR).font(RODAPE_NUMERO_FONTE).fontSize(12)
       .text(String(numeroPagina), w - PAGE_MARGIN - 40, h - 22, { width: 40, align: "right", lineBreak: false });
     doc.fillColor("#111827").font("Helvetica");
     return;
@@ -1982,7 +1992,7 @@ function _desenharRodape(doc, numeroPagina, estilo = "eletrica") {
   const yMaximo = h - alturaLinhaAprox - 2;
   const yTexto = Math.min(centroY - fonteNumero / 2, yMaximo);
 
-  doc.fillColor("#111827").font("Helvetica-Bold").fontSize(fonteNumero)
+  doc.fillColor("#111827").font(RODAPE_NUMERO_FONTE).fontSize(fonteNumero)
     .text(String(numeroPagina), centroX - larguraCaixa / 2, yTexto, { width: larguraCaixa, align: "center", lineBreak: false });
 
   doc.fillColor("#111827").font("Helvetica");
@@ -2055,7 +2065,7 @@ function _desenharRodapePromo(doc, numeroPagina, modo) {
   const larguraCaixa = 90;
   const centroX = w * area.xFrac;
   const centroY = topo + h * area.yFrac;
-  doc.fillColor(area.cor).font("Helvetica-Bold").fontSize(fonteNumero)
+  doc.fillColor(area.cor).font(RODAPE_NUMERO_FONTE).fontSize(fonteNumero)
     .text(`Página ${numeroPagina}`, centroX - larguraCaixa / 2, centroY - fonteNumero / 2, { width: larguraCaixa, align: "center", lineBreak: false });
 
   doc.fillColor("#111827").font("Helvetica");
@@ -2744,6 +2754,9 @@ async function gerarPdfCatalogo(produtos, tituloBusca, destino) {
   // Registrada uma vez por documento — precisa vir antes de qualquer
   // doc.font(TITULO_FONTE) (ver _desenharCabecalho).
   doc.registerFont(TITULO_FONTE, TITULO_FONTE_ARQUIVO);
+  // Fonte do número de página no rodapé (pedido do usuário, 2026-09-08) —
+  // ver comentário em RODAPE_NUMERO_FONTE acima.
+  doc.registerFont(RODAPE_NUMERO_FONTE, RODAPE_NUMERO_FONTE_ARQUIVO);
 
   let pagina = 0;
 
@@ -2855,6 +2868,9 @@ async function gerarPdfCatalogoCompleto(produtos, fabricante, destino, tipoCompl
   // desenhar algo com ela (_desenharCabecalho/_desenharCardCatalogoCompleto),
   // mas registrar sempre é barato e evita esquecer em algum branch futuro.
   doc.registerFont(MECANICA_TITULO_FONTE, MECANICA_TITULO_FONTE_ARQUIVO);
+  // Fonte do número de página no rodapé (pedido do usuário, 2026-09-08) —
+  // ver comentário em RODAPE_NUMERO_FONTE acima.
+  doc.registerFont(RODAPE_NUMERO_FONTE, RODAPE_NUMERO_FONTE_ARQUIVO);
 
   const grupos = agruparPorMarca
     ? _agruparPorMarca(produtos).map(({ marca, produtos: itens }) => ({ linha: marca, itens }))
@@ -3086,6 +3102,9 @@ async function gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino, m
   doc.registerFont(PROMO_TITULO_FONTE, PROMO_TITULO_FONTE_ARQUIVO);
   doc.registerFont(QUICKSAND_BOLD, QUICKSAND_BOLD_ARQUIVO);
   doc.registerFont(QUICKSAND_MEDIUM, QUICKSAND_MEDIUM_ARQUIVO);
+  // Fonte do número de página no rodapé (pedido do usuário, 2026-09-08) —
+  // ver comentário em RODAPE_NUMERO_FONTE acima.
+  doc.registerFont(RODAPE_NUMERO_FONTE, RODAPE_NUMERO_FONTE_ARQUIVO);
 
   const grupos = modo === "fabricante" ? _agruparPorFabricante(produtos) : _agruparPorLinha(produtos);
 

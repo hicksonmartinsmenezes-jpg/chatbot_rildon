@@ -8,6 +8,7 @@ const {
   servirFotoPorNomeHandler,
   definirFotoPreferidaHandler,
   ocultarFotoHandler,
+  adicionarFotoHandler,
   versaoFotosHandler,
   buscarProdutosHandler,
   listarSecoesHandler,
@@ -54,6 +55,25 @@ const csvUploadPrecos = multer({
     const extensaoOk = original.endsWith(".csv") || original.endsWith(".xls") || original.endsWith(".xlsx");
     const allowed = extensaoOk && mimesAceitos.includes(mime);
     if (!allowed) return cb(new Error("Envie apenas arquivo CSV, XLS ou XLSX válido."));
+    return cb(null, true);
+  }
+});
+
+// Foto enviada manualmente pelo atendente (nova função, pedido do usuário
+// 2026-09-08: "criar possibilidade de adicionar foto") — memória (não
+// disco), o handler decide onde salvar via catalogo-fotos.service.js. Teto
+// de 8MB combina com MAX_TAMANHO_FOTO_MANUAL do service (a validação real
+// de conteúdo — magic bytes jpeg/png — é lá; aqui é só uma 1ª trava barata
+// por mimetype/extensão pra rejeitar cedo o caso óbvio, sem baixar o corpo
+// inteiro de um arquivo claramente errado).
+const uploadFotoManual = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const mimesAceitos = ["image/jpeg", "image/png"];
+    if (!mimesAceitos.includes(String(file.mimetype || "").toLowerCase())) {
+      return cb(new Error("Envie apenas JPG ou PNG."));
+    }
     return cb(null, true);
   }
 });
@@ -128,6 +148,13 @@ router.post("/catalogo/produtos/:codigo/foto-preferida", definirFotoPreferidaHan
 // deleta do zip/X2, só esconde da exibição (pedido do usuário, 2026-09-02;
 // ver ocultarFoto/catalogo-fotos.service.js).
 router.post("/catalogo/produtos/:codigo/foto-ocultar", ocultarFotoHandler);
+// Envia uma foto do computador do atendente pra completar a galeria de um
+// produto (nova função, pedido do usuário 2026-09-08) — guardada separada
+// do X2, sobrevive a qualquer resync (ver adicionarFotoManual/
+// catalogo-fotos.service.js). uploadLimiter reaproveitado dos outros
+// uploads da mesma rota (promocional/preços acima) — mesmo throttle,
+// mesmo motivo (upload é ação eventual do atendente, não tráfego normal).
+router.post("/catalogo/produtos/:codigo/fotos/upload", uploadLimiter, uploadFotoManual.single("foto"), adicionarFotoHandler);
 // Corrige a Linha de um produto específico (pedido do usuário, 2026-09-05 —
 // achado real: M02051/M02038 cadastrados como "AMPERÍMETRO" em vez de
 // "MANÔMETRO DO ÓLEO", confirmado ao vivo contra o próprio X2). `{ linha:

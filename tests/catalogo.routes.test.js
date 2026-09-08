@@ -27,6 +27,8 @@ jest.mock("../src/services/catalogo-fotos.service", () => ({
   // em cada item da resposta — default false (produto com 1 foto só, o caso
   // comum) pra não quebrar os testes que não têm opinião sobre isso.
   temMultiplasFotos: jest.fn(() => false),
+  // 2026-09-08 (nova função "adicionar foto"): usado por adicionarFotoHandler.
+  adicionarFotoManual: jest.fn(),
 }));
 jest.mock("../src/services/estoque.service", () => ({
   carregarEstoque: jest.fn(),
@@ -39,7 +41,7 @@ const request = require("supertest");
 const { buscarProdutosPainel, buscarPorCodigo, buscarPorNomePainel, listarFabricantes } = require("../src/services/catalogo-x2.service");
 const { listarSecoes, listarLinhasPorSecao } = require("../src/services/catalogo.service");
 const { carregarEstoque, statusCache } = require("../src/services/estoque.service");
-const { temMultiplasFotos } = require("../src/services/catalogo-fotos.service");
+const { temMultiplasFotos, adicionarFotoManual } = require("../src/services/catalogo-fotos.service");
 const catalogoRoutes = require("../src/routes/catalogo.routes");
 
 function buildApp() {
@@ -303,6 +305,56 @@ describe("GET /api/catalogo/buscar-nome", () => {
     buscarPorNomePainel.mockImplementation(() => { throw new Error("boom"); });
     const res = await request(buildApp()).get("/api/catalogo/buscar-nome").query({ nome: "alternador" });
     expect(res.status).toBe(500);
+  });
+});
+
+// Nova função (pedido do usuário, 2026-09-08): "criar possibilidade de
+// adicionar foto" — atendente envia uma foto do computador via upload.
+describe("POST /api/catalogo/produtos/:codigo/fotos/upload", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  test("sem arquivo → 400, não chama o service", async () => {
+    const res = await request(buildApp()).post("/api/catalogo/produtos/P1/fotos/upload");
+    expect(res.status).toBe(400);
+    expect(adicionarFotoManual).not.toHaveBeenCalled();
+  });
+
+  test("código inválido → 400, não chama o service", async () => {
+    const res = await request(buildApp())
+      .post("/api/catalogo/produtos/P!1/fotos/upload")
+      .attach("foto", Buffer.from([0xff, 0xd8, 0xff, 0xd9]), "foto.jpg");
+    expect(res.status).toBe(400);
+    expect(adicionarFotoManual).not.toHaveBeenCalled();
+  });
+
+  test("arquivo JPG válido → 200, repassa o buffer pro service", async () => {
+    adicionarFotoManual.mockReturnValue([{ indice: 0, nomeArquivo: "123-abc.jpg", oculta: false, manual: true }]);
+    const res = await request(buildApp())
+      .post("/api/catalogo/produtos/P1/fotos/upload")
+      .attach("foto", Buffer.from([0xff, 0xd8, 0xff, 0xd9]), "foto.jpg");
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.fotos).toEqual([{ indice: 0, nomeArquivo: "123-abc.jpg", oculta: false, manual: true }]);
+    expect(adicionarFotoManual).toHaveBeenCalledWith("P1", expect.any(Buffer));
+  });
+
+  test("service rejeita arquivo (erro de negócio) → 400", async () => {
+    adicionarFotoManual.mockImplementation(() => {
+      throw new Error("Não consegui reconhecer esse arquivo como uma foto JPG ou PNG válida.");
+    });
+    const res = await request(buildApp())
+      .post("/api/catalogo/produtos/P1/fotos/upload")
+      .attach("foto", Buffer.from([0xff, 0xd8, 0xff, 0xd9]), "foto.jpg");
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/JPG ou PNG/);
+  });
+
+  test("mimetype não permitido (fileFilter do multer) → rejeitado", async () => {
+    const res = await request(buildApp())
+      .post("/api/catalogo/produtos/P1/fotos/upload")
+      .attach("foto", Buffer.from("não é imagem"), { filename: "arquivo.txt", contentType: "text/plain" });
+    expect(res.status).not.toBe(200);
+    expect(adicionarFotoManual).not.toHaveBeenCalled();
   });
 });
 

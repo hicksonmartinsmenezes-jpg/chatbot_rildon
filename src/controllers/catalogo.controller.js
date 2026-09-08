@@ -1,7 +1,7 @@
 const crypto = require("crypto");
 const ExcelJS = require("exceljs");
 const logger = require("../utils/logger");
-const { listarFotos, obterFoto, obterFotoPorNome, definirFotoPreferida, ocultarFoto, recarregarIndice: recarregarIndiceFotos, obterVersaoFotos, temMultiplasFotos } = require("../services/catalogo-fotos.service");
+const { listarFotos, obterFoto, obterFotoPorNome, definirFotoPreferida, ocultarFoto, recarregarIndice: recarregarIndiceFotos, obterVersaoFotos, temMultiplasFotos, adicionarFotoManual } = require("../services/catalogo-fotos.service");
 const { buscarProdutosPainel, buscarPorCodigo, buscarPorNomePainel, listarFabricantes, listarFabricantesCatalogoCompleto, listarMarcasVeiculoConhecidas, decodificarFabricanteCompleto, recarregarIndices: recarregarIndicesProdutos, listarLinhasParaEdicaoCategoria, definirLinhaProduto, PSEUDO_FABRICANTE_DIVERSOS } = require("../services/catalogo-x2.service");
 const { listarSecoes, listarLinhasPorSecao } = require("../services/catalogo.service");
 const { gerarPdfCatalogo, gerarPdfCatalogoCompleto, gerarPdfCatalogoPromocional, limparCacheBboxFotos } = require("../services/catalogo-pdf.service");
@@ -907,6 +907,30 @@ async function ocultarFotoHandler(req, res) {
   }
 }
 
+// POST /api/catalogo/produtos/:codigo/fotos/upload — pedido do usuário
+// (2026-09-08, "criar possibilidade de adicionar foto"): atendente envia
+// uma foto do computador pra completar a galeria de um produto (ex: só tem
+// 1 foto no X2, quer que o card mostre 2). multer (uploadFotoManual, ver
+// catalogo.routes.js) já valida tamanho/mimetype básico antes de chegar
+// aqui; adicionarFotoManual valida o CONTEÚDO de verdade (magic bytes).
+async function adicionarFotoHandler(req, res) {
+  try {
+    const { codigo } = req.params;
+    if (!_codigoValido(codigo)) {
+      return res.status(400).json({ error: "Código de produto inválido." });
+    }
+    if (!req.file || !req.file.buffer) {
+      return res.status(400).json({ error: "Envie um arquivo de imagem (JPG ou PNG)." });
+    }
+    const fotos = adicionarFotoManual(codigo, req.file.buffer);
+    res.json({ ok: true, codigo, fotos, versao: obterVersaoFotos() });
+  } catch (err) {
+    // adicionarFotoManual lança erro "de negócio" (arquivo vazio, grande
+    // demais, ou não reconhecido como jpeg/png de verdade) — 400, não 500.
+    res.status(400).json({ error: err.message || "Erro ao adicionar foto." });
+  }
+}
+
 // GET /api/catalogo/fotos-versao — pedido do usuário (2026-09-02, teste ao
 // vivo): confirmar troca de foto principal funciona na hora mas some depois
 // de recarregar a página, porque URLs de foto já vistas antes desse fix
@@ -1032,6 +1056,7 @@ module.exports = {
   servirFotoPorNomeHandler,
   definirFotoPreferidaHandler,
   ocultarFotoHandler,
+  adicionarFotoHandler,
   versaoFotosHandler,
   buscarProdutosHandler,
   listarMontadorasHandler,

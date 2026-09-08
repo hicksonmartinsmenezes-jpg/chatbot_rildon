@@ -33,9 +33,19 @@
  */
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const { listarEntradas, extrairArquivo } = require("../utils/zip-reader");
 
 const FOTOS_DIR = path.join(__dirname, "../config/catalogo-x2/fotos");
+
+// 2026-09-08 (pedido do usuário: "criar possibilidade de adicionar foto"):
+// fotos enviadas manualmente pelo atendente via upload — pasta SEPARADA de
+// FOTOS_DIR de propósito (decisão do usuário): nunca tocada por nenhum
+// resync do X2 (x2-fotos-scraper.js só escreve em FOTOS_DIR), então uma
+// foto enviada aqui sobrevive a qualquer "Atualizar Fotos" rodado depois.
+// Estrutura: fotos-manuais/<codigoProduto>/<arquivo>.
+const FOTOS_MANUAIS_DIR = path.join(__dirname, "../config/catalogo-x2/fotos-manuais");
+const MAX_TAMANHO_FOTO_MANUAL = 8 * 1024 * 1024; // 8MB — generoso pra foto de celular, sem abrir espaço pra abuso
 
 const MIME_POR_EXT = {
   jpg: "image/jpeg",
@@ -159,6 +169,62 @@ function _garantirIndice() {
   return indice;
 }
 
+// Map<codigoProduto, Array<{ manual:true, caminho, entrada:{name} }>> — fotos
+// enviadas manualmente (ver FOTOS_MANUAIS_DIR acima). `entrada.name` no
+// mesmo formato "codigo/arquivo" das entradas de zip só pra caber sem
+// mudança nas funções que já leem path.basename(item.entrada.name) como
+// identidade estável da foto (preferência/ocultar). Reconstruído sob
+// demanda (invalidado por adicionarFotoManual, não precisa de
+// recarregarIndice() — volume baixo, upload já invalida na hora).
+let indiceManual = null;
+
+function _garantirIndiceManual() {
+  if (indiceManual) return indiceManual;
+  indiceManual = new Map();
+
+  let pastasCodigo;
+  try {
+    pastasCodigo = fs.readdirSync(FOTOS_MANUAIS_DIR, { withFileTypes: true }).filter(d => d.isDirectory());
+  } catch (e) {
+    if (e.code !== "ENOENT") {
+      console.error("[catalogo-fotos.service] falha ao ler pasta de fotos manuais:", e.message);
+    }
+    return indiceManual;
+  }
+
+  for (const dirent of pastasCodigo) {
+    const codigo = dirent.name;
+    const pastaCodigo = path.join(FOTOS_MANUAIS_DIR, codigo);
+    let arquivos;
+    try {
+      arquivos = fs.readdirSync(pastaCodigo).filter(f => MIME_POR_EXT[path.extname(f).slice(1).toLowerCase()]);
+    } catch {
+      continue;
+    }
+    if (!arquivos.length) continue;
+    indiceManual.set(codigo, arquivos.map(nomeArquivo => ({
+      manual: true,
+      caminho: path.join(pastaCodigo, nomeArquivo),
+      entrada: { name: `${codigo}/${nomeArquivo}` },
+    })));
+  }
+
+  return indiceManual;
+}
+
+function _listaManual(codigo) {
+  return _garantirIndiceManual().get(codigo) || [];
+}
+
+// Lê os bytes de uma entrada — zip (extrairArquivo, descompacta sob
+// demanda) ou manual (fs.readFileSync direto). Usado por toda função que
+// hoje só sabia lidar com entradas de zip (obterFoto, obterFotoPorNome,
+// _reordenarFotos) — mantém o resto da lógica (preferência/ocultar/ordem)
+// igual pros dois tipos.
+function _extrairBytes(item) {
+  return item.manual ? fs.readFileSync(item.caminho) : extrairArquivo(item.zipPath, item.entrada);
+}
+
 // Só entra em jogo quando o produto tem 2+ fotos (com 0 ou 1, não tem o que
 // reordenar — devolve a lista original direto). Extrai e decodifica só o
 // CABEÇALHO de cada foto (ver _dimensoesJpeg) pra separar "grandes" (foto
@@ -177,7 +243,7 @@ function _reordenarFotos(codigo, lista) {
   for (const item of lista) {
     let ehPequena = false;
     try {
-      const buffer = extrairArquivo(item.zipPath, item.entrada);
+      const buffer = _extrairBytes(item);
       const dim = _dimensoesImagem(buffer);
       if (dim && Math.max(dim.width, dim.height) < DIAGRAM_MAX_DIM) ehPequena = true;
     } catch {
@@ -320,17 +386,27 @@ function _salvarOcultas() {
 function listarFotos(codigoProduto, { incluirOcultas = false } = {}) {
   const idx = _garantirIndice();
   const codigo = String(codigoProduto);
-  const bruta = idx.get(codigo) || [];
+  const brutaZip = idx.get(codigo) || [];
+  const brutaManual = _listaManual(codigo);
+  const bruta = brutaZip.concat(brutaManual);
   const setOcultas = _garantirOcultas().get(codigo) || new Set();
 
-  const brutaVisivel = bruta.filter(item => !setOcultas.has(path.basename(item.entrada.name)));
-  const lista = _aplicarPreferencia(codigo, _reordenarFotos(codigo, brutaVisivel));
-  const resultado = lista.map((item, i) => ({ indice: i, nomeArquivo: path.basename(item.entrada.name), oculta: false }));
+  // Reordenação automática (grande/pequena, ver _reordenarFotos) só olha
+  // pras fotos do X2 — foto manual é escolha deliberada do atendente, não
+  // faz sentido ela ser empurrada pro fim por parecer "pequena" numa
+  // checagem de cabeçalho. Sempre entra DEPOIS das do X2 (decisão do
+  // usuário, 2026-09-08: "só adiciona à lista", não vira principal sozinha)
+  // — mas antes da preferência manual ser aplicada, que pode promover
+  // QUALQUER uma (inclusive manual) pro topo se o atendente escolher.
+  const brutaZipVisivel = brutaZip.filter(item => !setOcultas.has(path.basename(item.entrada.name)));
+  const brutaManualVisivel = brutaManual.filter(item => !setOcultas.has(path.basename(item.entrada.name)));
+  const lista = _aplicarPreferencia(codigo, _reordenarFotos(codigo, brutaZipVisivel).concat(brutaManualVisivel));
+  const resultado = lista.map((item, i) => ({ indice: i, nomeArquivo: path.basename(item.entrada.name), oculta: false, manual: !!item.manual }));
 
   if (incluirOcultas) {
     for (const item of bruta) {
       const nomeArquivo = path.basename(item.entrada.name);
-      if (setOcultas.has(nomeArquivo)) resultado.push({ indice: -1, nomeArquivo, oculta: true });
+      if (setOcultas.has(nomeArquivo)) resultado.push({ indice: -1, nomeArquivo, oculta: true, manual: !!item.manual });
     }
   }
   return resultado;
@@ -352,8 +428,8 @@ function listarFotos(codigoProduto, { incluirOcultas = false } = {}) {
 function temMultiplasFotos(codigoProduto) {
   const idx = _garantirIndice();
   const codigo = String(codigoProduto);
-  const bruta = idx.get(codigo);
-  if (!bruta || bruta.length < 2) return false;
+  const bruta = (idx.get(codigo) || []).concat(_listaManual(codigo));
+  if (bruta.length < 2) return false;
   const setOcultas = _garantirOcultas().get(codigo) || new Set();
   let visiveis = 0;
   for (const item of bruta) {
@@ -377,7 +453,7 @@ function temMultiplasFotos(codigoProduto) {
 function ocultarFoto(codigoProduto, nomeArquivo, oculta = true) {
   const idx = _garantirIndice();
   const codigo = String(codigoProduto);
-  const original = idx.get(codigo) || [];
+  const original = (idx.get(codigo) || []).concat(_listaManual(codigo));
   const existe = original.some(item => path.basename(item.entrada.name) === nomeArquivo);
   if (!existe) {
     throw new Error(`"${nomeArquivo}" não é uma foto cadastrada do produto ${codigo}.`);
@@ -429,7 +505,7 @@ function definirFotoPreferida(codigoProduto, nomeArquivo) {
     return listarFotos(codigo);
   }
 
-  const original = idx.get(codigo) || [];
+  const original = (idx.get(codigo) || []).concat(_listaManual(codigo));
   const existe = original.some(item => path.basename(item.entrada.name) === nomeArquivo);
   if (!existe) {
     throw new Error(`"${nomeArquivo}" não é uma foto cadastrada do produto ${codigo}.`);
@@ -447,22 +523,24 @@ function definirFotoPreferida(codigoProduto, nomeArquivo) {
 function obterFoto(codigoProduto, indiceFoto = 0) {
   const idx = _garantirIndice();
   const codigo = String(codigoProduto);
-  const original = idx.get(codigo);
-  if (!original) return null;
+  const originalZip = idx.get(codigo) || [];
+  const originalManual = _listaManual(codigo);
+  if (!originalZip.length && !originalManual.length) return null;
   const setOcultas = _garantirOcultas().get(codigo) || new Set();
-  const visiveis = original.filter(item => !setOcultas.has(path.basename(item.entrada.name)));
-  const lista = _aplicarPreferencia(codigo, _reordenarFotos(codigo, visiveis));
+  const visiveisZip = originalZip.filter(item => !setOcultas.has(path.basename(item.entrada.name)));
+  const visiveisManual = originalManual.filter(item => !setOcultas.has(path.basename(item.entrada.name)));
+  const lista = _aplicarPreferencia(codigo, _reordenarFotos(codigo, visiveisZip).concat(visiveisManual));
   if (!lista[indiceFoto]) return null;
 
-  const { zipPath, entrada } = lista[indiceFoto];
+  const item = lista[indiceFoto];
   let buffer;
   try {
-    buffer = extrairArquivo(zipPath, entrada);
+    buffer = _extrairBytes(item);
   } catch (e) {
     console.error(`[catalogo-fotos.service] falha ao extrair foto (codigo=${codigoProduto}):`, e.message);
     return null;
   }
-  const ext = path.extname(entrada.name).slice(1).toLowerCase();
+  const ext = path.extname(item.entrada.name).slice(1).toLowerCase();
   const mimetype = MIME_POR_EXT[ext] || "application/octet-stream";
   return { buffer, mimetype };
 }
@@ -477,13 +555,13 @@ function obterFoto(codigoProduto, indiceFoto = 0) {
 function obterFotoPorNome(codigoProduto, nomeArquivo) {
   const idx = _garantirIndice();
   const codigo = String(codigoProduto);
-  const original = idx.get(codigo) || [];
+  const original = (idx.get(codigo) || []).concat(_listaManual(codigo));
   const item = original.find(it => path.basename(it.entrada.name) === nomeArquivo);
   if (!item) return null;
 
   let buffer;
   try {
-    buffer = extrairArquivo(item.zipPath, item.entrada);
+    buffer = _extrairBytes(item);
   } catch (e) {
     console.error(`[catalogo-fotos.service] falha ao extrair foto por nome (codigo=${codigoProduto}, nome=${nomeArquivo}):`, e.message);
     return null;
@@ -507,4 +585,48 @@ function recarregarIndice() {
   return _garantirIndice();
 }
 
-module.exports = { listarFotos, obterFoto, obterFotoPorNome, definirFotoPreferida, ocultarFoto, recarregarIndice, obterVersaoFotos, temMultiplasFotos };
+/**
+ * Salva uma foto enviada manualmente pelo atendente (upload, pedido do
+ * usuário 2026-09-08) — pra produto que só tem 1 foto (ou nenhuma) no X2,
+ * ou pra completar a galeria de qualquer produto. Fica em FOTOS_MANUAIS_DIR
+ * (nunca em FOTOS_DIR — sobrevive a qualquer resync do X2). Decisão do
+ * usuário: "só adiciona à lista" — não vira principal sozinha, o atendente
+ * escolhe depois em "Trocar foto" se quiser promovê-la (definirFotoPreferida
+ * já aceita nome de arquivo manual, ver acima).
+ *
+ * Valida o CONTEÚDO de verdade (magic bytes via _dimensoesImagem — mesmo
+ * parser usado pra reordenar fotos do X2), não só a extensão do arquivo
+ * enviado ou o mimetype que o navegador informou (esses dois são fáceis de
+ * forjar/errar) — só aceita jpeg/png reais. Lança erro "de negócio" (arquivo
+ * inválido/vazio/grande demais) — quem chama trata como 400, não 500.
+ */
+function adicionarFotoManual(codigoProduto, buffer) {
+  const codigo = String(codigoProduto);
+  if (!/^[A-Za-z0-9_-]{1,20}$/.test(codigo)) {
+    throw new Error("Código de produto inválido.");
+  }
+  if (!buffer || !buffer.length) {
+    throw new Error("Arquivo vazio.");
+  }
+  if (buffer.length > MAX_TAMANHO_FOTO_MANUAL) {
+    throw new Error(`Foto maior que o limite (${Math.round(MAX_TAMANHO_FOTO_MANUAL / 1024 / 1024)}MB).`);
+  }
+  const ehJpeg = !!_dimensoesJpeg(buffer);
+  const ehPng = !ehJpeg && !!_dimensoesPng(buffer);
+  if (!ehJpeg && !ehPng) {
+    throw new Error("Não consegui reconhecer esse arquivo como uma foto JPG ou PNG válida.");
+  }
+
+  const pastaCodigo = path.join(FOTOS_MANUAIS_DIR, codigo);
+  fs.mkdirSync(pastaCodigo, { recursive: true });
+  const nomeArquivo = `${Date.now()}-${crypto.randomBytes(4).toString("hex")}.${ehJpeg ? "jpg" : "png"}`;
+  fs.writeFileSync(path.join(pastaCodigo, nomeArquivo), buffer);
+
+  indiceManual = null; // próxima leitura já enxerga o arquivo novo
+  if (ordemCache) ordemCache.delete(codigo); // foto nova pode mudar quem é "grande" na reordenação
+  versaoFotos = Date.now(); // bust de cache do navegador, igual troca/ocultar (ver comentário acima)
+
+  return listarFotos(codigo, { incluirOcultas: true });
+}
+
+module.exports = { listarFotos, obterFoto, obterFotoPorNome, definirFotoPreferida, ocultarFoto, recarregarIndice, obterVersaoFotos, temMultiplasFotos, adicionarFotoManual };

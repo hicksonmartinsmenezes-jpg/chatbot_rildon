@@ -1075,22 +1075,23 @@ async function abrirSeletorFotoCatalogo(codigo) {
     return;
   }
 
+  // 2026-09-08 (pedido do usuário: "criar possibilidade de adicionar
+  // foto"): modal agora abre mesmo com 1 foto só (ou nenhuma) — antes
+  // bloqueava com um toast, mas "adicionar uma 2ª foto" é exatamente o
+  // caso de produto com 1 foto só. O tile "Adicionar foto" (sempre
+  // presente) é o motivo de abrir mesmo sem nada pra trocar ainda.
   const fotos = data.fotos || [];
-  if (fotos.length <= 1) {
-    showToast?.("Esse produto só tem 1 foto cadastrada — nada pra trocar.", "info");
-    return;
-  }
-
-  const grade = fotos.map(f => f.oculta ? _catalogoFotoOpcaoOcultaHTML(codigo, f) : _catalogoFotoOpcaoHTML(codigo, f)).join("");
+  const grade = fotos.map(f => f.oculta ? _catalogoFotoOpcaoOcultaHTML(codigo, f) : _catalogoFotoOpcaoHTML(codigo, f)).join("") + _catalogoFotoOpcaoAdicionarHTML();
 
   _openModal(`
     <div class="modal-header">
-      <strong>Escolher foto principal</strong>
+      <strong>Fotos do produto</strong>
       <button class="modal-close-btn" type="button" data-modal-close aria-label="Fechar modal">&times;</button>
     </div>
     <div class="modal-body">
-      <p style="margin-bottom:12px;">Clique na foto certa pra usar como principal, ou no ícone de lixeira pra ocultar uma foto errada (não apaga do X2 — dá pra restaurar depois).</p>
+      <p style="margin-bottom:12px;">Clique na foto certa pra usar como principal, no ícone de lixeira pra ocultar uma foto errada (não apaga do X2 — dá pra restaurar depois), ou em "Adicionar foto" pra enviar uma foto do seu computador.</p>
       <div class="catalogo-foto-opcoes-grid">${grade}</div>
+      <input type="file" accept="image/jpeg,image/png" class="catalogo-foto-upload-input" style="display:none;">
     </div>
     <div class="modal-footer">
       <button class="modal-btn modal-btn-secondary" type="button" data-modal-close>Fechar</button>
@@ -1105,6 +1106,13 @@ async function abrirSeletorFotoCatalogo(codigo) {
   });
   document.querySelectorAll(".catalogo-foto-opcao-restaurar").forEach(btn => {
     btn.addEventListener("click", () => _ocultarFotoCatalogo(codigo, btn.dataset.nomeArquivo, false));
+  });
+
+  const inputUpload = document.querySelector(".catalogo-foto-upload-input");
+  document.querySelector(".catalogo-foto-opcao-adicionar")?.addEventListener("click", () => inputUpload?.click());
+  inputUpload?.addEventListener("change", () => {
+    const file = inputUpload.files?.[0];
+    if (file) _adicionarFotoCatalogo(codigo, file);
   });
 
   // BUG REAL corrigido 2026-09-02 (usuário reportou "não vejo fotos
@@ -1159,6 +1167,33 @@ function _catalogoFotoOpcaoOcultaHTML(codigo, f) {
   `;
 }
 
+// Tile "Adicionar foto" (2026-09-08) — sempre o último item da grade.
+// Clicar dispara o <input type="file"> escondido (ver
+// abrirSeletorFotoCatalogo); a foto escolhida vai pra _adicionarFotoCatalogo.
+function _catalogoFotoOpcaoAdicionarHTML() {
+  return `
+    <button type="button" class="catalogo-foto-opcao catalogo-foto-opcao-adicionar" title="Enviar uma foto do seu computador">
+      <i class="fa-solid fa-plus"></i>
+      <span>Adicionar foto</span>
+    </button>
+  `;
+}
+
+// Card na grade de busca pode estar mostrando fotos desatualizadas depois
+// de trocar/ocultar/adicionar — reusado pelas 3 ações (2026-09-08: antes
+// cada uma tinha seu próprio forEach setando TODAS as <img> do card pro
+// MESMO índice 0, o que quebrava o layout de 2 fotos lado a lado — ver
+// .catalogo-card-photo--dupla — sobrescrevendo a 2ª foto com a 1ª. Agora
+// cada <img> dentro do card recebe o índice da SUA posição entre os
+// irmãos, certo tanto pra card de 1 foto quanto de 2.
+function _catalogoAtualizarFotosCard(codigo) {
+  document.querySelectorAll(`.catalogo-card-photo[data-foto-codigo="${CSS.escape(String(codigo))}"]`).forEach(wrap => {
+    wrap.querySelectorAll("img").forEach((img, i) => {
+      img.src = _catalogoFotoUrl(codigo, i);
+    });
+  });
+}
+
 // Ocultar é uma ação que muda o que o cliente vê — pede confirmação (modal
 // genérico, ver 15-modal.js). Restaurar é reversível na hora e sem
 // consequência pro cliente, não precisa confirmar.
@@ -1189,13 +1224,7 @@ async function _executarOcultarFotoCatalogo(codigo, nomeArquivo, oculta) {
 
     showToast?.(oculta ? "Foto ocultada." : "Foto restaurada.", "success");
     if (body.versao !== undefined) _catalogoFotoVersao = body.versao;
-
-    // Card na grade de busca pode estar mostrando a foto que acabou de ser
-    // ocultada/restaurada (o índice 0 pode ter mudado) — mesma lógica de
-    // _definirFotoPreferidaCatalogo abaixo.
-    document.querySelectorAll(`.catalogo-card-photo[data-foto-codigo="${CSS.escape(String(codigo))}"] img`).forEach(img => {
-      img.src = _catalogoFotoUrl(codigo);
-    });
+    _catalogoAtualizarFotosCard(codigo);
   } catch (err) {
     showToast?.(err.message || "Erro ao ocultar foto.", "error");
   } finally {
@@ -1227,11 +1256,38 @@ async function _definirFotoPreferidaCatalogo(codigo, nomeArquivo) {
     // garante que nenhuma renderização futura na sessão reuse cache velho,
     // nem daquela mesma foto vista antes desse fix existir.
     if (body.versao !== undefined) _catalogoFotoVersao = body.versao;
-    document.querySelectorAll(`.catalogo-card-photo[data-foto-codigo="${CSS.escape(String(codigo))}"] img`).forEach(img => {
-      img.src = _catalogoFotoUrl(codigo);
-    });
+    _catalogoAtualizarFotosCard(codigo);
   } catch (err) {
     showToast?.(err.message || "Erro ao trocar a foto.", "error");
+  }
+}
+
+// 2026-09-08 (pedido do usuário: "criar possibilidade de adicionar foto") —
+// envia o arquivo escolhido no <input type="file"> do modal via multipart.
+// Decisão do usuário: a foto enviada só ENTRA na lista (não vira principal
+// sozinha) — por isso não fecha o modal nem mexe em preferência aqui, só
+// reabre o seletor já com a foto nova disponível pra escolher depois.
+async function _adicionarFotoCatalogo(codigo, file) {
+  try {
+    const formData = new FormData();
+    formData.append("foto", file);
+    const res = await fetch(`/api/catalogo/produtos/${encodeURIComponent(codigo)}/fotos/upload`, {
+      method: "POST",
+      credentials: "include",
+      body: formData,
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || "Erro ao adicionar foto.");
+
+    showToast?.("Foto adicionada. Escolha uma foto pra usar como principal, se quiser.", "success");
+    if (body.versao !== undefined) _catalogoFotoVersao = body.versao;
+    _catalogoAtualizarFotosCard(codigo);
+  } catch (err) {
+    showToast?.(err.message || "Erro ao adicionar foto.", "error");
+  } finally {
+    // Reabre o modal com o estado real do servidor — mesmo padrão de
+    // _executarOcultarFotoCatalogo acima.
+    abrirSeletorFotoCatalogo(codigo);
   }
 }
 

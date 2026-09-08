@@ -889,6 +889,24 @@
 
 .catalogo-card:hover .catalogo-card-photo img { transform: scale(1.04); }
 
+/* 2026-09-08 (pedido do usuário: "duas fotos como no PDF" também nos cards
+   de Critérios de Pesquisa — já existia só no PDF do Catálogo Completo
+   desde 2026-09-05): quando produto.duasFotos vem true do backend
+   (temMultiplasFotos, catalogo-fotos.service.js), o card renderiza 2 <img>
+   em vez de 1 — este modificador troca o layout de "1 foto centralizada"
+   pra "2 fotos lado a lado, mesma altura". Produto com 1 foto só continua
+   sem esta classe, sem mudança nenhuma. */
+.catalogo-card-photo--dupla {
+  gap: 6px;
+}
+
+.catalogo-card-photo--dupla img {
+  flex: 1 1 0;
+  width: 0; /* com flex-basis 0 + flex-grow, força as 2 imagens a dividirem o espaço igualmente */
+  max-width: none;
+  height: 100%;
+}
+
 /* Botão "Trocar foto" (pedido do usuário, 2026-09-02): fica discreto até o
    mouse passar sobre o card — a maioria dos produtos já mostra a foto
    certa, então o botão não precisa competir por atenção o tempo todo, só

@@ -23,6 +23,10 @@ jest.mock("../src/services/catalogo.service", () => ({
 jest.mock("../src/services/catalogo-fotos.service", () => ({
   listarFotos: jest.fn(),
   obterFoto: jest.fn(),
+  // 2026-09-08: usado por buscarProdutosHandler pra anexar produto.duasFotos
+  // em cada item da resposta — default false (produto com 1 foto só, o caso
+  // comum) pra não quebrar os testes que não têm opinião sobre isso.
+  temMultiplasFotos: jest.fn(() => false),
 }));
 jest.mock("../src/services/estoque.service", () => ({
   carregarEstoque: jest.fn(),
@@ -35,6 +39,7 @@ const request = require("supertest");
 const { buscarProdutosPainel, buscarPorCodigo, buscarPorNomePainel, listarFabricantes } = require("../src/services/catalogo-x2.service");
 const { listarSecoes, listarLinhasPorSecao } = require("../src/services/catalogo.service");
 const { carregarEstoque, statusCache } = require("../src/services/estoque.service");
+const { temMultiplasFotos } = require("../src/services/catalogo-fotos.service");
 const catalogoRoutes = require("../src/routes/catalogo.routes");
 
 function buildApp() {
@@ -98,7 +103,7 @@ describe("GET /api/catalogo/buscar", () => {
       .query({ marca: "GM", modelo: "Astra", ano: "2005", categoria: "alternador" });
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ total: 1, produtos: [{ codigo: "P1" }], pagina: 1, limite: 400 });
+    expect(res.body).toEqual({ total: 1, produtos: [{ codigo: "P1", duasFotos: false }], pagina: 1, limite: 400 });
     expect(buscarProdutosPainel).toHaveBeenCalledWith({
       marca: "GM", modelo: "Astra", ano: 2005, anoInicio: null, anoFim: null, motor: "",
       categoria: "alternador", fabricante: "", tipoCompleto: null,
@@ -140,12 +145,34 @@ describe("GET /api/catalogo/buscar", () => {
       .get("/api/catalogo/buscar")
       .query({ fabricante: "GAUSS", pagina: "2" });
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ total: 566, produtos: [{ codigo: "P900" }], pagina: 2, limite: 400 });
+    expect(res.body).toEqual({ total: 566, produtos: [{ codigo: "P900", duasFotos: false }], pagina: 2, limite: 400 });
     expect(buscarProdutosPainel).toHaveBeenCalledWith({
       marca: "", modelo: "", ano: null, anoInicio: null, anoFim: null, motor: "",
       categoria: "", fabricante: "GAUSS", tipoCompleto: null,
       limite: 400, offset: 400,
     });
+  });
+
+  // 2026-09-08 (pedido do usuário: "duas fotos como no PDF" também nos
+  // cards de Critérios de Pesquisa): cada produto da resposta ganha
+  // duasFotos, calculado por temMultiplasFotos (catalogo-fotos.service) —
+  // barato o bastante pra rodar pra cada item da página sem custo real.
+  test("anexa duasFotos por produto usando temMultiplasFotos (catalogo-fotos.service)", async () => {
+    buscarProdutosPainel.mockReturnValue({
+      total: 2,
+      produtos: [{ codigo: "P1" }, { codigo: "P2" }],
+    });
+    temMultiplasFotos.mockImplementation(codigo => codigo === "P2");
+
+    const res = await request(buildApp()).get("/api/catalogo/buscar").query({ fabricante: "3RHO" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.produtos).toEqual([
+      { codigo: "P1", duasFotos: false },
+      { codigo: "P2", duasFotos: true },
+    ]);
+    expect(temMultiplasFotos).toHaveBeenCalledWith("P1");
+    expect(temMultiplasFotos).toHaveBeenCalledWith("P2");
   });
 
   test("?pagina inválida (0, negativa ou não numérica) → cai pra página 1", async () => {

@@ -1,7 +1,7 @@
 const crypto = require("crypto");
 const ExcelJS = require("exceljs");
 const logger = require("../utils/logger");
-const { listarFotos, obterFoto, obterFotoPorNome, definirFotoPreferida, ocultarFoto, recarregarIndice: recarregarIndiceFotos, obterVersaoFotos } = require("../services/catalogo-fotos.service");
+const { listarFotos, obterFoto, obterFotoPorNome, definirFotoPreferida, ocultarFoto, recarregarIndice: recarregarIndiceFotos, obterVersaoFotos, temMultiplasFotos } = require("../services/catalogo-fotos.service");
 const { buscarProdutosPainel, buscarPorCodigo, buscarPorNomePainel, listarFabricantes, listarFabricantesCatalogoCompleto, listarMarcasVeiculoConhecidas, decodificarFabricanteCompleto, recarregarIndices: recarregarIndicesProdutos, listarLinhasParaEdicaoCategoria, definirLinhaProduto, PSEUDO_FABRICANTE_DIVERSOS } = require("../services/catalogo-x2.service");
 const { listarSecoes, listarLinhasPorSecao } = require("../services/catalogo.service");
 const { gerarPdfCatalogo, gerarPdfCatalogoCompleto, gerarPdfCatalogoPromocional, limparCacheBboxFotos } = require("../services/catalogo-pdf.service");
@@ -228,7 +228,18 @@ async function buscarProdutosHandler(req, res) {
     const offset = (pagina - 1) * LIMITE_PAGINA_PAINEL;
 
     const resultado = buscarProdutosPainel({ marca, modelo, ano, anoInicio, anoFim, motor, categoria, fabricante, tipoCompleto, limite: LIMITE_PAGINA_PAINEL, offset });
-    res.json({ ...resultado, pagina, limite: LIMITE_PAGINA_PAINEL });
+
+    // 2026-09-08 (pedido do usuário: "duas fotos como no PDF" também em
+    // Critérios de Pesquisa): duasFotos é barato de calcular (só olha o
+    // índice em memória, ver temMultiplasFotos) mesmo pros até 400 produtos
+    // desta página — frontend usa esse flag pra decidir o layout do card
+    // sem precisar de uma chamada extra por produto.
+    const produtosComFlag = (resultado.produtos || []).map(p => ({
+      ...p,
+      duasFotos: temMultiplasFotos(p.codigo),
+    }));
+
+    res.json({ ...resultado, produtos: produtosComFlag, pagina, limite: LIMITE_PAGINA_PAINEL });
   } catch (err) {
     logger.error("❌ Erro ao buscar produtos do catálogo:", err.message);
     res.status(500).json({ error: "Erro ao buscar produtos." });

@@ -1002,16 +1002,25 @@ function _catalogoCardHTML(produto, mostrarBadgeNeutro) {
   // ação própria.
   return `
     <article class="catalogo-card" onclick="abrirModalDetalheProduto('${escapeAttr(produto.codigo)}')" title="Ver detalhes desse produto">
-      <div class="catalogo-card-photo" data-foto-codigo="${escapeAttr(produto.codigo)}">
+      <div class="catalogo-card-photo${produto.duasFotos ? " catalogo-card-photo--dupla" : ""}" data-foto-codigo="${escapeAttr(produto.codigo)}">
         <i class="fa-solid fa-image catalogo-card-photo-fallback"></i>
         <img
-          src="${_catalogoFotoUrl(produto.codigo)}"
+          src="${_catalogoFotoUrl(produto.codigo, 0)}"
           alt="${safe(produto.nome)}"
           loading="lazy"
           onerror="this.remove();"
           onclick="event.stopPropagation(); window.open(this.currentSrc || this.src, '_blank');"
           title="Clique pra abrir a foto em outra página"
         >
+        ${produto.duasFotos ? `
+        <img
+          src="${_catalogoFotoUrl(produto.codigo, 1)}"
+          alt="${safe(produto.nome)}"
+          loading="lazy"
+          onerror="this.remove();"
+          onclick="event.stopPropagation(); window.open(this.currentSrc || this.src, '_blank');"
+          title="Clique pra abrir a foto em outra página"
+        >` : ""}
         <button
           type="button"
           class="catalogo-card-photo-trocar"

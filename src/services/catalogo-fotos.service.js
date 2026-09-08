@@ -337,6 +337,35 @@ function listarFotos(codigoProduto, { incluirOcultas = false } = {}) {
 }
 
 /**
+ * 2026-09-08: versão barata de "esse produto tem 2+ fotos?" pra decidir, em
+ * lote (até 400 produtos por página de busca — ver LIMITE_PAGINA_PAINEL em
+ * catalogo.controller.js), quais cards devem mostrar 2 fotos lado a lado
+ * (mesma regra do PDF, ver temDuasFotos em catalogo-pdf.service.js). Só
+ * consulta o índice em memória (Map já carregado, ver _garantirIndice) e
+ * filtra ocultas — NÃO chama _reordenarFotos (lê cabeçalho JPEG, custo por
+ * arquivo) nem extrairArquivo (descompacta a foto). Pode dar falso positivo
+ * raríssimo se as 2 fotos "visíveis" contando aqui não forem jpeg/png
+ * válidas (checado de verdade só na hora de servir a foto em si,
+ * obterFoto) — aceitável: o pior caso é o 2º <img> do card quebrar/cair no
+ * onerror do navegador, não afeta a 1ª foto nem o resto da página.
+ */
+function temMultiplasFotos(codigoProduto) {
+  const idx = _garantirIndice();
+  const codigo = String(codigoProduto);
+  const bruta = idx.get(codigo);
+  if (!bruta || bruta.length < 2) return false;
+  const setOcultas = _garantirOcultas().get(codigo) || new Set();
+  let visiveis = 0;
+  for (const item of bruta) {
+    if (!setOcultas.has(path.basename(item.entrada.name))) {
+      visiveis += 1;
+      if (visiveis >= 2) return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Oculta (oculta=true) ou restaura (oculta=false) uma foto do produto.
  * Nunca deixa ocultar a ÚLTIMA foto visível (trava contra o produto ficar
  * sem NENHUMA foto por acidente). Se a foto ocultada era a preferida
@@ -478,4 +507,4 @@ function recarregarIndice() {
   return _garantirIndice();
 }
 
-module.exports = { listarFotos, obterFoto, obterFotoPorNome, definirFotoPreferida, ocultarFoto, recarregarIndice, obterVersaoFotos };
+module.exports = { listarFotos, obterFoto, obterFotoPorNome, definirFotoPreferida, ocultarFoto, recarregarIndice, obterVersaoFotos, temMultiplasFotos };

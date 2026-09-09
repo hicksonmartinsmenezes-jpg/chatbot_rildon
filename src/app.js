@@ -31,6 +31,10 @@ const settingsRoutes    = require("./routes/settings.routes");
 const botStatusRoutes   = require("./routes/botStatus.routes");
 const atendenteRoutes   = require("./routes/atendentes.routes");
 const catalogoRoutes    = require("./routes/catalogo.routes");
+// MCP somente-leitura (nova função, pedido do usuário 2026-09-09) —
+// desligado por padrão via MCP_ENABLED, ver comentário no próprio
+// mcp.routes.js/mcp.service.js.
+const mcpRoutes         = require("./routes/mcp.routes");
 
 const app = express();
 
@@ -163,6 +167,13 @@ app.use("/api", authSession, messageRoutes);
 // logado (não só admin) — ver botStatus.routes.js para o motivo de ser uma
 // rota separada de settings.routes.js em vez de reaproveitar /api/settings.
 app.use("/api", authSession, botStatusRoutes);
+// MCP somente-leitura pra clientes de IA locais (Claude Code/Desktop) — o
+// próprio handler retorna 404 quando MCP_ENABLED não é "true", então montar
+// a rota sempre é seguro (nunca fica exposta sem o opt-in explícito). NÃO
+// usa o authSession genérico aqui de propósito: esta rota autentica sozinha
+// (dentro de mcp.routes.js) contra um token PRÓPRIO (MCP_API_TOKEN),
+// separado do API_TOKEN geral — ver comentário completo em mcp.routes.js.
+app.use("/api", mcpRoutes);
 
 // Rotas apenas admin
 app.use("/api", authSession, requireAdmin, settingsRoutes);

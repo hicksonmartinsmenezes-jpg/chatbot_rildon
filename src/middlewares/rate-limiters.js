@@ -22,14 +22,14 @@ function chavePorSessaoOuIp(req) {
   return sid ? `sid:${sid}` : rateLimit.ipKeyGenerator(req.ip);
 }
 
-function makeLimiter({ windowMs, max, message }) {
+function makeLimiter({ windowMs, max, message, keyGenerator = chavePorSessaoOuIp }) {
   return rateLimit({
     windowMs,
     max,
     message: { error: message },
     standardHeaders: true,
     legacyHeaders: false,
-    keyGenerator: chavePorSessaoOuIp
+    keyGenerator
   });
 }
 
@@ -66,10 +66,33 @@ const criticalActionLimiter = makeLimiter({
   message: "Muitas ações críticas em pouco tempo. Aguarde alguns instantes."
 });
 
+// Chave própria pro MCP (nova função, 2026-09-09): usa o próprio token
+// Bearer como identidade, não sessão de atendente (cliente MCP nunca manda
+// cookie) nem só IP (mesmo motivo do bug corrigido acima — evita que MCP e
+// os scripts do X2, que também autenticam por Bearer sem cookie, dividam um
+// balde por IP). Seguro usar o token puro aqui porque este limiter só roda
+// DEPOIS do middleware de autenticação de mcp.routes.js — ou seja, quando
+// chega aqui o Bearer já foi validado contra MCP_API_TOKEN, nunca é um
+// valor arbitrário que um cliente sem credencial poderia forjar pra ganhar
+// baldes infinitos.
+function chavePorTokenMcp(req) {
+  const auth = req.headers["authorization"] || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+  return token ? `mcp:${token}` : rateLimit.ipKeyGenerator(req.ip);
+}
+
+const mcpLimiter = makeLimiter({
+  windowMs: 60 * 1000,
+  max: Number(process.env.MCP_RATE_LIMIT_MAX || 30),
+  message: "Muitas chamadas MCP em pouco tempo. Aguarde alguns instantes.",
+  keyGenerator: chavePorTokenMcp
+});
+
 module.exports = {
   apiLimiter,
   loginLimiter,
   messageLimiter,
   uploadLimiter,
-  criticalActionLimiter
+  criticalActionLimiter,
+  mcpLimiter
 };

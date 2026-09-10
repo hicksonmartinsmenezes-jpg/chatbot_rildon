@@ -982,6 +982,119 @@ function _catalogoIndexarProdutos(produtos) {
   (produtos || []).forEach(p => { if (p?.codigo) _catalogoProdutosPorCodigo.set(String(p.codigo), p); });
 }
 
+// Seleção manual de itens (pedido do usuário, 2026-09-10): "Critérios de
+// Pesquisa" (e as abas Código/Nome, que compartilham o mesmo grid
+// #catalogo-resultados) só tinham o botão "Exportar catálogo (PDF)" — que
+// sempre exporta TODOS os resultados do filtro (ver exportarCatalogoPDF
+// acima). Não existia jeito de marcar só ALGUNS itens da busca e exportar
+// só esses, igual já era possível na aba "Catálogo Promocional" (busca +
+// "Adicionar" um por um). Em vez de duplicar aquele fluxo, este bloco
+// reusa o MESMO endpoint do backend (POST /api/catalogo/promocional/
+// exportar-pdf, ver exportarPdfPromocionalHandler/catalogo.controller.js)
+// passando só a lista de códigos marcados — sem CSV de preço (opcional lá),
+// então sai como um catálogo comum, sem selo de preço promocional.
+//
+// _catalogoSelecaoManual é módulo-level de propósito (não por-busca): marcar
+// um item na aba Código e depois trocar pra Critérios de Pesquisa (ou pra
+// página 2 dos resultados) não perde a seleção — o atendente pode ir
+// combinando itens de buscas diferentes antes de exportar, mesmo padrão de
+// "carrinho" que _catalogoPromoSelecionados já usa na aba Promocional.
+let _catalogoSelecaoManual = new Set();
+
+function _catalogoBarraSelecaoManualHTML() {
+  const n = _catalogoSelecaoManual.size;
+  return `
+    <div class="catalogo-selecao-bar${n ? "" : " catalogo-selecao-bar--vazia"}">
+      <span class="catalogo-selecao-contagem">
+        <i class="fa-solid fa-square-check"></i> ${n} selecionado${n === 1 ? "" : "s"}
+      </span>
+      <div class="catalogo-selecao-acoes">
+        <button type="button" class="catalogo-selecao-limpar-btn" onclick="_catalogoLimparSelecaoManual()" ${n ? "" : "disabled"}>
+          Limpar seleção
+        </button>
+        <button type="button" class="catalogo-selecao-export-btn" onclick="_catalogoExportarSelecionadosManual(this)" ${n ? "" : "disabled"}>
+          <i class="fa-solid fa-file-pdf"></i> Exportar selecionados (PDF)
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+// Só atualiza os nós já na tela (contagem + botões) — evita re-renderizar o
+// grid inteiro (e perder scroll/estado das fotos) a cada clique de checkbox.
+function _catalogoAtualizarBarraSelecaoManual() {
+  const n = _catalogoSelecaoManual.size;
+  document.querySelectorAll(".catalogo-selecao-bar").forEach(bar => {
+    bar.classList.toggle("catalogo-selecao-bar--vazia", n === 0);
+    const contagem = bar.querySelector(".catalogo-selecao-contagem");
+    if (contagem) contagem.innerHTML = `<i class="fa-solid fa-square-check"></i> ${n} selecionado${n === 1 ? "" : "s"}`;
+    const limparBtn = bar.querySelector(".catalogo-selecao-limpar-btn");
+    if (limparBtn) limparBtn.disabled = n === 0;
+    const exportBtn = bar.querySelector(".catalogo-selecao-export-btn");
+    if (exportBtn) exportBtn.disabled = n === 0;
+  });
+}
+
+function _catalogoToggleSelecaoManual(codigo, marcado) {
+  if (marcado) _catalogoSelecaoManual.add(String(codigo));
+  else _catalogoSelecaoManual.delete(String(codigo));
+  _catalogoAtualizarBarraSelecaoManual();
+}
+
+function _catalogoLimparSelecaoManual() {
+  _catalogoSelecaoManual.clear();
+  document.querySelectorAll(".catalogo-card-select:checked").forEach(cb => { cb.checked = false; });
+  _catalogoAtualizarBarraSelecaoManual();
+}
+
+async function _catalogoExportarSelecionadosManual(btnEl) {
+  const codigos = [..._catalogoSelecaoManual];
+  if (!codigos.length) return;
+
+  const original = btnEl?.innerHTML;
+  if (btnEl) {
+    btnEl.disabled = true;
+    btnEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Gerando PDF...';
+  }
+
+  try {
+    const formData = new FormData();
+    formData.append("codigos", JSON.stringify(codigos));
+    formData.append("modo", "linha");
+
+    const res = await fetch("/api/catalogo/promocional/exportar-pdf", {
+      method: "POST",
+      credentials: "include",
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      throw new Error(errBody.error || "Erro ao gerar PDF dos itens selecionados.");
+    }
+
+    const naoEncontrados = res.headers.get("X-Catalogo-Codigos-Nao-Encontrados");
+    if (naoEncontrados) {
+      showToast?.(`Alguns itens selecionados não foram encontrados e ficaram de fora do PDF: ${naoEncontrados}`, "warning");
+    }
+
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = `catalogo-selecionados-${Date.now()}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    showToast?.(err.message || "Erro ao exportar os itens selecionados em PDF.", "error");
+  } finally {
+    if (btnEl) {
+      btnEl.disabled = _catalogoSelecaoManual.size === 0;
+      btnEl.innerHTML = original;
+    }
+  }
+}
+
 function _catalogoCardHTML(produto, mostrarBadgeNeutro) {
   const badges = [];
   if (produto.marcaCompativel) {
@@ -1000,9 +1113,32 @@ function _catalogoCardHTML(produto, mostrarBadgeNeutro) {
   // abrirModalDetalheProduto). Foto/trocar-foto/copiar-código continuam com
   // stopPropagation pra não abrir o modal por engano num clique que já tem
   // ação própria.
+  // Checkbox de seleção manual (pedido do usuário, 2026-09-10, ver
+  // _catalogoSelecaoManual acima) — sempre visível (ao contrário do botão
+  // "Trocar foto", que só aparece no hover), porque o atendente precisa
+  // conseguir ver de relance quais itens já marcou rolando a lista.
+  // stopPropagation nos dois níveis (label E input) porque o card inteiro é
+  // clicável (abre o modal de detalhe) — sem isso, marcar o checkbox também
+  // abriria o modal por cima.
+  const marcado = _catalogoSelecaoManual.has(String(produto.codigo));
+  const checkboxHTML = `
+    <label class="catalogo-card-select-wrap" onclick="event.stopPropagation()" title="Marcar pra exportar junto com outros itens selecionados">
+      <input
+        type="checkbox"
+        class="catalogo-card-select"
+        data-codigo-select="${escapeAttr(produto.codigo)}"
+        ${marcado ? "checked" : ""}
+        onclick="event.stopPropagation()"
+        onchange="_catalogoToggleSelecaoManual('${produto.codigo}', this.checked)"
+      >
+      <span class="catalogo-card-select-box"><i class="fa-solid fa-check"></i></span>
+    </label>
+  `;
+
   return `
     <article class="catalogo-card" onclick="abrirModalDetalheProduto('${escapeAttr(produto.codigo)}')" title="Ver detalhes desse produto">
       <div class="catalogo-card-photo${produto.duasFotos ? " catalogo-card-photo--dupla" : ""}" data-foto-codigo="${escapeAttr(produto.codigo)}">
+        ${checkboxHTML}
         <i class="fa-solid fa-image catalogo-card-photo-fallback"></i>
         <img
           src="${_catalogoFotoUrl(produto.codigo, 0)}"
@@ -1426,6 +1562,7 @@ async function _catalogoExecutarBusca(wrap, params, modoNavegacao) {
         <p class="catalogo-resumo">${totalTexto}${recorte}.</p>
         ${_catalogoExportBtnHTML()}
       </div>
+      ${_catalogoBarraSelecaoManualHTML()}
     `;
     _catalogoIndexarProdutos(produtos);
     const grid = `<div class="catalogo-grid">${produtos.map(p => _catalogoCardHTML(p, !modoNavegacao)).join("")}</div>`;
@@ -1515,6 +1652,7 @@ async function buscarCatalogoPorCodigo(event) {
         <p class="catalogo-resumo">${totalTexto}.</p>
         ${_catalogoExportBtnHTML()}
       </div>
+      ${_catalogoBarraSelecaoManualHTML()}
     `;
     // mostrarBadgeNeutro=false: busca por código é exata, não tem
     // marca/ano pra comparar — o aviso "confirme com o cliente" não se aplica.
@@ -1582,6 +1720,7 @@ async function buscarCatalogoPorNome(event) {
         <p class="catalogo-resumo">${totalTexto}${recorte}.</p>
         ${_catalogoExportBtnHTML()}
       </div>
+      ${_catalogoBarraSelecaoManualHTML()}
     `;
     // mostrarBadgeNeutro=false: busca por nome não tem marca/ano pra
     // comparar — o aviso "confirme com o cliente" não se aplica.

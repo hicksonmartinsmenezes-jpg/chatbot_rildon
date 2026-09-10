@@ -952,6 +952,155 @@
 
 .catalogo-card-photo-trocar:hover { background: #ffffff; }
 
+/* Checkbox de seleção manual (pedido do usuário, 2026-09-10, ver
+   _catalogoSelecaoManual/18-catalogo.js) — canto oposto ao "Trocar foto"
+   (topo-esquerdo em vez de rodapé-direito) e SEMPRE visível, não só no
+   hover: o atendente precisa ver de relance, rolando a lista, quais itens
+   já marcou — escondido até passar o mouse esconderia o próprio estado da
+   seleção. Padrão "input real escondido + caixa visual ao lado", igual ao
+   radio/checkbox nativo em outras partes do painel, mas com caixa própria
+   pra ficar legível em cima de foto (geralmente fundo branco). */
+.catalogo-card-select-wrap {
+  position: absolute;
+  z-index: 3;
+  left: 8px;
+  top: 8px;
+  display: flex;
+  cursor: pointer;
+}
+
+.catalogo-card-select {
+  position: absolute;
+  inset: 0;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.catalogo-card-select-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1.5px solid rgba(0, 0, 0, 0.18);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.catalogo-card-select-box i {
+  font-size: 11px;
+  color: transparent;
+  transition: color var(--transition-fast);
+}
+
+.catalogo-card-select:hover + .catalogo-card-select-box {
+  border-color: var(--primary);
+}
+
+.catalogo-card-select:checked + .catalogo-card-select-box {
+  background: var(--primary);
+  border-color: var(--primary);
+  transform: scale(1.06);
+}
+
+.catalogo-card-select:checked + .catalogo-card-select-box i {
+  color: #ffffff;
+}
+
+.catalogo-card-select:focus-visible + .catalogo-card-select-box {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* ─── Barra "X selecionados" (seleção manual em Critérios de Pesquisa /
+   Busca por Código / Busca por Nome) ────────────────────────────────── */
+.catalogo-selecao-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  width: 100%;
+  margin-top: -4px;
+  margin-bottom: 14px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary) 28%, transparent);
+  transition: opacity var(--transition-fast);
+}
+
+.catalogo-selecao-bar--vazia {
+  opacity: 0.6;
+}
+
+.catalogo-selecao-contagem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #e6ebf5;
+}
+
+.catalogo-selecao-contagem i { color: var(--primary); }
+
+.catalogo-selecao-acoes {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.catalogo-selecao-limpar-btn {
+  padding: 8px 14px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--cat-line);
+  background: transparent;
+  color: var(--cat-text-dim);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.catalogo-selecao-limpar-btn:hover:not(:disabled) {
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.35);
+}
+
+.catalogo-selecao-limpar-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.catalogo-selecao-export-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: var(--radius-full);
+  border: none;
+  background: var(--primary);
+  color: #ffffff;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: filter var(--transition-fast), transform var(--transition-fast), opacity var(--transition-fast);
+}
+
+.catalogo-selecao-export-btn:hover:not(:disabled) { filter: brightness(1.08); }
+.catalogo-selecao-export-btn:active:not(:disabled) { transform: translateY(1px); }
+
+.catalogo-selecao-export-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 /* Grade de opções no modal de troca de foto — mesmas classes .modal-* do
    modal genérico (15-modal.js), só a grade em si é específica daqui. */
 .catalogo-foto-opcoes-grid {

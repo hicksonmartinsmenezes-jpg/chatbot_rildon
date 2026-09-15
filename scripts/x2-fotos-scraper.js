@@ -618,8 +618,20 @@ async function processarUmProduto(popup, codigo, secaoSlug) {
 // cobre produto totalmente NOVO (código que ainda nem existe no JSON da
 // seção) — isso precisaria antes de uma nova extração em massa (tela
 // compra/catalogo_produto) pra descobrir o código novo.
-function calcularFila(codigos, progresso, { limit, retrySemFoto } = {}) {
-  const pendentes = codigos.filter((c) => {
+//
+// `codigosEspecificos` (pedido do usuário, 2026-09-11): quando informado,
+// restringe a fila a SÓ esses códigos antes de aplicar a lógica de
+// pendente/retry acima — usado pelo encadeamento pós-Lançamentos (ver
+// server.js), pra baixar foto só dos códigos que tiveram lançamento
+// naquela semana, sem puxar de brinde o resto do backlog pendente da
+// mesma seção. `codigos` continua sendo TODOS os códigos da seção (lidos
+// do <slug>.json em processarSecaoComPopup) — o filtro é sempre uma
+// interseção com esse total, nunca uma lista solta por fora dele.
+function calcularFila(codigos, progresso, { limit, retrySemFoto, codigosEspecificos } = {}) {
+  const base = codigosEspecificos && codigosEspecificos.length
+    ? codigos.filter((c) => codigosEspecificos.includes(String(c)))
+    : codigos;
+  const pendentes = base.filter((c) => {
     if (!progresso[c]) return true;
     // BUG REAL corrigido (2026-08-13, achado analisando os 1209 erros de
     // MECÂNICA — provável degradação de uma sessão de navegador longa
@@ -638,7 +650,7 @@ function calcularFila(codigos, progresso, { limit, retrySemFoto } = {}) {
 // Processa UMA seção usando um popup já aberto (não abre/fecha navegador —
 // isso permite encadear várias seções numa única sessão de navegador/login,
 // ver `rodarMuitasSecoes`).
-async function processarSecaoComPopup(popup, secaoSlug, { limit, retrySemFoto, deveParar } = {}) {
+async function processarSecaoComPopup(popup, secaoSlug, { limit, retrySemFoto, deveParar, codigosEspecificos } = {}) {
   const labelSecao = SECOES[secaoSlug];
   if (!labelSecao) {
     throw new Error(`Seção desconhecida: "${secaoSlug}". Opções: ${Object.keys(SECOES).join(', ')}`);
@@ -649,10 +661,10 @@ async function processarSecaoComPopup(popup, secaoSlug, { limit, retrySemFoto, d
   const codigos = produtos.map((p) => p.codigo);
 
   const progresso = carregarProgresso(secaoSlug);
-  const fila = calcularFila(codigos, progresso, { limit, retrySemFoto });
+  const fila = calcularFila(codigos, progresso, { limit, retrySemFoto, codigosEspecificos });
 
   console.log(`\n=== Seção ${labelSecao} (${secaoSlug}) ===`);
-  console.log(`${codigos.length} produtos no total, ${Object.keys(progresso).length} já processados, ${fila.length} nesta execução${retrySemFoto ? ' (incluindo retry de sem_foto/placeholder/erro)' : ''}.`);
+  console.log(`${codigos.length} produtos no total, ${Object.keys(progresso).length} já processados, ${fila.length} nesta execução${retrySemFoto ? ' (incluindo retry de sem_foto/placeholder/erro)' : ''}${codigosEspecificos && codigosEspecificos.length ? ` (restrito aos ${codigosEspecificos.length} código(s) informado(s))` : ''}.`);
   if (!fila.length) {
     console.log('Nada pendente nesta seção.');
     return { secaoSlug, totalFeitos: Object.keys(progresso).length, total: codigos.length, pulada: true };
@@ -724,7 +736,7 @@ async function processarSecaoComPopup(popup, secaoSlug, { limit, retrySemFoto, d
   return { secaoSlug, totalFeitos, total: codigos.length, pulada: false };
 }
 
-async function rodarSecao(secaoSlug, { limit, channel, retrySemFoto, reiniciar, confirmar, modoAutomatico, deveParar }) {
+async function rodarSecao(secaoSlug, { limit, channel, retrySemFoto, reiniciar, confirmar, modoAutomatico, deveParar, codigosEspecificos }) {
   if (reiniciar) {
     console.log(`Reiniciando "${secaoSlug}" do zero (apagando progresso e staging salvos)...`);
     reiniciarSecao(secaoSlug);
@@ -732,7 +744,7 @@ async function rodarSecao(secaoSlug, { limit, channel, retrySemFoto, reiniciar, 
   const context = await abrirNavegador(channel);
   try {
     const popup = await garantirPopupAberto(context, { confirmar, modoAutomatico });
-    await processarSecaoComPopup(popup, secaoSlug, { limit, retrySemFoto, deveParar });
+    await processarSecaoComPopup(popup, secaoSlug, { limit, retrySemFoto, deveParar, codigosEspecificos });
   } finally {
     await context.close().catch(() => {});
   }
@@ -741,7 +753,7 @@ async function rodarSecao(secaoSlug, { limit, channel, retrySemFoto, reiniciar, 
 // Roda várias seções em UMA ÚNICA sessão de navegador — só pausa 1x pro
 // usuário logar/abrir o popup, depois processa seção por seção sozinho.
 // `limit`, se passado, se aplica a CADA seção (não ao total).
-async function rodarMuitasSecoes(slugs, { limit, channel, retrySemFoto, reiniciar, confirmar, modoAutomatico, deveParar }) {
+async function rodarMuitasSecoes(slugs, { limit, channel, retrySemFoto, reiniciar, confirmar, modoAutomatico, deveParar, codigosEspecificos }) {
   if (reiniciar) {
     console.log(`Reiniciando ${slugs.length} seção(ões) do zero (apagando progresso e staging salvos)...`);
     for (const s of slugs) reiniciarSecao(s);
@@ -759,7 +771,12 @@ async function rodarMuitasSecoes(slugs, { limit, channel, retrySemFoto, reinicia
         break;
       }
       try {
-        const r = await processarSecaoComPopup(popup, secaoSlug, { limit, retrySemFoto, deveParar });
+        // `codigosEspecificos` (pedido do usuário, 2026-09-11) se aplica a
+        // TODAS as seções da lista igual — cada `processarSecaoComPopup`
+        // faz a interseção com os códigos da SUA própria seção (ver
+        // calcularFila), então passar a mesma lista pra todas aqui é seguro
+        // mesmo com seções diferentes na mesma chamada.
+        const r = await processarSecaoComPopup(popup, secaoSlug, { limit, retrySemFoto, deveParar, codigosEspecificos });
         resumo.push(r);
       } catch (e) {
         console.error(`\nErro na seção ${secaoSlug}: ${e.message} — pulando pra próxima.`);

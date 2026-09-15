@@ -323,21 +323,30 @@ async function exportarPdfHandler(req, res) {
       tituloBusca = partes.length ? partes.join(" · ") : "Catálogo completo";
     }
 
-    // Pedido do usuário (2026-09-05): no Catálogo Completo, só entram
-    // produtos com preço cadastrado (varejo OU atacado) — ver
-    // _anexarEstoque/catalogo-x2.service.js, produto.estoque vem null (sem
-    // registro nenhum) ou { qtd, unidade, precoVarejo, precoAtacado }, e
-    // cada preço pode ser null individualmente mesmo com registro de
-    // estoque. Filtro só no modo Completo — o expresso (busca solta) e o
-    // Promocional continuam como estavam (o Promocional já filtra por CSV
-    // de preço à parte, tem outra lógica própria).
+    // Pedido do usuário (2026-09-05, estendido em 2026-09-11): no Catálogo
+    // Completo, produto *NCP* (tag literal dentro do nome, vinda do ERP X2 —
+    // ex: "INTERRUPTOR DE EMBREAGEM *NCP* - MARFLEX - 7466") só entra se
+    // tiver ESTOQUE (qtd > 0). Pedido do usuário: "itens *NCP* a partir de
+    // agora só entram no catalogo se tiver estoque, e qualquer outro produto
+    // só entra no catalogo se tiver preço" — qualquer produto NÃO-NCP segue a
+    // regra de preço já existente desde 2026-09-05 (varejo OU atacado
+    // cadastrado; ver _anexarEstoque/catalogo-x2.service.js — produto.estoque
+    // vem null sem registro nenhum, ou { qtd, unidade, precoVarejo,
+    // precoAtacado} com cada preço podendo ser null individualmente mesmo
+    // com registro de estoque). Filtro só no modo Completo — o expresso
+    // (busca solta) e o Promocional continuam como estavam (o Promocional já
+    // filtra por CSV de preço à parte, tem outra lógica própria).
     if (modoCompleto) {
-      const totalAntesDoPreco = produtos.length;
-      produtos = produtos.filter(p => p.estoque && (p.estoque.precoVarejo != null || p.estoque.precoAtacado != null));
+      const totalAntesDoFiltroNegocio = produtos.length;
+      produtos = produtos.filter(p => {
+        const ehNcp = typeof p.nome === "string" && p.nome.includes("*NCP*");
+        if (ehNcp) return !!p.estoque && Number(p.estoque.qtd) > 0;
+        return !!p.estoque && (p.estoque.precoVarejo != null || p.estoque.precoAtacado != null);
+      });
       if (!produtos.length) {
         return res.status(404).json({
-          error: totalAntesDoPreco
-            ? `${totalAntesDoPreco} peça(s) encontrada(s) pra "${fabricanteCompleto}", mas nenhuma tem preço cadastrado no estoque — nada pra exportar.`
+          error: totalAntesDoFiltroNegocio
+            ? `${totalAntesDoFiltroNegocio} peça(s) encontrada(s) pra "${fabricanteCompleto}", mas nenhuma passou no filtro (itens *NCP* precisam de estoque; os demais precisam de preço cadastrado) — nada pra exportar.`
             : "Nenhuma peça encontrada pra exportar com esses critérios.",
         });
       }

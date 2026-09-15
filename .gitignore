@@ -48,6 +48,10 @@ baileys_auth/
 *.session
 *.creds.json
 
+# Conta de serviço do Google (upload automático de catálogo pro Drive,
+# ver scripts/x2-drive-lancamentos.js e .env GOOGLE_DRIVE_CREDENCIAIS_PATH)
+credentials/
+
 # Build / cache / sistema operacional
 coverage/
 dist/

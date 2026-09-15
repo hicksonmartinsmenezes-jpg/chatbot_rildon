@@ -971,6 +971,19 @@ const MARCA_HEADER_FONTE = 12;
 // cabeçalho novo (separa do sub-grupo anterior), pouco respiro DEPOIS
 // (liga o cabeçalho às suas próprias cards).
 const MARCA_HEADER_GAP_ANTES = 18; // espaço extra antes de um cabeçalho de marca que não é o 1º da página
+// PEDIDO DO USUÁRIO (2026-09-14, print MASSEY FERGUSON/MAZDA): espaço
+// maior especificamente quando EXATAMENTE 2 marcas caem juntas na MESMA
+// PÁGINA — decidido em _calcularLayoutConteudo via 2 passadas (só dá pra
+// saber quantas marcas caem numa página depois de rodar a paginação; ver
+// comentário lá). Com 3+ marcas pequenas na mesma página, continua usando
+// MARCA_HEADER_GAP_ANTES normal (usuário reportou "bugada" quando testei
+// aplicar geral). Pra ajustar de novo no futuro, é só mudar este número.
+// 2026-09-14: reduzido de 100 pra 85 ("suba apenas um pouco") — libera um
+// pouco mais de espaço embaixo do card final, pra fechar mais perto do
+// mesmo padrão de distância até o rodapé que as páginas de 1 marca só já
+// usam (ver o preenchimentoFinal em _calcularLayoutConteudo, agora sem
+// restrição de "só quando 1 marca").
+const MARCA_HEADER_GAP_ANTES_DUAS_MARCAS = 85;
 const MARCA_HEADER_GAP_DEPOIS = 6; // espaço entre o texto do cabeçalho e a 1ª linha de cards do sub-grupo
 // Pedido do usuário (2026-08-28, follow-up "se caso uma peça aparecer
 // para ford e também kia, deixe os duplicados"): produto sem marca de
@@ -1239,6 +1252,11 @@ function _desenharCardVidro(doc, x, y, w, h) {
 // mesmo" — ou seja, a MESMA moldura do card real (_desenharCardVidro:
 // fundo branco + borda ciano grossa + borda preta interna), só sem
 // foto/selo/texto dentro.
+//
+// 2026-09-14: testei remover a moldura (deixar em branco liso) por pedido
+// do usuário, mas ele voltou atrás na hora ("volte ao que era") — manter
+// SEMPRE com a moldura do card real daqui pra frente, não mexer de novo
+// sem confirmação bem explícita.
 function _desenharCardVazio(doc, x, y, w, h) {
   _desenharCardVidro(doc, x, y, w, h);
 }
@@ -1273,7 +1291,17 @@ function _geometriaGrid(doc, cols, rows, comAplicacao = false, overrides = null)
   const cardWidth = (larguraUtil - (cols - 1) * GAP) / cols;
   const photoBoxWidth = cardWidth - PAD_CARD * 2;
   const areaTopoY = overrides?.areaTopoY ?? AREA_TOPO_Y;
-  const areaFimY = overrides?.areaFimY ?? (A4_ALTURA - FOOTER_HEIGHT - 8);
+  // PEDIDO DO USUÁRIO (2026-09-14): "preciso que padronize sempre meus
+  // últimos cards terem 30,349 pt de distancia" — confirmado via
+  // AskUserQuestion que é a distância entre a ÚLTIMA LINHA DE CARDS e o
+  // rodapé. Antes era "8" (valor arbitrário/estético). Como o rodapé
+  // começa em `h - FOOTER_HEIGHT` (ver _desenharRodape) e `h === A4_ALTURA`,
+  // esse valor É exatamente essa distância em pontos — trocar aqui já
+  // padroniza em todas as páginas, combinado com a linha final parcial de
+  // preenchimento (ver preenchimentoFinal em _calcularLayoutConteudo, fix
+  // de 2026-09-12) que garante que a última linha SEMPRE encosta em
+  // areaFimY, nunca deixando sobra menor que uma linha antes do rodapé.
+  const areaFimY = overrides?.areaFimY ?? (A4_ALTURA - FOOTER_HEIGHT - 30.349);
   const alturaDisponivel = areaFimY - areaTopoY;
   const cardHeightMax = (alturaDisponivel - (rows - 1) * GAP) / rows;
 
@@ -1511,17 +1539,51 @@ function _truncarParaAltura(doc, texto, largura, altura) {
 
 // Extraída pra função própria (2026-08-28, pedido do usuário sobre
 // agrupar por marca de veículo — ver _agruparPorMarca mais abaixo): a
-// mesma padronização "MERCEDES-BENZ"/variantes -> "MB" e "VOLKSWAGEN" ->
-// "VW" agora é usada em DOIS lugares — aqui, pra desenhar o texto, e em
-// _extrairMarcas, pra decidir em qual sub-grupo de marca cada produto
-// entra. Compartilhar a mesma função garante que o texto exibido no card
-// e o cabeçalho de marca sob o qual ele é agrupado NUNCA divirjam (ex.
-// produto com "Mercedes-Benz" no texto cru sempre cai no grupo "MB", e o
-// texto desenhado no card também sempre mostra "MB").
+// mesma padronização "MERCEDES-BENZ"/variantes -> "MB" agora é usada em
+// DOIS lugares — aqui, pra desenhar o texto, e em _extrairMarcas, pra
+// decidir em qual sub-grupo de marca cada produto entra. Compartilhar a
+// mesma função garante que o texto exibido no card e o cabeçalho de marca
+// sob o qual ele é agrupado NUNCA divirjam (ex. produto com
+// "Mercedes-Benz" no texto cru sempre cai no grupo "MB", e o texto
+// desenhado no card também sempre mostra "MB").
 function _normalizarMarcasTexto(texto) {
   return String(texto || "")
     .replace(/mercedes[-\s]*ben[zs]/gi, "MB")
-    .replace(/volkswagen/gi, "VW");
+    // 2026-09-11 (pedido do usuário: "vw e vw caminhões, fiat e fiat allis
+    // ... devem ser um apenas 'VOLKSWAGEN'"): unifica TODAS as variantes
+    // de Volkswagen — sigla "VW" (com ou sem sufixo "Caminhões"/"Caminhoes"
+    // grudado) e o nome por extenso — num único nome canônico por extenso
+    // "VOLKSWAGEN", em vez de abreviar pra "VW" como antes (era o
+    // contrário: "Volkswagen" -> "VW"). "VW Caminhões" e "VW" (carro de
+    // passeio) eram grupos SEPARADOS no Catálogo Completo antes disso —
+    // agora colapsam no mesmo grupo "VOLKSWAGEN", incluindo o sufixo
+    // "Caminhões"/"Caminhoes" (com ou sem hífen/espaço) que precisa ser
+    // removido ANTES da regra solta de "VW"/"Volkswagen" abaixo, senão
+    // sobraria como "VOLKSWAGEN CAMINHÕES" (grupo ainda separado).
+    .replace(/\b(vw|volkswagen)\s*-?\s*caminh(?:o|õ)es\b/gi, "VOLKSWAGEN")
+    .replace(/\bvolkswagen\b/gi, "VOLKSWAGEN")
+    .replace(/\bvw\b/gi, "VOLKSWAGEN")
+    // Mesmo pedido, mesma lógica — "FIAT ALLIS" (fabricante histórico de
+    // máquinas pesadas, joint-venture Fiat + Allis-Chalmers) unificado no
+    // grupo "FIAT".
+    .replace(/\bfiat\s*-?\s*allis\b/gi, "FIAT")
+    // 2026-09-11 (bug real reportado pelo usuário: catálogo completo 3RHO
+    // mostrando "CX220C TIER 3 (08/14 - 12/16)" como se fosse marca própria,
+    // isolada, com o resto da linha vazio) — o texto de aplicação gerado
+    // pela IA separa blocos de MONTADORA diferentes com uma linha em branco
+    // (ex. "CASE: ...; CX220C TIER 3 (08/14 - 12/16)\n\nNEW HOLLAND: ..."),
+    // mas o split abaixo (aqui e em _extrairMarcas) só reconhece ";" como
+    // separador de segmento. Sem isso, o ÚLTIMO modelo antes da quebra de
+    // linha ficava GRUDADO no início do bloco da montadora seguinte num
+    // único segmento só ("CX220C TIER 3 (08/14 - 12/16)\n\nNEW HOLLAND"), e
+    // como esse segmento tem ":", o regex de marca (/^([^:]+):/) capturava
+    // tudo antes dele — inclusive o modelo/ano da montadora anterior — como
+    // se fosse o nome da marca, criando um grupo falso com 1 produto só
+    // (daí os cards vazios preenchendo o resto da leva). Convertendo toda
+    // quebra de linha em "; " ANTES do split, cada bloco de montadora vira
+    // segmento próprio de novo, exatamente como seria se estivesse tudo
+    // numa linha só separado por ";".
+    .replace(/\s*\n+\s*/g, "; ");
 }
 
 // `marcaPrioritaria` (2026-08-28, sub-agrupamento por marca de veículo —
@@ -1925,17 +1987,12 @@ function _desenharCabecalho(doc, tituloBusca, estilo = "eletrica", fabricante = 
     return;
   }
 
-  // Sombra simples (pedido do usuário 2026-07-30): cópia do texto em cinza
-  // escuro, levemente deslocada embaixo/direita, desenhada ANTES do texto
-  // principal — pdfkit não tem blur/text-shadow nativo, então a sombra é só
-  // uma 2ª cópia do texto por baixo, técnica igual à referência que o
-  // usuário mandou antes (título com sombra duplicada).
-  doc.fillColor("#000000", 0.35).font(TITULO_FONTE).fontSize(TITULO_TAMANHO)
-    .text(tituloTexto, tituloX + 1.5, tituloY + 1.5, { width: tituloLargura });
-  doc.fillOpacity(1);
-
-  doc.fillColor(VERMELHO_CATEGORIA).font(TITULO_FONTE).fontSize(TITULO_TAMANHO)
-    .text(tituloTexto, tituloX, tituloY, { width: tituloLargura });
+  // 2026-09-11: eco atrás do título (ver _textoComEco) + sombra simples
+  // (pedido do usuário 2026-07-30) entre o eco e o texto principal —
+  // técnica igual à referência que o usuário mandou antes (título com
+  // sombra duplicada), agora com a camada extra de eco medida no catálogo
+  // original 3-RHO.
+  _textoComEco(doc, tituloTexto, tituloX, tituloY, VERMELHO_CATEGORIA, { width: tituloLargura }, TITULO_TAMANHO);
 
   doc.fillColor("#111827").font("Helvetica");
 }
@@ -2176,9 +2233,25 @@ const MARCA_UNIVERSAL_CANONICA = "UNIVERSAL / DIVERSOS";
 // catalogo-x2.service.js, mesma lista usada no filtro "Montadora" da busca
 // — ver listarMarcasVeiculoConhecidas) pra só aceitar o segmento sem ":"
 // quando ele É (ou contém) uma marca de verdade da lista, ou é o alias
-// Universal/Diversos. O ramo COM ":" ("MARCA: modelo") continua confiando
-// no formato explícito, sem essa validação — mudar isso teria mais risco
-// de rejeitar marca real ainda não catalogada na lista fixa.
+// Universal/Diversos.
+// 2026-09-11 (pedido do usuário, exemplo real: catálogo completo 3RHO
+// mostrando "CAIXAS" como se fosse marca própria, com só 1 produto — o
+// texto de aplicação era "Caixas: G 100-2, G 131-9, ..." — "Caixas" é o
+// TIPO de peça/categoria, não o fabricante, que nesses casos não foi
+// identificável): o ramo COM ":" ("MARCA: modelo") ATÉ 2026-09-11 confiava
+// no formato explícito sem validar contra a lista — deliberado, pra não
+// rejeitar marca real ainda não catalogada (ver histórico deste comentário
+// antes desta data). O usuário pediu explicitamente o oposto: "esses que
+// você não identificar marca pode colocar em outras aplicações" — ou seja,
+// prefere um produto caindo em MARCA_OUTRAS (Outras Aplicações, sem grupo
+// próprio) a um grupo-fantasma feito de um rótulo de categoria. Por isso o
+// ramo COM ":" agora passa pela MESMA validação _pareceMarcaConhecida do
+// ramo sem ":" — um texto antes do ":" que não seja (nem contenha) uma
+// marca da lista MARCAS_VEICULO_CONHECIDAS cai em MARCA_OUTRAS em vez de
+// virar grupo próprio. Contrapartida aceita pelo usuário: uma marca real
+// ainda não catalogada na lista fixa (ex. um fabricante novo de máquina)
+// também cairia em Outras até alguém adicionar essa marca na lista em
+// catalogo-x2.service.js — ver MARCAS_VEICULO_CONHECIDAS.
 const MARCAS_VEICULO_CONHECIDAS_SET = new Set(listarMarcasVeiculoConhecidas());
 function _pareceMarcaConhecida(candidato) {
   if (MARCA_ALIAS_UNIVERSAL_REGEX.test(candidato)) return true;
@@ -2195,7 +2268,18 @@ function _extrairMarcas(textoOriginal) {
     const match = trimmed.match(/^([^:]+):/);
     let marca;
     if (match) {
-      marca = match[1].trim().toUpperCase();
+      const candidato = match[1].trim().toUpperCase();
+      // 2026-09-11: só aceita como marca própria se for (ou conter) uma
+      // marca conhecida, ou o alias Universal/Diversos — "Caixas:",
+      // "Compressores:" etc. não são marca, são categoria/tipo de peça, e
+      // caem em MARCA_OUTRAS (ver comentário acima da
+      // MARCAS_VEICULO_CONHECIDAS_SET; _pareceMarcaConhecida já cobre o
+      // alias Universal/Diversos internamente).
+      if (_pareceMarcaConhecida(candidato)) {
+        marca = candidato;
+      } else {
+        return;
+      }
     } else if (
       trimmed.length > 0 &&
       trimmed.length <= MARCA_SEGMENTO_SEM_DOISPONTOS_MAX_CHARS &&
@@ -2285,6 +2369,13 @@ function _construirSequenciaConteudo(grupos, semSubAgrupamentoMarca = false) {
     let primeiroSubgrupoDaLinha = true;
     const subgrupos = semSubAgrupamentoMarca ? [{ marca: linha, produtos: itens }] : _agruparPorMarca(itens);
     subgrupos.forEach(({ marca, produtos }) => {
+      // PEDIDO DO USUÁRIO (2026-09-14): espaço maior entre sub-grupos de
+      // marca só quando exatamente 2 marcas caem juntas na MESMA PÁGINA
+      // (ex. MASSEY FERGUSON/MAZDA) — não é uma propriedade da Linha (uma
+      // Linha como FUSÍVEL tem dezenas de marcas espalhadas por várias
+      // páginas), por isso NÃO dá pra decidir isso aqui, só depois de rodar
+      // a paginação de verdade — ver o esquema de 2 passadas em
+      // _calcularLayoutConteudo/MARCA_HEADER_GAP_ANTES_DUAS_MARCAS.
       sequencia.push({ tipo: "cabecalhoMarca", linha, marca, inicioDeLinha: primeiroSubgrupoDaLinha });
       primeiroSubgrupoDaLinha = false;
       // 2026-08-28: pedido do usuário "complete os cards por mais que só
@@ -2307,6 +2398,25 @@ function _construirSequenciaConteudo(grupos, semSubAgrupamentoMarca = false) {
           sequencia.push({ tipo: "cardVazio", linha, marca, colIndex, colsLinha: COLS_COMPLETO });
         }
       }
+      // PEDIDO DO USUÁRIO (2026-09-14, prints CABO DE TRANSFERÊNCIA/CORDOALHA
+      // — "vamos especificar mais quando isso deve acontecer... todos esses
+      // itens cabem em uma pagina só, nesse caso não deverá acontecer"):
+      // cheguei a testar colar 1 linha vazia INCONDICIONAL aqui, direto na
+      // sequência, depois de cada sub-grupo (commit anterior no mesmo dia) —
+      // o usuário voltou atrás porque isso empurrava conteúdo que cabia
+      // numa página só pra 2 páginas, só pra abrir espaço pras linhas vazias
+      // (ex: CABO DE TRANSFERÊNCIA com só 4 marcas pequenas, cada uma com 1
+      // linha de produto, virou 2 páginas cheias de vazio). A decisão de
+      // colar essa linha de fechamento NÃO pode ser incondicional aqui — só
+      // dá pra saber se ela "cabe de graça" (sem empurrar conteúdo real pra
+      // página seguinte) depois de rodar a paginação de verdade. Por isso
+      // essa linha de fechamento NÃO é mais gerada aqui — ver o bloco
+      // "separador de marca" dentro de _rodarPasse, em
+      // _calcularLayoutConteudo, que decide isso de forma oportunista:
+      // insere a linha vazia só quando sobra espaço pra ela SEM forçar
+      // quebra de página (senão, pula a linha vazia e deixa o cabeçalho da
+      // próxima marca entrar direto, exatamente como decidia o gap normal
+      // antes desse recurso existir).
     });
   });
   return { sequencia, primeiroIndicePorGrupo };
@@ -2422,137 +2532,374 @@ function _construirSequenciaConteudoPromocional(grupos, iniciarGrupoEmLinhaNova 
 //   dois (cabeçalho + 1ª linha de cards) vão pra página seguinte, pra não
 //   deixar um cabeçalho sozinho colado no rodapé sem nenhum produto
 //   embaixo até a próxima página.
-function _calcularLayoutConteudo(sequencia, geometria, alturaHeaderMarca, forcarQuebraEntreGrupos = false) {
+function _calcularLayoutConteudo(
+  sequencia, geometria, alturaHeaderMarca, forcarQuebraEntreGrupos = false, alturaRodapeReal = FOOTER_HEIGHT
+) {
   const { cardWidth, cardHeight, areaTopoY, areaFimY } = geometria;
-  const posicoes = [];
-  let pagina = -1;
-  let linhaY = areaTopoY;
-  // true quando a última linha de cards desenhada ainda não "fechou" (não
-  // chegou até colsLinha-1) — ver comentário no fix de 2026-09-01 logo
-  // antes de alturaFinalPorPagina, mais abaixo.
-  let linhaEmAberto = false;
+  // PEDIDO DO USUÁRIO (2026-09-14): "preciso que apenas pegue os produtos
+  // da pagina seguinte e coloque na linha da primeira pagina, não toque em
+  // tamanhos" — quando uma marca tem cabeçalho (come ~20pt do espaço), só
+  // cabem 4 linhas de card dentro de areaFimY (30,349pt padrão do rodapé),
+  // e a 5ª linha de produtos REAIS acabava empurrada pra página seguinte
+  // em vez de preencher a página atual. `areaFimYLimite` é o teto de
+  // segurança de verdade (2pt antes do rodapé de verdade, não o padrão
+  // "estético" de 30,349pt) — usado SÓ na decisão de "essa próxima linha
+  // ainda cabe aqui?" (abaixo), nunca para calcular cardHeight (que
+  // continua vindo 100% de areaFimY/30,349pt — cards não mudam de
+  // tamanho). Resultado: a última linha de uma página com cabeçalho pode
+  // avançar um pouco além dos 30,349pt (só o suficiente pro que o
+  // cabeçalho consumiu), preenchendo com produto de verdade em vez de
+  // ficar em branco ou pular pra página de baixo à toa.
+  //
+  // BUG REAL achado 2026-09-14 (usuário: prints Catálogo Promocional
+  // "TERMINAL AXIAL" — "verifique por que arrancou dois cards dali"): esta
+  // função é COMPARTILHADA com o Catálogo Promocional
+  // (gerarPdfCatalogoPromocional), que usa um rodapé PRÓPRIO, bem mais
+  // baixo que `FOOTER_HEIGHT` (o rodapé do Catálogo Completo — cerca do
+  // dobro da altura do rodapé do Promocional). Antes, `areaFimYLimite`
+  // vinha hardcoded com `FOOTER_HEIGHT` (do Completo) não importa qual
+  // catálogo estivesse chamando — pro Promocional isso fazia o "teto de
+  // segurança" ficar MENOR que o próprio `areaFimY` (que já vinha correto,
+  // calculado a partir do rodapé real e mais baixo do Promocional),
+  // invertendo a lógica: em vez de "relaxar" o limite pra caber mais uma
+  // linha, ele ficava mais RESTRITIVO — cortava a última linha de cada
+  // página (produtos reais) uma linha inteira ANTES do que devia, empurrando
+  // 4 produtos reais pra página seguinte, e o espaço vazio que sobrava
+  // virava uma linha de `cardVazio` (preenchimentoFinal, que usa a conta
+  // certa de `areaFimY`) — os cards "sumiam" da página em que deveriam
+  // estar. Fix: `alturaRodapeReal` agora é parâmetro (default
+  // `FOOTER_HEIGHT`, mantém o Catálogo Completo idêntico a antes — ele
+  // nunca passa esse argumento); `gerarPdfCatalogoPromocional` passa
+  // `alturaRodapePromo` (o rodapé de verdade do modo atual), fazendo
+  // `areaFimYLimite` refletir o rodapé certo em cada catálogo.
+  const areaFimYLimite = A4_ALTURA - alturaRodapeReal - 2;
 
-  // 2026-08-28 (pedido "preencha com cards vazios embaixo"): guarda o Y
-  // final de CADA página assim que ela é abandonada (ver novaPagina) —
-  // usado depois do loop principal pra calcular quantas linhas de card
-  // vazio cabem no espaço que sobrou embaixo de cada página, não só na
-  // última linha de um sub-grupo (ver preenchimentoFinal mais abaixo).
-  const alturaFinalPorPagina = [];
+  // Roda a simulação de paginação inteira UMA vez, recebendo uma função
+  // `gapAntesResolver(indiceNaSequencia)` que decide o espaçoAntes de cada
+  // bloco "cabecalhoMarca" — extraído numa função interna pra poder rodar
+  // 2 passadas (ver comentário logo abaixo de onde isso é chamado).
+  // 2026-09-15: o 2º parâmetro (`separadorPermitidoResolver`, decidia se a
+  // linha de cardVazio "fechamento de marca" entrava) parou de ser usado
+  // aqui dentro — ver comentário grande no branco "cabecalhoMarca" abaixo
+  // (pedido do usuário: remover essa linha, ela tomava espaço que dava
+  // pra caber mais conteúdo real). Os dois call sites (`passe1`/`passe2`
+  // logo abaixo) continuam passando esse argumento — inofensivo, JS
+  // ignora argumento extra que a função declarada não usa — não mexi
+  // neles pra manter o diff pequeno e não arriscar quebrar a lógica de
+  // `indicesComGapDuasMarcas` (que ainda controla o TAMANHO do respiro,
+  // só não decide mais sobre linha de cardVazio nenhuma).
+  function _rodarPasse(gapAntesResolver) {
+    const posicoesPasse = [];
+    let paginaPasse = -1;
+    let linhaYPasse = areaTopoY;
+    // true quando a última linha de cards desenhada ainda não "fechou" (não
+    // chegou até colsLinha-1) — ver comentário no fix de 2026-09-01 logo
+    // abaixo.
+    let linhaEmAbertoPasse = false;
+    // 2026-08-28 (pedido "preencha com cards vazios embaixo"): guarda o Y
+    // final de CADA página assim que ela é abandonada — usado depois pra
+    // calcular quantas linhas de card vazio cabem no espaço que sobrou
+    // embaixo de cada página (ver preenchimentoFinal mais abaixo).
+    const alturaFinalPorPaginaPasse = [];
+    // PEDIDO DO USUÁRIO (2026-09-14, ver comentário completo em
+    // _construirSequenciaConteudo sobre por que essa linha saiu de lá):
+    // linhas de "fechamento de marca" (1 linha inteira de cardVazio,
+    // inserida OPORTUNISTICAMENTE entre um sub-grupo e o próximo, quando os
+    // dois caem na MESMA página) — mesma forma de item de preenchimentoFinal
+    // (pagina/x/y/cardWidth/cardHeight), só que decidida aqui dentro, linha
+    // por linha, porque só dá pra saber se ela cabe depois de simular a
+    // página de verdade.
+    const separadoresPasse = [];
 
-  function novaPagina() {
-    if (pagina >= 0) alturaFinalPorPagina[pagina] = linhaY;
-    pagina += 1;
-    linhaY = areaTopoY;
-  }
+    function novaPaginaPasse() {
+      if (paginaPasse >= 0) alturaFinalPorPaginaPasse[paginaPasse] = linhaYPasse;
+      paginaPasse += 1;
+      linhaYPasse = areaTopoY;
+    }
 
-  sequencia.forEach((bloco) => {
-    if (bloco.tipo === "cabecalhoMarca") {
-      if (pagina === -1) {
-        novaPagina();
-      }
-      // 2026-08-28: espaço extra ANTES de um cabeçalho de marca que não é
-      // o 1º bloco da página (separa visualmente do sub-grupo anterior) —
-      // ver comentário em MARCA_HEADER_GAP_ANTES. Não entra quando o
-      // cabeçalho já é o topo da página (logo abaixo do título da Linha),
-      // pra não duplicar o respiro que TITULO_GAP_CARDS já garante ali.
-      const temConteudoAcima = linhaY > areaTopoY + 0.5;
-      const espacoAntes = temConteudoAcima ? MARCA_HEADER_GAP_ANTES : 0;
-      if (linhaY + espacoAntes + alturaHeaderMarca + MARCA_HEADER_GAP_DEPOIS + cardHeight > areaFimY + 0.5) {
-        novaPagina();
+    sequencia.forEach((bloco, indice) => {
+      if (bloco.tipo === "cabecalhoMarca") {
+        if (paginaPasse === -1) {
+          novaPaginaPasse();
+        }
+        // 2026-08-28: espaço extra ANTES de um cabeçalho de marca que não é
+        // o 1º bloco da página (separa visualmente do sub-grupo anterior) —
+        // ver comentário em MARCA_HEADER_GAP_ANTES. Não entra quando o
+        // cabeçalho já é o topo da página (logo abaixo do título da Linha),
+        // pra não duplicar o respiro que TITULO_GAP_CARDS já garante ali.
+        const temConteudoAcima = linhaYPasse > areaTopoY + 0.5;
+        // PEDIDO DO USUÁRIO (2026-09-14, prints CABO DE TRANSFERÊNCIA/
+        // CORDOALHA + GARRA DE BATERIA/PORTA FUSÍVEL): quando já existe
+        // sub-grupo (ou Linha) acima na MESMA página, tenta abrir este
+        // cabeçalho com 1 linha INTEIRA de cardVazio antes dele — sinal
+        // visual "a marca anterior terminou aqui", mais forte que só o
+        // respiro de sempre. Só entra se sobrar espaço pra ela (+ o próprio
+        // cabeçalho + 1ª linha de cards da marca nova) SEM empurrar nada
+        // pra página seguinte — testado com a MESMA folga de segurança
+        // (areaFimYLimite) usada no resto da função. Se não couber, pula a
+        // linha vazia (nunca força quebra de página só pra caber o
+        // separador) e cai de volta no gapAntesResolver de sempre.
+        //
+        // PEDIDO DO USUÁRIO (2026-09-14, mesmo dia, ajuste seguinte): "quando
+        // couber 3 marcas ou mais não precisa adicionar linha de cards
+        // vazias" — com 3+ marcas pequenas numa página (ex.: FORD/GURGEL/+1
+        // linha, várias marcas do tipo "1 linha só"), a linha de fechamento
+        // em CADA transição comia espaço rápido demais, sem o mesmo ganho
+        // visual que tem quando é só uma transição isolada. Escopo igual ao
+        // já usado pra MARCA_HEADER_GAP_ANTES_DUAS_MARCAS (`indicesComGapDuasMarcas`,
+        // calculado a partir da 1ª passada, "quantas marcas caem NESTA
+        // PÁGINA de verdade"): `separadorPermitidoResolver(indice)` só
+        // retorna true pra cabeçalhos de página com EXATAMENTE 2 marcas. Com
+        // 3+ marcas compartilhando a página, essa função sempre nega e o
+        // fluxo cai direto no gapAntesResolver (respiro normal de 18pt,
+        // nenhuma linha vazia extra) — mesmo comportamento de antes desse
+        // recurso existir.
+        //
+        // PEDIDO DO USUÁRIO (2026-09-15, print circulado FUSÍVEL/GARRA DE
+        // BATERIA — "a ideia é caber na mesma pagina sempre que tiver duas
+        // marcas com apenas duas linhas de produtos... os dois poderia
+        // caber em uma pagina se remover essa linha de card vazio"):
+        // reconsiderou a linha de fechamento pedida em 2026-09-14 (acima).
+        // Ela só entrava quando "sobrava espaço de graça" pra ela SEM
+        // empurrar a marca nova pra página seguinte — mas esse mesmo
+        // espaço, se não virasse linha de cardVazio, ficaria disponível
+        // pra MAIS conteúdo real (mais uma linha da marca nova, ou até uma
+        // 3ª marca/Linha inteira, como no print: sobrava exatamente 1
+        // linha de altura que a linha de fechamento consumia à toa).
+        // Desligado: a separação visual entre marcas continua existindo
+        // (gapAntesResolver abaixo ainda dá um respiro maior, via
+        // MARCA_HEADER_GAP_ANTES_DUAS_MARCAS/indicesComGapDuasMarcas,
+        // quando só 2 marcas compartilham a página) — só a linha INTEIRA
+        // de cards vazios (que ocupava uma leva de espaço de verdade) foi
+        // removida. `separadoresPasse`/`separadorPermitidoResolver`
+        // ficaram sem uso (sempre vazio agora) — não removidos do código
+        // pra não mexer no formato de retorno de `_rodarPasse`/
+        // preenchimentoFinal que outras partes da função esperam.
+        let espacoAntes = 0;
+        if (temConteudoAcima) {
+          espacoAntes = gapAntesResolver(indice);
+        }
+        if (linhaYPasse + espacoAntes + alturaHeaderMarca + MARCA_HEADER_GAP_DEPOIS + cardHeight > areaFimYLimite + 0.5) {
+          novaPaginaPasse();
+        } else {
+          linhaYPasse += espacoAntes;
+        }
+        posicoesPasse.push({ pagina: paginaPasse, x: PAGE_MARGIN, y: linhaYPasse });
+        linhaYPasse += alturaHeaderMarca + MARCA_HEADER_GAP_DEPOIS;
       } else {
-        linhaY += espacoAntes;
-      }
-      posicoes.push({ pagina, x: PAGE_MARGIN, y: linhaY });
-      linhaY += alturaHeaderMarca + MARCA_HEADER_GAP_DEPOIS;
-    } else {
-      // "card" (produto real) e "cardVazio" (placeholder de preenchimento,
-      // ver _construirSequenciaConteudo) usam a MESMA largura fixa da
-      // geometria — só a largura da COLUNA muda entre eles (nenhuma, o
-      // grid inteiro é sempre COLS_COMPLETO colunas iguais).
-      //
-      // 2026-08-28 (pedido "repita a subcategoria para evitar se
-      // perder"): uma quebra de página no meio de um sub-grupo só pode
-      // acontecer aqui (colIndex===0 de uma linha que não coube) — a 1ª
-      // linha de cada sub-grupo já é protegida junto com seu cabeçalho
-      // pela regra de órfão acima, então se ESTA quebra específica
-      // acontecer, é sempre uma CONTINUAÇÃO do sub-grupo (nunca a 1ª
-      // linha dele). Nesse caso, reserva espaço pra repetir o cabeçalho
-      // da marca no topo da nova página antes da linha de cards — sem
-      // isso o cliente vira a página e perde a referência de qual marca
-      // está olhando.
-      let headerRepetidoY = null;
-      if (bloco.colIndex === 0) {
-        if (pagina === -1) {
-          novaPagina();
-        } else if (linhaY + cardHeight > areaFimY + 0.5) {
-          novaPagina();
-          // BUG REAL achado 2026-09-01 (Catálogo Promocional, modo
-          // "fabricante" — usuário reportou "sobra parte branca no fim da
-          // página, sempre preencha"): esta função é COMPARTILHADA com o
-          // Catálogo Completo, que TEM sub-agrupamento por marca de
-          // veículo (alturaHeaderMarca > 0, repete o cabeçalho da marca no
-          // topo da página nova). O Catálogo Promocional NÃO tem esse
-          // sub-agrupamento (chama com alturaHeaderMarca=0 — ver
-          // gerarPdfCatalogoPromocional), mas o código reservava o espaço
-          // MARCA_HEADER_GAP_DEPOIS (6pt) de qualquer jeito, mesmo sem
-          // cabeçalho nenhum pra desenhar ali — 6pt perdidos no topo de
-          // TODA página de continuação. Como cardHeight é calculado pra
-          // caber ROWS_POR_PAGINA_COMPLETO linhas EXATAS sem folga nenhuma
-          // (ver _geometriaGrid), esses 6pt bastavam pra empurrar a
-          // verificação "cabe mais 1 linha?" (aqui e em preenchimentoFinal
-          // logo abaixo) pro lado errado — a grade sempre "perdia" a
-          // última linha da página, tanto de produto real quanto de
-          // preenchimento, ficando em branco. Fix: só reserva o espaço (e
-          // marca headerRepetidoY) quando existe de fato um cabeçalho de
-          // marca pra repetir.
-          if (alturaHeaderMarca > 0) {
-            headerRepetidoY = linhaY;
-            linhaY += alturaHeaderMarca + MARCA_HEADER_GAP_DEPOIS;
+        // "card" (produto real) e "cardVazio" (placeholder de preenchimento,
+        // ver _construirSequenciaConteudo) usam a MESMA largura fixa da
+        // geometria — só a largura da COLUNA muda entre eles (nenhuma, o
+        // grid inteiro é sempre COLS_COMPLETO colunas iguais).
+        //
+        // 2026-08-28 (pedido "repita a subcategoria para evitar se
+        // perder"): uma quebra de página no meio de um sub-grupo só pode
+        // acontecer aqui (colIndex===0 de uma linha que não coube) — a 1ª
+        // linha de cada sub-grupo já é protegida junto com seu cabeçalho
+        // pela regra de órfão acima, então se ESTA quebra específica
+        // acontecer, é sempre uma CONTINUAÇÃO do sub-grupo (nunca a 1ª
+        // linha dele). Nesse caso, reserva espaço pra repetir o cabeçalho
+        // da marca no topo da nova página antes da linha de cards — sem
+        // isso o cliente vira a página e perde a referência de qual marca
+        // está olhando.
+        let headerRepetidoY = null;
+        if (bloco.colIndex === 0) {
+          if (paginaPasse === -1) {
+            novaPaginaPasse();
+          } else if (linhaYPasse + cardHeight > areaFimYLimite + 0.5) {
+            novaPaginaPasse();
+            // BUG REAL achado 2026-09-01 (Catálogo Promocional, modo
+            // "fabricante" — usuário reportou "sobra parte branca no fim da
+            // página, sempre preencha"): esta função é COMPARTILHADA com o
+            // Catálogo Completo, que TEM sub-agrupamento por marca de
+            // veículo (alturaHeaderMarca > 0, repete o cabeçalho da marca no
+            // topo da página nova). O Catálogo Promocional NÃO tem esse
+            // sub-agrupamento (chama com alturaHeaderMarca=0 — ver
+            // gerarPdfCatalogoPromocional), mas o código reservava o espaço
+            // MARCA_HEADER_GAP_DEPOIS (6pt) de qualquer jeito, mesmo sem
+            // cabeçalho nenhum pra desenhar ali — 6pt perdidos no topo de
+            // TODA página de continuação. Como cardHeight é calculado pra
+            // caber ROWS_POR_PAGINA_COMPLETO linhas EXATAS sem folga nenhuma
+            // (ver _geometriaGrid), esses 6pt bastavam pra empurrar a
+            // verificação "cabe mais 1 linha?" (aqui e em preenchimentoFinal
+            // logo abaixo) pro lado errado — a grade sempre "perdia" a
+            // última linha da página, tanto de produto real quanto de
+            // preenchimento, ficando em branco. Fix: só reserva o espaço (e
+            // marca headerRepetidoY) quando existe de fato um cabeçalho de
+            // marca pra repetir.
+            if (alturaHeaderMarca > 0) {
+              headerRepetidoY = linhaYPasse;
+              linhaYPasse += alturaHeaderMarca + MARCA_HEADER_GAP_DEPOIS;
+            }
+          } else if (forcarQuebraEntreGrupos && bloco.inicioDeGrupo && linhaYPasse > areaTopoY + 0.5) {
+            // Modo "fabricante" (ver comentário em _construirSequenciaConteudoPromocional):
+            // mesmo cabendo na página atual, um novo grupo (fabricante) força
+            // página nova se já tem conteúdo de OUTRO grupo acima — o
+            // cabeçalho da página precisa sempre corresponder a TODOS os
+            // cards que aparecem nela.
+            novaPaginaPasse();
           }
-        } else if (forcarQuebraEntreGrupos && bloco.inicioDeGrupo && linhaY > areaTopoY + 0.5) {
-          // Modo "fabricante" (ver comentário em _construirSequenciaConteudoPromocional):
-          // mesmo cabendo na página atual, um novo grupo (fabricante) força
-          // página nova se já tem conteúdo de OUTRO grupo acima — o
-          // cabeçalho da página precisa sempre corresponder a TODOS os
-          // cards que aparecem nela.
-          novaPagina();
+        }
+        const x = PAGE_MARGIN + bloco.colIndex * (cardWidth + GAP);
+        posicoesPasse.push({
+          pagina: paginaPasse, x, y: linhaYPasse,
+          headerRepetidoY,
+          headerRepetidoMarca: headerRepetidoY !== null ? bloco.marca : null,
+        });
+        if (bloco.colIndex === bloco.colsLinha - 1) {
+          linhaYPasse += cardHeight + GAP;
+          linhaEmAbertoPasse = false;
+        } else {
+          linhaEmAbertoPasse = true;
         }
       }
-      const x = PAGE_MARGIN + bloco.colIndex * (cardWidth + GAP);
-      posicoes.push({
-        pagina, x, y: linhaY,
-        headerRepetidoY,
-        headerRepetidoMarca: headerRepetidoY !== null ? bloco.marca : null,
-      });
-      if (bloco.colIndex === bloco.colsLinha - 1) {
-        linhaY += cardHeight + GAP;
-        linhaEmAberto = false;
-      } else {
-        linhaEmAberto = true;
-      }
+    });
+
+    // A última página não passa por novaPaginaPasse() de novo (não tem
+    // próximo bloco pra disparar a troca) — grava o Y final dela aqui, fora
+    // do loop.
+    //
+    // BUG REAL corrigido 2026-09-01 (Catálogo Promocional modo "linha",
+    // depois da mudança "fluxo contínuo entre grupos" — ver
+    // _construirSequenciaConteudoPromocional): `linhaY` só avança quando o
+    // ÚLTIMO bloco de uma linha da grade é desenhado (colIndex===colsLinha-1,
+    // acima). Antes da mudança de fluxo contínuo, a sequência sempre incluía
+    // blocos "cardVazio" explícitos preenchendo o resto de CADA linha, então
+    // a última linha do documento sempre acabava fechada. Com o fluxo
+    // contínuo, a última linha pode terminar com um item real "solto" numa
+    // coluna que não é a última (ex: 1 produto sozinho na coluna 0) — nesse
+    // caso `linhaY` nunca avançava, e o preenchimentoFinal (calculado a
+    // seguir a partir de `alturaFinalPorPagina`) desenhava uma linha inteira
+    // de cardVazio EXATAMENTE por cima dessa última linha real, escondendo o
+    // produto (reportado pelo usuário como "card sumiu"/"pulou card"). Fix:
+    // se a última linha ficou "em aberto" (teve conteúdo mas não fechou),
+    // avança linhaY mais uma vez antes de gravar a altura final da página.
+    if (linhaEmAbertoPasse) linhaYPasse += cardHeight + GAP;
+    if (paginaPasse >= 0) alturaFinalPorPaginaPasse[paginaPasse] = linhaYPasse;
+
+    return { posicoesPasse, alturaFinalPorPaginaPasse, separadoresPasse };
+  }
+
+  // 1ª passada: espaçamento padrão em TODO cabeçalho — só pra descobrir em
+  // que página cada bloco cai de verdade. A decisão "este cabeçalho é 1 de
+  // EXATAMENTE 2 marcas que compartilham a mesma página" só pode ser
+  // respondida DEPOIS de saber a paginação (e a paginação, por sua vez,
+  // depende do espaçoAntes usado — por isso 2 passadas em vez de 1).
+  // separadorPermitidoResolver=() => false: a 1ª passada nunca tenta a linha
+  // de fechamento — ela existe só pra descobrir, com o layout "de sempre"
+  // (sem separador nenhum), quantas marcas caem naturalmente em cada
+  // página. Se ela já tentasse inserir separador aqui, a contagem de
+  // "quantas marcas cabem nesta página" ficaria distorcida pelo próprio
+  // separador (galinha e ovo) — ver `indicesComGapDuasMarcas` abaixo.
+  const passe1 = _rodarPasse(() => MARCA_HEADER_GAP_ANTES, () => false);
+  const cabecalhosPorPaginaPasse1 = {};
+  sequencia.forEach((bloco, indice) => {
+    if (bloco.tipo === "cabecalhoMarca") {
+      const p = passe1.posicoesPasse[indice].pagina;
+      if (!cabecalhosPorPaginaPasse1[p]) cabecalhosPorPaginaPasse1[p] = [];
+      cabecalhosPorPaginaPasse1[p].push(indice);
     }
   });
+  const indicesComGapDuasMarcas = new Set();
+  Object.values(cabecalhosPorPaginaPasse1).forEach((indices) => {
+    if (indices.length === 2) indices.forEach((i) => indicesComGapDuasMarcas.add(i));
+  });
 
-  // A última página não passa por novaPagina() de novo (não tem próximo
-  // bloco pra disparar a troca) — grava o Y final dela aqui, fora do loop.
+  // 2ª passada (a que vale de verdade): mesmo cálculo, agora usando o gap
+  // maior só nos cabeçalhos identificados acima.
   //
-  // BUG REAL corrigido 2026-09-01 (Catálogo Promocional modo "linha",
-  // depois da mudança "fluxo contínuo entre grupos" — ver
-  // _construirSequenciaConteudoPromocional): `linhaY` só avança quando o
-  // ÚLTIMO bloco de uma linha da grade é desenhado (colIndex===colsLinha-1,
-  // acima). Antes da mudança de fluxo contínuo, a sequência sempre incluía
-  // blocos "cardVazio" explícitos preenchendo o resto de CADA linha, então
-  // a última linha do documento sempre acabava fechada. Com o fluxo
-  // contínuo, a última linha pode terminar com um item real "solto" numa
-  // coluna que não é a última (ex: 1 produto sozinho na coluna 0) — nesse
-  // caso `linhaY` nunca avançava, e o preenchimentoFinal (calculado a
-  // seguir a partir de `alturaFinalPorPagina`) desenhava uma linha inteira
-  // de cardVazio EXATAMENTE por cima dessa última linha real, escondendo o
-  // produto (reportado pelo usuário como "card sumiu"/"pulou card"). Fix:
-  // se a última linha ficou "em aberto" (teve conteúdo mas não fechou),
-  // avança linhaY mais uma vez antes de gravar a altura final da página.
-  if (linhaEmAberto) linhaY += cardHeight + GAP;
-  if (pagina >= 0) alturaFinalPorPagina[pagina] = linhaY;
+  // BUG REAL achado 2026-09-14 (usuário: "aumentei pra 100 e não vi
+  // diferença"): a 1ª versão media "quantidade de marcas na LINHA inteira"
+  // (`totalMarcasNaLinha`, calculado em _construirSequenciaConteudo) — mas
+  // uma Linha como "FUSÍVEL" tem DEZENAS de marcas espalhadas por várias
+  // páginas (FORD, GM, TOYOTA, FIAT, MASSEY FERGUSON, MAZDA, UNIVERSAL/
+  // DIVERSOS...), então totalMarcasNaLinha quase nunca dava EXATAMENTE 2 —
+  // o gap maior nunca era de fato usado, não importa o valor da constante.
+  // O que interessa é "quantas marcas caem NESTA PÁGINA especificamente"
+  // (coincidência de quanto espaço sobra, não uma propriedade da Linha),
+  // só descoberto depois de rodar a paginação — daí o esquema de 2
+  // passadas acima em vez do campo `totalMarcasNaLinha` no bloco.
+  // PEDIDO DO USUÁRIO (2026-09-14): "quando couber 3 marcas ou mais não
+  // precisa adicionar linha de cards vazias" — reaproveita EXATAMENTE o
+  // mesmo `indicesComGapDuasMarcas` de cima (página com EXATAMENTE 2
+  // marcas) pra também decidir se a linha de fechamento entra ou não, não
+  // só o tamanho do gap.
+  const passe2 = _rodarPasse(
+    (indice) => (indicesComGapDuasMarcas.has(indice) ? MARCA_HEADER_GAP_ANTES_DUAS_MARCAS : MARCA_HEADER_GAP_ANTES),
+    (indice) => indicesComGapDuasMarcas.has(indice)
+  );
+  const posicoes = passe2.posicoesPasse;
+  const alturaFinalPorPagina = passe2.alturaFinalPorPaginaPasse;
+
+  // PEDIDO DO USUÁRIO (2026-09-15): "investigue por que está cortando
+  // cards, preciso que isso não aconteça" — reproduzido ao vivo com um
+  // catálogo real (grupo "KIT DO AMORTECEDOR", 32 produtos): nenhum produto
+  // estava de fato sendo perdido (os 32 sempre entram no PDF, confirmado
+  // batendo cada código contra o X2), mas no fluxo CONTÍNUO do Catálogo
+  // Promocional modo "linha" (só ocorre quando alturaHeaderMarca===0 E
+  // forcarQuebraEntreGrupos===false — a única combinação usada por
+  // gerarPdfCatalogoPromocional(modo="linha"); Catálogo Completo sempre tem
+  // cabeçalho de marca, modo "fabricante" sempre força quebra — nenhum dos
+  // dois entra aqui), quando o total de cards reais não fecha múltiplo
+  // exato de COLS_COMPLETO×ROWS_POR_PAGINA_COMPLETO (20), a ÚLTIMA página
+  // do documento podia sobrar com só 1-3 cards reais "órfãos" (ex.: 32
+  // itens = 20 numa página + 1 sozinho na página seguinte, quase toda em
+  // branco) enquanto a penúltima ia até o fim. Card nenhum overrode:
+  // linhaEmAbertoPasse (acima) já garante que a linha órfã nunca fica
+  // escondida atrás de cardVazio — o card real sempre desenha. O problema
+  // era só visual (página quase vazia parecendo card "cortado"). Fix:
+  // rebalanceia as DUAS ÚLTIMAS páginas do fluxo pra dividir os cards reais
+  // dessas duas de forma mais uniforme (32 → 20+12 vira 16+16, por
+  // exemplo) — só quando a última página não fecha nem 1 linha inteira
+  // (< COLS_COMPLETO cards reais), senão deixa como está (várias linhas
+  // parciais já parecem uma página normal, não precisa mexer).
+  if (alturaHeaderMarca === 0 && !forcarQuebraEntreGrupos) {
+    const totalPaginasAtual = alturaFinalPorPagina.length;
+    if (totalPaginasAtual >= 2) {
+      const capacidadePagina = COLS_COMPLETO * ROWS_POR_PAGINA_COMPLETO;
+      const ultimaPagina = totalPaginasAtual - 1;
+      const indicesPenultima = [];
+      const indicesUltima = [];
+      sequencia.forEach((_, i) => {
+        if (posicoes[i].pagina === ultimaPagina - 1) indicesPenultima.push(i);
+        else if (posicoes[i].pagina === ultimaPagina) indicesUltima.push(i);
+      });
+      if (
+        indicesUltima.length > 0 &&
+        indicesUltima.length < COLS_COMPLETO &&
+        indicesPenultima.length === capacidadePagina
+      ) {
+        const penultimaPagina = ultimaPagina - 1;
+        const totalCauda = indicesPenultima.length + indicesUltima.length;
+        const novoTamanhoPenultima = Math.ceil(totalCauda / 2);
+        [...indicesPenultima, ...indicesUltima].forEach((idxSeq, posNaCauda) => {
+          const naPenultima = posNaCauda < novoTamanhoPenultima;
+          const posicaoNaPagina = naPenultima ? posNaCauda : posNaCauda - novoTamanhoPenultima;
+          const row = Math.floor(posicaoNaPagina / COLS_COMPLETO);
+          const col = posicaoNaPagina % COLS_COMPLETO;
+          posicoes[idxSeq] = {
+            pagina: naPenultima ? penultimaPagina : ultimaPagina,
+            x: PAGE_MARGIN + col * (cardWidth + GAP),
+            y: areaTopoY + row * (cardHeight + GAP),
+            headerRepetidoY: null,
+            headerRepetidoMarca: null,
+          };
+        });
+        alturaFinalPorPagina[penultimaPagina] =
+          areaTopoY + Math.ceil(novoTamanhoPenultima / COLS_COMPLETO) * (cardHeight + GAP);
+        alturaFinalPorPagina[ultimaPagina] =
+          areaTopoY + Math.ceil((totalCauda - novoTamanhoPenultima) / COLS_COMPLETO) * (cardHeight + GAP);
+      }
+    }
+  }
+
+  // PEDIDO DO USUÁRIO (2026-09-14): linhas de "fechamento de marca"
+  // decididas dentro de _rodarPasse (ver separadoresPasse ali) — mesma
+  // forma de item que preenchimentoFinal (pagina/x/y/cardWidth/cardHeight),
+  // por isso entram na MESMA lista final, desenhadas pela mesma
+  // _desenharPreenchimentoDaPagina sem precisar de nenhum código novo nos
+  // pontos de chamada (gerarPdfCatalogoCompleto/Promocional).
+  const separadoresMarca = passe2.separadoresPasse;
 
   // 2026-08-28 (pedido "preencha com cards vazios embaixo"): pra cada
   // página, se sobrou espaço suficiente pra pelo menos mais 1 linha
@@ -2564,7 +2911,126 @@ function _calcularLayoutConteudo(sequencia, geometria, alturaHeaderMarca, forcar
   // nenhuma linha completa — mesmo placeholder já usado pra completar
   // leva parcial (ver _desenharCardVazio), só que aqui cobrindo a página
   // toda em vez de só uma leva.
-  const preenchimentoFinal = [];
+  // BUG REAL achado 2026-09-14 (usuário: prints "PARAFUSO TIRANTE"/"PLACA
+  // RETIFICADORA" e "GARRA DE BATERIA"/"PORTA FUSÍVEL" — 2 linhas vazias
+  // empilhadas em vez de 1): quando um sub-grupo pequeno já fecha sua
+  // própria leva com cardVazio (ex: 2 produtos reais + 2 vazios pra
+  // completar a linha), a linha de fechamento abaixo (o bloco while +
+  // guarda de segurança logo adiante) via de qualquer jeito, mesmo o
+  // "resto" já tendo sido gerado por dentro do grupo — resultado: uma
+  // linha vazia DENTRO do grupo + outra linha vazia INTEIRA logo depois,
+  // parecendo duplicado/bugado. Fix: descobre se o ÚLTIMO bloco de cada
+  // página já é "cardVazio" (ou seja, a última linha real já fechou
+  // incompleta) — se sim, essa linha incompleta JÁ é o fechamento do
+  // grupo, não faz sentido colar mais uma linha cheia de vazios embaixo.
+  //
+  // 2026-09-15: `ultimoTipoPorPagina` (o mapa que esse guard usava) foi
+  // REMOVIDO — ver comentário completo no loop `alturaFinalPorPagina.forEach`
+  // mais abaixo, onde o guard correspondente também saiu. Motivo: o guard
+  // impedia exatamente as páginas com fechamento incompleto de receber a
+  // padronização de distância até o rodapé pedida pelo usuário depois
+  // (2026-09-14/15). Deixei este comentário histórico porque explica POR
+  // QUE esse padrão existia antes (evitar 2 linhas vazias empilhadas
+  // parecendo bugadas) — só não vale mais como comportamento atual.
+
+  const preenchimentoFinal = [...separadoresMarca];
+
+  // PEDIDO DO USUÁRIO (2026-09-15, print com círculo vermelho): mesmo
+  // depois do rebalanceamento das 2 últimas páginas (fix logo acima), a
+  // ÚLTIMA LINHA de conteúdo real de uma página, quando fecha incompleta
+  // (nem todas as COLS_COMPLETO colunas têm produto — ex.: linha com só
+  // MB4194/MB4178 nas colunas 0-1, faltando 2-3), ficava com as colunas
+  // restantes em branco SEM BORDA nenhuma — só as linhas de preenchimento
+  // SEGUINTES (a próxima linha pra baixo em diante, via o loop
+  // `alturaFinalPorPagina.forEach` logo abaixo) ganhavam o cardVazio com
+  // borda. O rebalanceamento tornou isso bem mais visível: a página final
+  // agora quase sempre termina com uma linha real incompleta ANTES das
+  // linhas 100% vazias, então o buraco sem borda ficava bem no meio da
+  // página, do lado de cards de verdade — parecia produto sumido (não
+  // era: os cards vazios de baixo, com borda, já mostravam que o resto é
+  // preenchimento proposital; só faltava a MESMA borda nessa linha
+  // específica). 2026-09-15 (mesmo dia, print circulado da seção
+  // FUSÍVEL/HYUNDAI-KIA no Catálogo COMPLETO — "essa pagina hyundai está
+  // com todos os produtos... porem não completou com os cards em baixo
+  // como solicitei"): o MESMO sintoma acontece no Catálogo Completo
+  // também (sub-grupo KIA com 7 produtos — 4+3, confirmado batendo
+  // contra o catálogo real, nenhum produto faltando — a leva final de 3
+  // deveria fechar com 1 cardVazio na 4ª coluna, igual qualquer outra
+  // leva incompleta, mas quando essa leva é o ÚLTIMO conteúdo da página
+  // o cardVazio correspondente não aparece com borda). Não achei uma
+  // causa raiz determinística lendo o código sozinho (sem conseguir
+  // rodar/depurar de verdade — bash indisponível a sessão toda); em vez
+  // de deixar só o modo Promocional "linha" coberto, generalizei este
+  // fix pra QUALQUER página de QUALQUER modo (removido o guard
+  // `alturaHeaderMarca===0 && !forcarQuebraEntreGrupos` que tinha antes):
+  // descobre, por página, a linha (mesmo Y, tolerância de arredondamento)
+  // que contém o ÚLTIMO bloco tipo "card" (produto real — nunca
+  // "cabecalhoMarca", que não ocupa coluna da grade), calcula as colunas
+  // ocupadas a partir da posição X final de cada card e completa com
+  // cardVazio as colunas que sobraram nessa MESMA linha. Seguro mesmo
+  // quando a leva já tinha um cardVazio próprio ali (caso normal, fora
+  // desse bug): a coluna já apareceria "ocupada" seja pela leitura do
+  // texto (cards reais) seja simplesmente por não sobrar overlap real —
+  // na pior hipótese redesenha um cardVazio idêntico por cima de outro
+  // já correto, sem efeito visual (mesma borda, mesma posição).
+  {
+    const itensPorPagina = {};
+    sequencia.forEach((bloco, i) => {
+      if (bloco.tipo !== "card") return;
+      const p = posicoes[i].pagina;
+      const col = Math.round((posicoes[i].x - PAGE_MARGIN) / (cardWidth + GAP));
+      (itensPorPagina[p] = itensPorPagina[p] || []).push({ y: posicoes[i].y, col });
+    });
+    Object.entries(itensPorPagina).forEach(([pStr, itens]) => {
+      const p = Number(pStr);
+      const yUltimaLinha = Math.max(...itens.map((it) => it.y));
+      const colsUsadas = new Set(
+        itens.filter((it) => Math.abs(it.y - yUltimaLinha) < 0.5).map((it) => it.col)
+      );
+      for (let col = 0; col < COLS_COMPLETO; col += 1) {
+        if (!colsUsadas.has(col)) {
+          preenchimentoFinal.push({
+            pagina: p, x: PAGE_MARGIN + col * (cardWidth + GAP), y: yUltimaLinha, cardWidth, cardHeight,
+          });
+        }
+      }
+    });
+  }
+
+  // 2026-09-14: cheguei a testar uma linha extra de preenchimento com
+  // altura parcial (menor que cardHeight) pra fechar o resto que sobra
+  // antes do rodapé quando header+linhas não fecham múltiplo exato de
+  // cardHeight — usuário pediu pra remover de forma genérica ("lembra
+  // desses cards minúsculos... preciso que remova-os"), mas depois pediu
+  // de volta pra "quando apenas couber uma marca na página" (ex: FIAT/
+  // FUSÍVEL com só 1 marca, 4 linhas fechadas + resto grande em branco
+  // antes do rodapé), e por fim pediu que a MESMA distância padronizada
+  // valesse pra QUALQUER página (2026-09-14, print MASSEY FERGUSON/MAZDA:
+  // "fique como a distancia dos ultimos cards até o rodape como em
+  // paginas de uma marca só"). Escopo original AQUI (ver ultimoTipoPorPagina
+  // acima): só entrava quando a última linha real da página fechou CHEIA
+  // (sem cardVazio) — se já tinha fechado incompleta, a linha incompleta era
+  // tratada como "o fechamento do grupo", sem mais nenhuma linha vazia
+  // embaixo dela.
+  //
+  // BUG REAL achado 2026-09-15 (usuário, print FUSÍVEL/FORD+GM página 8 +
+  // confirmação "ainda não acontece com todas as paginas em todos os
+  // fluxos" DEPOIS de reiniciar o container): esse guard fazia exatamente
+  // as páginas que MAIS precisavam de padronização (aquelas cuja última
+  // linha real fechou incompleta — ex.: sub-grupo pequeno de 2-3 produtos)
+  // ficarem de FORA da padronização. `alturaFinalPorPagina[p]` já é o Y
+  // seguinte à última linha desenhada (real OU cardVazio de fechamento —
+  // ver `linhaYPasse` em `_rodarPasse`, sempre avança depois de qualquer
+  // linha fechar, nunca fica "por cima" do conteúdo já posicionado), então
+  // não há risco de sobrepor cards reais ao continuar preenchendo a partir
+  // daqui. O guard removido evitava um efeito colateral cosmético
+  // específico (2026-09-14, "PARAFUSO TIRANTE"/"GARRA DE BATERIA": duas
+  // linhas vazias empilhadas pareciam duplicadas) — mas isso só acontecia
+  // quando sobrava pouquíssimo espaço (praticamente 1 linha extra). Entre
+  // esse efeito cosmético raro e a página inteira não bater com a
+  // distância padronizada pedida (pedido mais recente e reafirmado depois
+  // do restart), prevalece a padronização: toda página agora preenche até
+  // areaFimY independente de como a última linha real fechou.
   alturaFinalPorPagina.forEach((yFinal, p) => {
     let y = yFinal;
     while (y + cardHeight <= areaFimY + 0.5) {
@@ -2573,9 +3039,32 @@ function _calcularLayoutConteudo(sequencia, geometria, alturaHeaderMarca, forcar
       }
       y += cardHeight + GAP;
     }
+    // PEDIDO DO USUÁRIO (2026-09-14): "não diminua os cards deixe mesmo
+    // tamanho" — a linha final aqui usa a MESMA cardHeight de todo o
+    // resto do grid (não mais a altura reduzida "sobra"). Isso empurra o
+    // fim dessa linha um pouco além de areaFimY (exatamente o quanto o
+    // cabeçalho de marca comeu do espaço, tipicamente ~20pt — sempre bem
+    // menos que os 30,349pt padrão), reduzindo o espaço até o rodapé
+    // nessas páginas específicas em vez de encolher qualquer card. Guarda
+    // de segurança: só desenha se ainda sobrar pelo menos 2pt antes do
+    // rodapé de verdade (A4_ALTURA - FOOTER_HEIGHT) — nunca desenha por
+    // cima do rodapé.
+    if (y + cardHeight <= A4_ALTURA - FOOTER_HEIGHT - 2) {
+      for (let col = 0; col < COLS_COMPLETO; col += 1) {
+        preenchimentoFinal.push({ pagina: p, x: PAGE_MARGIN + col * (cardWidth + GAP), y, cardWidth, cardHeight });
+      }
+    }
   });
 
-  return { posicoes, totalPaginas: pagina + 1, preenchimentoFinal };
+  // BUG REAL achado 2026-09-14 (usuário: "erro ao gerar pdf do catalogo"):
+  // depois do refactor pra 2 passadas (ver _rodarPasse acima), a variável
+  // `pagina` do código antigo deixou de existir aqui fora (virou local
+  // `paginaPasse`, escopada dentro de _rodarPasse) — este `return` ainda
+  // referenciava ela direto, quebrando com "pagina is not defined" toda
+  // vez que a função rodava. Fix: `alturaFinalPorPagina.length` já é
+  // exatamente a contagem de páginas (um índice preenchido por página,
+  // 0 a N-1 — mesmo valor que "pagina + 1" dava antes).
+  return { posicoes, totalPaginas: alturaFinalPorPagina.length, preenchimentoFinal };
 }
 
 // Nome da marca de veículo centralizado, cor/fonte do título de Linha —
@@ -2628,6 +3117,47 @@ function _textoComSombra(doc, texto, x, y, cor, opcoes) {
   doc.fillColor(cor).text(texto, x, y, opcoes);
 }
 
+// 2026-09-11 (pedido do usuário, comparação direta com o catálogo original
+// 3RHOcompactado.pdf enviado por ele): no original, o título de cada seção
+// e cada nome de Linha no ÍNDICE têm uma cópia "fantasma" do MESMO texto —
+// bem mais clara, não itálica, ligeiramente maior — desenhada ATRÁS,
+// deslocada pra CIMA E PRA ESQUERDA do texto colorido principal (efeito de
+// "eco"/marca d'água). É um efeito BEM mais forte que o _textoComSombra
+// normal (sombra escura sutil, deslocada pra baixo/direita) — os dois
+// convivem: o eco fica atrás de tudo, a sombra normal continua entre o eco
+// e o texto principal.
+// 2026-09-11 (correção, usuário mandou 2 prints com guias de medição
+// mostrando que a 1ª tentativa "tava muito diferente"): a 1ª versão media
+// só o PDF original comprimido (200dpi) e concluiu, por causa da largura
+// quase idêntica entre eco e texto principal, que a fonte do eco seria
+// reta/não itálica (por isso usava Helvetica-Bold) — ficou errado. Os 2
+// prints com guias mostraram, medidos com precisão: largura do eco e do
+// texto principal são PRATICAMENTE IDÊNTICAS (542px vs 541px numa amostra,
+// diferença de 1px) e o deslocamento vertical topo-a-topo é bem maior
+// proporcionalmente (~85% da altura do texto principal, não os ~53% que a
+// 1ª versão usava) — ou seja, o eco é a MESMA fonte/tamanho do texto
+// principal (Futura Md BT Bold Italic, TITULO_FONTE), só cinza-claro e
+// deslocado bem mais pra cima (quase uma 2ª linha separada, tocando de
+// leve no topo da linha vermelha) — não uma fonte reta diferente e maior.
+// Confirmado renderizando com a fonte real do projeto e comparando lado a
+// lado com os prints de referência antes de gravar esta versão.
+// Usado SÓ nos 3 lugares em que o catálogo original realmente tem esse
+// efeito — título de seção (_desenharCabecalho, estilo "elétrica"), título
+// "ÍNDICE" e nome de Linha em cada linha do índice (_desenharLinhaIndice).
+// NÃO usado no cabeçalho de marca (_desenharCabecalhoMarca — sub-
+// agrupamento por marca é invenção nossa, não existe no catálogo original)
+// nem no bloco "PG nn" do índice (o original não tem eco ali).
+const ECO_TITULO_COR = "#dcdcdc";
+const ECO_TITULO_OFFSET_X = -6;
+const ECO_TITULO_OFFSET_Y = -10;
+function _textoComEco(doc, texto, x, y, cor, opcoes, tamanhoFonte) {
+  doc.font(TITULO_FONTE).fontSize(tamanhoFonte);
+  doc.fillColor(ECO_TITULO_COR).text(texto, x + ECO_TITULO_OFFSET_X, y + ECO_TITULO_OFFSET_Y, opcoes);
+  doc.fillOpacity(1);
+  doc.font(TITULO_FONTE).fontSize(tamanhoFonte);
+  _textoComSombra(doc, texto, x, y, cor, opcoes);
+}
+
 // Cabeçalho da(s) página(s) de índice — mesma arte de _desenharCabecalho,
 // só com o título fixo "ÍNDICE" em INDICE_TITULO_TAMANHO (36pt, pedido do
 // usuário) em vez do nome da busca em TITULO_TAMANHO (17pt).
@@ -2664,8 +3194,9 @@ function _desenharCabecalhoIndice(doc, estilo = "eletrica", fabricante = "") {
 
   // Pedido do usuário (2026-08-26): título "ÍNDICE" centralizado na página
   // (só ele — o resto do cabeçalho/linhas do índice continua como estava).
-  doc.font(TITULO_FONTE).fontSize(INDICE_TITULO_TAMANHO);
-  _textoComSombra(doc, tituloTexto, tituloX, tituloY, VERMELHO_CATEGORIA, { width: tituloLargura, align: "center" });
+  // 2026-09-11: eco atrás do título (ver _textoComEco), igual ao catálogo
+  // original.
+  _textoComEco(doc, tituloTexto, tituloX, tituloY, VERMELHO_CATEGORIA, { width: tituloLargura, align: "center" }, INDICE_TITULO_TAMANHO);
 
   doc.fillColor("#111827").font("Helvetica");
 }
@@ -2682,14 +3213,15 @@ function _desenharLinhaIndice(doc, textoLinha, numeroPagina, y, larguraTotal) {
 
   const nomeUpper = String(textoLinha || "").toUpperCase();
 
-  doc.font(TITULO_FONTE).fontSize(INDICE_LINHA_TAMANHO);
   const opcoesNome = {
     width: larguraNomeMax,
     height: INDICE_LINHA_TAMANHO + 4,
     ellipsis: true,
     lineBreak: false,
   };
-  _textoComSombra(doc, nomeUpper, xEsquerda, y, VERMELHO_CATEGORIA, opcoesNome);
+  // 2026-09-11: eco atrás do nome da Linha (ver _textoComEco), igual ao
+  // catálogo original — substitui a chamada direta a _textoComSombra.
+  _textoComEco(doc, nomeUpper, xEsquerda, y, VERMELHO_CATEGORIA, opcoesNome, INDICE_LINHA_TAMANHO);
 
   doc.font(TITULO_FONTE).fontSize(INDICE_LINHA_TAMANHO);
   const larguraNomeReal = Math.min(doc.widthOfString(nomeUpper), larguraNomeMax);
@@ -3106,7 +3638,21 @@ async function gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino, m
   // ver comentário em RODAPE_NUMERO_FONTE acima.
   doc.registerFont(RODAPE_NUMERO_FONTE, RODAPE_NUMERO_FONTE_ARQUIVO);
 
-  const grupos = modo === "fabricante" ? _agruparPorFabricante(produtos) : _agruparPorLinha(produtos);
+  // PEDIDO DO USUÁRIO (2026-09-15): "preciso que fiquem organizados por
+  // codigo também" — dentro de cada grupo (Linha ou Fabricante),
+  // _agruparPorLinha/_agruparPorFabricante só preservam a ordem em que os
+  // produtos chegaram no array `produtos` (ordem de busca/importação do
+  // arquivo de preços, arbitrária) — não ordenavam por código nenhum. Essas
+  // duas funções são COMPARTILHADAS com o Catálogo Completo (ver
+  // gerarPdfCatalogoCompleto, ~linha 3246), então a ordenação entra aqui,
+  // ordenando uma CÓPIA de `produtos` antes de agrupar — só afeta o
+  // Catálogo Promocional, o Completo continua na ordem que já usava.
+  // localeCompare com numeric:true trata "MB2" < "MB10" corretamente (não
+  // ordena como texto puro, onde "MB10" viria antes de "MB2").
+  const produtosOrdenados = [...produtos].sort((a, b) =>
+    String(a.codigo ?? "").localeCompare(String(b.codigo ?? ""), "pt-BR", { numeric: true })
+  );
+  const grupos = modo === "fabricante" ? _agruparPorFabricante(produtosOrdenados) : _agruparPorLinha(produtosOrdenados);
 
   // 2026-08-31 (pedido do usuário: "remova sumario"): Catálogo Promocional
   // não tem mais páginas de índice/sumário — vai direto pro conteúdo. Isso
@@ -3135,7 +3681,16 @@ async function gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino, m
   // forcarQuebraEntreGrupos só no modo "fabricante" (ver comentário em
   // _construirSequenciaConteudoPromocional) — modo "linha" mantém a
   // paginação contínua de sempre, sem quebra forçada entre Linhas.
-  const { posicoes, preenchimentoFinal } = _calcularLayoutConteudo(sequencia, geometriaCompleto, 0, modo === "fabricante");
+  // BUG REAL 2026-09-14 (ver comentário completo em _calcularLayoutConteudo
+  // sobre `alturaRodapeReal`): passa `alturaRodapePromo` (o rodapé de
+  // verdade, mais baixo, deste catálogo) em vez de deixar a função usar o
+  // `FOOTER_HEIGHT` do Catálogo Completo por padrão — sem isso a última
+  // linha de produtos reais de CADA página era cortada uma linha antes do
+  // que cabia de verdade, e a linha vazia de "preenchimento" tomava o lugar
+  // dos produtos que deveriam estar ali.
+  const { posicoes, preenchimentoFinal } = _calcularLayoutConteudo(
+    sequencia, geometriaCompleto, 0, modo === "fabricante", alturaRodapePromo
+  );
 
   let pagina = 0;
 

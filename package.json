@@ -46,6 +46,7 @@
     "exceljs": "^4.4.0",
     "express": "^4.22.2",
     "express-rate-limit": "^8.5.2",
+    "googleapis": "^181.0.0",
     "helmet": "^8.2.0",
     "jpeg-js": "^0.4.4",
     "mammoth": "^1.12.0",

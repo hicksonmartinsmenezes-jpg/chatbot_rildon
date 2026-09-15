@@ -5,55 +5,105 @@
  * PEDIDO DO USUÁRIO (2026-09-11): "pretendo automatizar a geração dos pdf e
  * subir automaticamente para o drive" — 3º e último elo do encadeamento
  * automático pós-Lançamentos (ver server.js: Lançamentos → Cadastro →
- * Fotos → este módulo). Sempre que a rotina "Lançamentos X2" (toda
- * segunda-feira) captura produtos novos, este módulo:
- *   1) Descobre de QUAL(IS) fabricante(s) são esses códigos (consultando o
- *      próprio catálogo do bot, já reindexado pelo Cadastro Lançamentos que
- *      rodou antes — GET /api/catalogo/buscar-codigo).
- *   2) Pra cada fabricante tocado, gera o PDF "Catálogo Completo" (o mesmo
- *      layout oficial já usado manualmente no painel do bot, GET
- *      /api/catalogo/exportar-pdf?fabricante=X) — NÃO o "Catálogo
- *      Promocional" (visual diferente, pensado pra lista avulsa de código +
- *      preço, ver comentário em catalogo-pdf.service.js).
- *   3) Sobe (ou substitui, se já existir) "<fabricante>.pdf" numa ÚNICA
- *      pasta do Google Drive — decisão do usuário (2026-09-11, link da
- *      pasta): não é pasta por fabricante nem por mês, é uma pasta só,
- *      com um arquivo por fabricante, sempre atualizado (catálogo vivo, não
- *      um "resumo da semana").
+ * Fotos → este módulo).
  *
- * Reaproveita o MESMO padrão de autenticação script→bot já usado em
- * _forcarReloadCatalogo() (x2-catalogo-sync.js) e x2-estoque-export.js:
- * Authorization: Bearer API_TOKEN contra BASE_URL (ver x2-whatsapp-alerta.js).
+ * Além do uso automático pelo fluxo de Lançamentos, este arquivo também pode
+ * ser executado manualmente pelo terminal para reenviar um ou vários
+ * fabricantes, ou todos os catálogos identificados pelo próprio catálogo do
+ * bot. O modo manual reutiliza a mesma lógica de geração/upload do modo
+ * automático; não cria uma segunda implementação.
  *
- * ─── Configuração (.env, ver .env.example) ─────────────────────────────
- *   GOOGLE_DRIVE_CREDENCIAIS_PATH  caminho pro JSON da conta de serviço
- *   GOOGLE_DRIVE_PASTA_LANCAMENTOS_ID  ID da pasta única no Drive
- * Sem essas duas variáveis (ou sem o arquivo de credenciais existir de
- * verdade no caminho indicado), o módulo AVISA no log e sai sem erro —
- * mesmo espírito do guard de API_TOKEN em _forcarReloadCatalogo(): o
- * cadastro e as fotos já foram feitos e salvos corretamente, então isso
- * nunca pode derrubar a execução por causa de uma etapa opcional/posterior
- * ainda não configurada.
+ * Comandos manuais:
+ *   node scripts/x2-drive-lancamentos.js --catalogo=WEGA
+ *   node scripts/x2-drive-lancamentos.js --catalogos=WEGA,OSRAM,MARZU
+ *   node scripts/x2-drive-lancamentos.js --todos
+ *   node scripts/x2-drive-lancamentos.js --catalogo=WEGA --dry-run
+ *   node scripts/x2-drive-lancamentos.js --todos --dry-run
+ *   node scripts/x2-drive-lancamentos.js --help
+ *
+ * O modo automático continua sendo `rodarUploadDrive(codigos)` e não depende
+ * dos argumentos acima.
  */
 
 const fs = require('fs');
 const path = require('path');
 
-// ─── Descoberta de fabricante(s) tocados pelos códigos do lançamento ──────
-// Consulta o catálogo do PRÓPRIO bot (não o X2 de novo) — o Cadastro
-// Lançamentos que roda antes já garantiu que esses códigos estão indexados,
-// com `fabricante` já resolvido pela heurística de nome (ver comentário em
-// catalogo-x2.service.js/_extrairFabricante — não existe campo bruto
-// "fabricante" no X2, é sempre derivado do nome do produto no padrão
-// "... - FABRICANTE - referência").
+function _normalizarFabricante(nome) {
+  return String(nome || '').trim().replace(/\s+/g, ' ');
+}
+
+function _parsearArgumentos(argv) {
+  const args = Array.isArray(argv) ? argv : [];
+  const resultado = {
+    ajuda: false,
+    todos: false,
+    dryRun: false,
+    fabricantes: [],
+  };
+
+  for (const arg of args) {
+    if (arg === '--help' || arg === '-h') {
+      resultado.ajuda = true;
+      continue;
+    }
+    if (arg === '--todos') {
+      resultado.todos = true;
+      continue;
+    }
+    if (arg === '--dry-run') {
+      resultado.dryRun = true;
+      continue;
+    }
+
+    const match = arg.match(/^--catalogos?=(.+)$/i);
+    if (match) {
+      const nomes = match[1]
+        .split(',')
+        .map(_normalizarFabricante)
+        .filter(Boolean);
+      resultado.fabricantes.push(...nomes);
+      continue;
+    }
+
+    throw new Error(`Argumento desconhecido: ${arg}`);
+  }
+
+  resultado.fabricantes = [...new Set(resultado.fabricantes)];
+  if (resultado.todos && resultado.fabricantes.length) {
+    throw new Error('Use --todos OU --catalogo/--catalogos, não os dois juntos.');
+  }
+  return resultado;
+}
+
+function _mostrarAjuda() {
+  console.log(`
+[x2-drive] Upload manual de catálogos para o Google Drive
+
+Uso:
+  node scripts/x2-drive-lancamentos.js --catalogo=WEGA
+  node scripts/x2-drive-lancamentos.js --catalogos=WEGA,OSRAM,MARZU
+  node scripts/x2-drive-lancamentos.js --todos
+
+Teste sem alterar o Drive:
+  node scripts/x2-drive-lancamentos.js --catalogo=WEGA --dry-run
+  node scripts/x2-drive-lancamentos.js --todos --dry-run
+
+Observações:
+  - --catalogo aceita um fabricante.
+  - --catalogos aceita vários fabricantes separados por vírgula.
+  - --todos descobre os fabricantes disponíveis no catálogo do bot.
+  - Os fabricantes são processados sequencialmente.
+  - Se o PDF já existir na pasta configurada, ele é atualizado.
+  - --dry-run não cria nem atualiza arquivos no Drive.
+`);
+}
+
 async function _descobrirFabricantes(codigos, { baseUrl, apiToken }) {
   const fabricantes = new Set();
   const semFabricante = [];
-  // Concorrência limitada (5 por vez) — mesmo espírito de não martelar o
-  // próprio bot com uma rajada de N requisições simultâneas pra N códigos
-  // de um lançamento grande.
   const fila = [...codigos];
   const CONCORRENCIA = 5;
+
   async function worker() {
     while (fila.length) {
       const codigo = fila.shift();
@@ -72,14 +122,11 @@ async function _descobrirFabricantes(codigos, { baseUrl, apiToken }) {
       }
     }
   }
+
   await Promise.all(Array.from({ length: Math.min(CONCORRENCIA, codigos.length) }, worker));
   return { fabricantes: Array.from(fabricantes), semFabricante };
 }
 
-// ─── PDF "Catálogo Completo" de 1 fabricante, via o próprio endpoint que o
-// painel do bot usa manualmente (GET /catalogo/exportar-pdf?fabricante=X) —
-// reaproveita 100% da regra de negócio (filtro NCP/preço, layout oficial),
-// zero duplicação de lógica de geração de PDF aqui.
 async function _baixarPdfFabricante(fabricante, { baseUrl, apiToken }) {
   const resposta = await fetch(`${baseUrl}/api/catalogo/exportar-pdf?fabricante=${encodeURIComponent(fabricante)}`, {
     headers: { Authorization: `Bearer ${apiToken}` },
@@ -91,8 +138,6 @@ async function _baixarPdfFabricante(fabricante, { baseUrl, apiToken }) {
   return Buffer.from(arrayBuffer);
 }
 
-// ─── Escapa aspas simples pro operador `q` da Drive API (sintaxe própria
-// dela: \' dentro de uma string entre aspas simples).
 function _escaparNomeParaQuery(nome) {
   return String(nome).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
@@ -100,11 +145,6 @@ function _escaparNomeParaQuery(nome) {
 let _driveClientCache = null;
 async function _clienteDrive(credenciaisPath) {
   if (_driveClientCache) return _driveClientCache;
-  // googleapis só é exigido aqui dentro (require tardio) — assim, se a
-  // dependência ainda não foi instalada (`npm install` pendente) mas as
-  // variáveis de ambiente também não estão configuradas, o guard em
-  // rodarUploadDrive() já saiu antes de chegar aqui, sem quebrar o resto do
-  // encadeamento por causa de um `require` no topo do arquivo.
   const { google } = require('googleapis');
   const auth = new google.auth.GoogleAuth({
     keyFile: credenciaisPath,
@@ -114,15 +154,21 @@ async function _clienteDrive(credenciaisPath) {
   return _driveClientCache;
 }
 
-// ─── Sobe (ou substitui, se já existir) "<fabricante>.pdf" na pasta única
-// do Drive — busca por nome dentro da pasta antes de decidir create/update,
-// pra nunca duplicar arquivo do mesmo fabricante.
-async function _enviarPdfParaDrive(drive, pastaId, fabricante, bufferPdf) {
+async function _enviarPdfParaDrive(drive, pastaId, fabricante, bufferPdf, { dryRun = false } = {}) {
   const nomeArquivo = `${fabricante}.pdf`;
   const q = `name='${_escaparNomeParaQuery(nomeArquivo)}' and '${pastaId}' in parents and trashed=false`;
   const busca = await drive.files.list({ q, fields: 'files(id, name)', spaces: 'drive' });
   const existente = (busca.data.files || [])[0];
-  // stream a partir do Buffer — a lib googleapis aceita Readable em `media.body`.
+
+  if (dryRun) {
+    return {
+      fabricante,
+      arquivo: nomeArquivo,
+      acao: existente ? 'seria_atualizado' : 'seria_criado',
+      fileId: existente ? existente.id : null,
+    };
+  }
+
   const { Readable } = require('stream');
   const media = { mimeType: 'application/pdf', body: Readable.from(bufferPdf) };
   if (existente) {
@@ -137,9 +183,81 @@ async function _enviarPdfParaDrive(drive, pastaId, fabricante, bufferPdf) {
   return { fabricante, arquivo: nomeArquivo, acao: 'criado', fileId: criado.data.id };
 }
 
-// ─── Ponto de entrada — chamado pelo encadeamento automático pós-Lançamentos
-// em server.js, com os MESMOS códigos que o Cadastro Lançamentos e o Fotos
-// Lançamentos acabaram de processar.
+async function _configurarContextoDrive() {
+  const apiToken = process.env.API_TOKEN;
+  if (!apiToken || apiToken === 'troque_por_um_token_com_64_caracteres_ou_mais') {
+    throw new Error('API_TOKEN não configurado no .env.');
+  }
+
+  const credenciaisPath = process.env.GOOGLE_DRIVE_CREDENCIAIS_PATH;
+  const pastaId = process.env.GOOGLE_DRIVE_PASTA_LANCAMENTOS_ID;
+  if (!credenciaisPath || !pastaId) {
+    throw new Error('GOOGLE_DRIVE_CREDENCIAIS_PATH / GOOGLE_DRIVE_PASTA_LANCAMENTOS_ID não configurados no .env.');
+  }
+  if (!fs.existsSync(credenciaisPath)) {
+    throw new Error(`Arquivo de credenciais do Google Drive não encontrado em "${credenciaisPath}".`);
+  }
+
+  const { BASE_URL } = require('./x2-whatsapp-alerta');
+  return {
+    apiToken,
+    pastaId,
+    baseUrl: BASE_URL,
+    credenciaisPath: path.resolve(credenciaisPath),
+  };
+}
+
+async function _buscarFabricantesDisponiveis({ baseUrl, apiToken }) {
+  // Reutiliza o endpoint de busca do catálogo. O modo --todos precisa de uma
+  // fonte de fabricantes; o endpoint de busca por código não fornece uma
+  // listagem global. Portanto, usa os fabricantes presentes no índice exposto
+  // pelo endpoint de catálogo, quando disponível.
+  const candidatos = [
+    `${baseUrl}/api/catalogo/fabricantes`,
+    `${baseUrl}/api/catalogo/listar-fabricantes`,
+  ];
+
+  for (const url of candidatos) {
+    try {
+      const resposta = await fetch(url, { headers: { Authorization: `Bearer ${apiToken}` } });
+      if (!resposta.ok) continue;
+      const dados = await resposta.json();
+      const lista = Array.isArray(dados) ? dados : (dados.fabricantes || dados.data || []);
+      const nomes = lista.map((item) => {
+        if (typeof item === 'string') return item;
+        return item && (item.fabricante || item.nome || item.name);
+      }).map(_normalizarFabricante).filter(Boolean);
+      if (nomes.length) return [...new Set(nomes)];
+    } catch (_) {
+      // Tenta a próxima forma de descoberta.
+    }
+  }
+
+  throw new Error('Não foi possível descobrir a lista de fabricantes para --todos. Use --catalogos=FAB1,FAB2 ou configure um endpoint de fabricantes no painel.');
+}
+
+async function _uploadFabricantes(fabricantes, { baseUrl, apiToken, pastaId, credenciaisPath, dryRun = false }) {
+  const resultado = { fabricantes: fabricantes, enviados: [], erros: [] };
+  if (!fabricantes.length) return resultado;
+
+  console.log(`[x2-drive] ${dryRun ? 'simulação: ' : ''}processando ${fabricantes.length} fabricante(s) sequencialmente: ${fabricantes.join(', ')}`);
+
+  const drive = await _clienteDrive(credenciaisPath);
+  for (const fabricante of fabricantes) {
+    try {
+      console.log(`[x2-drive] ${dryRun ? 'verificando' : 'gerando'} ${fabricante}.pdf...`);
+      const bufferPdf = await _baixarPdfFabricante(fabricante, { baseUrl, apiToken });
+      const envio = await _enviarPdfParaDrive(drive, pastaId, fabricante, bufferPdf, { dryRun });
+      resultado.enviados.push(envio);
+      console.log(`[x2-drive] ${fabricante}.pdf — ${envio.acao}.`);
+    } catch (e) {
+      resultado.erros.push({ fabricante, erro: e.message });
+      console.error(`[x2-drive] falha em "${fabricante}": ${e.message}`);
+    }
+  }
+  return resultado;
+}
+
 async function rodarUploadDrive(codigos) {
   const resultado = { fabricantes: [], enviados: [], erros: [], semFabricante: [] };
   if (!codigos || !codigos.length) return resultado;
@@ -161,7 +279,6 @@ async function rodarUploadDrive(codigos) {
   }
 
   const { BASE_URL } = require('./x2-whatsapp-alerta');
-
   const { fabricantes, semFabricante } = await _descobrirFabricantes(codigos, { baseUrl: BASE_URL, apiToken });
   resultado.fabricantes = fabricantes;
   resultado.semFabricante = semFabricante;
@@ -169,23 +286,60 @@ async function rodarUploadDrive(codigos) {
     console.log('[x2-drive] nenhum fabricante identificado nos códigos do lançamento — nada pra subir ao Drive.');
     return resultado;
   }
+
   console.log(`[x2-drive] gerando e subindo PDF de ${fabricantes.length} fabricante(s) ao Drive: ${fabricantes.join(', ')}`);
-
-  const drive = await _clienteDrive(path.resolve(credenciaisPath));
-
-  for (const fabricante of fabricantes) {
-    try {
-      const bufferPdf = await _baixarPdfFabricante(fabricante, { baseUrl: BASE_URL, apiToken });
-      const envio = await _enviarPdfParaDrive(drive, pastaId, fabricante, bufferPdf);
-      resultado.enviados.push(envio);
-      console.log(`[x2-drive] ${fabricante}.pdf — ${envio.acao} no Drive.`);
-    } catch (e) {
-      resultado.erros.push({ fabricante, erro: e.message });
-      console.error(`[x2-drive] falha ao subir PDF de "${fabricante}":`, e.message);
-    }
-  }
-
+  const envio = await _uploadFabricantes(fabricantes, {
+    baseUrl: BASE_URL,
+    apiToken,
+    pastaId,
+    credenciaisPath: path.resolve(credenciaisPath),
+    dryRun: false,
+  });
+  resultado.enviados = envio.enviados;
+  resultado.erros = envio.erros;
   return resultado;
+}
+
+async function _rodarModoManual({ fabricantes, todos, dryRun }) {
+  const contexto = await _configurarContextoDrive();
+  let lista = fabricantes;
+  if (todos) {
+    lista = await _buscarFabricantesDisponiveis(contexto);
+  }
+  lista = [...new Set(lista.map(_normalizarFabricante).filter(Boolean))];
+  if (!lista.length) throw new Error('Nenhum fabricante informado. Use --catalogo=FABRICANTE, --catalogos=A,B ou --todos.');
+
+  const resultado = await _uploadFabricantes(lista, { ...contexto, dryRun });
+  console.log('\n[x2-drive] resumo:');
+  console.log(`  Processados: ${resultado.fabricantes.length}`);
+  console.log(`  OK:          ${resultado.enviados.length}`);
+  console.log(`  Erros:       ${resultado.erros.length}`);
+  if (resultado.erros.length) process.exitCode = 1;
+  return resultado;
+}
+
+async function _cli() {
+  try {
+    const opcoes = _parsearArgumentos(process.argv.slice(2));
+    if (opcoes.ajuda) {
+      _mostrarAjuda();
+      return;
+    }
+    if (!opcoes.todos && !opcoes.fabricantes.length) {
+      _mostrarAjuda();
+      return;
+    }
+    await _rodarModoManual(opcoes);
+  } catch (e) {
+    console.error(`[x2-drive] erro: ${e.message}`);
+    process.exitCode = 1;
+  }
+}
+
+// Importado pelo servidor: somente exporta a função e NÃO inicia CLI.
+// Executado diretamente: processa os argumentos manuais.
+if (require.main === module) {
+  _cli();
 }
 
 module.exports = { rodarUploadDrive };

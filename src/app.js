@@ -31,6 +31,10 @@ const settingsRoutes    = require("./routes/settings.routes");
 const botStatusRoutes   = require("./routes/botStatus.routes");
 const atendenteRoutes   = require("./routes/atendentes.routes");
 const catalogoRoutes    = require("./routes/catalogo.routes");
+// MCP somente-leitura (nova função, pedido do usuário 2026-09-09) —
+// desligado por padrão via MCP_ENABLED, ver comentário no próprio
+// mcp.routes.js/mcp.service.js.
+const mcpRoutes         = require("./routes/mcp.routes");
 
 const app = express();
 
@@ -54,6 +58,16 @@ app.use(helmet({
       connectSrc:     ["'self'", "ws:", "wss:"],
       objectSrc:      ["'none'"],
       frameAncestors: ["'none'"],
+      // Issue #22 (2026-08-26): pré-visualização do "Catálogo Completo"
+      // embute o PDF gerado num <iframe src="blob:...">. Sem essa diretiva,
+      // frame-src cai no fallback de defaultSrc ("'self'"), que NÃO cobre
+      // blob: — o navegador bloqueia silenciosamente ("Este conteúdo está
+      // bloqueado", sem erro nenhum no console) e o iframe mostra o ícone de
+      // "documento quebrado" em vez do PDF. blob: é seguro aqui porque o
+      // Blob é criado no próprio browser a partir de uma resposta do nosso
+      // backend (fetch em /api/catalogo/exportar-pdf), nunca de conteúdo de
+      // terceiros.
+      frameSrc:       ["'self'", "blob:"],
       // CAUSA RAIZ REAL do ERR_SSL_PROTOCOL_ERROR em outros computadores
       // (2026-07-13): o Helmet, com useDefaults implícito (true), MESCLA
       // suas diretivas padrão às nossas — e uma delas é
@@ -153,6 +167,13 @@ app.use("/api", authSession, messageRoutes);
 // logado (não só admin) — ver botStatus.routes.js para o motivo de ser uma
 // rota separada de settings.routes.js em vez de reaproveitar /api/settings.
 app.use("/api", authSession, botStatusRoutes);
+// MCP somente-leitura pra clientes de IA locais (Claude Code/Desktop) — o
+// próprio handler retorna 404 quando MCP_ENABLED não é "true", então montar
+// a rota sempre é seguro (nunca fica exposta sem o opt-in explícito). NÃO
+// usa o authSession genérico aqui de propósito: esta rota autentica sozinha
+// (dentro de mcp.routes.js) contra um token PRÓPRIO (MCP_API_TOKEN),
+// separado do API_TOKEN geral — ver comentário completo em mcp.routes.js.
+app.use("/api", mcpRoutes);
 
 // Rotas apenas admin
 app.use("/api", authSession, requireAdmin, settingsRoutes);

@@ -820,6 +820,39 @@ async function rodarDiffEstoque({ caminhoCsv, channel, dryRun, confirmar, modoAu
   }
 }
 
+// PEDIDO DO USUÁRIO (2026-09-11): mesmo fluxo ponta-a-ponta de
+// rodarDiffEstoque acima (abre navegador, garante a tela do Catálogo de
+// Produtos aberta, busca cada código, fecha no final) — mas pra quem já tem
+// a LISTA de códigos pronta de outra fonte, sem precisar comparar nenhum
+// CSV. Caso de uso real: o encadeamento automático pós-Lançamentos em
+// x2-painel/server.js, que já sabe exatamente quais códigos tiveram
+// lançamento naquela semana (ver snapshotLancamentos.produtos) e antes
+// disparava sync.rodar(seções) — varrendo a(s) seção(ões) inteira(s) só pra
+// achar um punhado de códigos novos. sincronizarPorCodigos() já faz a busca
+// pontual certa; faltava só este wrapper pra abrir/fechar o navegador sozinho
+// como os outros modos de `main()` abaixo já fazem.
+async function rodarPorCodigos(codigos, { channel, dryRun, confirmar, modoAutomatico, deveParar } = {}) {
+  console.log(`Cadastro por código: ${codigos.length} código(s) — ${codigos.join(', ')}`);
+
+  const context = await abrirNavegador(channel);
+  try {
+    const page = await garantirTelaCatalogoAberta(context, { confirmar, modoAutomatico });
+    const resultado = await sincronizarPorCodigos(page, codigos, { dryRun, deveParar });
+
+    console.log('\n=== Resumo ===');
+    for (const g of resultado.gravados) console.log(`${g.slug}: +${g.adicionados} produto(s)`);
+    if (resultado.naoEncontrados.length) console.log(`Não encontrados no X2: ${resultado.naoEncontrados.join(', ')}`);
+    if (resultado.semSecaoReconhecida.length) console.log(`Seção não reconhecida (precisa checar manualmente): ${resultado.semSecaoReconhecida.map((s) => s.codigo).join(', ')}`);
+    const totalAdicionado = resultado.gravados.reduce((a, g) => a + g.adicionados, 0);
+    if (totalAdicionado && !dryRun) {
+      await _forcarReloadCatalogo();
+    }
+    return resultado;
+  } finally {
+    await context.close().catch(() => {});
+  }
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const secaoArg = args.find((a) => a.startsWith('--secao='));
@@ -893,4 +926,5 @@ module.exports = {
   codigosFaltandoNoCatalogo,
   sincronizarPorCodigos,
   rodarDiffEstoque,
+  rodarPorCodigos,
 };

@@ -648,6 +648,18 @@ async function openConversation(userId, updateActive = true) {
   }
 
   messagesBox.innerHTML = html.join("");
+  // BUG REAL (2026-09-03, pedido do usuário: "meus arquivos de mídia não
+  // estão sendo carregados"): renderMediaBubble() usa <img loading="lazy">
+  // pra foto do cliente — todo <img loading="lazy"> nasce com opacity:0
+  // (ver 19-motion.css) e só fica visível quando bindLazyImageFade() marca
+  // a classe .is-loaded, depois que a imagem termina de carregar. Esse
+  // bind nunca era chamado aqui (só em 18-catalogo.js), então TODA foto
+  // enviada por cliente no painel de Conversas ficava invisível pra
+  // sempre — o balão da mensagem aparecia (com o tamanho certo), só a
+  // imagem em si nunca "acendia". Mesma classe de bug já documentada em
+  // [[project-bot-rildon-trocar-foto-principal-catalogo]] (bug #2, modal
+  // de trocar foto), agora encontrada aqui.
+  bindLazyImageFade(messagesBox);
   bindConversationMessagesDelegation();
   // Aguarda render antes de rolar para garantir altura correta
   requestAnimationFrame(() => {

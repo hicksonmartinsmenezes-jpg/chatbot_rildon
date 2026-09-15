@@ -57,6 +57,12 @@ const painelProdutosSnapshot = require('../x2-painel-produtos-snapshot');
 const cortesProdutos = require('../x2-cortes-produtos-scraper');
 const curvaAbcParados = require('../x2-curva-abc-parados-scraper');
 const lancamentosX2 = require('../x2-lancamentos-scraper');
+// PEDIDO DO USUÁRIO (2026-09-11): 3º elo do encadeamento pós-Lançamentos —
+// gerar PDF por fabricante e subir/atualizar no Drive (ver comentário no
+// topo de x2-drive-lancamentos.js). Só exige 'googleapis' dentro da função
+// (require tardio), então isso aqui não quebra se a dependência ainda não
+// foi instalada e ninguém configurou o Drive ainda.
+const driveLancamentos = require('../x2-drive-lancamentos');
 const qualidadeApenasCadastrados = require('./qualidade-apenas-cadastrados');
 const { listarEntradas } = require('../../src/utils/zip-reader');
 const rotinasStore = require('./rotinas');
@@ -77,6 +83,10 @@ const {
   rodarMuitasSecoes,
   montarZipFinal,
   exportarFotosSoltas,
+  // PEDIDO DO USUÁRIO (2026-09-12, drill-down de Produtos por Seção +
+  // thumbnail): staging é onde a foto de verdade fica salva assim que o
+  // scraper baixa, antes de virar zip (ver comentário no topo do arquivo).
+  stagingSecaoDir,
 } = scraper;
 
 const FOTOS_DIR = path.join(CATALOGO_DIR, 'fotos');
@@ -119,6 +129,7 @@ function transmitir() {
   const payload = JSON.stringify({
     rodando: execucao.rodando,
     tipo: execucao.tipo,
+    rotulo: execucao.rotulo || null,
     texto: execucao.terminal.texto(),
     aguardando: execucao.aguardando ? execucao.aguardando.mensagem : null,
     erro: execucao.erro || null,
@@ -186,7 +197,15 @@ function cancelarExecucaoAtual(motivo) {
 // foi disparada pelo agendador (não por um clique na aba Fotos) — usado só
 // pra registrar o resultado de volta na rotina (ver checarRotinas) e pra
 // deixar isso visível no `execucao` transmitido por SSE.
-async function rodarAcao(tipo, opcoes, { origemRotina } = {}) {
+//
+// `rotulo` (pedido do usuário, 2026-09-11): nome amigável opcional pra essa
+// execução ESPECÍFICA, sobrepondo o nome genérico do `tipo` na tela ("Rodando:
+// ...", ver aplicarEstadoExecucao no frontend). Criado pro cadastro (tipo
+// "sync") disparado automaticamente depois de Lançamentos — o usuário pediu
+// que esse apareça como "Cadastro Lançamentos", só nesse caso, sem renomear
+// o "Sync" comum (cadastro manual por seção, botão "Cadastrar produtos
+// novos"), que continua "Sync" normalmente.
+async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
   if (execucao && execucao.rodando) {
     throw Object.assign(new Error('Já tem uma ação rodando.'), { status: 409 });
   }
@@ -202,8 +221,25 @@ async function rodarAcao(tipo, opcoes, { origemRotina } = {}) {
   // próprio X2, não login). Agora `opcoes.automatico` (mandado pelo
   // frontend) também liga o modo automático, não só origemRotina.
   const modoAutomatico = !!origemRotina || !!opcoes.automatico;
-  execucao = { tipo, terminal: new TerminalVirtual(), rodando: true, aguardando: null, erro: null, origemRotina: origemRotina || null, cancelado: false };
+  execucao = { tipo, terminal: new TerminalVirtual(), rodando: true, aguardando: null, erro: null, origemRotina: origemRotina || null, rotulo: rotulo || null, cancelado: false };
   transmitir();
+
+  // PEDIDO DO USUÁRIO (2026-09-08): "quando utilizar a ferramenta Lançamentos
+  // já faça a captura de foto e do produto no mesmo instante" — preenchido
+  // dentro do branch `tipo === 'lancamentos-x2'` abaixo, com as Seções que
+  // tiveram lançamento nessa captura (ver mapearSecoesTocadas em
+  // x2-lancamentos-scraper.js). Disparado DEPOIS do `finally` (fora deste
+  // try/catch), pra não segurar o lock de "Lançamentos" pelos minutos que
+  // sync+baixar levam — o usuário pediu que Lançamentos continue terminando
+  // rápido (só a lista) e a captura de foto/ficha rode depois, em segundo
+  // plano, como uma nova execução visível na aba Rotinas.
+  let slugsAutoCaptura = null;
+  // PEDIDO DO USUÁRIO (2026-09-11): junto com as Seções tocadas, guarda os
+  // CÓDIGOS exatos que tiveram lançamento — usados pra restringir tanto o
+  // cadastro (sincronizarPorCodigos, em vez de sync.rodar por seção
+  // inteira) quanto o download de fotos (codigosEspecificos em
+  // calcularFila) só a esses códigos.
+  let codigosAutoCaptura = null;
 
   // Passado pra dentro dos loops item-a-item de x2-fotos-scraper.js e
   // x2-catalogo-sync.js — ver comentário em cancelarExecucaoAtual().
@@ -243,6 +279,12 @@ async function rodarAcao(tipo, opcoes, { origemRotina } = {}) {
           confirmar: modoAutomatico ? undefined : confirmarFactory(),
           modoAutomatico,
           deveParar,
+          // PEDIDO DO USUÁRIO (2026-09-11): quando vem do encadeamento
+          // pós-Lançamentos, restringe a fila de fotos só aos códigos que
+          // tiveram lançamento — ver calcularFila/codigosEspecificos em
+          // x2-fotos-scraper.js. Uso manual do painel nunca manda isso
+          // (fica undefined), então continua baixando a seção toda como hoje.
+          codigosEspecificos: opcoes.codigosEspecificos || undefined,
         });
         // PEDIDO DO USUÁRIO (2026-08-11): "achei que quando eu clicasse em
         // atualizar fotos ele já baixasse e lançasse automaticamente no
@@ -264,15 +306,32 @@ async function rodarAcao(tipo, opcoes, { origemRotina } = {}) {
           }
         }
       } else if (tipo === 'sync') {
-        await sync.rodar(opcoes.secoes, {
-          channel: 'chrome',
-          dryRun: !!opcoes.dryRun,
-          semRemover: !!opcoes.semRemover,
-          forcarRemocao: !!opcoes.forcarRemocao,
-          confirmar: modoAutomatico ? undefined : confirmarFactory(),
-          modoAutomatico,
-          deveParar,
-        });
+        if (opcoes.codigos && opcoes.codigos.length) {
+          // PEDIDO DO USUÁRIO (2026-09-11): cadastro por LISTA DE CÓDIGOS
+          // pontual, não por seção inteira — usado pelo encadeamento
+          // automático pós-Lançamentos (ver mais abaixo), que já sabe
+          // exatamente quais códigos tiveram lançamento naquela semana.
+          // Mesma função já usada e testada no fluxo manual "Diff Estoque"
+          // (sincronizarPorCodigos, via o wrapper rodarPorCodigos) — só
+          // muda de onde vem a lista de códigos.
+          await sync.rodarPorCodigos(opcoes.codigos, {
+            channel: 'chrome',
+            dryRun: !!opcoes.dryRun,
+            confirmar: modoAutomatico ? undefined : confirmarFactory(),
+            modoAutomatico,
+            deveParar,
+          });
+        } else {
+          await sync.rodar(opcoes.secoes, {
+            channel: 'chrome',
+            dryRun: !!opcoes.dryRun,
+            semRemover: !!opcoes.semRemover,
+            forcarRemocao: !!opcoes.forcarRemocao,
+            confirmar: modoAutomatico ? undefined : confirmarFactory(),
+            modoAutomatico,
+            deveParar,
+          });
+        }
       } else if (tipo === 'zip') {
         for (const slug of opcoes.secoes) await montarZipFinal(slug);
       } else if (tipo === 'exportar') {
@@ -342,13 +401,27 @@ async function rodarAcao(tipo, opcoes, { origemRotina } = {}) {
         // verdade (☰ > Compras > Catálogo de Produtos, filtro "Apenas
         // produtos com primeira entrada"). Ver x2-lancamentos-scraper.js
         // pros seletores confirmados ao vivo.
-        await lancamentosX2.rodar({
+        const snapshotLancamentos = await lancamentosX2.rodar({
           channel: 'chrome',
           confirmar: modoAutomatico ? undefined : confirmarFactory(),
           modoAutomatico,
           dataInicioRecebimento: opcoes.dataInicioRecebimento || undefined,
           dataFimRecebimento: opcoes.dataFimRecebimento || undefined,
         });
+
+        if (opcoes.semAutoCaptura) {
+          console.log('\n(--semAutoCaptura: pulando cadastro+foto automático desta captura.)');
+        } else if (snapshotLancamentos && snapshotLancamentos.produtos.length) {
+          const { slugs, naoMapeados } = lancamentosX2.mapearSecoesTocadas(snapshotLancamentos.produtos);
+          if (naoMapeados.length) {
+            console.log(`\n⚠ ${naoMapeados.length} lançamento(s) com Seção não reconhecida (fica só no Excel, sem cadastro/foto automático): ${naoMapeados.map((n) => n.codigo).join(', ')}`);
+          }
+          if (slugs.length) {
+            console.log(`\n▶ ${slugs.length} Seção(ões) com lançamento novo — cadastro de ficha + fotos serão disparados automaticamente em seguida: ${slugs.join(', ')}`);
+            slugsAutoCaptura = slugs;
+            codigosAutoCaptura = snapshotLancamentos.produtos.map((p) => p.codigo);
+          }
+        }
       } else {
         throw new Error(`Ação desconhecida: ${tipo}`);
       }
@@ -377,6 +450,56 @@ async function rodarAcao(tipo, opcoes, { origemRotina } = {}) {
     execucao.rodando = false;
     execucao.aguardando = null;
     transmitir();
+  }
+
+  // Encadeamento automático pós-Lançamentos (ver comentário lá em cima, na
+  // declaração de `slugsAutoCaptura`) — só depois do `finally`, com o lock
+  // já liberado, pra virar uma execução NOVA e independente (visível na aba
+  // Rotinas), não uma extensão da execução de "Lançamentos" que acabou de
+  // terminar. `execucao` ainda aponta pra essa execução que acabou de
+  // terminar — `execucao.cancelado` reflete se ELA foi cancelada; se foi,
+  // não faz sentido continuar disparando cadastro/foto por trás.
+  if (slugsAutoCaptura && slugsAutoCaptura.length && !execucao.cancelado) {
+    const secoesParaAutoCaptura = slugsAutoCaptura;
+    // PEDIDO DO USUÁRIO (2026-09-11): cadastro e fotos agora restritos aos
+    // códigos exatos do lançamento (ver comentário na declaração de
+    // codigosAutoCaptura acima) — `secoesParaAutoCaptura` continua servindo
+    // só pra decidir EM QUAIS seções vale a pena procurar foto (o cadastro
+    // por código já resolve sozinho a seção certa de cada produto, ver
+    // sincronizarPorCodigos em x2-catalogo-sync.js).
+    const codigosParaAutoCaptura = codigosAutoCaptura || [];
+    console.log(`[x2-painel] Lançamentos: disparando cadastro de ficha + fotos automaticamente para ${codigosParaAutoCaptura.length} código(s): ${secoesParaAutoCaptura.join(', ')}`);
+    rodarAcao('sync', { codigos: codigosParaAutoCaptura, automatico: true }, { rotulo: 'Cadastro Lançamentos' })
+      .then(() => {
+        // `execucao` ainda aponta pra execução do "sync" que acabou de
+        // terminar (baixar só reatribui a variável quando chamado a
+        // seguir) — se o usuário cancelou o cadastro de ficha, não faz
+        // sentido continuar sozinho pro download de fotos.
+        if (execucao && execucao.cancelado) {
+          console.log('[x2-painel] cadastro de ficha cancelado — pulando download de fotos automático.');
+          return null;
+        }
+        return rodarAcao('baixar', { secoes: secoesParaAutoCaptura, codigosEspecificos: codigosParaAutoCaptura, automatico: true }, { rotulo: 'Fotos Lançamentos' });
+      })
+      .then((fotosRodou) => {
+        // 3º elo (PEDIDO DO USUÁRIO, 2026-09-11): "pretendo automatizar a
+        // geração dos pdf e subir automaticamente para o drive" — só depois
+        // que ficha (sync) E fotos terminaram, gera 1 PDF por fabricante
+        // tocado e sobe/atualiza na pasta única do Drive. Não passa por
+        // rodarAcao() (não é uma execução "Baixar/Sync" visível na mesma
+        // aba, é upload em segundo plano) — best-effort: se GOOGLE_DRIVE_*
+        // não estiver configurado ainda, só loga e segue (ver guard no
+        // topo de x2-drive-lancamentos.js).
+        if (fotosRodou === null) return null; // cadastro foi cancelado, nem chegou a baixar foto
+        if (execucao && execucao.cancelado) {
+          console.log('[x2-painel] download de fotos cancelado — pulando geração/upload de PDF automático.');
+          return null;
+        }
+        return driveLancamentos.rodarUploadDrive(codigosParaAutoCaptura);
+      })
+      .catch((e) => {
+        console.error('[x2-painel] erro na captura automática de foto/ficha/PDF pós-Lançamentos:', e.message);
+      });
   }
 }
 
@@ -416,14 +539,41 @@ function totalProdutosUnicos() {
 function statusSecoes() {
   return Object.entries(SECOES).map(([slug, label]) => {
     let produtos = 0;
+    let codigosAtuais = null;
     try {
-      produtos = JSON.parse(fs.readFileSync(path.join(CATALOGO_DIR, `${slug}.json`), 'utf8')).length;
+      const produtosJson = JSON.parse(fs.readFileSync(path.join(CATALOGO_DIR, `${slug}.json`), 'utf8'));
+      produtos = produtosJson.length;
+      codigosAtuais = new Set(produtosJson.map((p) => String(p.codigo)));
     } catch { /* json não encontrado ainda */ }
 
     const progresso = carregarProgresso(slug);
-    const entradas = Object.values(progresso);
+    // BUG REAL corrigido (2026-09-12, investigando "Montar zip não aplica" —
+    // usuário via "precisa build-zip" preso mesmo depois de rodar o build
+    // com sucesso): progresso[slug].json acumula entradas de rodadas
+    // passadas que não necessariamente batem 1:1 com os códigos ATUAIS do
+    // catalogo.json da seção (produto reclassificado pra outra seção,
+    // duplicidade de paginação já corrigida em BUZINAS, etc — daí a coluna
+    // "Processados" já aparecer tipo "1517/1213", mais processado que o
+    // total de produtos). Antes este bloco contava TODAS as entradas do
+    // progresso.json sem checar se o código ainda pertence à seção, e
+    // montarZipFinal() (x2-fotos-scraper.js) só considera os códigos do
+    // catalogo.json atual — resultado: comFotoReal ficava sempre maior que
+    // o que o zip real podia conter, "precisaZip" nunca virava false e o
+    // badge "precisa build-zip" ficava preso pra sempre, mesmo com o build
+    // rodando certinho. Fix: só conta progresso de códigos que ainda estão
+    // no catalogo.json da seção, igual o filtro que montarZipFinal já usa.
+    const entradas = codigosAtuais
+      ? Object.entries(progresso).filter(([codigo]) => codigosAtuais.has(codigo)).map(([, v]) => v)
+      : Object.values(progresso);
     const baixados = entradas.length;
     const comFotoReal = entradas.filter((e) => e.status === 'ok').length;
+    // PEDIDO DO USUÁRIO (2026-09-12, "vamos fazer mudanças de ui e ux"):
+    // antes não tinha nenhum jeito de ver, seção por seção, quantos itens
+    // ficaram com status "erro" sem rodar o log bruto de uma execução —
+    // foi assim que os 1209 erros de MECÂNICA (69%!) só foram percebidos
+    // numa sessão de teste ao vivo, bem depois. Agora vira coluna/badge/
+    // filtro na tabela de Seções (ver index.html/app.js).
+    const erros = entradas.filter((e) => e.status === 'erro').length;
     const pequenas = entradas.filter((e) => fotosSuspeitas(e.detalhes).length > 0).length;
     const publicados = contarPublicados(slug);
 
@@ -433,6 +583,7 @@ function statusSecoes() {
       produtos,
       baixados,
       comFotoReal,
+      erros,
       pequenas,
       publicados,
       // "Publicado" (visível no Catálogo do painel do bot) só bate com
@@ -458,6 +609,102 @@ app.get('/api/status', (req, res) => {
       erro: execucao.erro,
     } : null,
   });
+});
+
+// ─── Produtos por Seção — drill-down (2026-09-12, mockup "CatálogoPro") ──
+// Pedido do usuário: em vez de listar 19 mil produtos soltos, a tabela de
+// Produtos só aparece ao clicar numa Seção específica — carrega só os
+// produtos DAQUELA seção (no máximo ~3.000, seção MOTOR DE PARTIDA, a
+// maior). Mistura o `<slug>.json` (dado de catálogo: código/nome/linha)
+// com o checkpoint de progresso do scraper (status: ok/sem_foto/
+// placeholder/erro/pendente — "pendente" é código que ainda nem foi
+// tentado) — mesmas duas fontes que statusSecoes() já lê, só que por
+// produto em vez de agregado.
+function _extensaoImagem(nome) {
+  const ext = path.extname(String(nome || '')).toLowerCase();
+  if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+  if (ext === '.png') return 'image/png';
+  if (ext === '.gif') return 'image/gif';
+  if (ext === '.webp') return 'image/webp';
+  return null;
+}
+
+app.get('/api/secoes/:slug/produtos', (req, res) => {
+  const { slug } = req.params;
+  const label = SECOES[slug];
+  if (!label) return res.status(404).json({ error: 'Seção não encontrada.' });
+
+  let produtosJson = [];
+  try {
+    produtosJson = JSON.parse(fs.readFileSync(path.join(CATALOGO_DIR, `${slug}.json`), 'utf8'));
+  } catch { /* json não encontrado ainda — seção sem extração (ex: consumo) */ }
+
+  const progresso = carregarProgresso(slug);
+  const produtos = produtosJson.map((p) => {
+    const st = progresso[String(p.codigo)];
+    return {
+      codigo: p.codigo,
+      nome: p.nome,
+      linha: p.linha || null,
+      // "pendente" = ainda não passou pelo scraper nenhuma vez (não confundir
+      // com "sem_foto" — esse já foi tentado e o X2 não tinha foto real).
+      status: st ? st.status : 'pendente',
+      temThumb: !!(st && st.status === 'ok' && st.arquivos && st.arquivos.length),
+      // PEDIDO DO USUÁRIO (2026-09-12, redesign modal): contagem real de
+      // arquivos baixados por produto (não é "X de Y esperado" — não temos
+      // esse total do X2, só o que foi de fato baixado) + se alguma dessas
+      // fotos está abaixo de LARGURA_MINIMA_AVISO (mesma função já usada
+      // no agregado por seção, aqui aplicada por produto).
+      numFotos: st && st.arquivos ? st.arquivos.length : 0,
+      fotoSuspeita: !!(st && fotosSuspeitas(st.detalhes).length > 0),
+    };
+  });
+
+  res.json({ slug, label, produtos });
+});
+
+app.get('/api/secoes/:slug/produtos/:codigo/thumb', (req, res) => {
+  const { slug, codigo } = req.params;
+  if (!SECOES[slug]) return res.status(404).end();
+  const progresso = carregarProgresso(slug);
+  const st = progresso[codigo];
+  const nomeArquivo = st && st.arquivos && st.arquivos[0];
+  if (!nomeArquivo) return res.status(404).end();
+  const caminho = path.join(stagingSecaoDir(slug), codigo, nomeArquivo);
+  const mime = _extensaoImagem(nomeArquivo);
+  if (!mime || !fs.existsSync(caminho)) return res.status(404).end();
+  res.setHeader('Content-Type', mime);
+  res.setHeader('Cache-Control', 'private, max-age=3600');
+  fs.createReadStream(caminho).pipe(res);
+});
+
+// ─── Busca global de produtos (2026-09-12, mockup "CatálogoPro") — varre
+// os JSONs das 27 seções (mesmo padrão de totalProdutosUnicos()) por código
+// OU nome, sem precisar abrir a Seção primeiro. Cap de 30 resultados: é
+// busca de "achar rápido", não relatório — se vier muita coisa, a pessoa
+// afina o termo.
+app.get('/api/produtos/buscar', (req, res) => {
+  const termoBruto = String(req.query.q || '').trim();
+  if (termoBruto.length < 2) return res.json({ resultados: [] });
+  const termo = termoBruto.toLowerCase();
+
+  const resultados = [];
+  for (const [slug, label] of Object.entries(SECOES)) {
+    if (resultados.length >= 30) break;
+    let produtosJson;
+    try {
+      produtosJson = JSON.parse(fs.readFileSync(path.join(CATALOGO_DIR, `${slug}.json`), 'utf8'));
+    } catch { continue; }
+    for (const p of produtosJson) {
+      if (resultados.length >= 30) break;
+      const bateCodigo = String(p.codigo).toLowerCase().includes(termo);
+      const bateNome = String(p.nome || '').toLowerCase().includes(termo);
+      if (bateCodigo || bateNome) {
+        resultados.push({ codigo: p.codigo, nome: p.nome, secaoSlug: slug, secaoLabel: label });
+      }
+    }
+  }
+  res.json({ resultados });
 });
 
 // ─── Estoque (2026-08-06) — só lista/serve os CSVs já baixados por
@@ -762,7 +1009,11 @@ function checarRotinas() {
   const agora = new Date();
   const pendente = rotinasStore.carregarRotinas().find((r) => rotinasStore.deveRodarAgora(r, agora));
   if (!pendente) return;
-  console.log(`[x2-painel] rotina "${pendente.nome}" venceu (${pendente.horario}) — disparando automaticamente...`);
+  // PEDIDO DO USUÁRIO (2026-09-11): rotina "a cada N horas" não tem
+  // `horario` (fica null, ver rotinas.js) — log deixa claro qual dos dois
+  // modelos de agendamento venceu.
+  const quandoVenceu = pendente.frequencia === 'horas' ? `a cada ${pendente.intervaloHoras}h` : pendente.horario;
+  console.log(`[x2-painel] rotina "${pendente.nome}" venceu (${quandoVenceu}) — disparando automaticamente...`);
   rodarAcao(pendente.tipo, { ...pendente.opcoes, secoes: pendente.secoes }, { origemRotina: pendente.id }).catch((e) => {
     console.error(`[x2-painel] erro não tratado na rotina ${pendente.nome}:`, e.message);
   });

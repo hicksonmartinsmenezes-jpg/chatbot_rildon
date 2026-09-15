@@ -639,6 +639,239 @@ async function analisarImagemPeca(base64, mimeType) {
   }
 }
 
+// ─── Reorganização de "aplicação" (Issue #23, pedido do usuário 2026-08-26) ────
+// O texto de aplicação (veículo/máquina compatível) de cada produto vem CRU do
+// X2, sem estrutura fixa (ex: "Escort, Uno, Duna, MWM, Universal, Ford, Jonh
+// Deere, MB") — ver catalogo-x2.service.js, campo `ficha.aplicacao`. O usuário
+// mandou um "prompt universal" de organização de dados técnicos (fabricante:
+// modelos, specs — agrupar "diversos", indicar faixas de ano quando existirem)
+// e pediu pra aplicar isso no texto de cada produto ao gerar o Catálogo
+// Completo em PDF. Função ISOLADA (não reaproveita perguntarIA) porque:
+//   1. Precisa de um system prompt totalmente diferente do chat (aqui é uma
+//      tarefa de reformatação de texto, não uma conversa de atendimento).
+//   2. Resposta é TEXTO LIVRE, não o JSON estruturado que o chat espera —
+//      _chamarGroq/_chamarGemini/_chamarAnthropic acima forçam response_format
+//      json_object/prefill "{", que não fazem sentido aqui.
+//   3. Roda em LOTE, offline (script CLI) ou best-effort limitado (controller
+//      do catálogo) — nunca deve competir pela MESMA fila/intervalo do chat ao
+//      vivo (mesmo padrão já usado por visão/transcrição acima: fila própria).
+// Reaproveita a config de PROVIDER (mesma conta/chave já configurada em
+// AI_PROVIDER) e o circuit breaker de falta de crédito (iaEmFalhaCritica) —
+// sem sentido ter um 2º circuito pra detectar o mesmo erro de conta.
+const PROMPT_APLICACAO_SISTEMA =
+  "Você organiza texto de APLICAÇÃO (veículo/máquina/equipamento compatível) " +
+  "de peças técnicas (automotivas, agrícolas, industriais) pro catálogo de uma " +
+  "loja. O texto de entrada vem cru, sem estrutura fixa, direto do sistema do " +
+  "fornecedor. Reorganize seguindo estas regras:\n" +
+  "1. Identifique os FABRICANTES (marca do veículo/máquina/motor) e separe-os " +
+  "com ponto e vírgula.\n" +
+  "2. Agrupe os MODELOS/séries de cada fabricante logo após o nome dele, " +
+  "separados por vírgula.\n" +
+  "3. Quando o texto já disser algo genérico (ex: \"universal\", \"diversos\", " +
+  "\"todos os modelos\"), mantenha esse termo em vez de listar modelo por " +
+  "modelo.\n" +
+  "4. Preserve faixas de ano, códigos e especificações técnicas (voltagem, " +
+  "amperagem, motor etc.) SE já estiverem no texto original — nunca invente " +
+  "informação que não está lá.\n" +
+  "5. Formato de saída: \"FABRICANTE: Modelo1, Modelo2 (specs); OUTRO " +
+  "FABRICANTE: ModeloA, ModeloB\".\n" +
+  "Responda APENAS com o texto reorganizado — sem aspas, sem markdown, sem " +
+  "explicação antes ou depois. Se o texto de entrada já estiver curto e " +
+  "claro, apenas normalize pontuação/capitalização, sem inventar nada.";
+
+const APLICACAO_MAX_TOKENS = 300;
+const APLICACAO_TEMPERATURE = 0.2; // baixa — tarefa de reformatação, não criativa
+
+// `provedor` recebido por parâmetro (não a constante global PROVIDER) —
+// essas 3 funções só são chamadas de dentro de organizarAplicacaoIA, que
+// desde 2026-08-29 pode estar rodando num provedor DIFERENTE do PROVIDER
+// global (fallback automático pra Gemini quando Anthropic fica sem
+// crédito, ver _aplicacaoProviderOverride). Usar o global aqui seria bug:
+// chamaria a função certa (_chamarGeminiTexto) mas com a URL/model do
+// PROVIDER errado (ex: URL do Gemini só que enviando o body/versão da
+// Anthropic).
+async function _chamarGroqTexto(systemPrompt, userText, apiKey, provedor) {
+  return _fetchComTimeout(
+    provedor.url,
+    {
+      method:  "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model:       provedor.model,
+        messages:    [{ role: "system", content: systemPrompt }, { role: "user", content: userText }],
+        temperature: APLICACAO_TEMPERATURE,
+        max_tokens:  APLICACAO_MAX_TOKENS,
+      }),
+    },
+    REQUEST_TIMEOUT
+  );
+}
+
+async function _chamarGeminiTexto(systemPrompt, userText, apiKey, provedor) {
+  return _fetchComTimeout(
+    `${provedor.url}?key=${apiKey}`,
+    {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ role: "user", parts: [{ text: userText }] }],
+        generationConfig: { temperature: APLICACAO_TEMPERATURE, maxOutputTokens: APLICACAO_MAX_TOKENS },
+      }),
+    },
+    REQUEST_TIMEOUT
+  );
+}
+
+async function _chamarAnthropicTexto(systemPrompt, userText, apiKey, provedor) {
+  return _fetchComTimeout(
+    provedor.url,
+    {
+      method:  "POST",
+      headers: {
+        "content-type":      "application/json",
+        "x-api-key":         apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model:       provedor.model,
+        system:      systemPrompt,
+        messages:    [{ role: "user", content: userText }],
+        temperature: APLICACAO_TEMPERATURE,
+        max_tokens:  APLICACAO_MAX_TOKENS,
+      }),
+    },
+    REQUEST_TIMEOUT
+  );
+}
+
+// Fila própria (mesmo padrão de _agendarRequisicaoVisao/_agendarTranscricao) —
+// isolada da fila do chat ao vivo, mas ainda respeita PROVIDER.intervalMs (a
+// mesma chave/conta de API, então o limite real do provedor é o mesmo).
+let _ultimaRequisicaoAplicacao = 0;
+let _filaAplicacaoPromise      = Promise.resolve();
+
+function _agendarRequisicaoAplicacao(provedor) {
+  _filaAplicacaoPromise = _filaAplicacaoPromise
+    .then(() => {
+      const espera = Math.max(0, _ultimaRequisicaoAplicacao + provedor.intervalMs - Date.now());
+      return new Promise(r => setTimeout(r, espera));
+    })
+    .catch(() => {});
+  return _filaAplicacaoPromise;
+}
+
+// Pedido do usuário (2026-08-29): quando a Anthropic fica sem crédito no
+// meio de uma rodada de organizar-aplicacoes-ia.js (offline, sem cliente
+// esperando resposta), trocar sozinho pra Gemini como provedor de
+// preferência secundária SÓ PRA ESTA FUNÇÃO — o chat ao vivo (perguntarIA)
+// continua exclusivamente em Anthropic e escala pro atendente se faltar
+// crédito (ver iaEmFalhaCritica), porque ali a qualidade/classificação de
+// intenção do Claude Haiku foi escolhida de propósito (ver comentário em
+// PROVIDERS.anthropic) e uma troca silenciosa de provedor no meio de um
+// atendimento real é um risco pior que escalar. `null` = usa o provedor
+// global (PROVIDER_NAME); "gemini" = fallback ativo, fica assim pelo resto
+// do processo (reseta sozinho no próximo boot/execução do script).
+let _aplicacaoProviderOverride = null;
+
+// Reorganiza UM texto de aplicação isolado. Sem retry (diferente de
+// perguntarIA) — de propósito: isso roda em LOTE (dezenas/centenas de
+// textos únicos por fabricante), então uma falha isolada custa só aquele
+// item (quem chama trata o retorno como "sem versão organizada ainda", cai
+// no texto cru ou omite o bloco no PDF — nunca quebra a geração). Retry
+// aqui multiplicaria o tempo total do lote inteiro por pouco ganho.
+//
+// Retorno tem 3 estados, e quem chama (catalogo-aplicacao-ia.service.js)
+// só deve GRAVAR NO CACHE PERMANENTE (string vazia = "já tentei, não
+// organiza") o terceiro:
+//   1. `undefined` — não tentou de verdade (sem chave configurada, circuit
+//      breaker de falta de crédito ativo, erro de rede/timeout, ou
+//      qualquer resposta HTTP não-OK). Precisa TENTAR DE NOVO depois —
+//      cachear isso como falha permanente foi o bug real encontrado em
+//      2026-08-29 (Issue: cache de aplicação-IA marcava fabricante inteiro
+//      como "sem aplicação" pra sempre quando a Anthropic ficava sem
+//      crédito no meio de um lote grande — ~49% do cache ficou poluído
+//      numa rodada só, e nem recarregar crédito destravava, porque o hash
+//      já estava marcado como tentado).
+//   2. `null` — a IA respondeu de verdade (HTTP OK, JSON válido) mas o
+//      texto organizado saiu vazio. Esse caso sim é seguro cachear como
+//      falha permanente — reprocessar o mesmo texto não vai dar resultado
+//      diferente.
+//   3. string não vazia — sucesso, é o texto organizado.
+//
+// `_viaFallback` é uso INTERNO (não passar de fora) — marca que essa
+// chamada já é a retentativa automática em Gemini depois de detectar falta
+// de crédito na Anthropic, pra garantir no máximo 1 troca de provedor por
+// texto (sem recursão infinita se o Gemini também falhar).
+async function organizarAplicacaoIA(textoAplicacao, _viaFallback = false) {
+  const texto = String(textoAplicacao || "").trim();
+  if (!texto) return undefined;
+
+  const nomeProvedor = _aplicacaoProviderOverride || PROVIDER_NAME;
+  const provedor = PROVIDERS[nomeProvedor];
+  const apiKey = provedor.getKey();
+  if (!apiKey || apiKey === "cole_sua_chave_aqui") return undefined;
+  // iaEmFalhaCritica() é o circuit breaker de crédito da Anthropic,
+  // COMPARTILHADO com o chat ao vivo (perguntarIA) — só se aplica aqui
+  // quando esta função ainda está tentando Anthropic. Uma vez com o
+  // fallback pra Gemini ativo, a falta de crédito da Anthropic deixou de
+  // ser o gargalo desta função.
+  if (nomeProvedor === "anthropic" && iaEmFalhaCritica()) return undefined;
+
+  try {
+    await _agendarRequisicaoAplicacao(provedor);
+    _ultimaRequisicaoAplicacao = Date.now();
+
+    const res = nomeProvedor === "gemini"
+      ? await _chamarGeminiTexto(PROMPT_APLICACAO_SISTEMA, texto, apiKey, provedor)
+      : nomeProvedor === "anthropic"
+      ? await _chamarAnthropicTexto(PROMPT_APLICACAO_SISTEMA, texto, apiKey, provedor)
+      : await _chamarGroqTexto(PROMPT_APLICACAO_SISTEMA, texto, apiKey, provedor);
+
+    if (!res.ok) {
+      const corpoErro = await res.text().catch(() => "");
+      const semCredito = nomeProvedor === "anthropic" && res.status === 400 && /credit balance is too low/i.test(corpoErro);
+      if (semCredito) {
+        _semCreditoAte = Date.now() + CIRCUIT_BREAKER_MS;
+        logger.error(`[IA-Aplicação] Sem crédito na API (provedor: anthropic) — pausando chamadas por ${CIRCUIT_BREAKER_MS / 1000}s.`);
+
+        // Fallback automático (pedido do usuário, 2026-08-29): só pra esta
+        // rotina offline, troca sozinho pra Gemini dali em diante — não
+        // mexe no provedor do chat ao vivo (PROVIDER_NAME global fica
+        // intocado). Só 1 tentativa de troca por texto.
+        if (!_viaFallback && PROVIDERS.gemini.getKey()) {
+          _aplicacaoProviderOverride = "gemini";
+          logger.error(`[IA-Aplicação] Trocando automaticamente pra Gemini nesta rotina (organizar aplicação) — o chat ao vivo com cliente continua só em Anthropic.`);
+          return organizarAplicacaoIA(textoAplicacao, true);
+        }
+      } else {
+        logger.warn(`[IA-Aplicação] Erro ${res.status} (provedor: ${nomeProvedor}): ${corpoErro.slice(0, 200)}`);
+      }
+      // Não é "a IA respondeu e não teve o que organizar" — é "não deu pra
+      // saber". undefined = não cachear, tentar de novo numa próxima rodada.
+      return undefined;
+    }
+
+    const data = await res.json();
+    // NÃO reusa _extrairTextoResposta: pro provedor "anthropic" essa função
+    // recompõe o prefixo "{" do truque de prefill JSON usado só pelo chat
+    // (ver _chamarAnthropic acima) — aqui a resposta é texto livre, sem
+    // prefill nenhum, então extrai direto da forma nativa de cada provedor.
+    const texto2 = nomeProvedor === "anthropic"
+      ? data?.content?.[0]?.text
+      : nomeProvedor === "gemini"
+      ? data?.candidates?.[0]?.content?.parts?.[0]?.text
+      : data?.choices?.[0]?.message?.content;
+    const organizado = texto2?.trim().replace(/^["']|["']$/g, "");
+    return organizado || null;
+  } catch (err) {
+    logger.warn(`[IA-Aplicação] Falha ao organizar texto (provedor: ${nomeProvedor}): ${err.message}`);
+    // Exceção de rede/timeout — mesmo raciocínio do !res.ok: transitório,
+    // não cachear como falha permanente.
+    return undefined;
+  }
+}
+
 // ─── Transcrição de áudio (Groq Whisper) ───────────────────────────────────────
 // Pedido do usuário: cliente manda um ÁUDIO de voz (comum no WhatsApp) falando
 // sobre a peça/veículo, e o bot só respondia "ainda não consigo processar
@@ -930,4 +1163,4 @@ async function perguntarIA(mensagem, { nomeCliente, historico = [], contexto = {
   return null;
 }
 
-module.exports = { perguntarIA, analisarImagemPeca, suportaVisao, transcreverAudio, suportaAudio, iaEmFalhaCritica };
+module.exports = { perguntarIA, analisarImagemPeca, suportaVisao, transcreverAudio, suportaAudio, iaEmFalhaCritica, organizarAplicacaoIA };

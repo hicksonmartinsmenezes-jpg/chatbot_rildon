@@ -28,7 +28,8 @@ function switchTab(tab, event) {
   if (tab === "catalogo") {
     if (typeof loadCatalogoSecoes === "function") loadCatalogoSecoes();
     if (typeof loadCatalogoFabricantes === "function") loadCatalogoFabricantes();
-    // Foco direto no campo Marca ao abrir a aba — atendente já começa digitando.
+    if (typeof loadCatalogoMontadoras === "function") loadCatalogoMontadoras();
+    // Foco direto no campo Montadora ao abrir a aba — atendente já começa digitando.
     setTimeout(() => document.getElementById("catalogo-marca")?.focus(), 50);
   }
   if (tab === "settings") {

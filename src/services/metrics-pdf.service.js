@@ -17,9 +17,13 @@ const MARGIN = 36;
 // TITULO_Y/SUBTITULO_Y ficam abaixo dessa linha; TOP (onde a 1ª faixa de
 // conteúdo — "Resumo do mês" — começa) desce mais ainda, dando respiro
 // depois do subtítulo em vez de colar em cima dele.
-const TITULO_Y = 112;
-const SUBTITULO_Y = 136;
-const TOP = 168;
+// 2026-09-16 (pedido do usuário, 2ª rodada: "desça bem mais por favor") —
+// primeiro ajuste (112/136/168) só tirou da faixa azul; usuário pediu mais
+// espaço ainda. Valores bem mais baixos, com folga de sobra até o rodapé
+// (conteúdo da página 1 termina bem antes dos ~794pt úteis do A4).
+const TITULO_Y = 170;
+const SUBTITULO_Y = 196;
+const TOP = 230;
 const BOTTOM = 48;
 const AZUL = "#006097";
 const AZUL_CLARO = "#eef5f9";

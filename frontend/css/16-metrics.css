@@ -431,10 +431,36 @@ body.light-theme .metric-periodo-btn:hover { color: #0f172a; }
 .metrics-tabs-bar {
   display: flex;
   align-items: center;
-  gap: 22px;
+  gap: 16px;
+  flex-wrap: wrap;
   border-bottom: 1px solid var(--border);
   margin-bottom: 18px;
+}
+
+/* Pedido do usuário (2026-09-16): "ajuste a pagina... esta ficando
+   desajustado" — as abas e o grupo de ações (seletor de mês + Exportar
+   PDF) viraram dois wrappers separados dentro da tabs-bar. As abas rolam
+   horizontalmente sozinhas quando não cabem (min-width:0 é o que permite
+   um filho flex encolher abaixo do seu conteúdo); o grupo de ações nunca
+   encolhe (flex-shrink:0) e quebra pra uma linha própria, alinhado à
+   direita, em vez de espremer as abas ou vazar da tela. */
+.metrics-tabs-bar-tabs {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  min-width: 0;
+  flex: 1 1 auto;
   overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.metrics-tabs-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-bottom: 4px;
 }
 
 .metrics-tab-btn {
@@ -473,34 +499,54 @@ body.light-theme .metrics-tab-btn.active { color: var(--metrics-accent); }
   border-radius: 10px;
 }
 
-/* Pedido do usuário (2026-09-16): seletor de mês ao lado do "Exportar PDF"
-   — mesma altura/raio do botão, pra formar um par visual único. O
-   margin-left:auto mudou do botão (acima) pra ESTE input, que vem antes
-   dele no HTML — como são vizinhos diretos na flex-bar, empurrar o input
-   pra direita já arrasta o botão junto (segue ele em fluxo normal), sem
-   precisar do auto nos dois. */
-.metrics-export-mes-input {
-  margin-left: auto;
+/* Pedido do usuário (2026-09-16: "melhore o script e css da data") —
+   trocado de <input type="month"> nativo (renderização inconsistente
+   entre navegadores, sem controle de estilo) pra <select> populado via JS
+   (_metricsPopularSeletorMes em 05-metrics.js). Mesma altura/raio do botão
+   Exportar PDF ao lado, pra formar um par visual único; seta customizada
+   via background-image (appearance:none remove a seta nativa do navegador,
+   que não respeita cor/tamanho do resto do painel). */
+.metrics-export-mes-select {
   flex-shrink: 0;
-  padding: 7px 10px;
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 8px 30px 8px 14px;
   border-radius: 10px;
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.04);
+  background:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%2393a4bd' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>")
+    no-repeat right 12px center,
+    rgba(255, 255, 255, 0.04);
   color: var(--text);
+  font-family: inherit;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 800;
   cursor: pointer;
+  max-width: 160px;
+  transition: border-color var(--transition-fast), background-color var(--transition-fast);
 }
 
-.metrics-export-mes-input:hover { border-color: rgba(255, 255, 255, 0.22); }
+.metrics-export-mes-select:hover { border-color: rgba(255, 255, 255, 0.22); }
 
-body.light-theme .metrics-export-mes-input {
-  background: #f1f5f9;
+.metrics-export-mes-select:focus-visible {
+  outline: none;
+  border-color: var(--metrics-accent);
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, .15);
+}
+
+.metrics-export-mes-select option { background: #1c1c1c; color: #e2e8f0; }
+
+body.light-theme .metrics-export-mes-select {
+  background:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%2364748b' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>")
+    no-repeat right 12px center,
+    #f1f5f9;
   border-color: #dbe3ee;
   color: #0f172a;
 }
 
-body.light-theme .metrics-export-mes-input:hover { background: #e6ebf2; }
+body.light-theme .metrics-export-mes-select:hover { background-color: #e6ebf2; }
+body.light-theme .metrics-export-mes-select option { background: #fff; color: #0f172a; }
 
 .metrics-tab-panel.hidden { display: none; }
 
@@ -651,6 +697,13 @@ body.light-theme .metric-satisfaction-table th { color: #475569; }
   .metrics-refresh-btn { width: 100%; justify-content: center; }
   #tab-metrics .metrics-cards { grid-template-columns: 1fr; }
   #tab-metrics .metric-card strong { font-size: 34px; }
+
+  /* Tela estreita: grupo de ações (seletor de mês + Exportar PDF) ocupa a
+     largura toda numa linha própria embaixo das abas, em vez de espremer
+     os dois lado a lado. */
+  .metrics-tabs-bar-actions { width: 100%; margin-left: 0; }
+  .metrics-export-mes-select { flex: 1 1 auto; max-width: none; }
+  .metrics-tabs-bar .metrics-export-btn { flex: 1 1 auto; justify-content: center; }
 }
 
 /* ─── Tema claro ───────────────────────────────────────────────── */

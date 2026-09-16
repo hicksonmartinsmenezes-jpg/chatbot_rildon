@@ -6,8 +6,17 @@ const { gerarPdfMetricas } = require("../services/metrics-pdf.service");
 
 const router = express.Router();
 
+// 2026-09-16 (pedido do usuário: "ajuste para quando eu selecionar a data
+// aparecer nos cards as metricas especificas do mês"): aceita o mesmo
+// ?mes=YYYY-MM opcional que o /exportar-pdf já aceitava — antes só o PDF
+// respeitava o mês escolhido, o painel ao vivo sempre mostrava o mês
+// corrente. Mesma validação tolerante (formato inválido cai pro mês
+// corrente em vez de erro 400).
 router.get("/metrics", asyncHandler(async (req, res) => {
-  const data = await buscarMetricas();
+  const mes = typeof req.query.mes === "string" && /^\d{4}-\d{2}$/.test(req.query.mes)
+    ? req.query.mes
+    : null;
+  const data = await buscarMetricas(mes);
   res.json(data);
 }));
 

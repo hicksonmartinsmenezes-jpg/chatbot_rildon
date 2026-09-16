@@ -233,6 +233,9 @@
       case "handleConversationFileInput":
         call("handleConversationFileInput", event);
         break;
+      case "metricsMesChange":
+        call("metricsMesChange", el.value);
+        break;
     }
   });
 

@@ -61,7 +61,6 @@ function _nomeMes(mesRef) {
 }
 
 const AZUL = "#006097";
-const VERMELHO_CATEGORIA = "#dc2626";
 const CINZA_TEXTO = "#374151";
 const CINZA_LINHA = "#e5e7eb";
 const VERDE = "#16a34a";
@@ -76,11 +75,12 @@ function _desenharFundo(doc) {
 function _desenharCabecalho(doc, subtitulo) {
   const w = doc.page.width;
 
+  // Pedido do usuário (2026-09-16): "retire efeito do titulo Relatorio de
+  // metricas e deixe na cor preta mesmo" — antes desenhava duas vezes
+  // (sombra preta translúcida deslocada 1.5px + texto vermelho por cima).
+  // Agora é um único desenho, preto sólido, sem sombra.
   const tituloY = HEADER_HEIGHT + TITULO_GAP_TOPO;
-  doc.fillColor("#000000", 0.35).font(TITULO_FONTE).fontSize(TITULO_TAMANHO)
-    .text("RELATÓRIO DE MÉTRICAS", PAGE_MARGIN + 1.5, tituloY + 1.5, { width: w - PAGE_MARGIN * 2 });
-  doc.fillOpacity(1);
-  doc.fillColor(VERMELHO_CATEGORIA).font(TITULO_FONTE).fontSize(TITULO_TAMANHO)
+  doc.fillColor("#000000").font(TITULO_FONTE).fontSize(TITULO_TAMANHO)
     .text("RELATÓRIO DE MÉTRICAS", PAGE_MARGIN, tituloY, { width: w - PAGE_MARGIN * 2 });
 
   doc.fillColor(CINZA_TEXTO).font(SUBTITULO_FONTE).fontSize(SUBTITULO_TAMANHO)

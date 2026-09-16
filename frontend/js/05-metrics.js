@@ -73,13 +73,62 @@ function metricTrendHtml(pct, invertido = false) {
   return `<span class="metric-card-trend ${bom ? "is-good" : "is-bad"}"><i class="fa-solid ${icone}"></i> ${subiu ? "+" : ""}${pct}% vs mês passado</span>`;
 }
 
+// Pedido do usuário (2026-09-16): "ajuste para quando eu selecionar a data
+// aparecer nos cards as metricas especificas do mês" — antes só o PDF
+// aceitava ?mes=, o painel ao vivo sempre mostrava o mês corrente. Agora o
+// mês escolhido em #metrics-export-mes fica guardado aqui e viaja em toda
+// chamada de loadMetricsCharts(), incluindo as automáticas (troca de aba,
+// eventos de socket — ver 12-socket.js) — assim o painel continua
+// mostrando o mesmo mês escolhido até o usuário trocar de volta pra "Mês
+// corrente", em vez de voltar sozinho pro mês atual a cada atualização.
+window._metricsMesSelecionado = window._metricsMesSelecionado || "";
+
+const METRICS_MESES_PT = [
+  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+];
+
+// Popula o <select> com "Mês corrente" + os últimos 12 meses fechados,
+// mais recente primeiro. Chamado uma vez no carregamento do script — o
+// <select> já existe no HTML estático nesse ponto (script roda no fim do
+// <body>), sem precisar esperar nenhum evento de navegação.
+function _metricsPopularSeletorMes() {
+  const el = document.getElementById("metrics-export-mes");
+  if (!el || el.dataset.populated) return;
+  el.dataset.populated = "1";
+
+  const hoje = new Date();
+  const opcoes = [`<option value="">Mês corrente</option>`];
+
+  for (let i = 1; i <= 12; i++) {
+    const d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
+    const ano = d.getFullYear();
+    const mes = String(d.getMonth() + 1).padStart(2, "0");
+    opcoes.push(`<option value="${ano}-${mes}">${METRICS_MESES_PT[d.getMonth()]}/${ano}</option>`);
+  }
+
+  el.innerHTML = opcoes.join("");
+  el.value = window._metricsMesSelecionado || "";
+}
+_metricsPopularSeletorMes();
+
+// Handler do <select> (data-change-action="metricsMesChange", ver
+// 17-ui-events.js) — troca o mês guardado e recarrega tudo (cards, tabelas
+// e gráficos das 6 abas) pra esse mês.
+function metricsMesChange(value) {
+  window._metricsMesSelecionado = value || "";
+  loadMetricsCharts();
+}
+
 async function loadMetricsCharts() {
   if (typeof Chart === "undefined") return;
 
   setMetricsLoading(true);
 
   try {
-    const res = await apiFetch(`/api/metrics`);
+    const mes = window._metricsMesSelecionado || "";
+    const qs  = mes ? `?mes=${encodeURIComponent(mes)}` : "";
+    const res = await apiFetch(`/api/metrics${qs}`);
     if (!res) return;
 
     const data = await res.json();

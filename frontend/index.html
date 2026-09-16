@@ -23,7 +23,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css">
   <!-- CSS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <link rel="stylesheet" href="dist/bundle.0dffe6242a.css">
+  <link rel="stylesheet" href="dist/bundle.11b01c7148.css">
   <!-- CSS_BUNDLE_END -->
 <style>
     /* Centraliza colunas da tabela de histórico */
@@ -1700,22 +1700,32 @@ Como podemos ajudar você hoje?
        Geral" (pedido do usuário, 2026-08-05: "separe isso em uma aba
        também"). -->
   <div class="metrics-tabs-bar" role="tablist">
-    <button type="button" class="metrics-tab-btn active" data-metrics-tab="geral" data-action="switchMetricsTab" data-value="geral">Visão Geral</button>
-    <button type="button" class="metrics-tab-btn" data-metrics-tab="usuario" data-action="switchMetricsTab" data-value="usuario">Por Usuário</button>
-    <button type="button" class="metrics-tab-btn" data-metrics-tab="tempos" data-action="switchMetricsTab" data-value="tempos">Tempos</button>
-    <button type="button" class="metrics-tab-btn" data-metrics-tab="evolucao" data-action="switchMetricsTab" data-value="evolucao">Evolução</button>
-    <button type="button" class="metrics-tab-btn" data-metrics-tab="pico" data-action="switchMetricsTab" data-value="pico">Horários de Pico</button>
-    <button type="button" class="metrics-tab-btn" data-metrics-tab="satisfacao" data-action="switchMetricsTab" data-value="satisfacao">Pesquisa de Satisfação</button>
+    <div class="metrics-tabs-bar-tabs">
+      <button type="button" class="metrics-tab-btn active" data-metrics-tab="geral" data-action="switchMetricsTab" data-value="geral">Visão Geral</button>
+      <button type="button" class="metrics-tab-btn" data-metrics-tab="usuario" data-action="switchMetricsTab" data-value="usuario">Por Usuário</button>
+      <button type="button" class="metrics-tab-btn" data-metrics-tab="tempos" data-action="switchMetricsTab" data-value="tempos">Tempos</button>
+      <button type="button" class="metrics-tab-btn" data-metrics-tab="evolucao" data-action="switchMetricsTab" data-value="evolucao">Evolução</button>
+      <button type="button" class="metrics-tab-btn" data-metrics-tab="pico" data-action="switchMetricsTab" data-value="pico">Horários de Pico</button>
+      <button type="button" class="metrics-tab-btn" data-metrics-tab="satisfacao" data-action="switchMetricsTab" data-value="satisfacao">Pesquisa de Satisfação</button>
+    </div>
     <!-- Pedido do usuário (2026-09-16): "quero apenas exportar métricas do
          mês anterior não tenho opção disso" — seletor de mês ao lado do
-         botão Exportar PDF. Vazio (padrão) = mês corrente, comportamento de
-         sempre; escolher um mês passado manda ?mes=YYYY-MM pro backend (ver
-         exportarMetricasPDF em 05-metrics.js). -->
-    <input type="month" id="metrics-export-mes" class="metrics-export-mes-input" title="Mês do relatório (em branco = mês corrente)">
-    <button type="button" class="metrics-export-btn" onclick="exportarMetricasPDF(this)">
-      <i class="fa-solid fa-file-pdf"></i>
-      <span>Exportar PDF</span>
-    </button>
+         botão Exportar PDF. "Mês corrente" (value="") = comportamento de
+         sempre (cards ao vivo + PDF do mês atual); escolher um mês passado
+         recarrega os cards com esse mês (loadMetricsCharts em 05-metrics.js,
+         GET /api/metrics?mes=) e manda o mesmo mês pro PDF
+         (exportarMetricasPDF). Trocado de <input type="month"> pra <select>
+         (pedido do usuário 2026-09-16: "melhore o script e css da data") —
+         o input nativo renderiza feio/inconsistente entre navegadores;
+         select dá controle total de estilo e já vem populado com os
+         últimos 12 meses (ver _metricsPopularSeletorMes em 05-metrics.js). -->
+    <div class="metrics-tabs-bar-actions">
+      <select id="metrics-export-mes" class="metrics-export-mes-select" data-change-action="metricsMesChange" title="Mês exibido (Mês corrente = ao vivo)"></select>
+      <button type="button" class="metrics-export-btn" onclick="exportarMetricasPDF(this)">
+        <i class="fa-solid fa-file-pdf"></i>
+        <span>Exportar PDF</span>
+      </button>
+    </div>
   </div>
 
   <!-- Aba: Visão Geral -->
@@ -2433,7 +2443,7 @@ Como podemos ajudar você hoje?
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1"></script>
 
   <!-- JS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <script src="dist/bundle.7152ede20f.js"></script>
+  <script src="dist/bundle.16f16db242.js"></script>
   <!-- JS_BUNDLE_END -->
 
 

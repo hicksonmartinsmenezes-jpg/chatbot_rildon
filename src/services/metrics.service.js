@@ -162,14 +162,17 @@ async function buscarMetricas(mesRef = null) {
     `, [TZ, mesInicio, mesFim]),
 
     // Pesquisa de satisfação: média geral + por atendente (só tickets
-    // avaliados — satisfaction_rating IS NOT NULL).
+    // avaliados — satisfaction_rating IS NOT NULL). Quando um mês é
+    // explicitamente selecionado, as consultas passam a usar esse período.
+    // Sem mesRef, a condição deixa o comportamento histórico (todos os dados).
     pool.query(`
       SELECT
         ROUND(AVG(satisfaction_rating)::numeric, 2) AS media,
         COUNT(*)::int AS total
       FROM tickets
       WHERE satisfaction_rating IS NOT NULL
-    `),
+        AND ($3::date IS NULL OR (created_at >= $1 AND created_at < $2))
+    `, [mesInicio, mesFim, mesParam]),
 
     pool.query(`
       SELECT
@@ -177,10 +180,12 @@ async function buscarMetricas(mesRef = null) {
         ROUND(AVG(satisfaction_rating)::numeric, 2) AS media,
         COUNT(*)::int AS total
       FROM tickets
-      WHERE satisfaction_rating IS NOT NULL AND assigned_to_name IS NOT NULL
+      WHERE satisfaction_rating IS NOT NULL
+        AND assigned_to_name IS NOT NULL
+        AND ($3::date IS NULL OR (created_at >= $1 AND created_at < $2))
       GROUP BY assigned_to_name
       ORDER BY media DESC
-    `),
+    `, [mesInicio, mesFim, mesParam]),
 
     // Pedido do usuário (2026-07-21): feedback livre de "o que podemos
     // melhorar?", perguntado só quando a nota veio baixa (1 ou 2 — ver
@@ -200,9 +205,10 @@ async function buscarMetricas(mesRef = null) {
       FROM tickets
       WHERE satisfaction_rating <= 2
         AND satisfaction_feedback IS NOT NULL
+        AND ($3::date IS NULL OR (created_at >= $1 AND created_at < $2))
       ORDER BY satisfaction_feedback_at DESC
       LIMIT 50
-    `),
+    `, [mesInicio, mesFim, mesParam]),
 
     // PEDIDO DO USUÁRIO (2026-07-31): painel só mostrava quantidade, nunca
     // tempo, e nunca comparava com o período anterior (não dava pra saber
@@ -221,7 +227,7 @@ async function buscarMetricas(mesRef = null) {
         )::int AS mes_atual_resolvidos,
         -- Pedido do usuário (2026-08-05): "Visão Geral" só com métricas do
         -- mês — precisa de cancelados do mês de referência (antes só tinha
-        -- total/resolvidos mês a mês, ver mes_atual_total acima).
+        // total/resolvidos mês a mês, ver mes_atual_total acima).
         COUNT(*) FILTER (
           WHERE created_at >= $1 AND created_at < $2 AND status = 'cancelado'
         )::int AS mes_atual_cancelados,
@@ -251,9 +257,10 @@ async function buscarMetricas(mesRef = null) {
       SELECT satisfaction_rating AS nota, COUNT(*)::int AS total
       FROM tickets
       WHERE satisfaction_rating IS NOT NULL
+        AND ($3::date IS NULL OR (created_at >= $1 AND created_at < $2))
       GROUP BY satisfaction_rating
       ORDER BY satisfaction_rating ASC
-    `),
+    `, [mesInicio, mesFim, mesParam]),
 
     // Pedido do usuário (2026-07-31): "atendimentos por setor" existia no
     // Dashboard (executive view) mas não no painel de Métricas — mesma

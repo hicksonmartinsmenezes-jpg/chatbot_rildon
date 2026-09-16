@@ -9,7 +9,17 @@ const PDFDocument = require("pdfkit");
 
 const FUNDO_IMG = fs.readFileSync(path.join(__dirname, "../assets/metricas-papel-timbrado.png"));
 const MARGIN = 36;
-const TOP = 94;
+// Pedido do usuário (2026-09-16, com print do PDF real): título/subtítulo
+// estavam desenhados em y=45/72 — dentro da faixa azul do papel timbrado
+// (o "RILDON" do logo), sobrepondo o texto. A faixa azul + onda do papel
+// timbrado só libera a partir de ~93pt (11% dos 841.89pt de altura do A4 —
+// medido por pixel no arquivo fonte, ver metricas-papel-timbrado.png).
+// TITULO_Y/SUBTITULO_Y ficam abaixo dessa linha; TOP (onde a 1ª faixa de
+// conteúdo — "Resumo do mês" — começa) desce mais ainda, dando respiro
+// depois do subtítulo em vez de colar em cima dele.
+const TITULO_Y = 112;
+const SUBTITULO_Y = 136;
+const TOP = 168;
 const BOTTOM = 48;
 const AZUL = "#006097";
 const AZUL_CLARO = "#eef5f9";
@@ -50,9 +60,9 @@ function _fundo(doc) {
 function _cabecalho(doc, subtitulo) {
   const w = doc.page.width - MARGIN * 2;
   doc.fillColor("#000000").font("Helvetica-Bold").fontSize(18)
-    .text("RELATÓRIO DE MÉTRICAS", MARGIN, 45, { width: w, align: "center", lineBreak: false });
+    .text("RELATÓRIO DE MÉTRICAS", MARGIN, TITULO_Y, { width: w, align: "center", lineBreak: false });
   doc.fillColor(SEC).font("Helvetica").fontSize(9)
-    .text(subtitulo, MARGIN, 72, { width: w, align: "center", lineBreak: false });
+    .text(subtitulo, MARGIN, SUBTITULO_Y, { width: w, align: "center", lineBreak: false });
 }
 
 function _rodape(doc, pagina) {

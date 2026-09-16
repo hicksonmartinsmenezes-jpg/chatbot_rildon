@@ -499,6 +499,12 @@ function switchMetricsTab(tab) {
 // Pedido do usuário (2026-07-31): exportar o mesmo resumo do painel de
 // Métricas em PDF, igual já existe pro Catálogo (ver exportarCatalogoPDF em
 // 18-catalogo.js) — mesmo padrão de fetch+blob+download.
+//
+// 2026-09-16 (pedido do usuário: "quero apenas exportar métricas do mês
+// anterior não tenho opção disso"): lê o <input type="month"
+// #metrics-export-mes> — vazio (padrão) exporta o mês corrente, igual
+// sempre foi; um mês escolhido manda ?mes=YYYY-MM pro backend (ver
+// metrics.routes.js/metrics.service.js), que recalcula tudo pra aquele mês.
 async function exportarMetricasPDF(btnEl) {
   const original = btnEl?.innerHTML;
   if (btnEl) {
@@ -507,7 +513,9 @@ async function exportarMetricasPDF(btnEl) {
   }
 
   try {
-    const res = await fetch(`/api/metrics/exportar-pdf`, { credentials: "include" });
+    const mes = document.getElementById("metrics-export-mes")?.value || "";
+    const qs  = mes ? `?mes=${encodeURIComponent(mes)}` : "";
+    const res = await fetch(`/api/metrics/exportar-pdf${qs}`, { credentials: "include" });
     if (!res.ok) {
       const errBody = await res.json().catch(() => ({}));
       throw new Error(errBody.error || "Erro ao gerar PDF de métricas.");
@@ -516,7 +524,7 @@ async function exportarMetricasPDF(btnEl) {
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
     a.href     = url;
-    a.download = `metricas-${Date.now()}.pdf`;
+    a.download = `metricas-${mes || Date.now()}.pdf`;
     a.click();
     URL.revokeObjectURL(url);
   } catch (err) {

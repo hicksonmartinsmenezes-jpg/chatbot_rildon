@@ -1706,6 +1706,12 @@ Como podemos ajudar você hoje?
     <button type="button" class="metrics-tab-btn" data-metrics-tab="evolucao" data-action="switchMetricsTab" data-value="evolucao">Evolução</button>
     <button type="button" class="metrics-tab-btn" data-metrics-tab="pico" data-action="switchMetricsTab" data-value="pico">Horários de Pico</button>
     <button type="button" class="metrics-tab-btn" data-metrics-tab="satisfacao" data-action="switchMetricsTab" data-value="satisfacao">Pesquisa de Satisfação</button>
+    <!-- Pedido do usuário (2026-09-16): "quero apenas exportar métricas do
+         mês anterior não tenho opção disso" — seletor de mês ao lado do
+         botão Exportar PDF. Vazio (padrão) = mês corrente, comportamento de
+         sempre; escolher um mês passado manda ?mes=YYYY-MM pro backend (ver
+         exportarMetricasPDF em 05-metrics.js). -->
+    <input type="month" id="metrics-export-mes" class="metrics-export-mes-input" title="Mês do relatório (em branco = mês corrente)">
     <button type="button" class="metrics-export-btn" onclick="exportarMetricasPDF(this)">
       <i class="fa-solid fa-file-pdf"></i>
       <span>Exportar PDF</span>

@@ -1,9 +1,29 @@
 /**
  * metrics-pdf.service.js — exporta o resumo do painel de Métricas em PDF
  * (pedido do usuário, 2026-07-31, mesma ideia já aprovada pro Catálogo — ver
- * catalogo-pdf.service.js). Reaproveita o mesmo cabeçalho/rodapé de marca
- * (src/assets/catalogo-cabecalho.png / catalogo-rodape.png) pra manter a
- * identidade visual consistente entre os dois PDFs exportáveis do painel.
+ * catalogo-pdf.service.js).
+ *
+ * 2026-09-16 (pedido do usuário: "padronize esse template quando eu
+ * imprimir métricas"): trocado o cabeçalho/rodapé reaproveitado do Catálogo
+ * (catalogo-cabecalho.png/catalogo-rodape.png, 2 imagens finas) por um
+ * "papel timbrado" ÚNICO de página inteira (src/assets/metricas-papel-
+ * timbrado.png, enviado pelo usuário — faixa azul sólida no topo, marca
+ * d'água "RILDON"/"Omre+" repetida bem clara no meio da página, onda
+ * dourada/azul decorativa no rodapé), desenhado como FUNDO de cada página
+ * (0,0 até a página inteira), com o conteúdo (título/KPIs/tabelas) por
+ * cima. Proporção do arquivo (1414×2000) já bate quase exata com A4
+ * (0.7070 vs 0.7071 real) — desenhado na largura/altura inteira da página
+ * sem distorcer.
+ *
+ * Medido pixel a pixel (script Python/PIL) pra achar as zonas seguras pro
+ * texto não competir com a arte: a faixa azul sólida do topo (+ onda de
+ * transição) termina em ~y=220 de 2000px (11%) — HEADER_SAFE_HEIGHT usa uma
+ * folga um pouco maior (100pt de 841.89pt ≈ 12%). O rodapé é diferente do
+ * cabeçalho: o centro da página fica quase branco (RGB~248) até a última
+ * linha de pixels — a onda dourada/azul só aparece bem perto das QUINAS
+ * (canto inferior esquerdo/direito), não no meio — por isso o número de
+ * página é desenhado centralizado (longe das quinas) e o rodapé reserva bem
+ * menos altura que o cabeçalho (FOOTER_SAFE_HEIGHT).
  *
  * Ao contrário do catálogo (grid de fotos, paginação por produto), aqui é
  * um relatório de texto/tabelas — layout mais simples: título + seções, cada
@@ -14,23 +34,31 @@ const fs = require("fs");
 const path = require("path");
 const PDFDocument = require("pdfkit");
 
-const RODAPE_IMG = fs.readFileSync(path.join(__dirname, "../assets/catalogo-rodape.png"));
-const RODAPE_IMG_RATIO = 1372 / 156;
-const CABECALHO_IMG = fs.readFileSync(path.join(__dirname, "../assets/catalogo-cabecalho.png"));
-const CABECALHO_IMG_RATIO = 719 / 146;
-const CABECALHO_SANGRIA_TOPO = 16;
-const RODAPE_NUM_X_FRACAO = 1062 / 1372;
-const RODAPE_NUM_Y_FRACAO = 108 / 156;
+const FUNDO_IMG = fs.readFileSync(path.join(__dirname, "../assets/metricas-papel-timbrado.png"));
 
 const PAGE_MARGIN = 36;
-const CABECALHO_IMG_ALTURA_REAL = 595.28 / CABECALHO_IMG_RATIO;
-const HEADER_HEIGHT = CABECALHO_IMG_ALTURA_REAL - CABECALHO_SANGRIA_TOPO;
-const FOOTER_HEIGHT = 595.28 / RODAPE_IMG_RATIO;
+// Ver comentário acima — folga medida pixel a pixel sobre o arquivo real
+// (1414×2000), não valores arbitrários.
+const HEADER_HEIGHT = 100;
+const FOOTER_HEIGHT = 55;
 const TITULO_GAP_TOPO = 8;
 const TITULO_FONTE = "Helvetica-Bold";
 const TITULO_TAMANHO = 17;
 const SUBTITULO_FONTE = "Helvetica";
 const SUBTITULO_TAMANHO = 10;
+
+// 2026-09-16 (pedido do usuário: "quero apenas exportar métricas do mês
+// anterior não tenho opção disso"): nomes de mês PT-BR pro subtítulo do
+// relatório quando um mês específico é escolhido (ver mesRef).
+const MESES_PT = [
+  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+];
+
+function _nomeMes(mesRef) {
+  const [ano, mes] = mesRef.split("-").map(Number);
+  return `${MESES_PT[mes - 1]}/${ano}`;
+}
 
 const AZUL = "#006097";
 const VERMELHO_CATEGORIA = "#dc2626";
@@ -39,9 +67,14 @@ const CINZA_LINHA = "#e5e7eb";
 const VERDE = "#16a34a";
 const VERMELHO = "#dc2626";
 
+// Desenha o papel timbrado inteiro (0,0 até a página inteira) — chamado
+// antes de qualquer conteúdo, uma vez por página (ver novaPagina()).
+function _desenharFundo(doc) {
+  doc.image(FUNDO_IMG, 0, 0, { width: doc.page.width, height: doc.page.height });
+}
+
 function _desenharCabecalho(doc, subtitulo) {
   const w = doc.page.width;
-  doc.image(CABECALHO_IMG, 0, -CABECALHO_SANGRIA_TOPO, { width: w, height: CABECALHO_IMG_ALTURA_REAL });
 
   const tituloY = HEADER_HEIGHT + TITULO_GAP_TOPO;
   doc.fillColor("#000000", 0.35).font(TITULO_FONTE).fontSize(TITULO_TAMANHO)
@@ -56,22 +89,18 @@ function _desenharCabecalho(doc, subtitulo) {
   doc.fillColor("#111827").font("Helvetica");
 }
 
+// Número de página, centralizado, perto do rodapé — ver comentário no topo
+// do arquivo sobre por que o centro da página fica seguro (quase branco)
+// mesmo perto da última linha, diferente das quinas onde a onda decorativa
+// do timbrado aparece.
 function _desenharRodape(doc, numeroPagina) {
   const w = doc.page.width;
   const h = doc.page.height;
-  doc.image(RODAPE_IMG, 0, h - FOOTER_HEIGHT, { width: w, height: FOOTER_HEIGHT });
-
-  const footerTop = h - FOOTER_HEIGHT;
-  const centroX = w * RODAPE_NUM_X_FRACAO;
-  const centroY = footerTop + FOOTER_HEIGHT * RODAPE_NUM_Y_FRACAO;
-  const fonteNumero = 16;
   const larguraCaixa = 70;
-  const alturaLinhaAprox = fonteNumero * 1.3;
-  const yMaximo = h - alturaLinhaAprox - 2;
-  const yTexto = Math.min(centroY - fonteNumero / 2, yMaximo);
+  const yTexto = h - FOOTER_HEIGHT + 18;
 
-  doc.fillColor("#111827").font("Helvetica-Bold").fontSize(fonteNumero)
-    .text(String(numeroPagina), centroX - larguraCaixa / 2, yTexto, { width: larguraCaixa, align: "center", lineBreak: false });
+  doc.fillColor("#111827").font("Helvetica-Bold").fontSize(11)
+    .text(String(numeroPagina), w / 2 - larguraCaixa / 2, yTexto, { width: larguraCaixa, align: "center", lineBreak: false });
 
   doc.fillColor("#111827").font("Helvetica");
 }
@@ -93,6 +122,12 @@ function _setaVariacao(pct) {
 /**
  * Gera o PDF e faz stream direto pro destino (a `res` do Express — quem
  * chama já seta os headers de Content-Type/Content-Disposition antes).
+ *
+ * `data.mesRef` ("YYYY-MM", ver metrics.service.js) já vem preenchido pela
+ * própria buscarMetricas() quando o parâmetro `mes` da exportação bateu no
+ * formato esperado — usado aqui pra mostrar o mês no subtítulo e esconder
+ * campos que só fazem sentido no mês CORRENTE ("Tickets hoje", colunas
+ * "Hoje"/"7 dias" da tabela de Atendentes), sem sentido num mês já encerrado.
  */
 function gerarPdfMetricas(data, destino) {
   const doc = new PDFDocument({ size: "A4", margin: 0, autoFirstPage: false, bufferPages: true });
@@ -102,13 +137,23 @@ function gerarPdfMetricas(data, destino) {
   const areaFimY = () => doc.page.height - FOOTER_HEIGHT - 12;
   const larguraUtil = () => doc.page.width - PAGE_MARGIN * 2;
 
+  // ehHistorico: true quando o relatório é sobre um mês PASSADO (não o mês
+  // em que o botão foi clicado) — usa o mesRef efetivamente resolvido em
+  // data.mesRef (metrics.service.js só preenche isso quando o parâmetro
+  // bateu no formato esperado), não o argumento cru.
+  const ehHistorico = !!data.mesRef;
   const agora = new Date();
   const dataFmt = agora.toLocaleDateString("pt-BR") + " " + agora.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  const subtitulo = ehHistorico
+    ? `Métricas de ${_nomeMes(data.mesRef)} — gerado em ${dataFmt}`
+    : `Gerado em ${dataFmt}`;
+  const rotuloJanela = ehHistorico ? "no mês" : "últimos 30 dias";
 
   function novaPagina() {
     doc.addPage();
     pagina += 1;
-    _desenharCabecalho(doc, `Gerado em ${dataFmt}`);
+    _desenharFundo(doc);
+    _desenharCabecalho(doc, subtitulo);
     _desenharRodape(doc, pagina);
     doc.y = HEADER_HEIGHT + TITULO_GAP_TOPO + TITULO_TAMANHO + SUBTITULO_TAMANHO + 24;
   }
@@ -208,9 +253,11 @@ function gerarPdfMetricas(data, destino) {
   linhaKpi("Resolvidos", data.resolvidos, VERDE);
   linhaKpi("Cancelados", data.cancelados, VERMELHO);
   linhaKpi("Pendentes", data.pendentes);
-  linhaKpi("Tickets hoje", data.hoje);
+  // "Tickets hoje" só faz sentido no mês corrente — dentro de um relatório
+  // de um mês já encerrado (ehHistorico), mostrar "hoje" seria confuso.
+  if (!ehHistorico) linhaKpi("Tickets hoje", data.hoje);
   linhaKpi("Taxa de resolução", `${data.taxaResolucao}%`);
-  linhaKpi("Horário de pico (últimos 30 dias)", data.horarioPico ? `${String(data.horarioPico.hora).padStart(2, "0")}h (${data.horarioPico.total} atendimentos)` : "sem dados");
+  linhaKpi(`Horário de pico (${rotuloJanela})`, data.horarioPico ? `${String(data.horarioPico.hora).padStart(2, "0")}h (${data.horarioPico.total} atendimentos)` : "sem dados");
   linhaKpi("Tempo médio de resolução", _formatarMin(data.tendencia?.tempoResolucaoAtualMin) + _setaVariacao(data.tendencia?.tempoResolucaoVariacaoPct));
   linhaKpi("Tempo médio até 1ª resposta", _formatarMin(data.tendencia?.tempoRespostaAtualMin) + _setaVariacao(data.tendencia?.tempoRespostaVariacaoPct));
   linhaKpi("Satisfação média", data.satisfacaoMedia != null ? `${data.satisfacaoMedia.toFixed(1)} / 5 (${data.satisfacaoTotalRespostas} avaliações)` : "sem avaliações ainda");
@@ -244,19 +291,30 @@ function gerarPdfMetricas(data, destino) {
   );
 
   // ── Atendimentos por setor ─────────────────────────────────────────────
-  tituloSecao("Atendimentos por setor (últimos 30 dias)");
+  tituloSecao(`Atendimentos por setor (${rotuloJanela})`);
   const setores = Object.entries(data.porSetor || {}).sort((a, b) => b[1] - a[1]);
   tabela(["Setor", "Atendimentos"], [0.7, 0.3], setores.map(([setor, total]) => [setor, total]));
 
   // ── Atendentes ──────────────────────────────────────────────────────────
+  // Colunas "Hoje"/"7 dias" escondidas num relatório histórico (ver
+  // ehHistorico acima) — mesmo motivo de "Tickets hoje": não fazem sentido
+  // fora do mês corrente.
   tituloSecao("Atendentes");
-  tabela(
-    ["Atendente", "Hoje", "7 dias", "Mês", "Total histórico", "Em atendimento"],
-    [0.30, 0.12, 0.12, 0.12, 0.19, 0.15],
-    (data.atendentes || []).map(a => [
-      a.nome, a.atendidosHoje, a.atendidosSemana, a.atendidosMes, a.totalAtendidos, a.emAtendimento ?? 0
-    ])
-  );
+  if (ehHistorico) {
+    tabela(
+      ["Atendente", "Mês", "Total histórico", "Em atendimento"],
+      [0.38, 0.18, 0.24, 0.20],
+      (data.atendentes || []).map(a => [a.nome, a.atendidosMes, a.totalAtendidos, a.emAtendimento ?? 0])
+    );
+  } else {
+    tabela(
+      ["Atendente", "Hoje", "7 dias", "Mês", "Total histórico", "Em atendimento"],
+      [0.30, 0.12, 0.12, 0.12, 0.19, 0.15],
+      (data.atendentes || []).map(a => [
+        a.nome, a.atendidosHoje, a.atendidosSemana, a.atendidosMes, a.totalAtendidos, a.emAtendimento ?? 0
+      ])
+    );
+  }
 
   // ── Satisfação por atendente ────────────────────────────────────────────
   tituloSecao("Satisfação por atendente");

@@ -467,12 +467,40 @@ body.light-theme .metrics-tab-btn.active { color: var(--metrics-accent); }
    date range na referência), no lugar do antigo botão "Atualizar"
    (removido — a aba já recarrega os dados sozinha ao ser aberta). */
 .metrics-tabs-bar .metrics-export-btn {
-  margin-left: auto;
   flex-shrink: 0;
   padding: 8px 14px;
   font-size: 12px;
   border-radius: 10px;
 }
+
+/* Pedido do usuário (2026-09-16): seletor de mês ao lado do "Exportar PDF"
+   — mesma altura/raio do botão, pra formar um par visual único. O
+   margin-left:auto mudou do botão (acima) pra ESTE input, que vem antes
+   dele no HTML — como são vizinhos diretos na flex-bar, empurrar o input
+   pra direita já arrasta o botão junto (segue ele em fluxo normal), sem
+   precisar do auto nos dois. */
+.metrics-export-mes-input {
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 7px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.metrics-export-mes-input:hover { border-color: rgba(255, 255, 255, 0.22); }
+
+body.light-theme .metrics-export-mes-input {
+  background: #f1f5f9;
+  border-color: #dbe3ee;
+  color: #0f172a;
+}
+
+body.light-theme .metrics-export-mes-input:hover { background: #e6ebf2; }
 
 .metrics-tab-panel.hidden { display: none; }
 

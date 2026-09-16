@@ -5,13 +5,64 @@
  * também pelo export em PDF (metrics-pdf.service.js) sem duplicar as 10
  * queries — a rota GET /api/metrics e a rota de exportar PDF chamam a MESMA
  * função e cada uma faz o que quiser com o resultado (JSON vs desenhar PDF).
+ *
+ * 2026-09-16 (pedido do usuário: "quero apenas exportar métricas do mês
+ * anterior não tenho opção disso"): `buscarMetricas` ganhou um parâmetro
+ * opcional `mesRef` ("YYYY-MM") — SEM ele, continua se comportando
+ * EXATAMENTE como antes (mês corrente, "últimos 30 dias" nos gráficos —
+ * usado pelo painel ao vivo, GET /api/metrics, que nunca passa esse
+ * parâmetro). COM ele (usado só pela exportação em PDF, ver
+ * metrics.routes.js), os números "do mês" passam a ser sobre o mês
+ * escolhido (do dia 1 ao último, no fuso TZ_NEGOCIO) em vez do corrente, e
+ * os gráficos "por dia"/"por hora"/"por setor" (que hoje sempre mostram
+ * "últimos 30 dias", independente de mês) passam a mostrar o mês inteiro
+ * escolhido — do contrário um relatório de "Agosto" mostraria gráficos de
+ * setembro (o rolling window de 30 dias corridos, sem relação com o mês do
+ * relatório).
+ *
+ * Os limites do mês (início/fim, mês anterior, janela dos gráficos) são
+ * resolvidos numa única query preliminar (`_resolverLimites`), reaproveitada
+ * como parâmetro (timestamptz) em todas as 10 queries abaixo — troca as
+ * comparações antigas `DATE_TRUNC('month', x) = DATE_TRUNC('month', NOW())`
+ * por `x >= inicio AND x < fim` (mais simples de repetir por mês arbitrário,
+ * e mais amigável a índice em created_at do que aplicar DATE_TRUNC em cada
+ * linha da tabela).
  */
 const pool = require("../database/postgres");
 
 // Timezone configurável via .env — evita hardcode por região
 const TZ = process.env.TZ_NEGOCIO || "America/Maceio";
 
-async function buscarMetricas() {
+// Ver comentário no topo do arquivo. `$2` (mesParam) é a string "YYYY-MM-01"
+// do mês escolhido, ou NULL quando nenhum foi passado (mês corrente e
+// janela de "últimos 30 dias", preservando o comportamento de sempre).
+async function _resolverLimites(mesParam) {
+  const { rows } = await pool.query(`
+    SELECT
+      (DATE_TRUNC('month', COALESCE($2::date, (NOW() AT TIME ZONE $1)::date)) AT TIME ZONE $1) AS mes_inicio,
+      ((DATE_TRUNC('month', COALESCE($2::date, (NOW() AT TIME ZONE $1)::date)) + INTERVAL '1 month') AT TIME ZONE $1) AS mes_fim,
+      ((DATE_TRUNC('month', COALESCE($2::date, (NOW() AT TIME ZONE $1)::date)) - INTERVAL '1 month') AT TIME ZONE $1) AS mes_anterior_inicio,
+      CASE WHEN $2::date IS NULL THEN NOW() - INTERVAL '30 days'
+           ELSE (DATE_TRUNC('month', $2::date) AT TIME ZONE $1) END AS janela_inicio,
+      CASE WHEN $2::date IS NULL THEN NOW()
+           ELSE ((DATE_TRUNC('month', $2::date) + INTERVAL '1 month') AT TIME ZONE $1) END AS janela_fim
+  `, [TZ, mesParam]);
+  return rows[0];
+}
+
+/**
+ * @param {string|null} mesRef "YYYY-MM" opcional — ver comentário no topo do
+ *   arquivo. Sem isso, comportamento idêntico ao de sempre (mês corrente).
+ */
+async function buscarMetricas(mesRef = null) {
+  const mesParam = mesRef && /^\d{4}-\d{2}$/.test(mesRef) ? `${mesRef}-01` : null;
+  const {
+    mes_inicio: mesInicio,
+    mes_fim: mesFim,
+    mes_anterior_inicio: mesAnteriorInicio,
+    janela_inicio: janelaInicio,
+    janela_fim: janelaFim
+  } = await _resolverLimites(mesParam);
   // Todas as queries abaixo são independentes entre si — Promise.all roda
   // tudo em paralelo (o tempo total passa a ser o da query mais lenta, não
   // a soma de todas) em vez do await sequencial de antes. Pedido do usuário
@@ -32,7 +83,7 @@ async function buscarMetricas() {
     setorRes,
     leadsRes
   ] = await Promise.all([
-    // Totais por status + total geral + criados hoje + criados no mês corrente
+    // Totais por status + total geral + criados hoje + criados no mês de referência
     pool.query(`
       SELECT
         COUNT(*)::int                                                        AS total,
@@ -41,37 +92,36 @@ async function buscarMetricas() {
         COUNT(*) FILTER (WHERE status = 'resolvido')::int                   AS resolvidos,
         COUNT(*) FILTER (WHERE status = 'cancelado')::int                   AS cancelados,
         COUNT(*) FILTER (WHERE DATE(created_at) = CURRENT_DATE)::int        AS hoje,
-        COUNT(*) FILTER (
-          WHERE DATE_TRUNC('month', created_at AT TIME ZONE $1)
-              = DATE_TRUNC('month', NOW() AT TIME ZONE $1)
-        )::int                                                              AS mensal
+        COUNT(*) FILTER (WHERE created_at >= $1 AND created_at < $2)::int   AS mensal
       FROM tickets
-    `, [TZ]),
+    `, [mesInicio, mesFim]),
 
-    // Totais por dia (últimos 30 dias) — timezone via parâmetro para evitar SQL injection
+    // Totais por dia — "últimos 30 dias" sem mês escolhido (painel ao vivo,
+    // comportamento de sempre) ou o mês de referência inteiro na exportação
+    // em PDF (ver janela_inicio/janela_fim em _resolverLimites).
     pool.query(`
       SELECT
         TO_CHAR(created_at AT TIME ZONE $1, 'DD/MM/YYYY') AS dia,
         COUNT(*)::int AS total
       FROM tickets
-      WHERE created_at >= NOW() - INTERVAL '30 days'
+      WHERE created_at >= $2 AND created_at < $3
       GROUP BY dia
       ORDER BY MIN(created_at) ASC
-    `, [TZ]),
+    `, [TZ, janelaInicio, janelaFim]),
 
     // PEDIDO DO USUÁRIO (2026-07-27): "horário de pico" — em que hora do dia
-    // chegam mais atendimentos, pra decidir escala/reforço de atendente. Mesma
-    // janela de 30 dias do gráfico "por dia" acima, pra ficar consistente e
-    // refletir o volume recente (não o histórico todo, que dilui picos atuais).
+    // chegam mais atendimentos, pra decidir escala/reforço de atendente.
+    // Mesma janela do gráfico "por dia" acima (últimos 30 dias, ou o mês de
+    // referência inteiro na exportação em PDF).
     pool.query(`
       SELECT
         EXTRACT(HOUR FROM created_at AT TIME ZONE $1)::int AS hora,
         COUNT(*)::int AS total
       FROM tickets
-      WHERE created_at >= NOW() - INTERVAL '30 days'
+      WHERE created_at >= $2 AND created_at < $3
       GROUP BY hora
       ORDER BY hora ASC
-    `, [TZ]),
+    `, [TZ, janelaInicio, janelaFim]),
 
     // PEDIDO DO USUÁRIO (2026-07-27): supervisora monitorando "quem está em
     // atendimento / quem não" e "quem atendeu mais" — uma única query agregada
@@ -102,17 +152,14 @@ async function buscarMetricas() {
           WHERE DATE(t.created_at AT TIME ZONE $1) = (NOW() AT TIME ZONE $1)::date
         )::int AS atendidos_hoje,
         COUNT(t.id) FILTER (WHERE t.created_at >= NOW() - INTERVAL '7 days')::int AS atendidos_semana,
-        COUNT(t.id) FILTER (
-          WHERE DATE_TRUNC('month', t.created_at AT TIME ZONE $1)
-              = DATE_TRUNC('month', NOW() AT TIME ZONE $1)
-        )::int AS atendidos_mes
+        COUNT(t.id) FILTER (WHERE t.created_at >= $2 AND t.created_at < $3)::int AS atendidos_mes
       FROM users u
       LEFT JOIN tickets t ON t.assigned_to = u.id
       WHERE u.ativo = true
         AND LOWER(u.perfil) NOT IN ('admin', 'supervisor', 'api')
       GROUP BY u.id, u.nome
       ORDER BY total_atendidos DESC, u.nome ASC
-    `, [TZ]),
+    `, [TZ, mesInicio, mesFim]),
 
     // Pesquisa de satisfação: média geral + por atendente (só tickets
     // avaliados — satisfaction_rating IS NOT NULL).
@@ -168,45 +215,34 @@ async function buscarMetricas() {
     // "sem dado" não é a mesma coisa que "zero").
     pool.query(`
       SELECT
+        COUNT(*) FILTER (WHERE created_at >= $1 AND created_at < $2)::int AS mes_atual_total,
         COUNT(*) FILTER (
-          WHERE DATE_TRUNC('month', created_at AT TIME ZONE $1) = DATE_TRUNC('month', NOW() AT TIME ZONE $1)
-        )::int AS mes_atual_total,
-        COUNT(*) FILTER (
-          WHERE DATE_TRUNC('month', created_at AT TIME ZONE $1) = DATE_TRUNC('month', NOW() AT TIME ZONE $1)
-            AND status = 'resolvido'
+          WHERE created_at >= $1 AND created_at < $2 AND status = 'resolvido'
         )::int AS mes_atual_resolvidos,
         -- Pedido do usuário (2026-08-05): "Visão Geral" só com métricas do
-        -- mês — precisa de cancelados do mês atual (antes só tinha
+        -- mês — precisa de cancelados do mês de referência (antes só tinha
         -- total/resolvidos mês a mês, ver mes_atual_total acima).
         COUNT(*) FILTER (
-          WHERE DATE_TRUNC('month', created_at AT TIME ZONE $1) = DATE_TRUNC('month', NOW() AT TIME ZONE $1)
-            AND status = 'cancelado'
+          WHERE created_at >= $1 AND created_at < $2 AND status = 'cancelado'
         )::int AS mes_atual_cancelados,
+        COUNT(*) FILTER (WHERE created_at >= $3 AND created_at < $1)::int AS mes_anterior_total,
         COUNT(*) FILTER (
-          WHERE DATE_TRUNC('month', created_at AT TIME ZONE $1) = DATE_TRUNC('month', NOW() AT TIME ZONE $1) - INTERVAL '1 month'
-        )::int AS mes_anterior_total,
-        COUNT(*) FILTER (
-          WHERE DATE_TRUNC('month', created_at AT TIME ZONE $1) = DATE_TRUNC('month', NOW() AT TIME ZONE $1) - INTERVAL '1 month'
-            AND status = 'resolvido'
+          WHERE created_at >= $3 AND created_at < $1 AND status = 'resolvido'
         )::int AS mes_anterior_resolvidos,
         ROUND((AVG(EXTRACT(EPOCH FROM (updated_at - created_at)) / 60) FILTER (
-          WHERE status IN ('resolvido','cancelado')
-            AND DATE_TRUNC('month', updated_at AT TIME ZONE $1) = DATE_TRUNC('month', NOW() AT TIME ZONE $1)
+          WHERE status IN ('resolvido','cancelado') AND updated_at >= $1 AND updated_at < $2
         ))::numeric, 1) AS tempo_resolucao_atual_min,
         ROUND((AVG(EXTRACT(EPOCH FROM (updated_at - created_at)) / 60) FILTER (
-          WHERE status IN ('resolvido','cancelado')
-            AND DATE_TRUNC('month', updated_at AT TIME ZONE $1) = DATE_TRUNC('month', NOW() AT TIME ZONE $1) - INTERVAL '1 month'
+          WHERE status IN ('resolvido','cancelado') AND updated_at >= $3 AND updated_at < $1
         ))::numeric, 1) AS tempo_resolucao_anterior_min,
         ROUND((AVG(EXTRACT(EPOCH FROM (assumed_at - created_at)) / 60) FILTER (
-          WHERE assumed_at IS NOT NULL
-            AND DATE_TRUNC('month', assumed_at AT TIME ZONE $1) = DATE_TRUNC('month', NOW() AT TIME ZONE $1)
+          WHERE assumed_at IS NOT NULL AND assumed_at >= $1 AND assumed_at < $2
         ))::numeric, 1) AS tempo_resposta_atual_min,
         ROUND((AVG(EXTRACT(EPOCH FROM (assumed_at - created_at)) / 60) FILTER (
-          WHERE assumed_at IS NOT NULL
-            AND DATE_TRUNC('month', assumed_at AT TIME ZONE $1) = DATE_TRUNC('month', NOW() AT TIME ZONE $1) - INTERVAL '1 month'
+          WHERE assumed_at IS NOT NULL AND assumed_at >= $3 AND assumed_at < $1
         ))::numeric, 1) AS tempo_resposta_anterior_min
       FROM tickets
-    `, [TZ]),
+    `, [mesInicio, mesFim, mesAnteriorInicio]),
 
     // Pedido do usuário (2026-07-31): distribuição de notas (1 a 5) — uma
     // média sozinha ("4.2⭐") esconde se veio de notas concentradas em
@@ -220,15 +256,16 @@ async function buscarMetricas() {
     `),
 
     // Pedido do usuário (2026-07-31): "atendimentos por setor" existia no
-    // Dashboard (executive view) mas não no painel de Métricas — últimos 30
-    // dias, mesma janela do gráfico "por dia"/"por horário" acima.
+    // Dashboard (executive view) mas não no painel de Métricas — mesma
+    // janela do gráfico "por dia"/"por horário" acima (últimos 30 dias, ou
+    // o mês de referência inteiro na exportação em PDF).
     pool.query(`
       SELECT sector, COUNT(*)::int AS total
       FROM tickets
-      WHERE created_at >= NOW() - INTERVAL '30 days'
+      WHERE created_at >= $1 AND created_at < $2
       GROUP BY sector
       ORDER BY total DESC
-    `),
+    `, [janelaInicio, janelaFim]),
 
     // Pedido do usuário (2026-08-05): card "Novos Contatos" na aba Tempos —
     // contagem por created_at deste mês ficaria poluída pelos imports em
@@ -380,7 +417,12 @@ async function buscarMetricas() {
     distribuicaoNotas,
     feedbacksNegativos: feedbacksNegativosRes.rows,
     tendencia,
-    novosContatosLeads: leadsRes.rows[0]?.total || 0
+    novosContatosLeads: leadsRes.rows[0]?.total || 0,
+    // Mês efetivamente usado (só quando mesRef foi passado — ver
+    // metrics-pdf.service.js, usa pra montar o subtítulo do relatório e
+    // decidir se esconde colunas que só fazem sentido no mês corrente
+    // "hoje"/"7 dias").
+    mesRef: mesParam ? mesRef : null
   };
 }
 

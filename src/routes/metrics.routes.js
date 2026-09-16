@@ -6,12 +6,7 @@ const { gerarPdfMetricas } = require("../services/metrics-pdf.service");
 
 const router = express.Router();
 
-// 2026-09-16 (pedido do usuário: "ajuste para quando eu selecionar a data
-// aparecer nos cards as metricas especificas do mês"): aceita o mesmo
-// ?mes=YYYY-MM opcional que o /exportar-pdf já aceitava — antes só o PDF
-// respeitava o mês escolhido, o painel ao vivo sempre mostrava o mês
-// corrente. Mesma validação tolerante (formato inválido cai pro mês
-// corrente em vez de erro 400).
+// 2026-09-16: aceita ?mes=YYYY-MM para filtrar as métricas do painel.
 router.get("/metrics", asyncHandler(async (req, res) => {
   const mes = typeof req.query.mes === "string" && /^\d{4}-\d{2}$/.test(req.query.mes)
     ? req.query.mes
@@ -20,30 +15,29 @@ router.get("/metrics", asyncHandler(async (req, res) => {
   res.json(data);
 }));
 
-// Pedido do usuário (2026-07-31): exportar o mesmo resumo do painel de
-// Métricas em PDF (mesma ideia já aprovada pro Catálogo — ver
-// catalogo-pdf.service.js) pra imprimir/mandar pra alguém. Reaproveita
-// buscarMetricas() — os números do PDF são exatamente os mesmos que o
-// painel mostra na hora, sem duplicar nenhuma query.
-//
-// 2026-09-16 (pedido do usuário: "quero apenas exportar métricas do mês
-// anterior não tenho opção disso"): aceita ?mes=YYYY-MM opcional — sem
-// isso, continua exportando o mês corrente (comportamento de sempre). Valor
-// fora do formato esperado é tratado como "não informado" em vez de erro
-// 400 — mais tolerante a um querystring malformado, cai de volta pro mês
-// corrente sozinho.
+// Exporta o mesmo resumo do painel de Métricas em PDF.
 router.get("/metrics/exportar-pdf", asyncHandler(async (req, res) => {
+  const mes = typeof req.query.mes === "string" && /^\d{4}-\d{2}$/.test(req.query.mes)
+    ? req.query.mes
+    : null;
+
+  const data = await buscarMetricas(mes);
+
   try {
-    const mes = typeof req.query.mes === "string" && /^\d{4}-\d{2}$/.test(req.query.mes)
-      ? req.query.mes
-      : null;
-    const data = await buscarMetricas(mes);
+    const pdf = await gerarPdfMetricas(data);
+
+    if (res.writableEnded || res.destroyed) return;
+
+    res.status(200);
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="metricas-${mes || Date.now()}.pdf"`);
-    gerarPdfMetricas(data, res);
+    res.setHeader("Content-Length", pdf.length);
+    res.end(pdf);
   } catch (err) {
-    logger.error("❌ Erro ao exportar métricas em PDF:", err.message);
-    if (!res.headersSent) res.status(500).json({ error: "Erro ao gerar PDF de métricas." });
+    logger.error("❌ Erro ao exportar métricas em PDF:", err?.stack || err);
+    if (!res.headersSent && !res.writableEnded) {
+      res.status(500).json({ error: "Erro ao gerar PDF de métricas." });
+    }
   }
 }));
 

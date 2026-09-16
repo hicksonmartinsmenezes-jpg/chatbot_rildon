@@ -77,7 +77,13 @@ function gerarPdfMetricas(data, destino) {
   const historico = !!data.mesRef;
   const agora = new Date();
   const geradoEm = agora.toLocaleDateString("pt-BR") + " " + agora.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-  const subtitulo = historico ? `Métricas de ${_nomeMes(data.mesRef)}  •  gerado em ${geradoEm}` : `Gerado em ${geradoEm}`;
+  // Pedido do usuário (2026-09-16): "resumo do mês deveria mostrar qual mês
+  // especificamente" — nomeMesExibido cobre os dois casos: com mesRef (PDF
+  // histórico) usa o mês escolhido; sem mesRef (mês corrente, comportamento
+  // de sempre) usa o mês/ano de "agora", já que é esse o mês que
+  // metrics.service.js usou pra calcular tudo quando nenhum mês é passado.
+  const nomeMesExibido = historico ? _nomeMes(data.mesRef) : `${MESES_PT[agora.getMonth()]}/${agora.getFullYear()}`;
+  const subtitulo = historico ? `Métricas de ${nomeMesExibido}  •  gerado em ${geradoEm}` : `Gerado em ${geradoEm}`;
   const janela = historico ? "no mês" : "últimos 30 dias";
   const gap = 8;
 
@@ -160,18 +166,31 @@ function gerarPdfMetricas(data, destino) {
   // of null (reading 'width')", com ou sem filtro de mês — essa é a causa
   // real por trás dos crashes reportados na exportação de métricas em PDF.
   const W = doc.page.width - MARGIN * 2;
-  faixa("Resumo do mês", MARGIN, TOP, W);
+  faixa(`Resumo de ${nomeMesExibido}`, MARGIN, TOP, W);
 
   const cardW = (W - gap * 3) / 4;
   const cardH = 48;
   const cardsY = TOP + 30;
+  // BUG CORRIGIDO (2026-09-16, relatado pelo usuário com print real: "como é
+  // possivel 688 resolvidos se teve 84 atendimentos"): "Resolvidos",
+  // "Cancelados" e "Taxa de resolução" usavam data.resolvidos/cancelados/
+  // taxaResolucao — contagens DESDE SEMPRE (status atual de todos os
+  // tickets, sem filtro de data nenhum, ver summaryRes em metrics.service.js)
+  // — enquanto "Atendimentos" ao lado já usava data.mensal (só o mês). Isso
+  // criava números que pareciam quebrados (688 resolvidos num mês com só 84
+  // atendimentos). O mesmo cálculo já existia certo em outro lugar deste
+  // arquivo (tabela "Comparação com o mês anterior" usa
+  // tendencia.mesAtualResolvidos/mesAtualCancelados/taxaResolucaoAtual) — só
+  // não estava sendo usado aqui nos cards. "Em andamento" e "Pendentes"
+  // continuam sendo a foto de AGORA (não tem versão "do mês" — são tickets
+  // com esse status neste exato momento), igual ao painel ao vivo.
   const valores = [
     ["Atendimentos", `${data.mensal ?? 0}${_setaVariacao(data.tendencia?.totalVariacaoPct)}`],
     ["Em andamento", data.andamento ?? 0],
-    ["Resolvidos", data.resolvidos ?? 0, VERDE],
-    ["Cancelados", data.cancelados ?? 0, VERMELHO],
+    ["Resolvidos", data.tendencia?.mesAtualResolvidos ?? 0, VERDE],
+    ["Cancelados", data.tendencia?.mesAtualCancelados ?? 0, VERMELHO],
     ["Pendentes", data.pendentes ?? 0],
-    ["Taxa de resolução", `${data.taxaResolucao ?? 0}%`],
+    ["Taxa de resolução", `${data.tendencia?.taxaResolucaoAtual ?? 0}%`],
     ["Horário de pico", data.horarioPico ? `${String(data.horarioPico.hora).padStart(2, "0")}h (${data.horarioPico.total})` : "sem dados"],
     ["Satisfação média", data.satisfacaoMedia != null ? `${Number(data.satisfacaoMedia).toFixed(1)} / 5` : "sem dados"],
     ["Tempo de resolução", _formatarMin(data.tendencia?.tempoResolucaoAtualMin) + _setaVariacao(data.tendencia?.tempoResolucaoVariacaoPct)],

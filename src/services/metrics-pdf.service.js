@@ -69,7 +69,6 @@ function gerarPdfMetricas(data, destino) {
   const geradoEm = agora.toLocaleDateString("pt-BR") + " " + agora.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   const subtitulo = historico ? `Métricas de ${_nomeMes(data.mesRef)}  •  gerado em ${geradoEm}` : `Gerado em ${geradoEm}`;
   const janela = historico ? "no mês" : "últimos 30 dias";
-  const W = doc.page.width - MARGIN * 2;
   const gap = 8;
 
   function pagina(n) {
@@ -143,6 +142,14 @@ function gerarPdfMetricas(data, destino) {
 
   // PÁGINA 1 — RESUMO E DISTRIBUIÇÕES
   pagina(1);
+  // BUG CORRIGIDO (2026-09-16): "W" (largura útil da página) só pode ser lida
+  // de doc.page DEPOIS do primeiro addPage() — o documento é criado com
+  // autoFirstPage:false (ver construtor acima), então doc.page é null até a
+  // primeira página existir. Calcular W antes de pagina(1) (como estava)
+  // derrubava TODA chamada de gerarPdfMetricas com "Cannot read properties
+  // of null (reading 'width')", com ou sem filtro de mês — essa é a causa
+  // real por trás dos crashes reportados na exportação de métricas em PDF.
+  const W = doc.page.width - MARGIN * 2;
   faixa("Resumo do mês", MARGIN, TOP, W);
 
   const cardW = (W - gap * 3) / 4;

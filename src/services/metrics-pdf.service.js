@@ -1,7 +1,7 @@
 /**
  * Exporta o relatório de métricas em PDF.
- * Layout pensado para A4: cabeçalho centralizado, blocos bem espaçados,
- * tabelas compactas e quebra de página controlada.
+ * Layout A4 organizado em blocos, com resumo visual, tabelas compactas
+ * e uma segunda página dedicada aos dados de satisfação.
  */
 const fs = require("fs");
 const path = require("path");
@@ -9,18 +9,19 @@ const PDFDocument = require("pdfkit");
 
 const FUNDO_IMG = fs.readFileSync(path.join(__dirname, "../assets/metricas-papel-timbrado.png"));
 
-const PAGE_MARGIN = 42;
-const HEADER_HEIGHT = 100;
-const FOOTER_HEIGHT = 55;
-const TITULO_TAMANHO = 18;
-const SUBTITULO_TAMANHO = 9.5;
+const MARGIN = 36;
+const HEADER_Y = 92;
+const FOOTER_Y = 805;
 const AZUL = "#006097";
 const AZUL_CLARO = "#eef5f9";
-const CINZA_TEXTO = "#374151";
-const CINZA_LINHA = "#e5e7eb";
-const CINZA_CABECALHO = "#f3f6f8";
-const VERDE = "#16a34a";
-const VERMELHO = "#dc2626";
+const AZUL_BORDA = "#d8e8f1";
+const TEXTO = "#263238";
+const TEXTO_SEC = "#5b6570";
+const LINHA = "#e5e7eb";
+const FUNDO_CARD = "#ffffff";
+const CINZA_CARD = "#f6f8fa";
+const VERDE = "#16803c";
+const VERMELHO = "#c62828";
 
 const MESES_PT = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -30,54 +31,6 @@ const MESES_PT = [
 function _nomeMes(mesRef) {
   const [ano, mes] = mesRef.split("-").map(Number);
   return `${MESES_PT[mes - 1]}/${ano}`;
-}
-
-function _desenharFundo(doc) {
-  doc.image(FUNDO_IMG, 0, 0, {
-    width: doc.page.width,
-    height: doc.page.height
-  });
-}
-
-function _desenharCabecalho(doc, subtitulo) {
-  const w = doc.page.width;
-  const largura = w - PAGE_MARGIN * 2;
-  const tituloY = HEADER_HEIGHT + 8;
-
-  // Título centralizado na página, sem efeito/sombra.
-  doc.fillColor("#000000")
-    .font("Helvetica-Bold")
-    .fontSize(TITULO_TAMANHO)
-    .text("RELATÓRIO DE MÉTRICAS", PAGE_MARGIN, tituloY, {
-      width: largura,
-      align: "center",
-      lineBreak: false
-    });
-
-  doc.fillColor(CINZA_TEXTO)
-    .font("Helvetica")
-    .fontSize(SUBTITULO_TAMANHO)
-    .text(subtitulo, PAGE_MARGIN, tituloY + 27, {
-      width: largura,
-      align: "center",
-      lineBreak: false
-    });
-
-  doc.fillColor("#111827").font("Helvetica");
-}
-
-function _desenharRodape(doc, numeroPagina) {
-  const w = doc.page.width;
-  const h = doc.page.height;
-  doc.fillColor("#4b5563")
-    .font("Helvetica-Bold")
-    .fontSize(9)
-    .text(`Página ${numeroPagina}`, w / 2 - 35, h - FOOTER_HEIGHT + 18, {
-      width: 70,
-      align: "center",
-      lineBreak: false
-    });
-  doc.fillColor("#111827").font("Helvetica");
 }
 
 function _formatarMin(min) {
@@ -94,6 +47,45 @@ function _setaVariacao(pct) {
   return pct > 0 ? ` (+${pct}%)` : ` (${pct}%)`;
 }
 
+function _desenharFundo(doc) {
+  doc.image(FUNDO_IMG, 0, 0, {
+    width: doc.page.width,
+    height: doc.page.height
+  });
+}
+
+function _desenharCabecalho(doc, subtitulo) {
+  const largura = doc.page.width - MARGIN * 2;
+  doc.fillColor("#111111")
+    .font("Helvetica-Bold")
+    .fontSize(19)
+    .text("RELATÓRIO DE MÉTRICAS", MARGIN, 48, {
+      width: largura,
+      align: "center",
+      lineBreak: false
+    });
+
+  doc.fillColor(TEXTO_SEC)
+    .font("Helvetica")
+    .fontSize(9.5)
+    .text(subtitulo, MARGIN, 75, {
+      width: largura,
+      align: "center",
+      lineBreak: false
+    });
+}
+
+function _desenharRodape(doc, pagina) {
+  doc.fillColor("#7a838b")
+    .font("Helvetica")
+    .fontSize(8)
+    .text(`Página ${pagina}`, MARGIN, FOOTER_Y, {
+      width: doc.page.width - MARGIN * 2,
+      align: "center",
+      lineBreak: false
+    });
+}
+
 function gerarPdfMetricas(data, destino) {
   const doc = new PDFDocument({
     size: "A4",
@@ -103,9 +95,6 @@ function gerarPdfMetricas(data, destino) {
   });
   doc.pipe(destino);
 
-  let pagina = 0;
-  const larguraUtil = () => doc.page.width - PAGE_MARGIN * 2;
-  const areaFimY = () => doc.page.height - FOOTER_HEIGHT - 14;
   const ehHistorico = !!data.mesRef;
   const agora = new Date();
   const dataFmt = agora.toLocaleDateString("pt-BR") + " " + agora.toLocaleTimeString("pt-BR", {
@@ -117,225 +106,309 @@ function gerarPdfMetricas(data, destino) {
     : `Gerado em ${dataFmt}`;
   const rotuloJanela = ehHistorico ? "no mês" : "últimos 30 dias";
 
-  function novaPagina() {
+  function novaPagina(pagina) {
     doc.addPage();
-    pagina += 1;
     _desenharFundo(doc);
     _desenharCabecalho(doc, subtitulo);
     _desenharRodape(doc, pagina);
-    doc.y = HEADER_HEIGHT + 53;
   }
 
-  function garantirEspaco(alturaNecessaria) {
-    if (doc.y + alturaNecessaria > areaFimY()) novaPagina();
-  }
-
-  function tituloSecao(texto) {
-    garantirEspaco(36);
-    doc.moveDown(0.45);
-    const y = doc.y;
-
-    doc.roundedRect(PAGE_MARGIN, y, larguraUtil(), 22, 3)
+  function secao(titulo, x, y, largura) {
+    doc.roundedRect(x, y, largura, 23, 4)
       .fillColor(AZUL_CLARO)
       .fill();
-
     doc.fillColor(AZUL)
       .font("Helvetica-Bold")
-      .fontSize(11.5)
-      .text(texto, PAGE_MARGIN + 9, y + 5, {
-        width: larguraUtil() - 18,
+      .fontSize(10.5)
+      .text(titulo, x + 9, y + 6, {
+        width: largura - 18,
         lineBreak: false
       });
-
-    doc.y = y + 30;
-    doc.fillColor("#111827").font("Helvetica");
   }
 
-  function linhaKpi(rotulo, valor, corValor = "#111827") {
-    garantirEspaco(20);
-    const y = doc.y;
-    const w = larguraUtil();
-    const xValor = PAGE_MARGIN + w * 0.62;
-
-    doc.fillColor(CINZA_TEXTO)
-      .font("Helvetica")
-      .fontSize(10)
-      .text(rotulo, PAGE_MARGIN, y, {
-        width: w * 0.60,
-        lineBreak: false
-      });
-
-    doc.fillColor(corValor)
-      .font("Helvetica-Bold")
-      .fontSize(10)
-      .text(String(valor), xValor, y, {
-        width: w * 0.38,
-        align: "right",
-        lineBreak: false
-      });
-
-    doc.moveTo(PAGE_MARGIN, y + 15)
-      .lineTo(PAGE_MARGIN + w, y + 15)
-      .lineWidth(0.35)
-      .strokeColor(CINZA_LINHA)
+  function card(x, y, largura, altura, rotulo, valor, cor = TEXTO) {
+    doc.roundedRect(x, y, largura, altura, 5)
+      .fillColor(FUNDO_CARD)
+      .fill()
+      .lineWidth(0.6)
+      .strokeColor(AZUL_BORDA)
       .stroke();
 
-    doc.y = y + 18;
-  }
-
-  function ajustarLargura(texto, largura) {
-    texto = String(texto ?? "—");
-    if (doc.widthOfString(texto) <= largura) return texto;
-
-    let lo = 0;
-    let hi = texto.length;
-    while (lo < hi) {
-      const mid = Math.ceil((lo + hi) / 2);
-      const candidato = texto.slice(0, mid) + "…";
-      if (doc.widthOfString(candidato) <= largura) lo = mid;
-      else hi = mid - 1;
-    }
-    return lo > 0 ? texto.slice(0, lo) + "…" : "…";
-  }
-
-  function tabela(colunas, larguras, linhas) {
-    const alturaEstimada = 25 + Math.min(linhas.length, 28) * 16;
-    garantirEspaco(alturaEstimada);
-
-    const w = larguraUtil();
-    const xs = [];
-    let acc = PAGE_MARGIN;
-    for (const frac of larguras) {
-      xs.push(acc);
-      acc += w * frac;
-    }
-
-    const yHead = doc.y;
-    doc.roundedRect(PAGE_MARGIN, yHead, w, 19, 2)
-      .fillColor(CINZA_CABECALHO)
-      .fill();
-
-    doc.fillColor(CINZA_TEXTO)
-      .font("Helvetica-Bold")
-      .fontSize(8.5);
-
-    colunas.forEach((col, i) => {
-      const largura = w * larguras[i] - 8;
-      doc.text(ajustarLargura(col, largura), xs[i] + 4, yHead + 5, {
-        width: largura,
+    doc.fillColor(TEXTO_SEC)
+      .font("Helvetica")
+      .fontSize(8)
+      .text(rotulo, x + 9, y + 9, {
+        width: largura - 18,
         lineBreak: false
       });
-    });
 
-    doc.y = yHead + 19;
-    doc.font("Helvetica").fontSize(9).fillColor("#111827");
-
-    for (const linha of linhas) {
-      garantirEspaco(16);
-      const y = doc.y;
-
-      linha.forEach((valor, i) => {
-        const largura = w * larguras[i] - 8;
-        doc.text(ajustarLargura(valor, largura), xs[i] + 4, y + 3, {
-          width: largura,
-          lineBreak: false
-        });
+    doc.fillColor(cor)
+      .font("Helvetica-Bold")
+      .fontSize(13)
+      .text(String(valor), x + 9, y + 24, {
+        width: largura - 18,
+        lineBreak: false
       });
-
-      doc.moveTo(PAGE_MARGIN, y + 15)
-        .lineTo(PAGE_MARGIN + w, y + 15)
-        .lineWidth(0.35)
-        .strokeColor(CINZA_LINHA)
-        .stroke();
-      doc.y = y + 16;
-    }
-
-    if (!linhas.length) {
-      doc.fillColor("#9ca3af")
-        .font("Helvetica-Oblique")
-        .fontSize(9)
-        .text("Sem dados ainda.", PAGE_MARGIN, doc.y + 4, { width: w });
-      doc.y += 17;
-      doc.font("Helvetica").fillColor("#111827");
-    }
   }
 
-  novaPagina();
+  function truncar(texto, largura, fonte = "Helvetica", tamanho = 8.5) {
+    const original = String(texto ?? "—");
+    doc.font(fonte).fontSize(tamanho);
+    if (doc.widthOfString(original) <= largura) return original;
 
-  // Resumo do mês
-  tituloSecao("Resumo do mês");
-  linhaKpi("Total de atendimentos (mês)", data.mensal + _setaVariacao(data.tendencia?.totalVariacaoPct));
-  linhaKpi("Em andamento agora", data.andamento);
-  linhaKpi("Resolvidos", data.resolvidos, VERDE);
-  linhaKpi("Cancelados", data.cancelados, VERMELHO);
-  linhaKpi("Pendentes", data.pendentes);
-  if (!ehHistorico) linhaKpi("Tickets hoje", data.hoje);
-  linhaKpi("Taxa de resolução", `${data.taxaResolucao}%`);
-  linhaKpi(`Horário de pico (${rotuloJanela})`, data.horarioPico ? `${String(data.horarioPico.hora).padStart(2, "0")}h (${data.horarioPico.total} atendimentos)` : "sem dados");
-  linhaKpi("Tempo médio de resolução", _formatarMin(data.tendencia?.tempoResolucaoAtualMin) + _setaVariacao(data.tendencia?.tempoResolucaoVariacaoPct));
-  linhaKpi("Tempo médio até 1ª resposta", _formatarMin(data.tendencia?.tempoRespostaAtualMin) + _setaVariacao(data.tendencia?.tempoRespostaVariacaoPct));
-  linhaKpi("Satisfação média", data.satisfacaoMedia != null ? `${data.satisfacaoMedia.toFixed(1)} / 5 (${data.satisfacaoTotalRespostas} avaliações)` : "sem avaliações ainda");
+    let textoAtual = original;
+    while (textoAtual.length > 1 && doc.widthOfString(`${textoAtual}…`) > largura) {
+      textoAtual = textoAtual.slice(0, -1);
+    }
+    return `${textoAtual}…`;
+  }
 
-  // Comparação
-  tituloSecao("Comparação com o mês anterior");
-  tabela(
-    ["Métrica", "Mês atual", "Mês anterior", "Variação"],
-    [0.40, 0.20, 0.20, 0.20],
+  function tabela(x, y, largura, colunas, larguras, linhas, opcoes = {}) {
+    const fonte = opcoes.fonte || 8.5;
+    const alturaCab = opcoes.alturaCab || 20;
+    const alturaLinha = opcoes.alturaLinha || 18;
+    const alinhamentos = opcoes.alinhamentos || [];
+
+    doc.roundedRect(x, y, largura, alturaCab, 3)
+      .fillColor(CINZA_CARD)
+      .fill();
+
+    let atualX = x;
+    doc.font("Helvetica-Bold").fontSize(fonte).fillColor(TEXTO);
+    colunas.forEach((col, i) => {
+      const w = largura * larguras[i];
+      doc.text(truncar(col, w - 10, "Helvetica-Bold", fonte), atualX + 5, y + 6, {
+        width: w - 10,
+        align: alinhamentos[i] || "left",
+        lineBreak: false
+      });
+      atualX += w;
+    });
+
+    let atualY = y + alturaCab;
+    doc.font("Helvetica").fontSize(fonte).fillColor(TEXTO);
+
+    if (!linhas.length) {
+      doc.fillColor("#8a939b")
+        .font("Helvetica-Oblique")
+        .fontSize(fonte)
+        .text("Sem dados ainda.", x + 5, atualY + 5, { width: largura });
+      return atualY + 18;
+    }
+
+    linhas.forEach((linha, indice) => {
+      if (indice % 2 === 1) {
+        doc.rect(x, atualY, largura, alturaLinha).fillColor("#fbfcfd").fill();
+      }
+
+      atualX = x;
+      linha.forEach((valor, i) => {
+        const w = largura * larguras[i];
+        doc.fillColor(TEXTO)
+          .font("Helvetica")
+          .fontSize(fonte)
+          .text(truncar(valor, w - 10, "Helvetica", fonte), atualX + 5, atualY + 5, {
+            width: w - 10,
+            align: alinhamentos[i] || "left",
+            lineBreak: false
+          });
+        atualX += w;
+      });
+
+      doc.moveTo(x, atualY + alturaLinha)
+        .lineTo(x + largura, atualY + alturaLinha)
+        .lineWidth(0.35)
+        .strokeColor(LINHA)
+        .stroke();
+      atualY += alturaLinha;
+    });
+
+    return atualY;
+  }
+
+  // =========================
+  // PÁGINA 1 — VISÃO GERAL
+  // =========================
+  novaPagina(1);
+
+  secao("Resumo do mês", MARGIN, HEADER_Y, doc.page.width - MARGIN * 2);
+
+  const gap = 8;
+  const cardsY = HEADER_Y + 31;
+  const cardW = (doc.page.width - MARGIN * 2 - gap * 3) / 4;
+  const cardH = 49;
+  const valores = [
+    ["Atendimentos", `${data.mensal}${_setaVariacao(data.tendencia?.totalVariacaoPct)}`],
+    ["Em andamento", data.andamento],
+    ["Resolvidos", data.resolvidos, VERDE],
+    ["Cancelados", data.cancelados, VERMELHO],
+    ["Pendentes", data.pendentes],
+    ["Taxa de resolução", `${data.taxaResolucao}%`],
+    ["Horário de pico", data.horarioPico ? `${String(data.horarioPico.hora).padStart(2, "0")}h (${data.horarioPico.total})` : "sem dados"],
+    ["Satisfação média", data.satisfacaoMedia != null ? `${data.satisfacaoMedia.toFixed(1)} / 5` : "sem dados"],
+    ["Tempo de resolução", _formatarMin(data.tendencia?.tempoResolucaoAtualMin) + _setaVariacao(data.tendencia?.tempoResolucaoVariacaoPct)],
+    ["1ª resposta", _formatarMin(data.tendencia?.tempoRespostaAtualMin) + _setaVariacao(data.tendencia?.tempoRespostaVariacaoPct)],
+    ["Avaliações", data.satisfacaoTotalRespostas ?? 0],
+    ["Janela", rotuloJanela]
+  ];
+
+  valores.forEach((item, i) => {
+    const linha = Math.floor(i / 4);
+    const coluna = i % 4;
+    card(MARGIN + coluna * (cardW + gap), cardsY + linha * (cardH + gap), cardW, cardH, item[0], item[1], item[2] || TEXTO);
+  });
+
+  const blocoY = cardsY + 3 * (cardH + gap) + 10;
+  const metade = (doc.page.width - MARGIN * 2 - gap) / 2;
+
+  // Comparação com mês anterior
+  secao("Comparação com o mês anterior", MARGIN, blocoY, metade);
+  const comparacaoFim = tabela(
+    MARGIN,
+    blocoY + 29,
+    metade,
+    ["Métrica", "Atual", "Anterior", "Var."],
+    [0.46, 0.18, 0.20, 0.16],
     [
-      ["Total de atendimentos", data.mensal, data.tendencia?.totalMesAnterior ?? 0, data.tendencia?.totalVariacaoPct != null ? `${data.tendencia.totalVariacaoPct > 0 ? "+" : ""}${data.tendencia.totalVariacaoPct}%` : "—"],
+      ["Atendimentos", data.mensal, data.tendencia?.totalMesAnterior ?? 0, data.tendencia?.totalVariacaoPct != null ? `${data.tendencia.totalVariacaoPct > 0 ? "+" : ""}${data.tendencia.totalVariacaoPct}%` : "—"],
       ["Taxa de resolução", `${data.tendencia?.taxaResolucaoAtual ?? 0}%`, `${data.tendencia?.taxaResolucaoMesAnterior ?? 0}%`, data.tendencia?.taxaResolucaoVariacaoPontos != null ? `${data.tendencia.taxaResolucaoVariacaoPontos > 0 ? "+" : ""}${data.tendencia.taxaResolucaoVariacaoPontos}pp` : "—"],
-      ["Tempo médio de resolução", _formatarMin(data.tendencia?.tempoResolucaoAtualMin), _formatarMin(data.tendencia?.tempoResolucaoAnteriorMin), data.tendencia?.tempoResolucaoVariacaoPct != null ? `${data.tendencia.tempoResolucaoVariacaoPct > 0 ? "+" : ""}${data.tendencia.tempoResolucaoVariacaoPct}%` : "—"],
-      ["Tempo médio até 1ª resposta", _formatarMin(data.tendencia?.tempoRespostaAtualMin), _formatarMin(data.tendencia?.tempoRespostaAnteriorMin), data.tendencia?.tempoRespostaVariacaoPct != null ? `${data.tendencia.tempoRespostaVariacaoPct > 0 ? "+" : ""}${data.tendencia.tempoRespostaVariacaoPct}%` : "—"]
-    ]
+      ["Tempo de resolução", _formatarMin(data.tendencia?.tempoResolucaoAtualMin), _formatarMin(data.tendencia?.tempoResolucaoAnteriorMin), data.tendencia?.tempoResolucaoVariacaoPct != null ? `${data.tendencia.tempoResolucaoVariacaoPct > 0 ? "+" : ""}${data.tendencia.tempoResolucaoVariacaoPct}%` : "—"],
+      ["1ª resposta", _formatarMin(data.tendencia?.tempoRespostaAtualMin), _formatarMin(data.tendencia?.tempoRespostaAnteriorMin), data.tendencia?.tempoRespostaVariacaoPct != null ? `${data.tendencia.tempoRespostaVariacaoPct > 0 ? "+" : ""}${data.tendencia.tempoRespostaVariacaoPct}%` : "—"]
+    ],
+    { alinhamentos: ["left", "right", "right", "right"] }
   );
 
-  // Distribuição de notas
-  tituloSecao("Distribuição de notas de satisfação");
+  // Satisfação / notas
+  const direitaX = MARGIN + metade + gap;
+  secao("Distribuição de notas de satisfação", direitaX, blocoY, metade);
   const notas = data.distribuicaoNotas || {};
   tabela(
-    ["Nota", "Quantidade de avaliações"],
-    [0.5, 0.5],
-    [5, 4, 3, 2, 1].map(n => [`Nota ${n}`, notas[n] ?? 0])
+    direitaX,
+    blocoY + 29,
+    metade,
+    ["Nota", "Avaliações"],
+    [0.55, 0.45],
+    [5, 4, 3, 2, 1].map(n => [`Nota ${n}`, notas[n] ?? 0]),
+    { alinhamentos: ["left", "right"] }
   );
 
-  // Setores
-  tituloSecao(`Atendimentos por setor (${rotuloJanela})`);
+  const baixoY = Math.max(comparacaoFim, blocoY + 29 + 20 + 5 * 18) + 14;
+  const setoresLargura = metade;
+  secao(`Atendimentos por setor (${rotuloJanela})`, MARGIN, baixoY, setoresLargura);
   const setores = Object.entries(data.porSetor || {}).sort((a, b) => b[1] - a[1]);
-  tabela(["Setor", "Atendimentos"], [0.70, 0.30], setores.map(([setor, total]) => [setor, total]));
+  tabela(
+    MARGIN,
+    baixoY + 29,
+    setoresLargura,
+    ["Setor", "Atendimentos"],
+    [0.68, 0.32],
+    setores.map(([setor, total]) => [setor, total]),
+    { alinhamentos: ["left", "right"] }
+  );
 
-  // Atendentes
-  tituloSecao("Atendentes");
+  secao("Atendentes", direitaX, baixoY, metade);
   if (ehHistorico) {
     tabela(
-      ["Atendente", "Mês", "Total histórico", "Em atendimento"],
-      [0.38, 0.18, 0.24, 0.20],
-      (data.atendentes || []).map(a => [a.nome, a.atendidosMes, a.totalAtendidos, a.emAtendimento ?? 0])
+      direitaX,
+      baixoY + 29,
+      metade,
+      ["Atendente", "Mês", "Histórico", "Em atendimento"],
+      [0.37, 0.16, 0.21, 0.26],
+      (data.atendentes || []).map(a => [a.nome, a.atendidosMes, a.totalAtendidos, a.emAtendimento ?? 0]),
+      { alinhamentos: ["left", "right", "right", "right"], fonte: 7.8 }
     );
   } else {
     tabela(
-      ["Atendente", "Hoje", "7 dias", "Mês", "Total histórico", "Em atendimento"],
-      [0.30, 0.12, 0.12, 0.12, 0.19, 0.15],
-      (data.atendentes || []).map(a => [a.nome, a.atendidosHoje, a.atendidosSemana, a.atendidosMes, a.totalAtendidos, a.emAtendimento ?? 0])
+      direitaX,
+      baixoY + 29,
+      metade,
+      ["Atendente", "Hoje", "7d", "Mês", "Hist.", "Agora"],
+      [0.28, 0.13, 0.11, 0.13, 0.18, 0.17],
+      (data.atendentes || []).map(a => [a.nome, a.atendidosHoje, a.atendidosSemana, a.atendidosMes, a.totalAtendidos, a.emAtendimento ?? 0]),
+      { alinhamentos: ["left", "right", "right", "right", "right", "right"], fonte: 7.2 }
     );
   }
 
-  // Satisfação por atendente
-  tituloSecao("Satisfação por atendente");
+  // =========================
+  // PÁGINA 2 — SATISFAÇÃO
+  // =========================
+  novaPagina(2);
+  secao("Satisfação por atendente", MARGIN, HEADER_Y, doc.page.width - MARGIN * 2);
   const satisfacaoAtendentes = Object.entries(data.satisfacaoPorAtendente || {}).sort((a, b) => b[1].media - a[1].media);
-  tabela(
+  const satisfacaoFim = tabela(
+    MARGIN,
+    HEADER_Y + 29,
+    doc.page.width - MARGIN * 2,
     ["Atendente", "Média", "Avaliações"],
-    [0.50, 0.25, 0.25],
-    satisfacaoAtendentes.map(([nome, v]) => [nome, `${v.media.toFixed(1)} / 5`, v.total])
+    [0.58, 0.21, 0.21],
+    satisfacaoAtendentes.map(([nome, v]) => [nome, `${Number(v.media || 0).toFixed(1)} / 5`, v.total]),
+    { alinhamentos: ["left", "right", "right"] }
   );
 
-  // Feedbacks negativos
-  tituloSecao("O que os clientes disseram (notas 1-2, mais recentes)");
-  const feedbacks = (data.feedbacksNegativos || []).slice(0, 20);
-  tabela(
-    ["Protocolo", "Cliente", "Nota", "Comentário"],
-    [0.18, 0.22, 0.10, 0.50],
-    feedbacks.map(f => [`#${f.protocolo}`, f.customerName || "Não informado", `${f.rating}/5`, (f.feedback || "").slice(0, 90)])
-  );
+  const feedbackY = satisfacaoFim + 18;
+  secao("O que os clientes disseram (notas 1-2, mais recentes)", MARGIN, feedbackY, doc.page.width - MARGIN * 2);
+
+  const feedbacks = (data.feedbacksNegativos || []).slice(0, 15);
+  const tabelaX = MARGIN;
+  const tabelaY = feedbackY + 29;
+  const tabelaW = doc.page.width - MARGIN * 2;
+  const colW = [0.17, 0.21, 0.10, 0.52];
+  const cabH = 20;
+
+  doc.roundedRect(tabelaX, tabelaY, tabelaW, cabH, 3)
+    .fillColor(CINZA_CARD)
+    .fill();
+  doc.font("Helvetica-Bold").fontSize(8).fillColor(TEXTO);
+  let cx = tabelaX;
+  ["Protocolo", "Cliente", "Nota", "Comentário"].forEach((col, i) => {
+    const w = tabelaW * colW[i];
+    doc.text(col, cx + 5, tabelaY + 6, { width: w - 10, lineBreak: false });
+    cx += w;
+  });
+
+  let fy = tabelaY + cabH;
+  if (!feedbacks.length) {
+    doc.fillColor("#8a939b").font("Helvetica-Oblique").fontSize(9)
+      .text("Sem dados ainda.", tabelaX + 5, fy + 5, { width: tabelaW });
+  } else {
+    feedbacks.forEach((f, indice) => {
+      const protocolo = `#${f.protocolo}`;
+      const cliente = f.customerName || "Não informado";
+      const nota = `${f.rating}/5`;
+      const comentario = f.feedback || "Sem comentário";
+      const comentarioW = tabelaW * colW[3] - 10;
+      doc.font("Helvetica").fontSize(8.2);
+      const alturaTexto = Math.max(18, doc.heightOfString(comentario, { width: comentarioW, lineGap: 1 }));
+      const altura = Math.min(Math.max(alturaTexto + 7, 18), 42);
+
+      if (indice % 2 === 1) {
+        doc.rect(tabelaX, fy, tabelaW, altura).fillColor("#fbfcfd").fill();
+      }
+
+      cx = tabelaX;
+      [protocolo, cliente, nota].forEach((valor, i) => {
+        const w = tabelaW * colW[i];
+        doc.fillColor(TEXTO).font("Helvetica").fontSize(8.2)
+          .text(truncar(valor, w - 10, "Helvetica", 8.2), cx + 5, fy + 5, { width: w - 10, lineBreak: false });
+        cx += w;
+      });
+
+      doc.fillColor(TEXTO).font("Helvetica").fontSize(8.2)
+        .text(comentario, cx + 5, fy + 5, {
+          width: comentarioW,
+          height: altura - 6,
+          lineGap: 1,
+          ellipsis: true
+        });
+
+      doc.moveTo(tabelaX, fy + altura)
+        .lineTo(tabelaX + tabelaW, fy + altura)
+        .lineWidth(0.35)
+        .strokeColor(LINHA)
+        .stroke();
+      fy += altura;
+    });
+  }
 
   doc.end();
 }

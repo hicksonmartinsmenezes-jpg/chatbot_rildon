@@ -52,7 +52,8 @@ router.get("/metrics/exportar-pdf", asyncHandler(async (req, res) => {
     res.setHeader("Content-Length", pdfBuffer.length);
     res.end(pdfBuffer);
   } catch (err) {
-    logger.error("❌ Erro ao exportar métricas em PDF:", err?.stack || err);
+    const detalhe = err?.stack || err?.message || String(err);
+    logger.error(`❌ Erro ao exportar métricas em PDF: ${detalhe}`);
     if (!res.headersSent && !res.writableEnded) {
       res.status(500).json({ error: "Erro ao gerar PDF de métricas." });
     }

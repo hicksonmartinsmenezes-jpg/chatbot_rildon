@@ -36,6 +36,78 @@
     // escopo global dos scripts clássicos do painel.
     window.renderMediaBubble = renderMediaBubbleWithReply;
     renderMediaBubble = renderMediaBubbleWithReply;
+
+    // Foto recebida sem legenda: deixa a bolha compacta e coloca o horário
+    // sobre a própria foto, como no WhatsApp. Fotos com legenda permanecem
+    // no layout normal.
+    const styleId = "rildon-photo-only-bubble-style";
+    if (!document.getElementById(styleId)) {
+      const style = document.createElement("style");
+      style.id = styleId;
+      style.textContent = `
+        .bubble-row.client-row .bubble.client.photo-only-media-bubble {
+          position: relative;
+          width: fit-content;
+          max-width: min(75%, 420px);
+          padding: 0 !important;
+          background: transparent !important;
+          border: 0 !important;
+          box-shadow: none !important;
+          overflow: visible;
+        }
+        .bubble-row.client-row .bubble.client.photo-only-media-bubble img {
+          display: block;
+          max-width: 100%;
+          height: auto;
+          border-radius: 12px;
+        }
+        .bubble-row.client-row .bubble.client.photo-only-media-bubble > small {
+          position: absolute;
+          right: 7px;
+          bottom: 7px;
+          z-index: 8;
+          margin: 0 !important;
+          padding: 3px 6px !important;
+          border-radius: 8px;
+          background: rgba(0, 0, 0, .52) !important;
+          color: #fff !important;
+          font-size: 10px !important;
+          font-weight: 500;
+          line-height: 1 !important;
+          text-shadow: 0 1px 2px rgba(0,0,0,.35);
+          pointer-events: none;
+        }
+        .bubble-row.client-row .bubble.client.photo-only-media-bubble .bubble-media-reply-btn {
+          z-index: 10;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    const markPhotoOnlyBubbles = () => {
+      document.querySelectorAll(".bubble-row.client-row .bubble.client").forEach(bubble => {
+        if (bubble.classList.contains("photo-only-media-bubble")) return;
+
+        const image = bubble.querySelector("img");
+        if (!image) return;
+
+        // O renderer já não imprime <p> quando a mensagem é apenas o
+        // placeholder da mídia. Se existir texto/caption real, não compacta.
+        const hasCaption = Array.from(bubble.querySelectorAll("p"))
+          .some(p => p.textContent.trim().length > 0);
+        if (hasCaption) return;
+
+        bubble.classList.add("photo-only-media-bubble");
+      });
+    };
+
+    markPhotoOnlyBubbles();
+
+    const messagesBox = document.getElementById("chat-messages");
+    if (messagesBox) {
+      const observer = new MutationObserver(markPhotoOnlyBubbles);
+      observer.observe(messagesBox, { childList: true, subtree: true });
+    }
   };
 
   if (document.readyState === "loading") {

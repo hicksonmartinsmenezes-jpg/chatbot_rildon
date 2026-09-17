@@ -235,7 +235,7 @@ function _cabecalho(doc, subtitulo) {
   const fundoW = tituloLargura + paddingX * 2;
   const fundoH = tituloTamanho + paddingY * 2;
   const fundoX = MARGIN + (w - fundoW) / 2;
-  doc.rect(fundoX, TITULO_Y - paddingY, fundoW, fundoH).fillColor("#0026ff").fill();
+  doc.rect(fundoX, TITULO_Y - paddingY, fundoW, fundoH).fillColor("#1c4894").fill();
 
   doc.fillColor("#ffffff").font(tituloFonte).fontSize(tituloTamanho)
     .text(tituloTexto, MARGIN, TITULO_Y, { width: w, align: "center", lineBreak: false });

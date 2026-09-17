@@ -250,7 +250,13 @@ function gerarPdfMetricas(data, destino) {
     // hora mesmo, por exemplo 10:30am" — só tem granularidade de hora (sem
     // minuto, ver _formatarHora12), então os minutos exibidos são sempre
     // ":00", mas o formato agora é relógio 12h com am/pm em vez de "10h".
-    ["Horário de pico", data.horarioPico ? `${_formatarHora12(data.horarioPico.hora)} (${data.horarioPico.total})` : "sem dados"],
+    // Pedido do usuário (2026-09-17): total de atendimentos naquele horário
+    // no mês saiu do "(39)" colado no valor principal e virou uma linha
+    // própria embaixo, em verde — reaproveitando o mesmo slot de "trend" do
+    // card (ver cartao()), só que fixo em verde (bom: true) por não ser uma
+    // comparação com mês anterior, e sim um destaque informativo.
+    ["Horário de pico", data.horarioPico ? _formatarHora12(data.horarioPico.hora) : "sem dados", TEXTO,
+      data.horarioPico ? { texto: `${data.horarioPico.total} atendimentos no mês`, bom: true } : null],
     ["Satisfação média", data.satisfacaoMedia != null ? `${Number(data.satisfacaoMedia).toFixed(1)} / 5` : "sem dados"],
     ["Tempo de resolução", _formatarMin(data.tendencia?.tempoResolucaoAtualMin), TEXTO, _tendenciaInfo(data.tendencia?.tempoResolucaoVariacaoPct, true)],
     ["1ª resposta", _formatarMin(data.tendencia?.tempoRespostaAtualMin), TEXTO, _tendenciaInfo(data.tendencia?.tempoRespostaVariacaoPct, true)],

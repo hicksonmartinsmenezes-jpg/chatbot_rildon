@@ -34,8 +34,10 @@
  *     (feedbacks de nota baixa) → "Atendimentos nos últimos 6 meses"
  *     (gráfico de barras). Esse último só cai pra uma PÁGINA 3 se não
  *     sobrar espaço na 2 (ver o `if` logo antes de chamar graficoBarras).
- *   Cabeçalho (logo + título + subtítulo) e rodapé (nº da página) se
- *   repetem em toda página nova — ver a função pagina(n) dentro de
+ *   O logo (parte do papel timbrado, ver _fundo) e o rodapé (nº da
+ *   página) se repetem em toda página nova. O título+subtítulo
+ *   ("RELATÓRIO DE MÉTRICAS" + "Gerado em...") aparece SÓ na página 1
+ *   (pedido do usuário, 2026-09-17) — ver a função pagina(n) dentro de
  *   gerarPdfMetricas.
  *
  * PRA MUDANÇAS COMUNS:
@@ -287,15 +289,18 @@ function gerarPdfMetricas(data, destino) {
 
   /**
    * Abre uma página nova: adiciona a página no doc, desenha o fundo (papel
-   * timbrado), o cabeçalho (título+subtítulo) e o rodapé ("Página n").
+   * timbrado) e o rodapé ("Página n") sempre; o cabeçalho (título+
+   * subtítulo "RELATÓRIO DE MÉTRICAS") SÓ na página 1 — pedido do usuário
+   * (2026-09-17): "o cabeçalho deve apenas aparecer na primeira pagina".
    * SEMPRE chame isso pra começar uma página — nunca doc.addPage() direto,
-   * senão a página fica sem papel timbrado/cabeçalho/rodapé.
-   * @param {number} n - número da página, só pro rodapé ("Página n").
+   * senão a página fica sem papel timbrado/rodapé.
+   * @param {number} n - número da página (rodapé "Página n" + decide se
+   *   desenha o cabeçalho: só quando n === 1).
    */
   function pagina(n) {
     doc.addPage();
     _fundo(doc);
-    _cabecalho(doc, subtitulo);
+    if (n === 1) _cabecalho(doc, subtitulo);
     _rodape(doc, n);
   }
 

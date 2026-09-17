@@ -98,8 +98,28 @@ const CARD = "#ffffff";        // fundo dos cards KPI
 const CINZA = "#f5f7f9";       // fundo do cabeçalho das tabelas
 const VERDE = "#16803c";       // valor/variação "boa" (ver _tendenciaInfo/_corTendencia)
 const VERMELHO = "#c62828";    // valor/variação "ruim"
+const AZUL_PARCIAL = "#9bc9de"; // barra do mês em andamento no gráfico de 6 meses (ver graficoBarras) — mais clara que AZUL, sinaliza "dado incompleto" sem precisar de legenda separada
 
 const MESES_PT = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+
+// Timezone de negócio — mesma convenção de metrics.service.js/metrics.routes.js.
+const TZ = process.env.TZ_NEGOCIO || "America/Maceio";
+
+/**
+ * Date → "YYYY-MM" NO FUSO DE NEGÓCIO (mesmo padrão de _mesCorrente() em
+ * metrics.routes.js — evita getMonth() do fuso do servidor Node, que pode
+ * estar em UTC no container e virar o mês algumas horas antes/depois).
+ * Usado só pra decidir se o último mês do gráfico "últimos 6 meses" é o mês
+ * REAL em andamento agora (ver mesEmAndamento em gerarPdfMetricas).
+ */
+function _mesAtualStr(data) {
+  const partes = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit" })
+      .formatToParts(data)
+      .map(p => [p.type, p.value])
+  );
+  return `${partes.year}-${partes.month}`;
+}
 
 /**
  * "2026-09" → "Setembro/2026". Usado no título "Resumo de <mês>" e no
@@ -258,6 +278,17 @@ function gerarPdfMetricas(data, destino) {
   // metrics.service.js usou pra calcular tudo quando nenhum mês é passado.
   const nomeMesExibido = historico ? _nomeMes(data.mesRef) : `${MESES_PT[agora.getMonth()]}/${agora.getFullYear()}`;
   const subtitulo = historico ? `Métricas de ${nomeMesExibido}  •  gerado em ${geradoEm}` : `Gerado em ${geradoEm}`;
+  // Pedido do usuário (2026-09-17): marcar quando a última barra do gráfico
+  // "Atendimentos nos últimos 6 meses" é um mês AINDA EM ANDAMENTO — o mês
+  // do próprio relatório (data.mesRef, ou o corrente sem ele) é sempre a
+  // última barra (ver porMeses em metrics.service.js: mês do relatório + 5
+  // anteriores). Se esse mês bate com o mês real de agora (no fuso de
+  // negócio), a barra representa um mês incompleto — sem essa marca, uma
+  // barra mais baixa que as outras parece "atendimento caindo" quando pode
+  // ser só "o mês não acabou ainda". Ver mesEmAndamento usado lá embaixo,
+  // perto de graficoBarras.
+  const mesRefEfetivo = historico ? data.mesRef : _mesAtualStr(agora);
+  const mesEmAndamento = mesRefEfetivo === _mesAtualStr(agora);
   const gap = 8;
 
   /**
@@ -442,9 +473,14 @@ function gerarPdfMetricas(data, destino) {
    *   (não da 1ª barra — a função calcula o resto).
    * @param {number} w, h - largura/altura total reservada pro gráfico
    *   (rótulos inclusos — ver `areaBarras = h - 30` dentro da função).
-   * @param {Array<{total:number, rotulo:string}>} dados - um item por
-   *   barra, na ordem em que devem aparecer da esquerda pra direita.
-   *   Array vazio → desenha "Sem dados ainda." e sai.
+   * @param {Array<{total:number, rotulo:string, emAndamento?:boolean}>} dados
+   *   - um item por barra, na ordem em que devem aparecer da esquerda pra
+   *   direita. Array vazio → desenha "Sem dados ainda." e sai.
+   *   `emAndamento: true` (pedido do usuário, 2026-09-17: marcar mês
+   *   parcial no gráfico de 6 meses) pinta essa barra com AZUL_PARCIAL em
+   *   vez de AZUL — quem monta `dados` (ver chamada em gerarPdfMetricas) já
+   *   decide isso e também deve marcar o próprio `rotulo` com "*", esta
+   *   função só troca a cor, não sabe nada sobre "mês atual".
    */
   function graficoBarras(x, y, w, h, dados) {
     if (!dados.length) {
@@ -463,7 +499,7 @@ function gerarPdfMetricas(data, destino) {
       const bx = x + i * (barW + gapBarra);
       const altura = Math.max(2, (d.total / max) * (areaBarras - 14));
       const by = baseY - altura;
-      doc.roundedRect(bx, by, barW, altura, 2).fillColor(AZUL).fill();
+      doc.roundedRect(bx, by, barW, altura, 2).fillColor(d.emAndamento ? AZUL_PARCIAL : AZUL).fill();
       doc.fillColor(TEXTO).font("Helvetica-Bold").fontSize(8.5)
         .text(String(d.total), bx, by - 13, { width: barW, align: "center", lineBreak: false });
       doc.fillColor(SEC).font("Helvetica").fontSize(7.8)
@@ -689,14 +725,26 @@ function gerarPdfMetricas(data, destino) {
   // relatório + 5 anteriores, zerado onde não há ticket — ver comentário
   // lá sobre por que os rótulos são calculados por aritmética de
   // ano/mês em vez de Date/TZ).
-  const graficoAltura = 22 + 34 + 140;
+  // Pedido do usuário (2026-09-17): sinalizar quando a última barra é um mês
+  // ainda em andamento (ver mesEmAndamento, calculado lá em cima) — reserva
+  // +11pt de altura só quando precisa da legenda embaixo do gráfico.
+  const graficoAltura = 22 + 34 + 140 + (mesEmAndamento ? 11 : 0);
   let graficoY = fy + 16;
   if (graficoY + graficoAltura > doc.page.height - BOTTOM - 10) {
     pagina(3);
     graficoY = TOP;
   }
   faixa("Atendimentos nos últimos 6 meses", MARGIN, graficoY, W);
-  graficoBarras(MARGIN + 12, graficoY + 34, W - 24, 140, (data.porMeses || []).map(m => ({ total: m.total, rotulo: _rotuloMesCurto(m.mes) })));
+  const porMesesArr = data.porMeses || [];
+  const dadosGrafico = porMesesArr.map((m, i) => {
+    const ultimo = i === porMesesArr.length - 1 && mesEmAndamento;
+    return { total: m.total, rotulo: _rotuloMesCurto(m.mes) + (ultimo ? "*" : ""), emAndamento: ultimo };
+  });
+  graficoBarras(MARGIN + 12, graficoY + 34, W - 24, 140, dadosGrafico);
+  if (mesEmAndamento) {
+    doc.fillColor(SEC).font("Helvetica-Oblique").fontSize(7.5)
+      .text("* mês em andamento — total parcial até o momento da exportação.", MARGIN + 12, graficoY + 34 + 140 + 1, { width: W - 24 });
+  }
 
   doc.end();
 }

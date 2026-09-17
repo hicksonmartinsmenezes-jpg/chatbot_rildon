@@ -43,6 +43,15 @@ function _nomeMes(mesRef) {
   return `${MESES_PT[mes - 1]}/${ano}`;
 }
 
+// Pedido do usuário (2026-09-17): rótulo curto pro eixo do gráfico "Atendimentos
+// nos últimos 6 meses" (ex: "Set/26") — abreviação de 3 letras + ano com 2
+// dígitos, formato compacto o bastante pra 6 barras lado a lado sem
+// sobrepor texto.
+function _rotuloMesCurto(mesStr) {
+  const [ano, mes] = String(mesStr).split("-").map(Number);
+  return `${MESES_PT[mes - 1].slice(0, 3)}/${String(ano).slice(2)}`;
+}
+
 function _formatarMin(min) {
   if (min == null) return "sem dados";
   if (min < 60) return `${Math.round(min)} min`;
@@ -229,6 +238,37 @@ function gerarPdfMetricas(data, destino) {
     return cy;
   }
 
+  // Pedido do usuário (2026-09-17): "coloque por grafico de meses
+  // anteriores os atendimentos" — barras simples desenhadas com os
+  // primitivos do próprio pdfkit (roundedRect), já que não há lib de
+  // gráficos no projeto e o volume de dados (6 barras) não justifica
+  // adicionar uma só pra isso. `dados` é um array de { total, rotulo }
+  // na ordem em que devem aparecer (mais antigo → mais recente).
+  function graficoBarras(x, y, w, h, dados) {
+    if (!dados.length) {
+      doc.fillColor("#8a939b").font("Helvetica-Oblique").fontSize(9).text("Sem dados ainda.", x, y, { width: w });
+      return;
+    }
+    const gapBarra = 10;
+    const barW = (w - gapBarra * (dados.length - 1)) / dados.length;
+    const max = Math.max(1, ...dados.map(d => d.total));
+    // Reserva 14pt em cima (rótulo do valor) e 16pt embaixo (rótulo do mês
+    // + linha de base) da altura total `h`, o resto é a área útil das barras.
+    const areaBarras = h - 30;
+    const baseY = y + areaBarras;
+    doc.moveTo(x, baseY).lineTo(x + w, baseY).lineWidth(0.5).strokeColor(LINHA).stroke();
+    dados.forEach((d, i) => {
+      const bx = x + i * (barW + gapBarra);
+      const altura = Math.max(2, (d.total / max) * (areaBarras - 14));
+      const by = baseY - altura;
+      doc.roundedRect(bx, by, barW, altura, 2).fillColor(AZUL).fill();
+      doc.fillColor(TEXTO).font("Helvetica-Bold").fontSize(8.5)
+        .text(String(d.total), bx, by - 13, { width: barW, align: "center", lineBreak: false });
+      doc.fillColor(SEC).font("Helvetica").fontSize(7.8)
+        .text(d.rotulo, bx, baseY + 6, { width: barW, align: "center", lineBreak: false });
+    });
+  }
+
   // PÁGINA 1 — RESUMO E DISTRIBUIÇÕES
   pagina(1);
   // BUG CORRIGIDO (2026-09-16): "W" (largura útil da página) só pode ser lida
@@ -413,45 +453,23 @@ function gerarPdfMetricas(data, destino) {
     });
   }
 
-  // Pedido do usuário (2026-09-17): "embaixo de o que os clientes disseram,
-  // tem como colocar evolução?" — tabela dia a dia de atendimentos, mesma
-  // fonte que a aba "Evolução" do painel ao vivo (data.porDia, já escopado
-  // à janela do PDF — mês selecionado no histórico, últimos 30 dias no
-  // corrente — ver diaRes em metrics.service.js e
-  // renderMetricsEvolucaoTable em 05-metrics.js).
-  //
-  // Um mês cheio (~30/31 linhas) não cabe nem numa página A4 nova sozinho
-  // (27 de faixa + 20 de cabeçalho + 31*18 de linhas > área útil da
-  // página) — por isso pagina de verdade em blocos, e não só decide
-  // "cabe/não cabe" uma vez: cada bloco recebe sua própria faixa (a 1ª
-  // com o título normal, as seguintes com "(continuação)") e usa o
-  // espaço restante da página atual antes de abrir a próxima.
-  const dias = Object.entries(data.porDia || {});
-  let paginaAtual = 2;
-  let y = fy + 16;
-  let idx = 0;
-  let primeiraFaixa = true;
-  const areaUtilY = () => doc.page.height - BOTTOM - 10;
-  do {
-    // Espaço mínimo pra valer a pena começar o bloco aqui: faixa +
-    // cabeçalho da tabela + 1 linha (ou o aviso "Sem dados ainda.").
-    if (y + 27 + 20 + 18 > areaUtilY()) {
-      paginaAtual += 1;
-      pagina(paginaAtual);
-      y = TOP;
-    }
-    const cabem = Math.max(1, Math.floor((areaUtilY() - y - 27 - 20) / 18));
-    const bloco = dias.slice(idx, idx + cabem);
-    faixa(primeiraFaixa ? "Evolução diária de atendimentos" : "Evolução diária de atendimentos (continuação)", MARGIN, y, W);
-    tabela(MARGIN, y + 27, W, ["Dia", "Atendimentos"], [0.5, 0.5], bloco, { align: ["left", "right"] });
-    idx += bloco.length;
-    primeiraFaixa = false;
-    if (idx < dias.length) {
-      paginaAtual += 1;
-      pagina(paginaAtual);
-      y = TOP;
-    }
-  } while (idx < dias.length);
+  // Pedido do usuário (2026-09-17): 1ª versão era uma tabela dia a dia
+  // ("Evolução diária"), mas o usuário pediu pra trocar por um gráfico dos
+  // MESES anteriores ("acha boa ideia?" — sim: mostra tendência ao longo do
+  // tempo de um jeito mais direto que uma lista de ~30 linhas, e evita o
+  // risco de estourar 2+ páginas extras num mês cheio, como a versão
+  // anterior fazia). Usa data.porMeses (novo em metrics.service.js: mês do
+  // relatório + 5 anteriores, zerado onde não há ticket — ver comentário
+  // lá sobre por que os rótulos são calculados por aritmética de
+  // ano/mês em vez de Date/TZ).
+  const graficoAltura = 22 + 34 + 140;
+  let graficoY = fy + 16;
+  if (graficoY + graficoAltura > doc.page.height - BOTTOM - 10) {
+    pagina(3);
+    graficoY = TOP;
+  }
+  faixa("Atendimentos nos últimos 6 meses", MARGIN, graficoY, W);
+  graficoBarras(MARGIN + 12, graficoY + 34, W - 24, 140, (data.porMeses || []).map(m => ({ total: m.total, rotulo: _rotuloMesCurto(m.mes) })));
 
   doc.end();
 }

@@ -74,7 +74,8 @@ async function buscarMetricas(mesRef = null) {
     tendenciaRes,
     notasRes,
     setorRes,
-    leadsRes
+    leadsRes,
+    porMesRes
   ] = await Promise.all([
     pool.query(`
       SELECT
@@ -215,7 +216,24 @@ async function buscarMetricas(mesRef = null) {
       SELECT COUNT(*)::int AS total
       FROM contacts
       WHERE 'Leads' = ANY(tags)
-    `)
+    `),
+
+    // Pedido do usuário (2026-09-17): "coloque por grafico de meses
+    // anteriores os atendimentos" no PDF — antes não existia nenhuma
+    // agregação multi-mês, só "por dia" (últimos 30 dias/mês escolhido).
+    // Janela generosa (6 meses pra trás de mesFim); o agrupamento por
+    // TO_CHAR já bucketiza certo no fuso de negócio, igual diaRes acima —
+    // os rótulos exatos dos 6 meses exibidos são recalculados em JS logo
+    // abaixo (porMeses), essa query só faz o COUNT bruto por mês.
+    pool.query(`
+      SELECT
+        TO_CHAR(created_at AT TIME ZONE $1, 'YYYY-MM') AS mes,
+        COUNT(*)::int AS total
+      FROM tickets
+      WHERE created_at >= ($2::timestamptz - INTERVAL '6 months') AND created_at < $2
+      GROUP BY mes
+      ORDER BY mes ASC
+    `, [TZ, mesFim])
   ]);
 
   const s = summaryRes.rows[0];
@@ -246,6 +264,28 @@ async function buscarMetricas(mesRef = null) {
   for (const row of notasRes.rows) distribuicaoNotas[row.nota] = row.total;
   const porSetor = {};
   for (const row of setorRes.rows) porSetor[row.sector || "geral"] = row.total;
+  // Pedido do usuário (2026-09-17): "grafico de meses anteriores os
+  // atendimentos" — monta os 6 rótulos "YYYY-MM" (mês do relatório + 5
+  // anteriores) por aritmética inteira de ano/mês em JS, não por Date/TZ
+  // (mesmo motivo do padrão já usado pra nomeMesExibido em
+  // metrics-pdf.service.js: evita o risco de o objeto Date de mesInicio
+  // "vazar" pro mês errado perto da virada, já que TIMESTAMPTZ é convertido
+  // pro fuso do servidor Node ao virar objeto Date). Sem mesRef (painel ao
+  // vivo/mês corrente), usa o ano/mês de "agora" — mesma convenção do resto
+  // do arquivo pra esse caso.
+  const [anoRef, mesNumRef] = mesParam
+    ? [Number(mesParam.slice(0, 4)), Number(mesParam.slice(5, 7))]
+    : (() => { const agora = new Date(); return [agora.getFullYear(), agora.getMonth() + 1]; })();
+  const porMesMap = {};
+  for (const row of porMesRes.rows) porMesMap[row.mes] = row.total;
+  const porMeses = [];
+  for (let i = 5; i >= 0; i--) {
+    let ano = anoRef;
+    let mes = mesNumRef - i;
+    while (mes <= 0) { mes += 12; ano -= 1; }
+    const chave = `${ano}-${String(mes).padStart(2, "0")}`;
+    porMeses.push({ mes: chave, total: porMesMap[chave] || 0 });
+  }
   const t = tendenciaRes.rows[0];
   function variacaoPercentual(atual, anterior) {
     if (atual == null || anterior == null || Number(anterior) === 0) return null;
@@ -288,6 +328,7 @@ async function buscarMetricas(mesRef = null) {
     porDia,
     porHora,
     porSetor,
+    porMeses,
     horarioPico: horarioPico ? { hora: horarioPico.hora, total: horarioPico.total } : null,
     atendentes,
     satisfacaoMedia: satisfacaoRes.rows[0]?.media ? Number(satisfacaoRes.rows[0].media) : null,

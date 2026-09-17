@@ -45,6 +45,7 @@ const JS_FILES = [
   'js/09-users.js',
   'js/11-profile.js',
   'js/12-socket.js',
+  'js/12-wa-recovery.js',
   'js/campaigns/campaigns-render.js',
   'js/campaigns/campaigns-modal.js',
   'js/13-campaigns.js',

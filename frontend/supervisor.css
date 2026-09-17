@@ -145,3 +145,55 @@ body.light-theme .chat-input-area .chat-attach-btn:hover:not(:disabled) {
 body.light-theme .chat-input-area #btn-send-conversation {
   transform: none !important;
 }
+
+/* ─── Áudio das conversas: player compacto inspirado no WhatsApp ─── */
+.chat-messages .bubble .chat-media-audio {
+  display: block !important;
+  width: min(330px, 100%) !important;
+  max-width: 330px !important;
+  height: 44px !important;
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 22px !important;
+  background: rgba(255,255,255,.055) !important;
+  color-scheme: dark;
+}
+
+/* Bolha de áudio recebida: baixa, arredondada e sem excesso de espaço. */
+.chat-messages .bubble.client:has(.chat-media-audio) {
+  min-width: 290px;
+  max-width: 360px;
+  padding: 7px 9px !important;
+  border-radius: 18px !important;
+}
+
+/* Player nativo: deixa o painel interno o mais neutro possível. */
+.chat-messages .bubble .chat-media-audio::-webkit-media-controls-panel {
+  background: transparent !important;
+}
+
+.chat-messages .bubble .chat-media-audio::-webkit-media-controls-current-time-display,
+.chat-messages .bubble .chat-media-audio::-webkit-media-controls-time-remaining-display {
+  font-size: 10px;
+}
+
+/* Áudio enviado pelo atendente. */
+.chat-messages .bubble:not(.client):has(.chat-media-audio) {
+  min-width: 290px;
+  max-width: 360px;
+  padding: 7px 9px !important;
+  border-radius: 18px !important;
+}
+
+@media (max-width: 600px) {
+  .chat-messages .bubble.client:has(.chat-media-audio),
+  .chat-messages .bubble:not(.client):has(.chat-media-audio) {
+    min-width: 0;
+    max-width: min(92vw, 330px);
+  }
+
+  .chat-messages .bubble .chat-media-audio {
+    width: 100% !important;
+    max-width: none !important;
+  }
+}

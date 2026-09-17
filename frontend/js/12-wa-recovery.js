@@ -8,6 +8,83 @@
   let statusTimer = null;
   let recoveryTimer = null;
 
+  function ensureRecoveryWidget() {
+    if (document.getElementById("wa-recovery-widget")) return;
+
+    const widget = document.createElement("aside");
+    widget.id = "wa-recovery-widget";
+    widget.className = "wa-recovery-widget hidden";
+    widget.setAttribute("aria-live", "polite");
+    widget.innerHTML = `
+      <div class="wa-recovery-header">
+        <div class="wa-recovery-icon"><i class="fa-brands fa-whatsapp"></i></div>
+        <div>
+          <strong>WhatsApp desconectado</strong>
+          <span>Reconecte para continuar atendendo</span>
+        </div>
+        <button type="button" class="wa-recovery-close" id="wa-recovery-close" aria-label="Fechar aviso">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="wa-recovery-body">
+        <div id="wa-recovery-qr-area" class="wa-recovery-qr-area hidden">
+          <canvas id="wa-recovery-qr-canvas" width="220" height="220"></canvas>
+          <p>Abra o WhatsApp no celular → <strong>Dispositivos conectados</strong> → <strong>Conectar dispositivo</strong></p>
+          <small>O QR Code é atualizado automaticamente.</small>
+        </div>
+
+        <div id="wa-recovery-waiting" class="wa-recovery-waiting">
+          <i class="fa-solid fa-arrows-rotate fa-spin"></i>
+          <strong>Aguardando QR Code...</strong>
+          <span>O sistema está tentando recuperar a conexão.</span>
+        </div>
+      </div>
+
+      <div class="wa-recovery-footer">
+        <button type="button" class="wa-recovery-action" id="wa-recovery-reconnect">
+          <i class="fa-solid fa-plug"></i> Reconectar
+        </button>
+      </div>
+    `;
+
+    document.body.appendChild(widget);
+
+    document.getElementById("wa-recovery-close")?.addEventListener("click", () => {
+      widget.classList.add("hidden");
+    });
+
+    document.getElementById("wa-recovery-reconnect")?.addEventListener("click", () => {
+      window.requestWaReconnect?.();
+    });
+  }
+
+  function showRecoveryWidget() {
+    ensureRecoveryWidget();
+    document.getElementById("wa-recovery-widget")?.classList.remove("hidden");
+  }
+
+  function hideRecoveryWidget() {
+    document.getElementById("wa-recovery-widget")?.classList.add("hidden");
+  }
+
+  function renderRecoveryQr(qr) {
+    if (!qr) return;
+    ensureRecoveryWidget();
+    showRecoveryWidget();
+
+    const canvas = document.getElementById("wa-recovery-qr-canvas");
+    const area = document.getElementById("wa-recovery-qr-area");
+    const waiting = document.getElementById("wa-recovery-waiting");
+    if (!canvas || typeof QRCode === "undefined") return;
+
+    QRCode.toCanvas(canvas, qr, { width: 220, margin: 2 }, (err) => {
+      if (err) return;
+      area?.classList.remove("hidden");
+      waiting?.classList.add("hidden");
+    });
+  }
+
   async function refreshWaStatus() {
     try {
       const res = await apiFetch(`${BASE}/api/whatsapp/status`);
@@ -16,16 +93,20 @@
       const info = await res.json();
       if (info.connected) {
         updateWaStatusPanel("connected");
+        hideRecoveryWidget();
+        stopRecoveryPolling();
         return true;
       }
 
       if (info.qr) {
         updateWaStatusPanel("qr");
         renderWaQr(info.qr);
+        renderRecoveryQr(info.qr);
         return true;
       }
 
       updateWaStatusPanel("disconnected");
+      showRecoveryWidget();
       return true;
     } catch (_) {
       return false;
@@ -62,8 +143,6 @@
     }, POLL_MS);
   }
 
-  // O evento socket é instantâneo, mas a consulta REST mantém o QR disponível
-  // mesmo quando o painel perdeu o evento ou foi aberto depois da geração.
   function bindQrSocket() {
     if (typeof socket === "undefined" || !socket) return;
 
@@ -71,21 +150,22 @@
       if (!qr) return;
       updateWaStatusPanel("qr");
       renderWaQr(qr);
+      renderRecoveryQr(qr);
       waitForWaQr();
     });
 
     socket.on("whatsapp_status", ({ status } = {}) => {
       if (status === "connected") {
         stopRecoveryPolling();
+        hideRecoveryWidget();
         refreshWaStatus();
       } else if (status === "disconnected" || status === "logged_out") {
+        showRecoveryWidget();
         refreshWaStatus();
       }
     });
   }
 
-  // Substitui apenas a ação de reconexão do painel. A diferença principal é
-  // que não depende de um único setTimeout de 2,5s para encontrar o QR.
   window.requestWaReconnect = async function requestWaReconnectResilient() {
     let info = null;
 
@@ -109,6 +189,7 @@
           return;
         }
 
+        showRecoveryWidget();
         showToast("🔄 Reconexão solicitada. Aguardando o QR Code...");
         updateWaStatusPanel("disconnected");
         waitForWaQr();
@@ -141,9 +222,7 @@
 
   window.startWaQrRecovery = startWaStatusPolling;
 
-  // O arquivo é carregado depois de 12-socket.js no bundle, então o socket
-  // já existe quando este código é executado. O intervalo REST continua sendo
-  // a fonte de recuperação quando o evento efêmero não chega ao navegador.
+  ensureRecoveryWidget();
   bindQrSocket();
   startWaStatusPolling();
 })();

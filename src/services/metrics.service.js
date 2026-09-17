@@ -180,11 +180,29 @@ async function buscarMetricas(mesRef = null) {
         COUNT(*) FILTER (
           WHERE created_at >= $3 AND created_at < $1 AND status = 'resolvido'
         )::int AS mes_anterior_resolvidos,
-        ROUND((AVG(EXTRACT(EPOCH FROM (updated_at - created_at)) / 60) FILTER (
-          WHERE status IN ('resolvido','cancelado') AND updated_at >= $1 AND updated_at < $2
+        -- Auditoria 2026-09-17: o TMA usava updated_at, que é "última
+        -- alteração QUALQUER" (assumir, transferir, prependDescription
+        -- também mexem nele — ver ticket.repository.js), não "instante do
+        -- fechamento". Um ticket já fechado que recebesse qualquer edição
+        -- depois migrava de mês e ainda inflava a duração medida.
+        -- closed_at (migration 026) é gravado exatamente no fechamento.
+        -- COALESCE porque tickets fechados ANTES daquela migration têm
+        -- closed_at NULL — sem o fallback, o TMA de meses antigos zeraria
+        -- de uma vez; com ele, dado novo fica exato e dado velho continua
+        -- no melhor esforço de antes.
+        -- Definição mantida de propósito: TMA = média dos atendimentos
+        -- ENCERRADOS no mês (não dos abertos no mês) — por isso um ticket
+        -- aberto dia 30/08 e fechado 02/09 entra no TMA de setembro com a
+        -- duração cheia dos 3 dias. É o padrão de mercado pra esse
+        -- indicador, mas explica TMA alto em mês que herdou fila do
+        -- anterior.
+        ROUND((AVG(EXTRACT(EPOCH FROM (COALESCE(closed_at, updated_at) - created_at)) / 60) FILTER (
+          WHERE status IN ('resolvido','cancelado')
+            AND COALESCE(closed_at, updated_at) >= $1 AND COALESCE(closed_at, updated_at) < $2
         ))::numeric, 1) AS tempo_resolucao_atual_min,
-        ROUND((AVG(EXTRACT(EPOCH FROM (updated_at - created_at)) / 60) FILTER (
-          WHERE status IN ('resolvido','cancelado') AND updated_at >= $3 AND updated_at < $1
+        ROUND((AVG(EXTRACT(EPOCH FROM (COALESCE(closed_at, updated_at) - created_at)) / 60) FILTER (
+          WHERE status IN ('resolvido','cancelado')
+            AND COALESCE(closed_at, updated_at) >= $3 AND COALESCE(closed_at, updated_at) < $1
         ))::numeric, 1) AS tempo_resolucao_anterior_min,
         ROUND((AVG(EXTRACT(EPOCH FROM (assumed_at - created_at)) / 60) FILTER (
           WHERE assumed_at IS NOT NULL AND assumed_at >= $1 AND assumed_at < $2

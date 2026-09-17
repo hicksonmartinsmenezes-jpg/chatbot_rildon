@@ -591,18 +591,25 @@ function gerarPdfMetricas(data, destino) {
   // igual ao destaque que os cards de cima já ganharam — mesmo critério
   // "invertido" (tempo subir é ruim) de _corTendencia/_tendenciaInfo.
   faixa("Comparação com o mês anterior", MARGIN, blocoY, colW);
+  // Pedido do usuário (2026-09-17): "comparação ao mês anterior coloque
+  // avaliações também" — nova linha usando tendencia.avaliacoesAtual/
+  // avaliacoesMesAnterior/avaliacoesVariacaoPct (ver metrics.service.js,
+  // reaproveita a mesma query de tendência das outras 4 linhas, só que
+  // contando tickets com satisfaction_rating preenchido em vez de todos).
   const compFim = tabela(MARGIN, blocoY + 27, colW, ["Métrica", "Este mês", "Mês anterior", "Variação"], [0.36, 0.20, 0.24, 0.20], [
     ["Atendimentos", data.mensal ?? 0, data.tendencia?.totalMesAnterior ?? 0, data.tendencia?.totalVariacaoPct != null ? `${data.tendencia.totalVariacaoPct > 0 ? "+" : ""}${data.tendencia.totalVariacaoPct}%` : "—"],
     ["Taxa de resolução", `${data.tendencia?.taxaResolucaoAtual ?? 0}%`, `${data.tendencia?.taxaResolucaoMesAnterior ?? 0}%`, data.tendencia?.taxaResolucaoVariacaoPontos != null ? `${data.tendencia.taxaResolucaoVariacaoPontos > 0 ? "+" : ""}${data.tendencia.taxaResolucaoVariacaoPontos}pp` : "—"],
     ["TMA (Tempo Médio Atendimento)", _formatarMin(data.tendencia?.tempoResolucaoAtualMin), _formatarMin(data.tendencia?.tempoResolucaoAnteriorMin), data.tendencia?.tempoResolucaoVariacaoPct != null ? `${data.tendencia.tempoResolucaoVariacaoPct > 0 ? "+" : ""}${data.tendencia.tempoResolucaoVariacaoPct}%` : "—"],
-    ["TME (Tempo Médio 1ª Resposta)", _formatarMin(data.tendencia?.tempoRespostaAtualMin), _formatarMin(data.tendencia?.tempoRespostaAnteriorMin), data.tendencia?.tempoRespostaVariacaoPct != null ? `${data.tendencia.tempoRespostaVariacaoPct > 0 ? "+" : ""}${data.tendencia.tempoRespostaVariacaoPct}%` : "—"]
+    ["TME (Tempo Médio 1ª Resposta)", _formatarMin(data.tendencia?.tempoRespostaAtualMin), _formatarMin(data.tendencia?.tempoRespostaAnteriorMin), data.tendencia?.tempoRespostaVariacaoPct != null ? `${data.tendencia.tempoRespostaVariacaoPct > 0 ? "+" : ""}${data.tendencia.tempoRespostaVariacaoPct}%` : "—"],
+    ["Avaliações", data.tendencia?.avaliacoesAtual ?? 0, data.tendencia?.avaliacoesMesAnterior ?? 0, data.tendencia?.avaliacoesVariacaoPct != null ? `${data.tendencia.avaliacoesVariacaoPct > 0 ? "+" : ""}${data.tendencia.avaliacoesVariacaoPct}%` : "—"]
   ], {
     align: ["left", "right", "right", "right"],
     coresUltimaCol: [
       _corTendencia(data.tendencia?.totalVariacaoPct),
       _corTendencia(data.tendencia?.taxaResolucaoVariacaoPontos),
       _corTendencia(data.tendencia?.tempoResolucaoVariacaoPct, true),
-      _corTendencia(data.tendencia?.tempoRespostaVariacaoPct, true)
+      _corTendencia(data.tendencia?.tempoRespostaVariacaoPct, true),
+      _corTendencia(data.tendencia?.avaliacoesVariacaoPct)
     ]
   });
 

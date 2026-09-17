@@ -191,7 +191,23 @@ async function buscarMetricas(mesRef = null) {
         ))::numeric, 1) AS tempo_resposta_atual_min,
         ROUND((AVG(EXTRACT(EPOCH FROM (assumed_at - created_at)) / 60) FILTER (
           WHERE assumed_at IS NOT NULL AND assumed_at >= $3 AND assumed_at < $1
-        ))::numeric, 1) AS tempo_resposta_anterior_min
+        ))::numeric, 1) AS tempo_resposta_anterior_min,
+        -- Pedido do usuário (2026-09-17): "comparação ao mês anterior coloque
+        -- avaliações também" — reaproveita esta MESMA query (já filtra
+        -- atual/anterior por created_at) em vez de criar uma query nova só
+        -- pra isso. IMPORTANTE: diferente do resto deste SELECT (que filtra
+        -- por created_at), a pesquisa de satisfação só é respondida DEPOIS
+        -- do ticket ser criado — mas aqui, igual ao restante da tabela
+        -- "Comparação com o mês anterior", o recorte é por created_at do
+        -- ticket (não por quando a nota foi dada), pra manter os 5 números
+        -- da linha 'Avaliações' consistentes com todas as outras linhas da
+        -- mesma tabela (todas recortadas por created_at do ticket).
+        COUNT(*) FILTER (
+          WHERE created_at >= $1 AND created_at < $2 AND satisfaction_rating IS NOT NULL
+        )::int AS avaliacoes_atual,
+        COUNT(*) FILTER (
+          WHERE created_at >= $3 AND created_at < $1 AND satisfaction_rating IS NOT NULL
+        )::int AS avaliacoes_mes_anterior
       FROM tickets
     `, [mesInicio, mesFim, mesAnteriorInicio]),
 
@@ -313,7 +329,10 @@ async function buscarMetricas(mesRef = null) {
     tempoResolucaoVariacaoPct: variacaoPercentual(t.tempo_resolucao_atual_min, t.tempo_resolucao_anterior_min),
     tempoRespostaAtualMin: t.tempo_resposta_atual_min != null ? Number(t.tempo_resposta_atual_min) : null,
     tempoRespostaAnteriorMin: t.tempo_resposta_anterior_min != null ? Number(t.tempo_resposta_anterior_min) : null,
-    tempoRespostaVariacaoPct: variacaoPercentual(t.tempo_resposta_atual_min, t.tempo_resposta_anterior_min)
+    tempoRespostaVariacaoPct: variacaoPercentual(t.tempo_resposta_atual_min, t.tempo_resposta_anterior_min),
+    avaliacoesAtual: t.avaliacoes_atual,
+    avaliacoesMesAnterior: t.avaliacoes_mes_anterior,
+    avaliacoesVariacaoPct: variacaoPercentual(t.avaliacoes_atual, t.avaliacoes_mes_anterior)
   };
   return {
     total,

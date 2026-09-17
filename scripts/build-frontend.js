@@ -42,6 +42,7 @@ const JS_FILES = [
   'js/conversations/conversations-render.js',
   'js/07-conversations.js',
   'js/conversations/conversations-media-reply.js',
+  'js/conversations/audio-player-menu.js',
   'js/08-settings.js',
   'js/09-users.js',
   'js/11-profile.js',

@@ -11,7 +11,7 @@
 
     const originalRenderMediaBubble = renderMediaBubble;
 
-    window.renderMediaBubble = function renderMediaBubbleWithReply(item) {
+    const renderMediaBubbleWithReply = function(item) {
       const mediaHtml = originalRenderMediaBubble(item);
       if (!mediaHtml) return mediaHtml;
 
@@ -31,6 +31,11 @@
 
       return `${replyBtn}${mediaHtml}`;
     };
+
+    // Atualiza tanto a propriedade global quanto a referência usada pelo
+    // escopo global dos scripts clássicos do painel.
+    window.renderMediaBubble = renderMediaBubbleWithReply;
+    renderMediaBubble = renderMediaBubbleWithReply;
   };
 
   if (document.readyState === "loading") {

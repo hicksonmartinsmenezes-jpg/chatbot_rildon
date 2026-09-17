@@ -30,3 +30,42 @@
 .chat-messages{
   scroll-behavior:auto !important;
 }
+
+/* Composer: o clipe fica limpo, sem o círculo de fundo permanente.
+   No WhatsApp o ícone fica integrado ao campo e só ganha destaque no hover. */
+.chat-input-area .chat-attach-btn {
+  width: 42px !important;
+  height: 42px !important;
+  flex: 0 0 42px;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 50% !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: #8696a0 !important;
+}
+
+.chat-input-area .chat-attach-btn:hover:not(:disabled) {
+  background: rgba(255,255,255,.06) !important;
+  color: #d1d5db !important;
+}
+
+.chat-input-area .chat-attach-btn:disabled {
+  background: transparent !important;
+}
+
+/* Enviar só ocupa espaço quando há algo para enviar. */
+.chat-input-area #btn-send-conversation.composer-send-hidden {
+  display: none !important;
+}
+
+/* Tema claro */
+body.light-theme .chat-input-area .chat-attach-btn {
+  background: transparent !important;
+  color: #667781 !important;
+}
+
+body.light-theme .chat-input-area .chat-attach-btn:hover:not(:disabled) {
+  background: rgba(0,0,0,.06) !important;
+  color: #111b21 !important;
+}

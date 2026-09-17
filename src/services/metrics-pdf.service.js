@@ -215,6 +215,18 @@ function _fundo(doc) {
  */
 function _cabecalho(doc, subtitulo) {
   const w = doc.page.width - MARGIN * 2;
+
+  // Fundo colorido atrás do título — é EXATAMENTE aqui que doc.rect(...).fill()
+  // entra: sempre ANTES do .text() que escreve por cima, senão o retângulo
+  // pinta em cima da letra. x/w cobrem a largura útil da página (igual ao
+  // texto, pra ficar alinhado); y/h cobrem só a faixa do título (TITULO_Y
+  // com uma folga em cima/embaixo pra não cortar a letra).
+  // Troque AZUL_CLARO pela cor que quiser (ex: AZUL, ou um hex direto tipo
+  // "#0000ff") — se usar uma cor escura tipo AZUL/"#0000ff", troque também
+  // o fillColor do título de "#000000" pra "#ffffff" (branco), senão o
+  // texto preto some no fundo escuro.
+  doc.rect(MARGIN, TITULO_Y - 6, w, 28).fillColor(AZUL_CLARO).fill();
+
   doc.fillColor("#000000").font("Helvetica-Bold").fontSize(18)
     .text("RELATÓRIO DE MÉTRICAS", MARGIN, TITULO_Y, { width: w, align: "center", lineBreak: false });
   doc.fillColor(SEC).font("Helvetica").fontSize(9)

@@ -31,32 +31,80 @@
   scroll-behavior:auto !important;
 }
 
-/* Composer: o clipe fica limpo, sem o círculo de fundo permanente.
-   No WhatsApp o ícone fica integrado ao campo e só ganha destaque no hover. */
+/* Composer: clipe limpo, sem círculo de fundo permanente. */
 .chat-input-area .chat-attach-btn {
   width: 42px !important;
+  min-width: 42px !important;
+  max-width: 42px !important;
   height: 42px !important;
-  flex: 0 0 42px;
+  min-height: 42px !important;
+  max-height: 42px !important;
+  flex: 0 0 42px !important;
   padding: 0 !important;
+  margin: 0 !important;
   border: 0 !important;
   border-radius: 50% !important;
   background: transparent !important;
   box-shadow: none !important;
   color: #8696a0 !important;
+  transform: none !important;
 }
 
 .chat-input-area .chat-attach-btn:hover:not(:disabled) {
   background: rgba(255,255,255,.06) !important;
   color: #d1d5db !important;
+  transform: none !important;
 }
 
 .chat-input-area .chat-attach-btn:disabled {
   background: transparent !important;
+  transform: none !important;
 }
 
-/* Enviar só ocupa espaço quando há algo para enviar. */
+/* Enviar: área inteira do círculo deve ser clicável, sem sobra/área residual.
+   O flex-basis fixo evita que o botão seja comprimido pelo textarea. */
+.chat-input-area #btn-send-conversation {
+  width: 48px !important;
+  min-width: 48px !important;
+  max-width: 48px !important;
+  height: 48px !important;
+  min-height: 48px !important;
+  max-height: 48px !important;
+  flex: 0 0 48px !important;
+  flex-shrink: 0 !important;
+  flex-grow: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 50% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  position: relative;
+  z-index: 20;
+  box-sizing: border-box !important;
+  cursor: pointer;
+  pointer-events: auto;
+  transform: none !important;
+}
+
+.chat-input-area #btn-send-conversation:hover:not(:disabled) {
+  transform: none !important;
+}
+
+.chat-input-area #btn-send-conversation i {
+  pointer-events: none;
+}
+
+/* Não deixa estilos de tema/estado criarem uma área visual separada no canto. */
 .chat-input-area #btn-send-conversation.composer-send-hidden {
   display: none !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+  flex-basis: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
 }
 
 /* Tema claro */
@@ -68,4 +116,9 @@ body.light-theme .chat-input-area .chat-attach-btn {
 body.light-theme .chat-input-area .chat-attach-btn:hover:not(:disabled) {
   background: rgba(0,0,0,.06) !important;
   color: #111b21 !important;
+}
+
+body.light-theme .chat-input-area #btn-send-conversation {
+  /* mantém a cor definida pelo tema original, mas preserva a geometria/click area */
+  transform: none !important;
 }

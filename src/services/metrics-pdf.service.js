@@ -58,11 +58,22 @@ function _formatarMin(min) {
 // separada, menor e colorida. `invertido=true` é pra métricas onde SUBIR é
 // RUIM (tempo de resolução/resposta — demorar mais não é bom), mesmo
 // critério já usado no painel ao vivo (metricTrendHtml em 05-metrics.js).
-function _tendenciaInfo(pct, invertido = false) {
+//
+// Pedido do usuário (2026-09-17, print real com "+178% vs mês ant." no card
+// de Tempo de resolução): "seria mais rapido ou mais lento que o mes
+// anterior?" — pra métricas de tempo, "+178%" sozinho exige o leitor saber
+// de cabeça que invertido=true significa "subir é ruim", o que não é óbvio
+// batendo o olho no card. `rotulos = [textoBom, textoRuim]` troca o "vs mês
+// ant." genérico por uma palavra que já responde a pergunta direto (ex:
+// "178% mais lento").
+function _tendenciaInfo(pct, invertido = false, rotulos = null) {
   if (pct == null) return null;
   if (pct === 0) return { texto: "= vs mês ant.", bom: null };
   const subiu = pct > 0;
   const bom = invertido ? !subiu : subiu;
+  if (rotulos) {
+    return { texto: `${Math.abs(pct)}% ${bom ? rotulos[0] : rotulos[1]}`, bom };
+  }
   return { texto: `${subiu ? "+" : ""}${pct}% vs mês ant.`, bom };
 }
 
@@ -121,7 +132,6 @@ function gerarPdfMetricas(data, destino) {
   // metrics.service.js usou pra calcular tudo quando nenhum mês é passado.
   const nomeMesExibido = historico ? _nomeMes(data.mesRef) : `${MESES_PT[agora.getMonth()]}/${agora.getFullYear()}`;
   const subtitulo = historico ? `Métricas de ${nomeMesExibido}  •  gerado em ${geradoEm}` : `Gerado em ${geradoEm}`;
-  const janela = historico ? "no mês" : "últimos 30 dias";
   const gap = 8;
 
   function pagina(n) {
@@ -241,10 +251,28 @@ function gerarPdfMetricas(data, destino) {
   // dois saíram da grade (eram a foto de AGORA, sem filtro de mês nenhum,
   // igual "Pendentes" que continua — não tinham "versão do mês" que fizesse
   // sentido, o que também ajudava a confundir com o resto dos cards).
+  //
+  // Pedido do usuário (2026-09-17): "remova janela e pendentes" — "Janela"
+  // (rótulo "no mês"/"últimos 30 dias") e "Pendentes" saíram da grade, que
+  // agora fecha certinho em 2 linhas de 4 cards (8 no total) sem sobrar
+  // espaço vazio. "Pendentes" nunca teve versão do mês (é a foto de AGORA,
+  // igual Em andamento/Cancelados que já tinham saído por esse motivo);
+  // "Janela" só explicava o período do PDF, informação que já está no
+  // subtítulo do cabeçalho.
+  //
+  // Pedido do usuário (2026-09-17, print real com "+178% vs mês ant." no
+  // card de Tempo de resolução): "seria mais rapido ou mais lento que o mes
+  // anterior?" — as duas métricas de tempo (Tempo de resolução e 1ª
+  // resposta) agora usam _tendenciaInfo(..., rotulos) pra trocar o "%"
+  // genérico por "mais rápido"/"mais lento" já dito por extenso. "1ª
+  // resposta" também virou "Tempo de 1ª resposta" (pergunta do usuário: "o
+  // que seria" — é o tempo médio até o atendente assumir/responder o
+  // ticket, então o título deixa isso explícito, igual "Tempo de
+  // resolução" ao lado).
+  const ROTULOS_TEMPO = ["mais rápido", "mais lento"];
   const valores = [
     ["Atendimentos", data.mensal ?? 0, TEXTO, _tendenciaInfo(data.tendencia?.totalVariacaoPct)],
     ["Resolvidos", data.tendencia?.mesAtualResolvidos ?? 0, VERDE],
-    ["Pendentes", data.pendentes ?? 0],
     ["Taxa de resolução", `${data.tendencia?.taxaResolucaoAtual ?? 0}%`],
     // Pedido do usuário (2026-09-16): "horario de pico deixe no formato de
     // hora mesmo, por exemplo 10:30am" — só tem granularidade de hora (sem
@@ -258,14 +286,17 @@ function gerarPdfMetricas(data, destino) {
     ["Horário de pico", data.horarioPico ? _formatarHora12(data.horarioPico.hora) : "sem dados", TEXTO,
       data.horarioPico ? { texto: `${data.horarioPico.total} atendimentos no mês`, bom: true } : null],
     ["Satisfação média", data.satisfacaoMedia != null ? `${Number(data.satisfacaoMedia).toFixed(1)} / 5` : "sem dados"],
-    ["Tempo de resolução", _formatarMin(data.tendencia?.tempoResolucaoAtualMin), TEXTO, _tendenciaInfo(data.tendencia?.tempoResolucaoVariacaoPct, true)],
-    ["1ª resposta", _formatarMin(data.tendencia?.tempoRespostaAtualMin), TEXTO, _tendenciaInfo(data.tendencia?.tempoRespostaVariacaoPct, true)],
-    ["Avaliações", data.satisfacaoTotalRespostas ?? 0],
-    ["Janela", janela]
+    ["Tempo de resolução", _formatarMin(data.tendencia?.tempoResolucaoAtualMin), TEXTO, _tendenciaInfo(data.tendencia?.tempoResolucaoVariacaoPct, true, ROTULOS_TEMPO)],
+    ["Tempo de 1ª resposta", _formatarMin(data.tendencia?.tempoRespostaAtualMin), TEXTO, _tendenciaInfo(data.tendencia?.tempoRespostaVariacaoPct, true, ROTULOS_TEMPO)],
+    ["Avaliações", data.satisfacaoTotalRespostas ?? 0]
   ];
   valores.forEach((v, i) => cartao(MARGIN + (i % 4) * (cardW + gap), cardsY + Math.floor(i / 4) * (cardH + gap), cardW, cardH, v[0], v[1], v[2] || TEXTO, v[3] || null));
 
-  const blocoY = cardsY + 3 * (cardH + gap) + 12;
+  // linhasCards calculado a partir de valores.length (e não mais fixo em 3)
+  // pra não sobrar espaço vazio depois que "Pendentes"/"Janela" saíram e a
+  // grade encolheu de 10 pra 8 cards (2 linhas de 4 em vez de 3).
+  const linhasCards = Math.ceil(valores.length / 4);
+  const blocoY = cardsY + linhasCards * (cardH + gap) + 12;
   const colW = (W - gap) / 2;
 
   // Pedido do usuário (2026-09-16): "deixe comparações com mes anterior de
@@ -279,7 +310,7 @@ function gerarPdfMetricas(data, destino) {
     ["Atendimentos", data.mensal ?? 0, data.tendencia?.totalMesAnterior ?? 0, data.tendencia?.totalVariacaoPct != null ? `${data.tendencia.totalVariacaoPct > 0 ? "+" : ""}${data.tendencia.totalVariacaoPct}%` : "—"],
     ["Taxa de resolução", `${data.tendencia?.taxaResolucaoAtual ?? 0}%`, `${data.tendencia?.taxaResolucaoMesAnterior ?? 0}%`, data.tendencia?.taxaResolucaoVariacaoPontos != null ? `${data.tendencia.taxaResolucaoVariacaoPontos > 0 ? "+" : ""}${data.tendencia.taxaResolucaoVariacaoPontos}pp` : "—"],
     ["Tempo de resolução", _formatarMin(data.tendencia?.tempoResolucaoAtualMin), _formatarMin(data.tendencia?.tempoResolucaoAnteriorMin), data.tendencia?.tempoResolucaoVariacaoPct != null ? `${data.tendencia.tempoResolucaoVariacaoPct > 0 ? "+" : ""}${data.tendencia.tempoResolucaoVariacaoPct}%` : "—"],
-    ["1ª resposta", _formatarMin(data.tendencia?.tempoRespostaAtualMin), _formatarMin(data.tendencia?.tempoRespostaAnteriorMin), data.tendencia?.tempoRespostaVariacaoPct != null ? `${data.tendencia.tempoRespostaVariacaoPct > 0 ? "+" : ""}${data.tendencia.tempoRespostaVariacaoPct}%` : "—"]
+    ["Tempo de 1ª resposta", _formatarMin(data.tendencia?.tempoRespostaAtualMin), _formatarMin(data.tendencia?.tempoRespostaAnteriorMin), data.tendencia?.tempoRespostaVariacaoPct != null ? `${data.tendencia.tempoRespostaVariacaoPct > 0 ? "+" : ""}${data.tendencia.tempoRespostaVariacaoPct}%` : "—"]
   ], {
     align: ["left", "right", "right", "right"],
     coresUltimaCol: [

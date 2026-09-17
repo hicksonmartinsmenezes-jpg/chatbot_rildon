@@ -46,7 +46,10 @@
  *     no meio do código.
  *   - Mudar espaçamento entre elementos → procure a constante `gap` (8pt,
  *     dentro de gerarPdfMetricas) ou os números somados/multiplicados nas
- *     contas de posição (ex: `cardsY + Math.floor(i / 4) * (cardH + gap)`).
+ *     contas de posição (ex: `cardsY + Math.floor(i / CARDS_POR_LINHA) *
+ *     (cardH + gap)`).
+ *   - Mudar quantas colunas a grade de cards do resumo tem → constante
+ *     `CARDS_POR_LINHA` (perto de `cardW`, dentro de gerarPdfMetricas).
  *   - Adicionar/remover um card do resumo → edite o array `valores` (ver
  *     comentário "PÁGINA 1"), cada linha é
  *     [título, valor, cor?, trend?] — cor e trend são opcionais.
@@ -486,7 +489,13 @@ function gerarPdfMetricas(data, destino) {
   const W = doc.page.width - MARGIN * 2;
   faixa(`Resumo de ${nomeMesExibido}`, MARGIN, TOP, W);
 
-  const cardW = (W - gap * 3) / 4;
+  // Pedido do usuário (2026-09-17): "nos cards, consegue dar uma melhorada
+  // em organização?" — a grade tinha 4 colunas pra 9 cards, o que deixava
+  // a 3ª linha com só 1 card (Novos Contatos) sobrando, 3 espaços vazios à
+  // direita. 3 colunas fecha os 9 cards em exatamente 3 linhas completas,
+  // sem sobra.
+  const CARDS_POR_LINHA = 3;
+  const cardW = (W - gap * (CARDS_POR_LINHA - 1)) / CARDS_POR_LINHA;
   // Pedido do usuário (2026-09-16): variação vs mês anterior ganhou linha
   // própria colorida dentro do card (ver cartao()) — cardH subiu de 48 pra
   // 58 pra abrir espaço pra essa linha extra sem espremer o valor principal.
@@ -566,12 +575,12 @@ function gerarPdfMetricas(data, destino) {
     // sem deixar isso claro, ver 688 resolvidos vs 84 atendimentos).
     ["Novos Contatos", data.novosContatosLeads ?? 0, TEXTO, { texto: "total acumulado", bom: null }]
   ];
-  valores.forEach((v, i) => cartao(MARGIN + (i % 4) * (cardW + gap), cardsY + Math.floor(i / 4) * (cardH + gap), cardW, cardH, v[0], v[1], v[2] || TEXTO, v[3] || null));
+  valores.forEach((v, i) => cartao(MARGIN + (i % CARDS_POR_LINHA) * (cardW + gap), cardsY + Math.floor(i / CARDS_POR_LINHA) * (cardH + gap), cardW, cardH, v[0], v[1], v[2] || TEXTO, v[3] || null));
 
-  // linhasCards calculado a partir de valores.length (e não mais fixo em 3)
-  // pra não sobrar espaço vazio depois que "Pendentes"/"Janela" saíram e a
-  // grade encolheu de 10 pra 8 cards (2 linhas de 4 em vez de 3).
-  const linhasCards = Math.ceil(valores.length / 4);
+  // linhasCards calculado a partir de valores.length — se o número de
+  // cards mudar (adicionar/remover um), a grade se reajusta sozinha sem
+  // sobrar nem faltar espaço antes do próximo bloco.
+  const linhasCards = Math.ceil(valores.length / CARDS_POR_LINHA);
   const blocoY = cardsY + linhasCards * (cardH + gap) + 12;
   const colW = (W - gap) / 2;
 

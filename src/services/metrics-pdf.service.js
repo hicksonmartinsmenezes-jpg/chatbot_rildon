@@ -215,20 +215,30 @@ function _fundo(doc) {
  */
 function _cabecalho(doc, subtitulo) {
   const w = doc.page.width - MARGIN * 2;
+  const tituloTexto = "RELATÓRIO DE MÉTRICAS";
+  const tituloFonte = "Helvetica-Bold";
+  const tituloTamanho = 18;
 
-  // Fundo colorido atrás do título — é EXATAMENTE aqui que doc.rect(...).fill()
-  // entra: sempre ANTES do .text() que escreve por cima, senão o retângulo
-  // pinta em cima da letra. x/w cobrem a largura útil da página (igual ao
-  // texto, pra ficar alinhado); y/h cobrem só a faixa do título (TITULO_Y
-  // com uma folga em cima/embaixo pra não cortar a letra).
-  // Troque AZUL_CLARO pela cor que quiser (ex: AZUL, ou um hex direto tipo
-  // "#0000ff") — se usar uma cor escura tipo AZUL/"#0000ff", troque também
-  // o fillColor do título de "#000000" pra "#ffffff" (branco), senão o
-  // texto preto some no fundo escuro.
-  doc.rect(MARGIN, TITULO_Y - 6, w, 28).fillColor(AZUL_CLARO).fill();
+  // Fundo "grudado" no título (em vez de uma faixa cobrindo a página
+  // inteira): mede a largura REAL do texto com doc.widthOfString() — por
+  // isso precisa setar a mesma fonte/tamanho do título ANTES de medir,
+  // senão a medida sai errada — soma um respiro (padding) e centraliza o
+  // retângulo em cima disso. Se o texto do título mudar um dia, o fundo se
+  // reajusta sozinho (não é um número fixo).
+  // Cor escura (#0026ff) → texto precisa ficar branco (#ffffff) em cima,
+  // senão o preto some. Se trocar pra uma cor clara (ex: AZUL_CLARO),
+  // troque o fillColor do título de volta pra "#000000".
+  const paddingX = 14;
+  const paddingY = 6;
+  doc.font(tituloFonte).fontSize(tituloTamanho);
+  const tituloLargura = doc.widthOfString(tituloTexto);
+  const fundoW = tituloLargura + paddingX * 2;
+  const fundoH = tituloTamanho + paddingY * 2;
+  const fundoX = MARGIN + (w - fundoW) / 2;
+  doc.rect(fundoX, TITULO_Y - paddingY, fundoW, fundoH).fillColor("#0026ff").fill();
 
-  doc.fillColor("#000000").font("Helvetica-Bold").fontSize(18)
-    .text("RELATÓRIO DE MÉTRICAS", MARGIN, TITULO_Y, { width: w, align: "center", lineBreak: false });
+  doc.fillColor("#ffffff").font(tituloFonte).fontSize(tituloTamanho)
+    .text(tituloTexto, MARGIN, TITULO_Y, { width: w, align: "center", lineBreak: false });
   doc.fillColor(SEC).font("Helvetica").fontSize(9)
     .text(subtitulo, MARGIN, SUBTITULO_Y, { width: w, align: "center", lineBreak: false });
 }

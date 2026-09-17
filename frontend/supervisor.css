@@ -24,3 +24,9 @@
   width:100% !important;
   max-height:320px;
 }
+
+/* Conversas: abrir uma conversa deve posicionar o histórico imediatamente no fim,
+   como no WhatsApp, sem a animação de rolagem causada pelo CSS global. */
+.chat-messages{
+  scroll-behavior:auto !important;
+}

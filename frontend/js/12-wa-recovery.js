@@ -87,7 +87,12 @@
 
   async function refreshWaStatus() {
     try {
-      const res = await apiFetch(`${BASE}/api/whatsapp/status`);
+      // O QR muda durante a reconexão. O cache do navegador/proxy não pode
+      // devolver eternamente o primeiro { connected:false, qr:null }.
+      const cacheBuster = `?_wa_status=${Date.now()}`;
+      const res = await apiFetch(`${BASE}/api/whatsapp/status${cacheBuster}`, {
+        cache: "no-store"
+      });
       if (!res?.ok) return false;
 
       const info = await res.json();
@@ -170,7 +175,9 @@
     let info = null;
 
     try {
-      const statusRes = await apiFetch(`${BASE}/api/whatsapp/status`);
+      const statusRes = await apiFetch(`${BASE}/api/whatsapp/status?_wa_status=${Date.now()}`, {
+        cache: "no-store"
+      });
       if (statusRes?.ok) info = await statusRes.json();
     } catch (_) {}
 

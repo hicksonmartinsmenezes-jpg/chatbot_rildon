@@ -147,12 +147,23 @@ function gerarPdfMetricas(data, destino) {
       .text(titulo, x + 9, y + 6, { width: w - 18, lineBreak: false });
   }
 
+  // Pedido do usuário (2026-09-17): títulos como "TMA (Tempo Médio
+  // Atendimento)" não cabem numa linha só na largura do card — apesar de
+  // lineBreak:false, o pdfkit ainda quebra o texto em 2 linhas quando um
+  // width é passado (só afeta se cria página nova, não impede o wrap em si),
+  // e a 2ª linha ficava sobrepondo o valor principal embaixo. Título agora
+  // pode quebrar em até 2 linhas de verdade (sem lineBreak:false) e
+  // valor/trend passam a ter posição Y FIXA (y+30 e y+47, não mais relativa
+  // a onde o título parou) — reserva espaço pro pior caso (título de 2
+  // linhas) sempre, pra manter todos os cards de uma mesma fileira alinhados
+  // entre si (senão um card com título curto ficaria com o valor mais alto
+  // que o vizinho de título longo, na mesma linha da grade).
   function cartao(x, y, w, h, titulo, valor, cor = TEXTO, trend = null) {
     doc.roundedRect(x, y, w, h, 5).fillColor(CARD).fill().lineWidth(0.7).strokeColor(AZUL_BORDA).stroke();
     doc.fillColor(SEC).font("Helvetica").fontSize(7.8)
-      .text(titulo, x + 9, y + 8, { width: w - 18, lineBreak: false });
+      .text(titulo, x + 9, y + 8, { width: w - 18 });
     doc.fillColor(cor).font("Helvetica-Bold").fontSize(13)
-      .text(String(valor), x + 9, y + 23, { width: w - 18, lineBreak: false });
+      .text(String(valor), x + 9, y + 30, { width: w - 18, lineBreak: false });
     // Pedido do usuário (2026-09-16): variação vs mês anterior destacada —
     // linha própria, menor, verde quando é uma variação boa e vermelha
     // quando é ruim (ver _tendenciaInfo — critério "bom" já leva em conta
@@ -160,7 +171,7 @@ function gerarPdfMetricas(data, destino) {
     if (trend) {
       const corTrend = trend.bom === true ? VERDE : trend.bom === false ? VERMELHO : SEC;
       doc.fillColor(corTrend).font("Helvetica-Bold").fontSize(8)
-        .text(trend.texto, x + 9, y + 39, { width: w - 18, lineBreak: false });
+        .text(trend.texto, x + 9, y + 47, { width: w - 18, lineBreak: false });
     }
   }
 
@@ -234,7 +245,11 @@ function gerarPdfMetricas(data, destino) {
   // Pedido do usuário (2026-09-16): variação vs mês anterior ganhou linha
   // própria colorida dentro do card (ver cartao()) — cardH subiu de 48 pra
   // 58 pra abrir espaço pra essa linha extra sem espremer o valor principal.
-  const cardH = 58;
+  // Pedido do usuário (2026-09-17): títulos "TMA (Tempo Médio Atendimento)"/
+  // "TME (Tempo Médio 1ª Resposta)" precisam de até 2 linhas (ver cartao())
+  // — cardH subiu de 58 pra 66 pra caber título de 2 linhas + valor + trend
+  // sem cortar nem sobrepor, em TODOS os cards da grade (não só nesses 2).
+  const cardH = 66;
   const cardsY = TOP + 30;
   // BUG CORRIGIDO (2026-09-16, relatado pelo usuário com print real: "como é
   // possivel 688 resolvidos se teve 84 atendimentos"): "Resolvidos" usava
@@ -264,11 +279,15 @@ function gerarPdfMetricas(data, destino) {
   // card de Tempo de resolução): "seria mais rapido ou mais lento que o mes
   // anterior?" — as duas métricas de tempo (Tempo de resolução e 1ª
   // resposta) agora usam _tendenciaInfo(..., rotulos) pra trocar o "%"
-  // genérico por "mais rápido"/"mais lento" já dito por extenso. "1ª
-  // resposta" também virou "Tempo de 1ª resposta" (pergunta do usuário: "o
-  // que seria" — é o tempo médio até o atendente assumir/responder o
-  // ticket, então o título deixa isso explícito, igual "Tempo de
-  // resolução" ao lado).
+  // genérico por "mais rápido"/"mais lento" já dito por extenso.
+  //
+  // Pedido do usuário (2026-09-17): "TMA (Tempo Médio Atendimento) / TME
+  // (Tempo Médio 1ª Resposta) padronize assim e adicione Novos Contatos" —
+  // os títulos "Tempo de resolução"/"Tempo de 1ª resposta" viraram TMA/TME,
+  // a mesma sigla+nome já usados na aba "Tempos" do painel ao vivo
+  // (frontend/index.html, cards #metric-tempo-resolucao/#metric-tempo-resposta)
+  // — o PDF ficava com nomenclatura diferente do painel pra exatamente a
+  // mesma métrica.
   const ROTULOS_TEMPO = ["mais rápido", "mais lento"];
   const valores = [
     ["Atendimentos", data.mensal ?? 0, TEXTO, _tendenciaInfo(data.tendencia?.totalVariacaoPct)],
@@ -286,9 +305,21 @@ function gerarPdfMetricas(data, destino) {
     ["Horário de pico", data.horarioPico ? _formatarHora12(data.horarioPico.hora) : "sem dados", TEXTO,
       data.horarioPico ? { texto: `${data.horarioPico.total} atendimentos no mês`, bom: true } : null],
     ["Satisfação média", data.satisfacaoMedia != null ? `${Number(data.satisfacaoMedia).toFixed(1)} / 5` : "sem dados"],
-    ["Tempo de resolução", _formatarMin(data.tendencia?.tempoResolucaoAtualMin), TEXTO, _tendenciaInfo(data.tendencia?.tempoResolucaoVariacaoPct, true, ROTULOS_TEMPO)],
-    ["Tempo de 1ª resposta", _formatarMin(data.tendencia?.tempoRespostaAtualMin), TEXTO, _tendenciaInfo(data.tendencia?.tempoRespostaVariacaoPct, true, ROTULOS_TEMPO)],
-    ["Avaliações", data.satisfacaoTotalRespostas ?? 0]
+    ["TMA (Tempo Médio Atendimento)", _formatarMin(data.tendencia?.tempoResolucaoAtualMin), TEXTO, _tendenciaInfo(data.tendencia?.tempoResolucaoVariacaoPct, true, ROTULOS_TEMPO)],
+    ["TME (Tempo Médio 1ª Resposta)", _formatarMin(data.tendencia?.tempoRespostaAtualMin), TEXTO, _tendenciaInfo(data.tendencia?.tempoRespostaVariacaoPct, true, ROTULOS_TEMPO)],
+    ["Avaliações", data.satisfacaoTotalRespostas ?? 0],
+    // Pedido do usuário (2026-09-17): "adicione Novos Contatos" — usa o
+    // mesmo dado que a aba "Tempos" do painel ao vivo já expõe
+    // (data.novosContatosLeads, contacts com tag 'Leads'). Importante: essa
+    // contagem é ACUMULADA (não tem filtro de created_at nenhum na query —
+    // ver leadsRes em metrics.service.js), diferente de quase todo o resto
+    // desta grade que é escopado ao mês. O painel ao vivo já avisa isso no
+    // tooltip do card ("Total acumulado (não é só o mês)"); aqui o aviso
+    // fica no rodapé cinza do card (mesmo slot de trend, cor neutra — não é
+    // uma comparação boa/ruim) pra não repetir o erro já corrigido antes
+    // (cards mostrando números de recortes de tempo diferentes lado a lado
+    // sem deixar isso claro, ver 688 resolvidos vs 84 atendimentos).
+    ["Novos Contatos", data.novosContatosLeads ?? 0, TEXTO, { texto: "total acumulado", bom: null }]
   ];
   valores.forEach((v, i) => cartao(MARGIN + (i % 4) * (cardW + gap), cardsY + Math.floor(i / 4) * (cardH + gap), cardW, cardH, v[0], v[1], v[2] || TEXTO, v[3] || null));
 
@@ -309,8 +340,8 @@ function gerarPdfMetricas(data, destino) {
   const compFim = tabela(MARGIN, blocoY + 27, colW, ["Métrica", "Este mês", "Mês anterior", "Variação"], [0.36, 0.20, 0.24, 0.20], [
     ["Atendimentos", data.mensal ?? 0, data.tendencia?.totalMesAnterior ?? 0, data.tendencia?.totalVariacaoPct != null ? `${data.tendencia.totalVariacaoPct > 0 ? "+" : ""}${data.tendencia.totalVariacaoPct}%` : "—"],
     ["Taxa de resolução", `${data.tendencia?.taxaResolucaoAtual ?? 0}%`, `${data.tendencia?.taxaResolucaoMesAnterior ?? 0}%`, data.tendencia?.taxaResolucaoVariacaoPontos != null ? `${data.tendencia.taxaResolucaoVariacaoPontos > 0 ? "+" : ""}${data.tendencia.taxaResolucaoVariacaoPontos}pp` : "—"],
-    ["Tempo de resolução", _formatarMin(data.tendencia?.tempoResolucaoAtualMin), _formatarMin(data.tendencia?.tempoResolucaoAnteriorMin), data.tendencia?.tempoResolucaoVariacaoPct != null ? `${data.tendencia.tempoResolucaoVariacaoPct > 0 ? "+" : ""}${data.tendencia.tempoResolucaoVariacaoPct}%` : "—"],
-    ["Tempo de 1ª resposta", _formatarMin(data.tendencia?.tempoRespostaAtualMin), _formatarMin(data.tendencia?.tempoRespostaAnteriorMin), data.tendencia?.tempoRespostaVariacaoPct != null ? `${data.tendencia.tempoRespostaVariacaoPct > 0 ? "+" : ""}${data.tendencia.tempoRespostaVariacaoPct}%` : "—"]
+    ["TMA (Tempo Médio Atendimento)", _formatarMin(data.tendencia?.tempoResolucaoAtualMin), _formatarMin(data.tendencia?.tempoResolucaoAnteriorMin), data.tendencia?.tempoResolucaoVariacaoPct != null ? `${data.tendencia.tempoResolucaoVariacaoPct > 0 ? "+" : ""}${data.tendencia.tempoResolucaoVariacaoPct}%` : "—"],
+    ["TME (Tempo Médio 1ª Resposta)", _formatarMin(data.tendencia?.tempoRespostaAtualMin), _formatarMin(data.tendencia?.tempoRespostaAnteriorMin), data.tendencia?.tempoRespostaVariacaoPct != null ? `${data.tendencia.tempoRespostaVariacaoPct > 0 ? "+" : ""}${data.tendencia.tempoRespostaVariacaoPct}%` : "—"]
   ], {
     align: ["left", "right", "right", "right"],
     coresUltimaCol: [

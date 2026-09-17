@@ -2,12 +2,69 @@
  * Exportação do relatório de métricas.
  * Layout A4 compacto e orientado para impressão, mantendo o papel timbrado
  * e os dados já fornecidos por metrics.service.js.
+ *
+ * ════════════════════════════════════════════════════════════════════════
+ * GUIA RÁPIDO PRA QUEM VAI MEXER NESTE ARQUIVO
+ * ════════════════════════════════════════════════════════════════════════
+ *
+ * COMO É CHAMADO:
+ *   metrics.routes.js chama gerarPdfMetricas(data, destino) — `data` é o
+ *   objeto retornado por buscarMetricas() em metrics.service.js (já pronto,
+ *   com todos os números calculados), `destino` é um stream onde o PDF é
+ *   escrito (um PassThrough, no caso da rota de exportar). Este arquivo NÃO
+ *   faz nenhuma query nem cálculo de negócio — só desenha o que já vem
+ *   pronto em `data`.
+ *
+ * SISTEMA DE COORDENADAS (a parte que mais confunde quem nunca mexeu em PDF):
+ *   - Origem (0,0) é o CANTO SUPERIOR ESQUERDO da página (diferente de
+ *     matemática/gráfico normal). Y cresce PRA BAIXO.
+ *   - Unidade é "pt" (ponto tipográfico, 1/72 polegada) — NÃO É PIXEL.
+ *     Uma folha A4 tem 595.28 x 841.89 pt (guardado em doc.page.width/
+ *     height depois que a página existe — ver comentário no "BUG
+ *     CORRIGIDO" mais abaixo sobre por que não dá pra ler isso antes do
+ *     1º addPage()).
+ *   - Toda função de desenho aqui recebe (x, y, largura, ...) e desenha a
+ *     partir do canto superior esquerdo daquele elemento.
+ *
+ * ESTRUTURA DO RELATÓRIO (o que sai em cada página):
+ *   PÁGINA 1 — "Resumo de <mês>" (grade de cards KPI) → "Comparação com o
+ *     mês anterior" + "Distribuição de notas de satisfação" (lado a lado)
+ *     → "Atendentes" (tabela larga).
+ *   PÁGINA 2 — "Satisfação por atendente" → "O que os clientes disseram"
+ *     (feedbacks de nota baixa) → "Atendimentos nos últimos 6 meses"
+ *     (gráfico de barras). Esse último só cai pra uma PÁGINA 3 se não
+ *     sobrar espaço na 2 (ver o `if` logo antes de chamar graficoBarras).
+ *   Cabeçalho (logo + título + subtítulo) e rodapé (nº da página) se
+ *   repetem em toda página nova — ver a função pagina(n) dentro de
+ *   gerarPdfMetricas.
+ *
+ * PRA MUDANÇAS COMUNS:
+ *   - Mudar cor de algo → é quase sempre uma das constantes de cor lá
+ *     embaixo (AZUL, VERDE, VERMELHO, TEXTO, SEC...), não um valor solto
+ *     no meio do código.
+ *   - Mudar espaçamento entre elementos → procure a constante `gap` (8pt,
+ *     dentro de gerarPdfMetricas) ou os números somados/multiplicados nas
+ *     contas de posição (ex: `cardsY + Math.floor(i / 4) * (cardH + gap)`).
+ *   - Adicionar/remover um card do resumo → edite o array `valores` (ver
+ *     comentário "PÁGINA 1"), cada linha é
+ *     [título, valor, cor?, trend?] — cor e trend são opcionais.
+ *   - Adicionar/remover uma coluna de tabela → as tabelas usam a função
+ *     genérica tabela(x, y, w, colunas, frac, linhas, opts) — `frac` é a
+ *     fração da largura total que cada coluna ocupa (tem que somar ~1).
+ *   - As linhas de comentário começando com "Pedido do usuário" ou "BUG
+ *     CORRIGIDO" são o HISTÓRICO de por que cada coisa é do jeito que é —
+ *     não são instrução de uso, são contexto pra não desfazer sem querer
+ *     um ajuste que já foi pedido antes.
+ * ════════════════════════════════════════════════════════════════════════
  */
 const fs = require("fs");
 const path = require("path");
 const PDFDocument = require("pdfkit");
 
+// Imagem de fundo (papel timbrado) usada em toda página — ver _fundo().
 const FUNDO_IMG = fs.readFileSync(path.join(__dirname, "../assets/metricas-papel-timbrado.png"));
+// Margem lateral/de conteúdo usada em quase toda função de desenho deste
+// arquivo (x = MARGIN, largura útil = doc.page.width - MARGIN*2).
 const MARGIN = 36;
 // Pedido do usuário (2026-09-16, com print do PDF real): título/subtítulo
 // estavam desenhados em y=45/72 — dentro da faixa azul do papel timbrado
@@ -21,37 +78,51 @@ const MARGIN = 36;
 // primeiro ajuste (112/136/168) só tirou da faixa azul; usuário pediu mais
 // espaço ainda. Valores bem mais baixos, com folga de sobra até o rodapé
 // (conteúdo da página 1 termina bem antes dos ~794pt úteis do A4).
-const TITULO_Y = 170;
-const SUBTITULO_Y = 196;
-const TOP = 230;
-const BOTTOM = 48;
-const AZUL = "#006097";
-const AZUL_CLARO = "#eef5f9";
-const AZUL_BORDA = "#d6e5ee";
-const TEXTO = "#263238";
-const SEC = "#66717b";
-const LINHA = "#e3e8ec";
-const CARD = "#ffffff";
-const CINZA = "#f5f7f9";
-const VERDE = "#16803c";
-const VERMELHO = "#c62828";
+const TITULO_Y = 170;      // y do título "RELATÓRIO DE MÉTRICAS" (ver _cabecalho)
+const SUBTITULO_Y = 196;   // y da linha "Gerado em .../Métricas de ..." (ver _cabecalho)
+const TOP = 230;           // y onde a 1ª faixa de conteúdo de cada página começa
+const BOTTOM = 48;         // distância do rodapé (nº de página) até a borda inferior
+// Paleta de cores — mude aqui, não em valores soltos no meio do código.
+const AZUL = "#006097";        // cor de destaque (títulos de faixa, barras do gráfico)
+const AZUL_CLARO = "#eef5f9";  // fundo das "faixas" (título de cada seção/tabela)
+const AZUL_BORDA = "#d6e5ee";  // borda fina dos cards
+const TEXTO = "#263238";       // cor de texto padrão (quase preto)
+const SEC = "#66717b";         // cor de texto secundário (rótulos, legendas)
+const LINHA = "#e3e8ec";       // linhas divisórias de tabela
+const CARD = "#ffffff";        // fundo dos cards KPI
+const CINZA = "#f5f7f9";       // fundo do cabeçalho das tabelas
+const VERDE = "#16803c";       // valor/variação "boa" (ver _tendenciaInfo/_corTendencia)
+const VERMELHO = "#c62828";    // valor/variação "ruim"
 
 const MESES_PT = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
+/**
+ * "2026-09" → "Setembro/2026". Usado no título "Resumo de <mês>" e no
+ * subtítulo do cabeçalho quando o PDF é de um mês histórico (data.mesRef
+ * preenchido — ver gerarPdfMetricas).
+ */
 function _nomeMes(mesRef) {
   const [ano, mes] = String(mesRef).split("-").map(Number);
   return `${MESES_PT[mes - 1]}/${ano}`;
 }
 
-// Pedido do usuário (2026-09-17): rótulo curto pro eixo do gráfico "Atendimentos
-// nos últimos 6 meses" (ex: "Set/26") — abreviação de 3 letras + ano com 2
-// dígitos, formato compacto o bastante pra 6 barras lado a lado sem
-// sobrepor texto.
+/**
+ * "2026-09" → "Set/26" (rótulo curto pro eixo do gráfico de barras).
+ * Pedido do usuário (2026-09-17): rótulo curto pro eixo do gráfico "Atendimentos
+ * nos últimos 6 meses" — abreviação de 3 letras + ano com 2
+ * dígitos, formato compacto o bastante pra 6 barras lado a lado sem
+ * sobrepor texto.
+ */
 function _rotuloMesCurto(mesStr) {
   const [ano, mes] = String(mesStr).split("-").map(Number);
   return `${MESES_PT[mes - 1].slice(0, 3)}/${String(ano).slice(2)}`;
 }
 
+/**
+ * Formata um número de MINUTOS pra exibição: "45" → "45 min", "125" →
+ * "2h05", "120" → "2h" (sem minutos quando é hora cheia). `null`/`undefined`
+ * vira "sem dados". Usado nos cards e tabela de TMA/TME.
+ */
 function _formatarMin(min) {
   if (min == null) return "sem dados";
   if (min < 60) return `${Math.round(min)} min`;
@@ -75,6 +146,19 @@ function _formatarMin(min) {
 // batendo o olho no card. `rotulos = [textoBom, textoRuim]` troca o "vs mês
 // ant." genérico por uma palavra que já responde a pergunta direto (ex:
 // "178% mais lento").
+/**
+ * @param {number|null} pct - variação percentual vs mês anterior (pode ser negativo).
+ * @param {boolean} invertido - true pras métricas onde SUBIR é ruim (tempo
+ *   de resolução/resposta). false (padrão) é o caso normal onde subir é bom
+ *   (atendimentos, taxa de resolução).
+ * @param {[string,string]|null} rotulos - opcional [textoSeBom, textoSeRuim]
+ *   pra trocar o "+X% vs mês ant." genérico por uma frase pronta (ex:
+ *   ["mais rápido", "mais lento"]).
+ * @returns {{texto:string, bom:boolean|null}|null} `bom` é usado por
+ *   cartao() pra escolher a cor (VERDE/VERMELHO/SEC); null quando pct === 0
+ *   (nem melhorou nem piorou). Retorna null (sem desenhar nada) se pct for
+ *   null/undefined (dado não disponível).
+ */
 function _tendenciaInfo(pct, invertido = false, rotulos = null) {
   if (pct == null) return null;
   if (pct === 0) return { texto: "= vs mês ant.", bom: null };
@@ -91,6 +175,11 @@ function _tendenciaInfo(pct, invertido = false, rotulos = null) {
 // (pedido do usuário: "deixe comparações com mes anterior de uma forma que
 // seja mais entendivel" — cor verde/vermelho deixa claro de cara se aquele
 // número foi bom ou ruim, sem precisar interpretar o sinal do %/pp).
+/**
+ * Igual _tendenciaInfo, mas devolve só a cor (VERDE/VERMELHO/SEC), sem
+ * texto — usado em tabela() via opts.coresUltimaCol (colore a última
+ * coluna, "Variação", por linha).
+ */
 function _corTendencia(valor, invertido = false) {
   if (valor == null || valor === 0) return SEC;
   const subiu = valor > 0;
@@ -103,6 +192,7 @@ function _corTendencia(valor, invertido = false) {
 // minuto, ver EXTRACT(HOUR ...) em metrics.service.js), então os minutos
 // exibidos são sempre ":00"; o pedido em si é sobre usar hora cheia em
 // formato 12h com am/pm em vez de "10h".
+/** "14" → "2:00pm". Só recebe a HORA (sem minuto — porHora só tem essa granularidade). */
 function _formatarHora12(hora) {
   const h = Number(hora);
   const periodo = h < 12 ? "am" : "pm";
@@ -110,10 +200,19 @@ function _formatarHora12(hora) {
   return `${h12}:00${periodo}`;
 }
 
+/** Desenha a imagem de fundo (papel timbrado) cobrindo a página inteira (full-bleed). Chamada 1x por página, dentro de pagina(n). */
 function _fundo(doc) {
   doc.image(FUNDO_IMG, 0, 0, { width: doc.page.width, height: doc.page.height });
 }
 
+/**
+ * Desenha o título "RELATÓRIO DE MÉTRICAS" + a linha de subtítulo (data de
+ * geração / mês do relatório) em TITULO_Y/SUBTITULO_Y. NÃO desenha o fundo
+ * (isso é _fundo) nem o logo (isso já vem embutido na imagem de fundo).
+ * Se quiser um fundo colorido atrás do título, use
+ * `doc.rect(x, y, w, h).fillColor(cor).fill()` ANTES desta chamada de
+ * `.text(...)` — PDFKit não tem um método `.background()` encadeável.
+ */
 function _cabecalho(doc, subtitulo) {
   const w = doc.page.width - MARGIN * 2;
   doc.fillColor("#000000").font("Helvetica-Bold").fontSize(18)
@@ -122,11 +221,20 @@ function _cabecalho(doc, subtitulo) {
     .text(subtitulo, MARGIN, SUBTITULO_Y, { width: w, align: "center", lineBreak: false });
 }
 
+/** Desenha "Página N" centralizado, a BOTTOM pt do fim da página. */
 function _rodape(doc, pagina) {
   doc.fillColor("#7a838b").font("Helvetica").fontSize(8)
     .text(`Página ${pagina}`, MARGIN, doc.page.height - BOTTOM, { width: doc.page.width - MARGIN * 2, align: "center", lineBreak: false });
 }
 
+/**
+ * Monta o PDF inteiro e escreve no stream `destino`. Ver o "GUIA RÁPIDO" no
+ * topo do arquivo pra estrutura geral (páginas, coordenadas) — daqui pra
+ * baixo, cada helper interno (pagina/faixa/cartao/tabela/graficoBarras) tem
+ * seu próprio comentário logo acima da definição.
+ * @param {object} data - retorno de buscarMetricas() em metrics.service.js.
+ * @param {NodeJS.WritableStream} destino - onde o PDF gerado é escrito (doc.pipe(destino)).
+ */
 function gerarPdfMetricas(data, destino) {
   const doc = new PDFDocument({ size: "A4", margin: 0, autoFirstPage: false });
   doc.pipe(destino);
@@ -143,6 +251,13 @@ function gerarPdfMetricas(data, destino) {
   const subtitulo = historico ? `Métricas de ${nomeMesExibido}  •  gerado em ${geradoEm}` : `Gerado em ${geradoEm}`;
   const gap = 8;
 
+  /**
+   * Abre uma página nova: adiciona a página no doc, desenha o fundo (papel
+   * timbrado), o cabeçalho (título+subtítulo) e o rodapé ("Página n").
+   * SEMPRE chame isso pra começar uma página — nunca doc.addPage() direto,
+   * senão a página fica sem papel timbrado/cabeçalho/rodapé.
+   * @param {number} n - número da página, só pro rodapé ("Página n").
+   */
   function pagina(n) {
     doc.addPage();
     _fundo(doc);
@@ -150,6 +265,17 @@ function gerarPdfMetricas(data, destino) {
     _rodape(doc, n);
   }
 
+  /**
+   * Desenha uma "faixa" — a barrinha azul-clara com título em negrito que
+   * antecede cada bloco de conteúdo (ex: "Resumo de Setembro/2026",
+   * "Atendentes"). Tem altura FIXA de 22pt; o conteúdo abaixo dela deve
+   * começar em `y + 27` (22 de altura + ~5 de respiro), esse "+27" é
+   * repetido no código toda vez que uma tabela/gráfico vem logo abaixo de
+   * uma faixa.
+   * @param {string} titulo
+   * @param {number} x, y - canto superior esquerdo.
+   * @param {number} w - largura da faixa.
+   */
   function faixa(titulo, x, y, w) {
     doc.roundedRect(x, y, w, 22, 4).fillColor(AZUL_CLARO).fill();
     doc.fillColor(AZUL).font("Helvetica-Bold").fontSize(10.5)
@@ -167,6 +293,19 @@ function gerarPdfMetricas(data, destino) {
   // linhas) sempre, pra manter todos os cards de uma mesma fileira alinhados
   // entre si (senão um card com título curto ficaria com o valor mais alto
   // que o vizinho de título longo, na mesma linha da grade).
+  /**
+   * Desenha 1 card KPI (retângulo branco com borda, título pequeno em
+   * cima, valor grande no meio, variação opcional embaixo). Usado na grade
+   * de "Resumo de <mês>" (array `valores`, mais abaixo).
+   * @param {number} x, y - canto superior esquerdo do card.
+   * @param {number} w, h - largura/altura do card (ver cardW/cardH).
+   * @param {string} titulo - rótulo pequeno (ex: "Atendimentos").
+   * @param {string|number} valor - valor grande em destaque.
+   * @param {string} cor - cor do valor (default TEXTO; ex: VERDE pra "Resolvidos").
+   * @param {{texto:string, bom:boolean|null}|null} trend - variação
+   *   opcional desenhada embaixo do valor, colorida conforme `bom` (ver
+   *   _tendenciaInfo — é o formato que essa função espera).
+   */
   function cartao(x, y, w, h, titulo, valor, cor = TEXTO, trend = null) {
     doc.roundedRect(x, y, w, h, 5).fillColor(CARD).fill().lineWidth(0.7).strokeColor(AZUL_BORDA).stroke();
     doc.fillColor(SEC).font("Helvetica").fontSize(7.8)
@@ -184,16 +323,41 @@ function gerarPdfMetricas(data, destino) {
     }
   }
 
+  /** Texto de CABEÇALHO de coluna de tabela (negrito, cor SEC). Usado internamente por tabela(). */
   function textoCab(x, y, w, texto, align = "left", size = 8) {
     doc.fillColor(SEC).font("Helvetica-Bold").fontSize(size)
       .text(String(texto), x, y, { width: w, align, lineBreak: false });
   }
 
+  /** Texto de CÉLULA de tabela. `texto ?? "—"` — valor nulo/undefined vira um travessão. Usado internamente por tabela() e diretamente na tabela de feedbacks (página 2). */
   function textoCel(x, y, w, texto, align = "left", size = 8.2, bold = false, cor = TEXTO) {
     doc.fillColor(cor).font(bold ? "Helvetica-Bold" : "Helvetica").fontSize(size)
       .text(String(texto ?? "—"), x, y, { width: w, align, lineBreak: false });
   }
 
+  /**
+   * Tabela genérica: cabeçalho cinza + linhas zebradas (cor alternada).
+   * A função central de desenho deste arquivo — quase toda tabela do PDF
+   * (exceto a de feedbacks, que tem altura de linha variável) usa isto.
+   * @param {number} x, y - canto superior esquerdo.
+   * @param {number} w - largura total da tabela.
+   * @param {string[]} colunas - títulos das colunas (cabeçalho).
+   * @param {number[]} frac - fração de `w` que cada coluna ocupa, na mesma
+   *   ordem de `colunas` (ex: [0.5, 0.5] = 2 colunas iguais). Deve somar ~1.
+   * @param {Array<Array<string|number>>} linhas - os dados, um array por
+   *   linha, na mesma ordem/quantidade de `colunas`. Célula vazia = "—".
+   *   Array vazio → desenha "Sem dados ainda." e sai.
+   * @param {object} [opts]
+   * @param {string} [opts.fonte=8.2] - tamanho de fonte das células/cabeçalho.
+   * @param {number} [opts.headH=20] - altura da linha de cabeçalho.
+   * @param {number} [opts.rowH=18] - altura de cada linha de dado.
+   * @param {string[]} [opts.align] - alinhamento por coluna ("left"/"right"/"center").
+   * @param {string[]} [opts.coresUltimaCol] - cor por LINHA (não por coluna)
+   *   pra pintar só a última coluna (ex: coluna "Variação" verde/vermelho —
+   *   ver _corTendencia). Índice do array = índice da linha em `linhas`.
+   * @returns {number} o `y` onde a tabela terminou — use pra posicionar o
+   *   próximo elemento abaixo dela.
+   */
   function tabela(x, y, w, colunas, frac, linhas, opts = {}) {
     const fs = opts.fonte || 8.2;
     const headH = opts.headH || 20;
@@ -244,6 +408,21 @@ function gerarPdfMetricas(data, destino) {
   // gráficos no projeto e o volume de dados (6 barras) não justifica
   // adicionar uma só pra isso. `dados` é um array de { total, rotulo }
   // na ordem em que devem aparecer (mais antigo → mais recente).
+  /**
+   * Gráfico de barras verticais simples. Todas as barras têm a mesma
+   * largura (calculada a partir de `w`/quantidade de barras) e altura
+   * proporcional ao MAIOR valor do conjunto (barra mais alta = 100% da
+   * área útil). Cada barra mostra o valor em negrito acima e o rótulo
+   * abaixo (ver graficoY/faixa no final de gerarPdfMetricas pra exemplo de
+   * uso).
+   * @param {number} x, y - canto superior esquerdo da área do gráfico
+   *   (não da 1ª barra — a função calcula o resto).
+   * @param {number} w, h - largura/altura total reservada pro gráfico
+   *   (rótulos inclusos — ver `areaBarras = h - 30` dentro da função).
+   * @param {Array<{total:number, rotulo:string}>} dados - um item por
+   *   barra, na ordem em que devem aparecer da esquerda pra direita.
+   *   Array vazio → desenha "Sem dados ainda." e sai.
+   */
   function graficoBarras(x, y, w, h, dados) {
     if (!dados.length) {
       doc.fillColor("#8a939b").font("Helvetica-Oblique").fontSize(9).text("Sem dados ainda.", x, y, { width: w });
@@ -269,7 +448,13 @@ function gerarPdfMetricas(data, destino) {
     });
   }
 
+  // ────────────────────────────────────────────────────────────────────
   // PÁGINA 1 — RESUMO E DISTRIBUIÇÕES
+  // Ordem visual de cima pra baixo: faixa "Resumo de <mês>" → grade de
+  // cards KPI (array `valores`) → "Comparação com o mês anterior" (tabela,
+  // coluna esquerda) + "Distribuição de notas de satisfação" (tabela,
+  // coluna direita) lado a lado → "Atendentes" (tabela larga).
+  // ────────────────────────────────────────────────────────────────────
   pagina(1);
   // BUG CORRIGIDO (2026-09-16): "W" (largura útil da página) só pode ser lida
   // de doc.page DEPOIS do primeiro addPage() — o documento é criado com
@@ -408,7 +593,13 @@ function gerarPdfMetricas(data, destino) {
     tabela(MARGIN, baixoY + 27, W, ["Atendente", "Hoje", "7 dias", "Mês", "Histórico", "Em atendimento agora"], [0.34, 0.12, 0.12, 0.12, 0.15, 0.15], (data.atendentes || []).map(a => [a.nome, a.atendidosHoje, a.atendidosSemana, a.atendidosMes, a.totalAtendidos, a.emAtendimento ?? 0]), { align: ["left", "right", "right", "right", "right", "right"], fonte: 7.8 });
   }
 
+  // ────────────────────────────────────────────────────────────────────
   // PÁGINA 2 — SATISFAÇÃO DETALHADA
+  // Ordem: "Satisfação por atendente" (tabela) → "O que os clientes
+  // disseram" (feedbacks nota 1-2, tabela de altura variável por linha) →
+  // "Atendimentos nos últimos 6 meses" (gráfico de barras — pula pra
+  // página 3 se não sobrar espaço, ver `if` logo abaixo).
+  // ────────────────────────────────────────────────────────────────────
   pagina(2);
   faixa("Satisfação por atendente", MARGIN, TOP, W);
   const sat = Object.entries(data.satisfacaoPorAtendente || {}).sort((a, b) => b[1].media - a[1].media);

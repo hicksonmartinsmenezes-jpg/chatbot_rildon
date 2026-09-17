@@ -61,8 +61,7 @@
   transform: none !important;
 }
 
-/* Enviar: área inteira do círculo deve ser clicável, sem sobra/área residual.
-   O flex-basis fixo evita que o botão seja comprimido pelo textarea. */
+/* Enviar: círculo inteiro clicável quando houver conteúdo. */
 .chat-input-area #btn-send-conversation {
   width: 48px !important;
   min-width: 48px !important;
@@ -88,23 +87,28 @@
   transform: none !important;
 }
 
+/* Sem texto e sem anexo: o botão desaparece completamente, inclusive do layout. */
+.chat-input-area #btn-send-conversation:disabled,
+.chat-input-area #btn-send-conversation.composer-send-hidden {
+  display: none !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  max-height: 0 !important;
+  flex: 0 0 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+}
+
 .chat-input-area #btn-send-conversation:hover:not(:disabled) {
   transform: none !important;
 }
 
 .chat-input-area #btn-send-conversation i {
   pointer-events: none;
-}
-
-/* Não deixa estilos de tema/estado criarem uma área visual separada no canto. */
-.chat-input-area #btn-send-conversation.composer-send-hidden {
-  display: none !important;
-  width: 0 !important;
-  min-width: 0 !important;
-  max-width: 0 !important;
-  flex-basis: 0 !important;
-  margin: 0 !important;
-  padding: 0 !important;
 }
 
 /* Tema claro */
@@ -119,6 +123,5 @@ body.light-theme .chat-input-area .chat-attach-btn:hover:not(:disabled) {
 }
 
 body.light-theme .chat-input-area #btn-send-conversation {
-  /* mantém a cor definida pelo tema original, mas preserva a geometria/click area */
   transform: none !important;
 }

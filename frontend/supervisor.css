@@ -25,32 +25,35 @@
   max-height:320px;
 }
 
-/* Conversas: abrir uma conversa deve posicionar o histórico imediatamente no fim,
-   como no WhatsApp, sem a animação de rolagem causada pelo CSS global. */
 .chat-messages{
   scroll-behavior:auto !important;
 }
 
-/* Composer: estrutura estável, sem sobra/quebra à direita do campo. */
+/* Composer final: o textarea não pode invadir a área do botão Enviar.
+   O botão fica preso à extremidade direita e recebe todos os cliques. */
 .chat-input-area {
+  position: relative !important;
   display: flex !important;
   align-items: center !important;
   gap: 8px !important;
   width: 100% !important;
   min-width: 0 !important;
   box-sizing: border-box !important;
+  overflow: visible !important;
 }
 
 .chat-input-area textarea#conversation-message {
   flex: 1 1 auto !important;
-  width: 0 !important;
+  width: auto !important;
   min-width: 0 !important;
-  max-width: none !important;
+  max-width: calc(100% - 58px) !important;
   margin: 0 !important;
+  padding-right: 14px !important;
   box-sizing: border-box !important;
+  position: relative !important;
+  z-index: 1 !important;
 }
 
-/* Clipe limpo, sem círculo de fundo permanente. */
 .chat-input-area .chat-attach-btn {
   width: 42px !important;
   min-width: 42px !important;
@@ -67,6 +70,8 @@
   box-shadow: none !important;
   color: #8696a0 !important;
   transform: none !important;
+  position: relative !important;
+  z-index: 5 !important;
 }
 
 .chat-input-area .chat-attach-btn:hover:not(:disabled) {
@@ -80,8 +85,9 @@
   transform: none !important;
 }
 
-/* Enviar: círculo inteiro clicável quando houver conteúdo. */
 .chat-input-area #btn-send-conversation {
+  position: relative !important;
+  z-index: 50 !important;
   width: 48px !important;
   min-width: 48px !important;
   max-width: 48px !important;
@@ -91,47 +97,29 @@
   flex: 0 0 48px !important;
   flex-shrink: 0 !important;
   flex-grow: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   padding: 0 !important;
   margin: 0 !important;
   border: 0 !important;
   border-radius: 50% !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  position: relative;
-  z-index: 20;
   box-sizing: border-box !important;
-  cursor: pointer;
-  pointer-events: auto;
+  cursor: pointer !important;
+  pointer-events: auto !important;
   transform: none !important;
 }
 
-/* Sem texto e sem anexo: o botão desaparece completamente, inclusive do layout. */
-.chat-input-area #btn-send-conversation:disabled,
-.chat-input-area #btn-send-conversation.composer-send-hidden {
+.chat-input-area #btn-send-conversation.composer-send-hidden,
+.chat-input-area #btn-send-conversation:disabled {
   display: none !important;
-  width: 0 !important;
-  min-width: 0 !important;
-  max-width: 0 !important;
-  height: 0 !important;
-  min-height: 0 !important;
-  max-height: 0 !important;
-  flex: 0 0 0 !important;
-  flex-shrink: 0 !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  border: 0 !important;
-}
-
-.chat-input-area #btn-send-conversation:hover:not(:disabled) {
-  transform: none !important;
+  pointer-events: none !important;
 }
 
 .chat-input-area #btn-send-conversation i {
-  pointer-events: none;
+  pointer-events: none !important;
 }
 
-/* Tema claro */
 body.light-theme .chat-input-area .chat-attach-btn {
   background: transparent !important;
   color: #667781 !important;

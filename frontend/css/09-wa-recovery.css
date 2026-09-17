@@ -1,0 +1,165 @@
+/* ─── Recuperação WhatsApp no painel ───────────────────────────── */
+.wa-recovery-widget {
+  position: fixed;
+  top: 86px;
+  right: 22px;
+  z-index: 5000;
+  width: min(360px, calc(100vw - 32px));
+  background: var(--panel, #111827);
+  border: 1px solid var(--border, rgba(255,255,255,.10));
+  border-radius: 18px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .35);
+  overflow: hidden;
+  animation: waRecoveryIn .24s ease;
+}
+
+@keyframes waRecoveryIn {
+  from { opacity: 0; transform: translateY(-10px) translateX(8px) scale(.98); }
+  to { opacity: 1; transform: none; }
+}
+
+.wa-recovery-header {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 14px 14px 12px;
+  border-bottom: 1px solid var(--border, rgba(255,255,255,.10));
+}
+
+.wa-recovery-icon {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 11px;
+  background: rgba(239, 68, 68, .12);
+  color: #ef4444;
+  font-size: 19px;
+}
+
+.wa-recovery-header > div:nth-child(2) {
+  min-width: 0;
+  flex: 1;
+}
+
+.wa-recovery-header strong {
+  display: block;
+  color: var(--text, #f8fafc);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.wa-recovery-header span {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted, #94a3b8);
+  font-size: 11.5px;
+}
+
+.wa-recovery-close {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted, #94a3b8);
+  cursor: pointer;
+}
+
+.wa-recovery-close:hover {
+  background: var(--panel-2, rgba(255,255,255,.06));
+  color: var(--text, #f8fafc);
+}
+
+.wa-recovery-body {
+  padding: 14px;
+}
+
+.wa-recovery-qr-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  text-align: center;
+}
+
+.wa-recovery-qr-area canvas {
+  width: 220px;
+  height: 220px;
+  max-width: 100%;
+  border: 5px solid #fff;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.wa-recovery-qr-area p {
+  margin: 2px 0 0;
+  color: var(--text, #f8fafc);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.wa-recovery-qr-area small {
+  color: var(--muted, #94a3b8);
+  font-size: 10.5px;
+}
+
+.wa-recovery-waiting {
+  min-height: 130px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+  color: var(--muted, #94a3b8);
+}
+
+.wa-recovery-waiting i {
+  font-size: 22px;
+  color: var(--primary, #1d6cf5);
+}
+
+.wa-recovery-waiting strong {
+  color: var(--text, #f8fafc);
+  font-size: 13px;
+}
+
+.wa-recovery-waiting span {
+  max-width: 250px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.wa-recovery-footer {
+  padding: 0 14px 14px;
+}
+
+.wa-recovery-action {
+  width: 100%;
+  height: 42px;
+  border: 0;
+  border-radius: 11px;
+  background: var(--primary, #1d6cf5);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: var(--transition-fast, .15s ease);
+}
+
+.wa-recovery-action:hover {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+
+@media (max-width: 600px) {
+  .wa-recovery-widget {
+    top: 72px;
+    right: 12px;
+    width: calc(100vw - 24px);
+  }
+}

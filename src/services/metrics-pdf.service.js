@@ -230,12 +230,20 @@ function _cabecalho(doc, subtitulo) {
   // troque o fillColor do título de volta pra "#000000".
   const paddingX = 14;
   const paddingY = 6;
+  // PDFKit ancora o texto pela linha inteira (que reserva espaço pra
+  // acento — "Ó"/"É" do título sobem mais que letra maiúscula normal),
+  // não pelo topo da tinta visível. Sem esse ajuste, a letra fica
+  // encostada perto do topo da caixa e sobra espaço embaixo (medido no
+  // PDF renderizado: ~2pt em cima vs ~11pt embaixo). Esse deslocamento
+  // sobe a caixa pra igualar o respiro dos dois lados — se trocar a
+  // fonte/tamanho do título, meça de novo e reajuste este valor.
+  const ajusteVertical = 4.5;
   doc.font(tituloFonte).fontSize(tituloTamanho);
   const tituloLargura = doc.widthOfString(tituloTexto);
   const fundoW = tituloLargura + paddingX * 2;
   const fundoH = tituloTamanho + paddingY * 2;
   const fundoX = MARGIN + (w - fundoW) / 2;
-  doc.rect(fundoX, TITULO_Y - paddingY, fundoW, fundoH).fillColor("#1c4894").fill();
+  doc.rect(fundoX, TITULO_Y - paddingY - ajusteVertical, fundoW, fundoH).fillColor("#1c4894").fill();
 
   doc.fillColor("#ffffff").font(tituloFonte).fontSize(tituloTamanho)
     .text(tituloTexto, MARGIN, TITULO_Y, { width: w, align: "center", lineBreak: false });

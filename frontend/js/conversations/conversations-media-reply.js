@@ -108,6 +108,40 @@
       const observer = new MutationObserver(markPhotoOnlyBubbles);
       observer.observe(messagesBox, { childList: true, subtree: true });
     }
+
+    // ─── Composer: comportamento mais próximo do WhatsApp ────────────────
+    // O Enviar só aparece quando existe texto ou algum arquivo selecionado.
+    // A atualização fica aqui porque o arquivo já controla pendingMediaFile.
+    const updateSendButtonVisibility = () => {
+      const sendBtn = document.getElementById("btn-send-conversation");
+      const input = document.getElementById("conversation-message");
+      if (!sendBtn) return;
+
+      const hasText = Boolean(input?.value?.trim());
+      const hasMedia = Boolean(pendingMediaFile);
+      sendBtn.classList.toggle("composer-send-hidden", !hasText && !hasMedia);
+    };
+
+    window.updateConversationSendButton = updateSendButtonVisibility;
+
+    const input = document.getElementById("conversation-message");
+    if (input && input.dataset.sendVisibilityBound !== "true") {
+      input.dataset.sendVisibilityBound = "true";
+      ["input", "change", "keyup"].forEach(eventName => {
+        input.addEventListener(eventName, updateSendButtonVisibility);
+      });
+    }
+
+    const mediaPreviewBar = document.getElementById("media-preview-bar");
+    if (mediaPreviewBar) {
+      const mediaObserver = new MutationObserver(updateSendButtonVisibility);
+      mediaObserver.observe(mediaPreviewBar, {
+        attributes: true,
+        attributeFilter: ["class"]
+      });
+    }
+
+    updateSendButtonVisibility();
   };
 
   if (document.readyState === "loading") {

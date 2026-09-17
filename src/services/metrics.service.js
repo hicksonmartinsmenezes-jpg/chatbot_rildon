@@ -8,17 +8,25 @@
  *
  * 2026-09-16 (pedido do usuário: "quero apenas exportar métricas do mês
  * anterior não tenho opção disso"): `buscarMetricas` ganhou um parâmetro
- * opcional `mesRef` ("YYYY-MM") — SEM ele, continua se comportando
- * EXATAMENTE como antes (mês corrente, "últimos 30 dias" nos gráficos —
- * usado pelo painel ao vivo, GET /api/metrics, que nunca passa esse
- * parâmetro). COM ele (usado só pela exportação em PDF, ver
- * metrics.routes.js), os números "do mês" passam a ser sobre o mês
- * escolhido (do dia 1 ao último, no fuso TZ_NEGOCIO) em vez do corrente, e
- * os gráficos "por dia"/"por hora"/"por setor" (que hoje sempre mostram
- * "últimos 30 dias", independente de mês) passam a mostrar o mês inteiro
- * escolhido — do contrário um relatório de "Agosto" mostraria gráficos de
- * setembro (o rolling window de 30 dias corridos, sem relação com o mês do
- * relatório).
+ * opcional `mesRef` ("YYYY-MM") — SEM ele, os limites do mês (mesInicio/
+ * mesFim) resolvem pro mês CORRENTE (ver COALESCE em `_resolverLimites`),
+ * e os gráficos "por dia"/"por hora" usam janela de "últimos 30 dias"
+ * corridos em vez do mês fechado (usado só pelo painel ao vivo, GET
+ * /api/metrics, quando o seletor está em "Mês corrente" — a exportação em
+ * PDF sempre passa um mesRef explícito, ver metrics.routes.js). COM
+ * mesRef, os gráficos "por dia"/"por hora" também passam a mostrar o mês
+ * inteiro escolhido — do contrário um relatório de "Agosto" mostraria
+ * gráficos de setembro (o rolling window de 30 dias corridos, sem relação
+ * com o mês do relatório).
+ *
+ * BUG CORRIGIDO (2026-09-17): até aqui, satisfação/notas/feedbacks tinham
+ * um escape hatch que IGNORAVA o filtro de mês por completo quando mesRef
+ * não era passado — mostravam dado ACUMULADO DESDE SEMPRE no painel ao
+ * vivo mesmo com o seletor em "Mês corrente", enquanto os outros cards já
+ * eram do mês. Removido: essas queries agora sempre filtram por
+ * mesInicio/mesFim (que já é "mês corrente" quando mesRef é null), então
+ * toda a resposta de `buscarMetricas` fica consistente com um único
+ * recorte de tempo — corrente ou o mês escolhido, nunca uma mistura.
  *
  * Os limites do mês (início/fim, mês anterior, janela dos gráficos) são
  * resolvidos numa única query preliminar (`_resolverLimites`), reaproveitada
@@ -128,15 +136,26 @@ async function buscarMetricas(mesRef = null) {
       ORDER BY total_atendidos DESC, u.nome ASC
     `, [TZ, mesInicio, mesFim]),
 
-    // Pesquisa de satisfação: sem mesRef mantém todos os dados; com mesRef usa o mês selecionado.
+    // BUG CORRIGIDO (2026-09-17, auditoria pedida pelo usuário: "verifique
+    // todos os dados se batem perfeitamente"): esta query tinha um escape
+    // hatch "$3::date IS NULL OR ..." que, sem mesRef (painel ao vivo, valor
+    // padrão do seletor "Mês corrente"), IGNORAVA o filtro de data por
+    // completo e mostrava a média de satisfação DESDE SEMPRE — enquanto o
+    // <select> do painel rotula essa mesma opção como "Mês corrente" e os
+    // cards ao lado (Atendimentos/Resolvidos/Taxa/TMA/TME) já eram do mês.
+    // Provado com dado de teste: card "Avaliações" = 5 (acumulado) contra a
+    // linha "Avaliações/Este mês" = 2 na tabela ao lado, na mesma tela.
+    // Como mesInicio/mesFim já resolvem pra "mês corrente" quando mesParam é
+    // NULL (ver COALESCE em _resolverLimites), basta sempre filtrar por eles
+    // — não precisa mais do escape hatch nem do parâmetro $3 aqui.
     pool.query(`
       SELECT
         ROUND(AVG(satisfaction_rating)::numeric, 2) AS media,
         COUNT(*)::int AS total
       FROM tickets
       WHERE satisfaction_rating IS NOT NULL
-        AND ($3::date IS NULL OR (created_at >= $1 AND created_at < $2))
-    `, [mesInicio, mesFim, mesParam]),
+        AND created_at >= $1 AND created_at < $2
+    `, [mesInicio, mesFim]),
 
     pool.query(`
       SELECT
@@ -146,10 +165,10 @@ async function buscarMetricas(mesRef = null) {
       FROM tickets
       WHERE satisfaction_rating IS NOT NULL
         AND assigned_to_name IS NOT NULL
-        AND ($3::date IS NULL OR (created_at >= $1 AND created_at < $2))
+        AND created_at >= $1 AND created_at < $2
       GROUP BY assigned_to_name
       ORDER BY media DESC
-    `, [mesInicio, mesFim, mesParam]),
+    `, [mesInicio, mesFim]),
 
     pool.query(`
       SELECT
@@ -161,10 +180,10 @@ async function buscarMetricas(mesRef = null) {
       FROM tickets
       WHERE satisfaction_rating <= 2
         AND satisfaction_feedback IS NOT NULL
-        AND ($3::date IS NULL OR (created_at >= $1 AND created_at < $2))
+        AND created_at >= $1 AND created_at < $2
       ORDER BY satisfaction_feedback_at DESC
       LIMIT 50
-    `, [mesInicio, mesFim, mesParam]),
+    `, [mesInicio, mesFim]),
 
     pool.query(`
       SELECT
@@ -233,10 +252,10 @@ async function buscarMetricas(mesRef = null) {
       SELECT satisfaction_rating AS nota, COUNT(*)::int AS total
       FROM tickets
       WHERE satisfaction_rating IS NOT NULL
-        AND ($3::date IS NULL OR (created_at >= $1 AND created_at < $2))
+        AND created_at >= $1 AND created_at < $2
       GROUP BY satisfaction_rating
       ORDER BY satisfaction_rating ASC
-    `, [mesInicio, mesFim, mesParam]),
+    `, [mesInicio, mesFim]),
 
     pool.query(`
       SELECT sector, COUNT(*)::int AS total

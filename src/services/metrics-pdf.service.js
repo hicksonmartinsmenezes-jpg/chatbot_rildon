@@ -413,6 +413,46 @@ function gerarPdfMetricas(data, destino) {
     });
   }
 
+  // Pedido do usuário (2026-09-17): "embaixo de o que os clientes disseram,
+  // tem como colocar evolução?" — tabela dia a dia de atendimentos, mesma
+  // fonte que a aba "Evolução" do painel ao vivo (data.porDia, já escopado
+  // à janela do PDF — mês selecionado no histórico, últimos 30 dias no
+  // corrente — ver diaRes em metrics.service.js e
+  // renderMetricsEvolucaoTable em 05-metrics.js).
+  //
+  // Um mês cheio (~30/31 linhas) não cabe nem numa página A4 nova sozinho
+  // (27 de faixa + 20 de cabeçalho + 31*18 de linhas > área útil da
+  // página) — por isso pagina de verdade em blocos, e não só decide
+  // "cabe/não cabe" uma vez: cada bloco recebe sua própria faixa (a 1ª
+  // com o título normal, as seguintes com "(continuação)") e usa o
+  // espaço restante da página atual antes de abrir a próxima.
+  const dias = Object.entries(data.porDia || {});
+  let paginaAtual = 2;
+  let y = fy + 16;
+  let idx = 0;
+  let primeiraFaixa = true;
+  const areaUtilY = () => doc.page.height - BOTTOM - 10;
+  do {
+    // Espaço mínimo pra valer a pena começar o bloco aqui: faixa +
+    // cabeçalho da tabela + 1 linha (ou o aviso "Sem dados ainda.").
+    if (y + 27 + 20 + 18 > areaUtilY()) {
+      paginaAtual += 1;
+      pagina(paginaAtual);
+      y = TOP;
+    }
+    const cabem = Math.max(1, Math.floor((areaUtilY() - y - 27 - 20) / 18));
+    const bloco = dias.slice(idx, idx + cabem);
+    faixa(primeiraFaixa ? "Evolução diária de atendimentos" : "Evolução diária de atendimentos (continuação)", MARGIN, y, W);
+    tabela(MARGIN, y + 27, W, ["Dia", "Atendimentos"], [0.5, 0.5], bloco, { align: ["left", "right"] });
+    idx += bloco.length;
+    primeiraFaixa = false;
+    if (idx < dias.length) {
+      paginaAtual += 1;
+      pagina(paginaAtual);
+      y = TOP;
+    }
+  } while (idx < dias.length);
+
   doc.end();
 }
 

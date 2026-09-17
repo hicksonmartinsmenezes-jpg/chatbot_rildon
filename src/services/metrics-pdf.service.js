@@ -311,14 +311,20 @@ function gerarPdfMetricas(data, destino) {
    * x+9). Aqui não precisa medir o texto (doc.widthOfString) igual no
    * título principal porque o fundo já é a largura inteira `w` passada —
    * só troca align:"left" (implícito) por align:"center".
+   * Pedido do usuário (2026-09-17, 2ª rodada): texto ainda não estava
+   * centralizado verticalmente na faixa (mesma causa do título
+   * principal — PDFKit reserva espaço acima da letra pro acento). Medido
+   * no PDF renderizado: ~5.8pt de respiro em cima contra ~8.6pt embaixo
+   * — ajusteVertical (1.4pt) soma no y do texto pra igualar.
    * @param {string} titulo
    * @param {number} x, y - canto superior esquerdo.
    * @param {number} w - largura da faixa.
    */
   function faixa(titulo, x, y, w) {
+    const ajusteVertical = 1.4;
     doc.roundedRect(x, y, w, 22, 4).fillColor(AZUL_TITULO).fill();
     doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(10.5)
-      .text(titulo, x, y + 6, { width: w, align: "center", lineBreak: false });
+      .text(titulo, x, y + 6 + ajusteVertical, { width: w, align: "center", lineBreak: false });
   }
 
   // Pedido do usuário (2026-09-17): títulos como "TMA (Tempo Médio

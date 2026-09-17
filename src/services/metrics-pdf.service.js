@@ -211,48 +211,18 @@ function _fundo(doc) {
  * Desenha o título "RELATÓRIO DE MÉTRICAS" + a linha de subtítulo (data de
  * geração / mês do relatório) em TITULO_Y/SUBTITULO_Y. NÃO desenha o fundo
  * (isso é _fundo) nem o logo (isso já vem embutido na imagem de fundo).
- * Se quiser um fundo colorido atrás do título, use
+ * Pedido do usuário (2026-09-17, última rodada): sem fundo colorido atrás
+ * do título — texto preto sólido direto no papel timbrado. Se quiser
+ * voltar a ter um fundo colorido atrás do texto, use
  * `doc.rect(x, y, w, h).fillColor(cor).fill()` ANTES desta chamada de
- * `.text(...)` — PDFKit não tem um método `.background()` encadeável.
+ * `.text(...)` — PDFKit não tem um método `.background()` encadeável (ver
+ * histórico do arquivo/commits anteriores pra como isso foi feito com
+ * fundo grudado no texto via doc.widthOfString()).
  */
 function _cabecalho(doc, subtitulo) {
   const w = doc.page.width - MARGIN * 2;
-  const tituloTexto = "RELATÓRIO DE MÉTRICAS";
-  const tituloFonte = "Helvetica-Bold";
-  const tituloTamanho = 18;
-
-  // Fundo "grudado" no título (em vez de uma faixa cobrindo a página
-  // inteira): mede a largura REAL do texto com doc.widthOfString() — por
-  // isso precisa setar a mesma fonte/tamanho do título ANTES de medir,
-  // senão a medida sai errada — soma um respiro (padding) e centraliza o
-  // retângulo em cima disso. Se o texto do título mudar um dia, o fundo se
-  // reajusta sozinho (não é um número fixo).
-  // Cor escura (AZUL_TITULO) → texto precisa ficar branco (#ffffff) em
-  // cima, senão o texto some. Se trocar pra uma cor clara, troque o
-  // fillColor do título de volta pra algo escuro (ex: "#000000").
-  // Pedido do usuário (2026-09-17): todo título com fundo (este + as
-  // "faixas" de seção, ver faixa() logo abaixo) usa a MESMA cor —
-  // AZUL_TITULO — e o mesmo texto branco centralizado. Trocar a cor aqui
-  // significa trocar a constante AZUL_TITULO lá em cima, não este valor.
-  const paddingX = 14;
-  const paddingY = 6;
-  // PDFKit ancora o texto pela linha inteira (que reserva espaço pra
-  // acento — "Ó"/"É" do título sobem mais que letra maiúscula normal),
-  // não pelo topo da tinta visível. Sem esse ajuste, a letra fica
-  // encostada perto do topo da caixa e sobra espaço embaixo (medido no
-  // PDF renderizado: ~2pt em cima vs ~11pt embaixo). Esse deslocamento
-  // sobe a caixa pra igualar o respiro dos dois lados — se trocar a
-  // fonte/tamanho do título, meça de novo e reajuste este valor.
-  const ajusteVertical = 4.5;
-  doc.font(tituloFonte).fontSize(tituloTamanho);
-  const tituloLargura = doc.widthOfString(tituloTexto);
-  const fundoW = tituloLargura + paddingX * 2;
-  const fundoH = tituloTamanho + paddingY * 2;
-  const fundoX = MARGIN + (w - fundoW) / 2;
-  doc.rect(fundoX, TITULO_Y - paddingY - ajusteVertical, fundoW, fundoH).fillColor(AZUL_TITULO).fill();
-
-  doc.fillColor("#ffffff").font(tituloFonte).fontSize(tituloTamanho)
-    .text(tituloTexto, MARGIN, TITULO_Y, { width: w, align: "center", lineBreak: false });
+  doc.fillColor("#000000").font("Helvetica-Bold").fontSize(18)
+    .text("RELATÓRIO DE MÉTRICAS", MARGIN, TITULO_Y, { width: w, align: "center", lineBreak: false });
   doc.fillColor(SEC).font("Helvetica").fontSize(9)
     .text(subtitulo, MARGIN, SUBTITULO_Y, { width: w, align: "center", lineBreak: false });
 }

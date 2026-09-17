@@ -83,8 +83,8 @@ const SUBTITULO_Y = 196;   // y da linha "Gerado em .../Métricas de ..." (ver _
 const TOP = 230;           // y onde a 1ª faixa de conteúdo de cada página começa
 const BOTTOM = 48;         // distância do rodapé (nº de página) até a borda inferior
 // Paleta de cores — mude aqui, não em valores soltos no meio do código.
-const AZUL = "#006097";        // cor de destaque (títulos de faixa, barras do gráfico)
-const AZUL_CLARO = "#eef5f9";  // fundo das "faixas" (título de cada seção/tabela)
+const AZUL = "#006097";        // cor de destaque (barras do gráfico)
+const AZUL_TITULO = "#1c4894"; // fundo de título com destaque (título principal + faixas de seção) — texto sempre branco em cima
 const AZUL_BORDA = "#d6e5ee";  // borda fina dos cards
 const TEXTO = "#263238";       // cor de texto padrão (quase preto)
 const SEC = "#66717b";         // cor de texto secundário (rótulos, legendas)
@@ -225,9 +225,13 @@ function _cabecalho(doc, subtitulo) {
   // senão a medida sai errada — soma um respiro (padding) e centraliza o
   // retângulo em cima disso. Se o texto do título mudar um dia, o fundo se
   // reajusta sozinho (não é um número fixo).
-  // Cor escura (#0026ff) → texto precisa ficar branco (#ffffff) em cima,
-  // senão o preto some. Se trocar pra uma cor clara (ex: AZUL_CLARO),
-  // troque o fillColor do título de volta pra "#000000".
+  // Cor escura (AZUL_TITULO) → texto precisa ficar branco (#ffffff) em
+  // cima, senão o texto some. Se trocar pra uma cor clara, troque o
+  // fillColor do título de volta pra algo escuro (ex: "#000000").
+  // Pedido do usuário (2026-09-17): todo título com fundo (este + as
+  // "faixas" de seção, ver faixa() logo abaixo) usa a MESMA cor —
+  // AZUL_TITULO — e o mesmo texto branco centralizado. Trocar a cor aqui
+  // significa trocar a constante AZUL_TITULO lá em cima, não este valor.
   const paddingX = 14;
   const paddingY = 6;
   // PDFKit ancora o texto pela linha inteira (que reserva espaço pra
@@ -243,7 +247,7 @@ function _cabecalho(doc, subtitulo) {
   const fundoW = tituloLargura + paddingX * 2;
   const fundoH = tituloTamanho + paddingY * 2;
   const fundoX = MARGIN + (w - fundoW) / 2;
-  doc.rect(fundoX, TITULO_Y - paddingY - ajusteVertical, fundoW, fundoH).fillColor("#1c4894").fill();
+  doc.rect(fundoX, TITULO_Y - paddingY - ajusteVertical, fundoW, fundoH).fillColor(AZUL_TITULO).fill();
 
   doc.fillColor("#ffffff").font(tituloFonte).fontSize(tituloTamanho)
     .text(tituloTexto, MARGIN, TITULO_Y, { width: w, align: "center", lineBreak: false });
@@ -296,20 +300,25 @@ function gerarPdfMetricas(data, destino) {
   }
 
   /**
-   * Desenha uma "faixa" — a barrinha azul-clara com título em negrito que
-   * antecede cada bloco de conteúdo (ex: "Resumo de Setembro/2026",
-   * "Atendentes"). Tem altura FIXA de 22pt; o conteúdo abaixo dela deve
-   * começar em `y + 27` (22 de altura + ~5 de respiro), esse "+27" é
-   * repetido no código toda vez que uma tabela/gráfico vem logo abaixo de
-   * uma faixa.
+   * Desenha uma "faixa" — a barra com título em negrito que antecede cada
+   * bloco de conteúdo (ex: "Resumo de Setembro/2026", "Atendentes"). Tem
+   * altura FIXA de 22pt; o conteúdo abaixo dela deve começar em `y + 27`
+   * (22 de altura + ~5 de respiro), esse "+27" é repetido no código toda
+   * vez que uma tabela/gráfico vem logo abaixo de uma faixa.
+   * Pedido do usuário (2026-09-17): mesma cor/estilo do título principal
+   * (_cabecalho) — fundo AZUL_TITULO, texto branco, CENTRALIZADO na faixa
+   * (antes era fundo AZUL_CLARO, texto AZUL, alinhado à esquerda com
+   * x+9). Aqui não precisa medir o texto (doc.widthOfString) igual no
+   * título principal porque o fundo já é a largura inteira `w` passada —
+   * só troca align:"left" (implícito) por align:"center".
    * @param {string} titulo
    * @param {number} x, y - canto superior esquerdo.
    * @param {number} w - largura da faixa.
    */
   function faixa(titulo, x, y, w) {
-    doc.roundedRect(x, y, w, 22, 4).fillColor(AZUL_CLARO).fill();
-    doc.fillColor(AZUL).font("Helvetica-Bold").fontSize(10.5)
-      .text(titulo, x + 9, y + 6, { width: w - 18, lineBreak: false });
+    doc.roundedRect(x, y, w, 22, 4).fillColor(AZUL_TITULO).fill();
+    doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(10.5)
+      .text(titulo, x, y + 6, { width: w, align: "center", lineBreak: false });
   }
 
   // Pedido do usuário (2026-09-17): títulos como "TMA (Tempo Médio

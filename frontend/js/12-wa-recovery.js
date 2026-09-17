@@ -76,7 +76,14 @@
     const canvas = document.getElementById("wa-recovery-qr-canvas");
     const area = document.getElementById("wa-recovery-qr-area");
     const waiting = document.getElementById("wa-recovery-waiting");
-    if (!canvas || typeof QRCode === "undefined") return;
+    if (!canvas) return;
+
+    // A biblioteca QRCode é carregada pelo index.html. Se ela ainda não
+    // estiver pronta, tenta novamente sem perder o QR recebido.
+    if (typeof QRCode === "undefined") {
+      setTimeout(() => renderRecoveryQr(qr), 300);
+      return;
+    }
 
     QRCode.toCanvas(canvas, qr, { width: 220, margin: 2 }, (err) => {
       if (err) return;
@@ -87,8 +94,6 @@
 
   async function refreshWaStatus() {
     try {
-      // O QR muda durante a reconexão. O cache do navegador/proxy não pode
-      // devolver eternamente o primeiro { connected:false, qr:null }.
       const cacheBuster = `?_wa_status=${Date.now()}`;
       const res = await apiFetch(`${BASE}/api/whatsapp/status${cacheBuster}`, {
         cache: "no-store"
@@ -120,11 +125,8 @@
 
   function startWaStatusPolling() {
     if (statusTimer) return;
-
     refreshWaStatus();
-    statusTimer = setInterval(() => {
-      refreshWaStatus();
-    }, POLL_MS);
+    statusTimer = setInterval(() => refreshWaStatus(), POLL_MS);
   }
 
   function stopRecoveryPolling() {
@@ -134,16 +136,12 @@
 
   function waitForWaQr() {
     stopRecoveryPolling();
-
     const startedAt = Date.now();
     recoveryTimer = setInterval(async () => {
       const ok = await refreshWaStatus();
-
       if (Date.now() - startedAt >= RECOVERY_TIMEOUT_MS) {
         stopRecoveryPolling();
-        if (ok) {
-          showToast("⚠️ O QR Code ainda não foi disponibilizado. Tente gerar novamente.");
-        }
+        if (ok) showToast("⚠️ O QR Code ainda não foi disponibilizado. Clique em Reconectar para gerar novamente.");
       }
     }, POLL_MS);
   }
@@ -197,7 +195,9 @@
         }
 
         showRecoveryWidget();
-        showToast("🔄 Reconexão solicitada. Aguardando o QR Code...");
+        showToast(clearSession
+          ? "🔄 Sessão reiniciada. Gerando novo QR Code..."
+          : "🔄 Reconexão solicitada. Aguardando o QR Code...");
         updateWaStatusPanel("disconnected");
         waitForWaQr();
       } catch (err) {
@@ -224,7 +224,10 @@
       return;
     }
 
-    await doReconnect(false);
+    // Quando já está desconectado, preservar a sessão podia deixar o Baileys
+    // tentando reconectar indefinidamente sem emitir QR. Para a recuperação
+    // pelo painel, limpa a sessão explicitamente e força o pareamento novo.
+    await doReconnect(true);
   };
 
   window.startWaQrRecovery = startWaStatusPolling;

@@ -31,7 +31,26 @@
   scroll-behavior:auto !important;
 }
 
-/* Composer: clipe limpo, sem círculo de fundo permanente. */
+/* Composer: estrutura estável, sem sobra/quebra à direita do campo. */
+.chat-input-area {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+}
+
+.chat-input-area textarea#conversation-message {
+  flex: 1 1 auto !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+}
+
+/* Clipe limpo, sem círculo de fundo permanente. */
 .chat-input-area .chat-attach-btn {
   width: 42px !important;
   min-width: 42px !important;
@@ -98,6 +117,7 @@
   min-height: 0 !important;
   max-height: 0 !important;
   flex: 0 0 0 !important;
+  flex-shrink: 0 !important;
   margin: 0 !important;
   padding: 0 !important;
   border: 0 !important;

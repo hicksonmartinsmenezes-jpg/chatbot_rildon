@@ -54,6 +54,14 @@
   z-index: 1 !important;
 }
 
+/* O anel de foco do textarea (06-conversations.css) é "para fora" (box-shadow
+   0 0 0 3px) e vaza pro gap de 8px antes do botão Enviar, aparecendo como uma
+   sobra/quebra clara colada no canto esquerdo do botão. Troca pra anel "pra
+   dentro" (inset), preso ao próprio contorno arredondado do textarea. */
+.chat-input-area textarea#conversation-message:focus {
+  box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.18) !important;
+}
+
 .chat-input-area .chat-attach-btn {
   width: 42px !important;
   min-width: 42px !important;

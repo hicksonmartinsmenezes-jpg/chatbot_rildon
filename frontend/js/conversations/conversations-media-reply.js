@@ -1,7 +1,7 @@
 // Responder mídia recebida (igual WhatsApp).
-// As bolhas de mídia são renderizadas sem messageId no DOM. Aqui usamos a
-// mesma ordem do histórico carregado para recuperar o id correto e alimentar
-// o replyToMessage(), fazendo a faixa de resposta aparecer no composer.
+// As bolhas de mídia são renderizadas sem messageId no DOM. Usamos a mesma
+// ordem do histórico carregado para recuperar o id correto e alimentar
+// replyToMessage(), fazendo a faixa de resposta aparecer no composer.
 (function bindMediaReply() {
   const install = () => {
     const box = document.getElementById("chat-messages");
@@ -9,10 +9,16 @@
     box.dataset.mediaReplyBound = "true";
 
     const getMediaHistory = () => {
-      const history = Array.isArray(window.allHistory) ? window.allHistory : [];
-      return history.filter((item) =>
-        item && item.message && item.mediaPath && !item.response && item.messageId
-      );
+      try {
+        const history = typeof allHistory !== "undefined" && Array.isArray(allHistory)
+          ? allHistory
+          : [];
+        return history.filter((item) =>
+          item && item.message && item.mediaPath && !item.response && item.messageId
+        );
+      } catch (_) {
+        return [];
+      }
     };
 
     const addButtons = () => {

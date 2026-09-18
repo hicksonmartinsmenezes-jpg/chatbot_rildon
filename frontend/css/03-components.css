@@ -314,12 +314,21 @@ button:active,
   transform: translateY(16px);
   opacity: 0;
   filter: blur(4px);
+  /* opacity:0 sozinho não garante nada visível em toda GPU/driver — com
+     blur+box-shadow grandes, alguns compositors (Windows/Chrome) deixam um
+     resíduo bem sutil da caixa mesmo "invisível". Como o toast fica sempre
+     ancorado em bottom/right:24px, esse resíduo cai perto do composer de
+     conversas (campo + botão Enviar) e aparecia como uma sobra/quebra ali.
+     visibility:hidden tira o elemento da pintura de vez; o delay garante
+     que ele só suma DEPOIS do fade (senão corta a saída no meio). */
+  visibility: hidden;
   /* Saída mais rápida/sutil que a entrada (skill design-motion-principles:
      exit sempre mais discreto que enter) — --dur-exit/--dur-enter em
      01-base.css. */
-  transition: transform var(--dur-exit, .16s) var(--ease-in, ease),
-              opacity   var(--dur-exit, .16s) var(--ease-in, ease),
-              filter    var(--dur-exit, .16s) var(--ease-in, ease);
+  transition: transform  var(--dur-exit, .16s) var(--ease-in, ease),
+              opacity    var(--dur-exit, .16s) var(--ease-in, ease),
+              filter     var(--dur-exit, .16s) var(--ease-in, ease),
+              visibility 0s linear var(--dur-exit, .16s);
   z-index: 99999;
   max-width: 340px;
 }
@@ -328,9 +337,11 @@ button:active,
   transform: translateY(0);
   opacity: 1;
   filter: blur(0);
-  transition: transform var(--dur-enter, .24s) var(--ease-out, ease),
-              opacity   var(--dur-enter, .24s) var(--ease-out, ease),
-              filter    var(--dur-enter, .24s) var(--ease-out, ease);
+  visibility: visible;
+  transition: transform  var(--dur-enter, .24s) var(--ease-out, ease),
+              opacity    var(--dur-enter, .24s) var(--ease-out, ease),
+              filter     var(--dur-enter, .24s) var(--ease-out, ease),
+              visibility 0s linear 0s;
 }
 
 /* ─── Status do contato ────────────────── */

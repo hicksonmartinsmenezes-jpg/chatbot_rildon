@@ -6,25 +6,36 @@
       const style = document.createElement("style");
       style.id = styleId;
       style.textContent = `
-        .rildon-audio-player { align-items: center !important; gap: 7px !important; }
+        .rildon-audio-player {
+          align-items: center !important;
+          gap: 7px !important;
+        }
+
+        /* Avatar alinhado ao centro do conjunto do áudio. */
         .rildon-audio-avatar {
-          width: 36px !important;
-          min-width: 36px !important;
-          height: 36px !important;
+          width: 38px !important;
+          min-width: 38px !important;
+          height: 38px !important;
+          min-height: 38px !important;
           align-self: center !important;
+          margin: 0 !important;
+          padding: 0 !important;
           display: flex !important;
           align-items: center !important;
           justify-content: center !important;
-          transform: translateY(1px) !important;
+          transform: none !important;
         }
         .rildon-audio-avatar .chat-avatar,
         .rildon-audio-avatar .chat-avatar img,
-        .rildon-audio-avatar .chat-avatar .avatar-fallback {
-          width: 36px !important;
-          height: 36px !important;
-          min-width: 36px !important;
-          min-height: 36px !important;
+        .rildon-audio-avatar .chat-avatar .avatar-fallback,
+        .rildon-audio-avatar img,
+        .rildon-audio-avatar .avatar {
+          width: 38px !important;
+          height: 38px !important;
+          min-width: 38px !important;
+          min-height: 38px !important;
           border-radius: 50% !important;
+          object-fit: cover !important;
         }
         .rildon-audio-avatar .chat-avatar {
           display: flex !important;
@@ -41,7 +52,13 @@
           align-items: center !important;
           line-height: 1 !important;
           text-align: center !important;
-          flex: 0 0 36px !important;
+          flex: 0 0 38px !important;
+          width: 38px !important;
+          min-width: 38px !important;
+          max-width: 38px !important;
+          height: 38px !important;
+          min-height: 38px !important;
+          max-height: 38px !important;
         }
         .rildon-audio-play i {
           display: block !important;
@@ -52,8 +69,13 @@
           margin: 0 !important;
           transform: translateX(1px) !important;
         }
-        .rildon-audio-main { justify-content: center !important; }
-        .rildon-audio-time { line-height: 11px !important; min-height: 11px; }
+        .rildon-audio-main {
+          justify-content: center !important;
+        }
+        .rildon-audio-time {
+          line-height: 11px !important;
+          min-height: 11px;
+        }
 
         .rildon-audio-menu-wrap {
           position: relative;
@@ -80,35 +102,46 @@
           align-items: center !important;
           justify-content: center !important;
           cursor: pointer !important;
+          transform: none !important;
         }
         .rildon-audio-menu-btn:hover,
         .rildon-audio-menu-btn[aria-expanded="true"] {
           background: rgba(255,255,255,.07) !important;
           color: #d1d7db !important;
         }
-        .rildon-audio-menu-btn i { font-size: 15px !important; }
+        .rildon-audio-menu-btn i {
+          font-size: 15px !important;
+        }
 
-        /* Menu contextual compacto, seguindo a hierarquia visual do WhatsApp. */
+        /* Menu contextual: compacto, limpo e com ações em linhas, como no WhatsApp. */
         .rildon-audio-menu {
           position: absolute;
-          right: -2px;
+          right: -3px;
           bottom: 42px;
           z-index: 100;
-          width: 184px;
-          padding: 5px 0;
+          width: 205px;
+          padding: 6px 0;
           border: 0;
-          border-radius: 9px;
+          border-radius: 8px;
           background: #233138;
-          box-shadow: 0 4px 16px rgba(0,0,0,.28);
+          box-shadow: 0 4px 18px rgba(0,0,0,.32);
           display: none;
           overflow: hidden;
         }
-        .rildon-audio-menu.is-open { display: block; }
+        .rildon-audio-menu.is-open {
+          display: block;
+          animation: rildonAudioMenuIn .12s ease-out;
+        }
+        @keyframes rildonAudioMenuIn {
+          from { opacity: 0; transform: translateY(3px) scale(.98); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
 
         .rildon-audio-menu-label {
-          padding: 7px 13px 4px;
+          padding: 6px 14px 5px;
           color: #8696a0;
-          font-size: 10px;
+          font-size: 11px;
+          line-height: 14px;
           font-weight: 500;
           text-transform: none;
           letter-spacing: 0;
@@ -116,8 +149,9 @@
 
         .rildon-audio-speed-group {
           display: flex;
+          align-items: center;
           gap: 2px;
-          padding: 0 6px 5px;
+          padding: 0 7px 6px;
           margin: 0;
           background: transparent;
         }
@@ -125,15 +159,15 @@
           flex: 1 1 0;
           width: auto !important;
           min-width: 0 !important;
-          height: 30px !important;
-          min-height: 30px !important;
+          height: 32px !important;
+          min-height: 32px !important;
           padding: 0 !important;
           margin: 0 !important;
           border: 0 !important;
           border-radius: 6px !important;
           background: transparent !important;
           box-shadow: none !important;
-          color: #c9d1d5 !important;
+          color: #d1d7db !important;
           font-family: inherit;
           font-size: 12px !important;
           font-weight: 500 !important;
@@ -160,9 +194,9 @@
         .rildon-audio-menu-item {
           width: 100% !important;
           min-width: 0 !important;
-          height: 38px !important;
-          min-height: 38px !important;
-          padding: 0 13px !important;
+          height: 40px !important;
+          min-height: 40px !important;
+          padding: 0 14px !important;
           margin: 0 !important;
           border: 0 !important;
           border-radius: 0 !important;
@@ -172,18 +206,21 @@
           display: flex !important;
           align-items: center !important;
           justify-content: flex-start !important;
-          gap: 11px;
+          gap: 12px;
           font-family: inherit;
           font-size: 13px !important;
           font-weight: 400 !important;
+          line-height: 1 !important;
           text-align: left !important;
           cursor: pointer !important;
           transform: none !important;
         }
-        .rildon-audio-menu-item:hover { background: rgba(255,255,255,.08) !important; }
+        .rildon-audio-menu-item:hover {
+          background: rgba(255,255,255,.08) !important;
+        }
         .rildon-audio-menu-item i {
-          width: 16px;
-          min-width: 16px;
+          width: 17px;
+          min-width: 17px;
           text-align: center;
           color: #aebac1;
           font-size: 13px;
@@ -191,23 +228,41 @@
 
         body.light-theme .rildon-audio-menu {
           background: #fff;
-          box-shadow: 0 4px 16px rgba(0,0,0,.16);
+          box-shadow: 0 4px 18px rgba(0,0,0,.16);
         }
-        body.light-theme .rildon-audio-menu-label { color: #667781; }
-        body.light-theme .rildon-audio-speed-btn { color: #54656f !important; }
+        body.light-theme .rildon-audio-menu-label {
+          color: #667781;
+        }
+        body.light-theme .rildon-audio-speed-btn {
+          color: #54656f !important;
+        }
         body.light-theme .rildon-audio-speed-btn:hover,
         body.light-theme .rildon-audio-speed-btn.is-active {
           background: rgba(0,0,0,.06) !important;
           color: #263238 !important;
         }
-        body.light-theme .rildon-audio-menu-divider { background: rgba(0,0,0,.08); }
-        body.light-theme .rildon-audio-menu-item { color: #263238 !important; }
-        body.light-theme .rildon-audio-menu-item i { color: #667781; }
+        body.light-theme .rildon-audio-menu-divider {
+          background: rgba(0,0,0,.08);
+        }
+        body.light-theme .rildon-audio-menu-item {
+          color: #263238 !important;
+        }
+        body.light-theme .rildon-audio-menu-item i {
+          color: #667781;
+        }
 
         @media (max-width: 600px) {
-          .rildon-audio-menu-wrap { flex-basis: 28px; width: 28px; }
-          .rildon-audio-menu-btn { width: 28px !important; min-width: 28px !important; }
-          .rildon-audio-menu { width: 178px; }
+          .rildon-audio-menu-wrap {
+            flex-basis: 28px;
+            width: 28px;
+          }
+          .rildon-audio-menu-btn {
+            width: 28px !important;
+            min-width: 28px !important;
+          }
+          .rildon-audio-menu {
+            width: 190px;
+          }
         }
       `;
       document.head.appendChild(style);

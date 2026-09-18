@@ -8,6 +8,30 @@ const userRepository =
 
 const SALT_ROUNDS = 10;
 
+// Cada perfil possui um conjunto máximo de telas. Permissões individuais
+// podem somente remover telas desse conjunto.
+const PROFILE_SCREEN_ACCESS = {
+  atendente: new Set(["dashboard", "conversations", "history", "contacts", "catalogo"]),
+  supervisor: new Set(["dashboard", "conversations", "history", "contacts", "catalogo", "channels", "metrics"]),
+  admin: null
+};
+
+function normalizeScreenPermissions(perfil, permissions = {}) {
+  const allowed = PROFILE_SCREEN_ACCESS[perfil] || PROFILE_SCREEN_ACCESS.atendente;
+
+  if (perfil === "admin") {
+    return { ...permissions };
+  }
+
+  const normalized = {};
+  for (const screen of allowed) {
+    normalized[screen] = permissions[screen] === undefined
+      ? true
+      : permissions[screen] === true;
+  }
+  return normalized;
+}
+
 async function getUsers(options = {}) {
   return userRepository.findAll(options);
 }
@@ -95,7 +119,7 @@ async function createUser(data) {
       sector: data.sector || "geral",
       numero: data.numero || "",
       foto: data.foto || "",
-      permissions: data.permissions || {}
+      permissions: normalizeScreenPermissions(data.perfil || "atendente", data.permissions || {})
     });
 
     // Mesmo bug do branch de usuário novo abaixo — numero/foto ficavam de
@@ -128,7 +152,7 @@ async function createUser(data) {
     foto:
       data.foto || "",
     permissions:
-      data.permissions || {},
+      normalizeScreenPermissions(data.perfil || "atendente", data.permissions || {}),
     ativo:
       data.ativo !== undefined ? data.ativo : true
   };
@@ -275,7 +299,13 @@ async function updateUserProfile(
 }
 
 async function updateUserPermissions(id, permissions) {
-  const normalized = permissions && typeof permissions === "object" ? permissions : {};
+  const current = await userRepository.findById(id);
+  if (!current) throw new Error("Usuário não encontrado.");
+
+  const normalizedInput = permissions && typeof permissions === "object" && !Array.isArray(permissions)
+    ? permissions
+    : {};
+  const normalized = normalizeScreenPermissions(current.perfil, normalizedInput);
   const updated = await userRepository.updatePermissions(id, normalized);
   if (!updated) throw new Error("Usuário não encontrado.");
   return {

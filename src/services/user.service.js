@@ -109,6 +109,7 @@ async function createUser(data) {
       numero: reactivated.numero || "",
       foto: reactivated.foto || "",
       ativo: reactivated.ativo,
+      permissions: reactivated.permissions || {},
       reactivated: true
     };
   }
@@ -126,6 +127,8 @@ async function createUser(data) {
       data.numero || "",
     foto:
       data.foto || "",
+    permissions:
+      data.permissions || {},
     ativo:
       data.ativo !== undefined ? data.ativo : true
   };
@@ -151,7 +154,8 @@ async function createUser(data) {
     sector: created.sector,
     numero: created.numero || "",
     foto: created.foto || "",
-    ativo: created.ativo
+    ativo: created.ativo,
+    permissions: created.permissions || {}
   };
 }
 

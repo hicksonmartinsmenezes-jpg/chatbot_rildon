@@ -1135,16 +1135,12 @@ body.tab-fullscreen #tab-conversations {
 /* ─── Refinamentos finais UX Conversas ───────────────── */
 
 
+/* Bolinha de status "online" removida (2026-09-18): nunca teve lógica real
+   de presença ligada a ela — era sempre cinza fixo (#64748b), então só
+   sujava a foto de perfil sem informar nada. Já era escondida no histórico
+   (.hrow-client .chat-avatar::after acima); agora removida na origem. */
 .chat-avatar::after {
-  content: "";
-  position: absolute;
-  width:12px;
-   height:12px;
-  right: 3px;
-  bottom: 3px;
-  border-radius: 50%;
-  background:#64748b;
-  border: 2px solid #111b21;
+  content: none;
 }
 
 .chat-item-top small {

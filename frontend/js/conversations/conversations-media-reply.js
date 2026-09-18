@@ -26,7 +26,9 @@
             <i class="fa-solid fa-play"></i>
           </button>
           <div class="rildon-audio-main">
-            <div class="rildon-audio-track">
+            <div class="rildon-audio-track" data-audio-track>
+              <div class="rildon-audio-wave" aria-hidden="true"></div>
+              <div class="rildon-audio-wave rildon-audio-wave-played" data-audio-wave-played aria-hidden="true"></div>
               <input class="rildon-audio-progress" data-audio-progress type="range" min="0" max="100" value="0" step="0.1" aria-label="Progresso do áudio">
             </div>
             <span class="rildon-audio-time" data-audio-time>0:00</span>
@@ -62,6 +64,26 @@
 
     window.renderMediaBubble = renderMediaBubbleWithReply;
     renderMediaBubble = renderMediaBubbleWithReply;
+
+    // Waveform falso (barras de altura fixa, não é a amplitude real do áudio —
+    // decodificar o áudio pra amplitude de verdade seria custoso demais pra esse
+    // painel). Mesmo assim já deixa MUITO mais parecido com o WhatsApp do que a
+    // barrinha de progresso lisa (input range) que tinha antes. Gerado por JS pra
+    // poder usar encodeURIComponent em vez de escapar `<`/`>`/`#` na mão no CSS.
+    const buildWaveformDataUrl = (fill, opacity) => {
+      const bars = [
+        [2, 6, 8], [7, 3, 14], [12, 7, 6], [17, 2, 16],
+        [22, 5, 10], [27, 3, 14], [32, 7, 6], [37, 4, 12]
+      ];
+      const rects = bars
+        .map(([x, y, h]) => `<rect x="${x}" y="${y}" width="2" height="${h}" rx="1" fill="${fill}" fill-opacity="${opacity}"/>`)
+        .join("");
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="44" height="20">${rects}</svg>`;
+      return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+    };
+    const waveUnplayedDark  = buildWaveformDataUrl("#ffffff", 0.22);
+    const waveUnplayedLight = buildWaveformDataUrl("#000000", 0.18);
+    const wavePlayedColor   = buildWaveformDataUrl("#1fdf9c", 1);
 
     const styleId = "rildon-photo-audio-media-style";
     if (!document.getElementById(styleId)) {
@@ -121,23 +143,28 @@
           box-sizing: border-box;
         }
         .rildon-audio-avatar {
-          width: 40px;
-          min-width: 40px;
-          height: 40px;
+          width: 36px;
+          min-width: 36px;
+          height: 36px;
           overflow: hidden;
           border-radius: 50%;
           display: flex;
           align-items: center;
           justify-content: center;
+          box-shadow: 0 0 0 2px rgba(255,255,255,.05);
         }
         .rildon-audio-avatar img,
-        .rildon-audio-avatar .avatar,
-        .rildon-audio-avatar > div {
-          width: 40px !important;
-          height: 40px !important;
-          min-width: 40px !important;
-          min-height: 40px !important;
+        .rildon-audio-avatar .chat-avatar,
+        .rildon-audio-avatar .avatar {
+          width: 36px !important;
+          height: 36px !important;
+          min-width: 36px !important;
+          min-height: 36px !important;
           border-radius: 50% !important;
+          object-fit: cover;
+        }
+        body.light-theme .rildon-audio-avatar {
+          box-shadow: 0 0 0 2px rgba(0,0,0,.06);
         }
         .rildon-audio-play {
           width: 36px !important;
@@ -176,18 +203,83 @@
           gap: 2px;
         }
         .rildon-audio-track {
+          position: relative;
           width: 100%;
-          height: 16px;
+          height: 20px;
           display: flex;
           align-items: center;
         }
+        .rildon-audio-wave {
+          position: absolute;
+          inset: 0;
+          background-image: url("${waveUnplayedDark}");
+          background-repeat: repeat-x;
+          background-position: left center;
+          background-size: 44px 20px;
+          pointer-events: none;
+        }
+        body.light-theme .rildon-audio-wave {
+          background-image: url("${waveUnplayedLight}");
+        }
+        .rildon-audio-wave-played {
+          width: 0%;
+          overflow: hidden;
+          background-image: url("${wavePlayedColor}");
+          background-repeat: repeat-x;
+          background-position: left center;
+          background-size: 44px 20px;
+          transition: width .08s linear;
+        }
         .rildon-audio-progress {
+          position: relative;
+          z-index: 2;
           width: 100%;
-          height: 3px;
+          height: 20px;
           margin: 0;
           padding: 0;
-          accent-color: #8696a0;
+          background: transparent;
           cursor: pointer;
+          -webkit-appearance: none;
+          appearance: none;
+        }
+        .rildon-audio-progress::-webkit-slider-runnable-track {
+          background: transparent;
+          height: 20px;
+        }
+        .rildon-audio-progress::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          appearance: none;
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+          background: #1fdf9c;
+          box-shadow: 0 0 0 3px rgba(31,223,156,.18);
+          margin-top: 0;
+          cursor: pointer;
+          opacity: 0;
+          transition: opacity .12s ease;
+        }
+        .rildon-audio-progress::-moz-range-track {
+          background: transparent;
+          height: 20px;
+          border: 0;
+        }
+        .rildon-audio-progress::-moz-range-thumb {
+          width: 10px;
+          height: 10px;
+          border: 0;
+          border-radius: 50%;
+          background: #1fdf9c;
+          box-shadow: 0 0 0 3px rgba(31,223,156,.18);
+          cursor: pointer;
+          opacity: 0;
+          transition: opacity .12s ease;
+        }
+        .rildon-audio-player:hover .rildon-audio-progress::-webkit-slider-thumb,
+        .rildon-audio-progress:focus-visible::-webkit-slider-thumb,
+        .rildon-audio-player:hover .rildon-audio-progress::-moz-range-thumb,
+        .rildon-audio-progress:focus-visible::-moz-range-thumb {
+          opacity: 1;
         }
         .rildon-audio-time {
           display: block;
@@ -226,6 +318,7 @@
         const audio = player.querySelector("[data-audio-element]");
         const playBtn = player.querySelector("[data-audio-play]");
         const progress = player.querySelector("[data-audio-progress]");
+        const wavePlayed = player.querySelector("[data-audio-wave-played]");
         const time = player.querySelector("[data-audio-time]");
         if (!audio || !playBtn || !progress || !time) return;
         player.dataset.audioBound = "true";
@@ -239,7 +332,9 @@
 
         const update = () => {
           time.textContent = formatTime(audio.currentTime);
-          progress.value = audio.duration ? String((audio.currentTime / audio.duration) * 100) : "0";
+          const pct = audio.duration ? (audio.currentTime / audio.duration) * 100 : 0;
+          progress.value = String(pct);
+          if (wavePlayed) wavePlayed.style.width = `${pct}%`;
         };
         const setIcon = () => {
           playBtn.innerHTML = audio.paused
@@ -272,6 +367,7 @@
         audio.addEventListener("ended", () => {
           progress.value = "0";
           time.textContent = "0:00";
+          if (wavePlayed) wavePlayed.style.width = "0%";
           setIcon();
         });
 

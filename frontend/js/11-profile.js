@@ -104,16 +104,48 @@ async function saveProfile() {
 }
 
 // ─── Permissões ───────────────────────────────────────────────────────────────
+function getAllowedUserScreens(user = getCurrentUser()) {
+  if (!user) return {};
+  const base = typeof getUserScreenPermissions === "function"
+    ? getUserScreenPermissions(user.perfil, user.permissions)
+    : {};
+  return base;
+}
+
+function hasUserScreenPermission(tab, user = getCurrentUser()) {
+  if (!user) return false;
+  if (user.perfil === "admin") return true;
+  const allowed = getAllowedUserScreens(user);
+  return allowed[tab] === true;
+}
+
 function applyUserPermissions() {
   const user = getCurrentUser();
   if (!user) return;
   const perfil = user.perfil;
+  const allowed = getAllowedUserScreens(user);
+
   document.querySelectorAll(".admin-only").forEach(el => {
     el.style.display = perfil === "admin" ? "" : "none";
   });
+
   document.querySelectorAll(".supervisor-only").forEach(el => {
     el.style.display = ["admin", "supervisor"].includes(perfil) ? "" : "none";
   });
+
+  // Permissões individuais: só escondem o que o perfil já poderia acessar.
+  document.querySelectorAll(".sidebar [data-tab]").forEach(el => {
+    const tab = el.dataset.tab;
+    const roleAllows = el.classList.contains("admin-only")
+      ? perfil === "admin"
+      : el.classList.contains("supervisor-only")
+        ? ["admin", "supervisor"].includes(perfil)
+        : true;
+    const visible = roleAllows && (perfil === "admin" || allowed[tab] === true);
+    el.style.display = visible ? "" : "none";
+    el.setAttribute("aria-hidden", visible ? "false" : "true");
+  });
+
   applyUserProfileVisual(user);
 }
 

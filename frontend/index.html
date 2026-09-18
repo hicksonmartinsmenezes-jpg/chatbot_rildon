@@ -2492,6 +2492,48 @@ Como podemos ajudar você hoje?
   <!-- JS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
   <script src="dist/bundle.ab5e076e88.js"></script>
   <!-- JS_BUNDLE_END -->
+  <script id="user-permissions-live-fix">
+  (() => {
+    const screens = [
+      ["dashboard","Dashboard","fa-desktop"],["conversations","Atendimentos","fa-headset"],
+      ["history","Histórico","fa-clock-rotate-left"],["contacts","Contatos","fa-address-book"],
+      ["catalogo","Catálogo","fa-book"],["channels","Campanhas","fa-bullhorn"],
+      ["metrics","Métricas","fa-chart-line"],["chatbot","Chatbot","fa-robot"],["settings","Configurações","fa-gear"]
+    ];
+    const defaults = {
+      atendente:{dashboard:true,conversations:true,history:true,contacts:true,catalogo:true},
+      supervisor:{dashboard:true,conversations:true,history:true,contacts:true,catalogo:true,channels:true,metrics:true},
+      admin:Object.fromEntries(screens.map(s=>[s[0],true]))
+    };
+    const state = (role, permissions={}) => {
+      const p={...(defaults[role]||defaults.atendente)};
+      if(permissions && Object.keys(permissions).length) screens.forEach(s=>{if(typeof permissions[s[0]]==="boolean")p[s[0]]=permissions[s[0]]});
+      return role==="admin"?Object.fromEntries(screens.map(s=>[s[0],true])):p;
+    };
+    function draw(id,role,permissions={}) {
+      const box=document.getElementById(id); if(!box)return;
+      const p=state(role,permissions);
+      box.innerHTML=screens.map(s=>`<label class="user-permission-option ${p[s[0]]?"is-selected":""}">
+        <input type="checkbox" value="${s[0]}" ${p[s[0]]?"checked":""} ${role==="admin"?"disabled":""}>
+        <span class="user-permission-check"><i class="fa-solid fa-check"></i></span>
+        <span class="user-permission-icon"><i class="fa-solid ${s[2]}"></i></span>
+        <span class="user-permission-copy"><strong>${s[1]}</strong><small>Tela do painel</small></span>
+      </label>`).join("");
+      box.querySelectorAll("input").forEach(i=>i.addEventListener("change",()=>i.closest("label")?.classList.toggle("is-selected",i.checked)));
+    }
+    function values(id){const b=document.getElementById(id);return Object.fromEntries(screens.map(s=>[s[0],!!b?.querySelector('input[value="'+s[0]+'"]')?.checked]));}
+    function refresh(){draw("user-permissions-list",document.getElementById("user-role")?.value||"atendente");}
+    document.addEventListener("DOMContentLoaded",()=>{
+      refresh();
+      document.getElementById("user-role")?.addEventListener("change",refresh);
+      document.querySelector('[data-action="toggleAllUserPermissions"]')?.addEventListener("click",e=>{
+        e.preventDefault(); const b=document.getElementById("user-permissions-list"); const ins=[...b.querySelectorAll("input:not(:disabled)")];
+        const on=ins.some(i=>!i.checked); ins.forEach(i=>{i.checked=on;i.closest("label")?.classList.toggle("is-selected",on)});
+      });
+    });
+  })();
+  </script>
+
 
 
 </body>

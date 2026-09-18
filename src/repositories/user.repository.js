@@ -11,6 +11,7 @@ function mapUser(row) {
     numero: row.numero,
     foto: row.foto,
     ativo: row.ativo,
+    permissions: row.permissions || {},
     // 2FA — nunca expor totpSecret/totpPendingSecret/totpBackupCodes fora do
     // backend (ver twoFactor.service.js e o sanitizeUser() das rotas).
     totpSecret: row.totp_secret,
@@ -75,9 +76,9 @@ async function create(user) {
     `
     INSERT INTO users (
       id, nome, usuario, senha, perfil,
-      sector, numero, foto, ativo
+      sector, numero, foto, ativo, permissions
     )
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
     RETURNING *
     `,
     [
@@ -89,7 +90,8 @@ async function create(user) {
       user.sector,
       user.numero || "",
       user.foto || "",
-      user.ativo
+      user.ativo,
+      user.permissions || {}
     ]
   );
 
@@ -110,9 +112,10 @@ async function reactivate(id, user) {
         sector   = $4,
         numero   = $5,
         foto     = $6,
+        permissions = $7,
         ativo    = TRUE,
         updated_at = NOW()
-    WHERE id = $7
+    WHERE id = $8
     RETURNING *
     `,
     [
@@ -122,6 +125,7 @@ async function reactivate(id, user) {
       user.sector,
       user.numero || "",
       user.foto || "",
+      user.permissions || {},
       id
     ]
   );
@@ -161,6 +165,21 @@ async function updatePassword(id, senhaHash) {
   return result.rows[0] ? mapUser(result.rows[0]) : null;
 }
 
+async function updatePermissions(id, permissions) {
+  const result = await pool.query(
+    `
+    UPDATE users
+    SET permissions = $1,
+        updated_at = NOW()
+    WHERE id = $2
+    RETURNING *
+    `,
+    [permissions || {}, id]
+  );
+
+  return result.rows[0] ? mapUser(result.rows[0]) : null;
+}
+
 async function deactivate(id) {
   const result = await pool.query(
     `
@@ -180,7 +199,6 @@ async function deactivate(id) {
 
 // ─── 2FA (TOTP) ────────────────────────────────────────────────────────────
 
-/** Guarda o segredo gerado no setup, ainda não confirmado/ativo. */
 async function setTotpPendingSecret(id, secret) {
   await pool.query(
     `UPDATE users SET totp_pending_secret = $1, updated_at = NOW() WHERE id = $2`,
@@ -188,7 +206,6 @@ async function setTotpPendingSecret(id, secret) {
   );
 }
 
-/** Confirma o setup: pending vira secret ativo, salva os códigos de backup (hash). */
 async function enableTotp(id, secret, backupCodeHashes) {
   const result = await pool.query(
     `
@@ -207,7 +224,6 @@ async function enableTotp(id, secret, backupCodeHashes) {
   return result.rows[0] ? mapUser(result.rows[0]) : null;
 }
 
-/** Desliga o 2FA e limpa segredo/pendência/backup codes. */
 async function disableTotp(id) {
   await pool.query(
     `
@@ -223,7 +239,6 @@ async function disableTotp(id) {
   );
 }
 
-/** Substitui a lista de backup codes restantes (após consumir um). */
 async function updateBackupCodes(id, remainingHashes) {
   await pool.query(
     `UPDATE users SET totp_backup_codes = $1::jsonb, updated_at = NOW() WHERE id = $2`,
@@ -240,6 +255,7 @@ module.exports = {
   reactivate,
   updateProfile,
   updatePassword,
+  updatePermissions,
   deactivate,
   setTotpPendingSecret,
   enableTotp,

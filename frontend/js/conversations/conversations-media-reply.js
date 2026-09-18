@@ -142,6 +142,11 @@
           height: 50px;
           box-sizing: border-box;
         }
+        /* Sem borda/sombra aqui de propósito: .chat-avatar (06-conversations.css)
+           já vem com box-shadow+border pensados pra sidebar de conversas, mas no
+           WhatsApp de verdade a foto dentro do balão de áudio é só o círculo liso,
+           sem moldura nenhuma — por isso audio-player-menu.js (carrega depois)
+           zera box-shadow/border especificamente aqui. */
         .rildon-audio-avatar {
           width: 36px;
           min-width: 36px;
@@ -151,7 +156,6 @@
           display: flex;
           align-items: center;
           justify-content: center;
-          box-shadow: 0 0 0 2px rgba(255,255,255,.05);
         }
         .rildon-audio-avatar img,
         .rildon-audio-avatar .chat-avatar,
@@ -162,9 +166,6 @@
           min-height: 36px !important;
           border-radius: 50% !important;
           object-fit: cover;
-        }
-        body.light-theme .rildon-audio-avatar {
-          box-shadow: 0 0 0 2px rgba(0,0,0,.06);
         }
         .rildon-audio-play {
           width: 36px !important;

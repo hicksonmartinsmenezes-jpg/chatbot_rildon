@@ -53,7 +53,8 @@ async function validateUser(usuario, senha) {
     foto: user.foto || "",
     // Só o flag booleano — nunca o segredo/backup codes. Necessário no
     // cliente pra decidir "Ativar 2FA" vs "Desativar 2FA" no perfil.
-    totpEnabled: !!user.totpEnabled
+    totpEnabled: !!user.totpEnabled,
+    permissions: user.permissions || {}
   };
 }
 
@@ -93,7 +94,8 @@ async function createUser(data) {
       perfil: data.perfil || "atendente",
       sector: data.sector || "geral",
       numero: data.numero || "",
-      foto: data.foto || ""
+      foto: data.foto || "",
+      permissions: data.permissions || {}
     });
 
     // Mesmo bug do branch de usuário novo abaixo — numero/foto ficavam de
@@ -263,7 +265,25 @@ async function updateUserProfile(
       updated.foto || "",
     ativo:
       updated.ativo,
-    totpEnabled: !!updated.totpEnabled
+    totpEnabled: !!updated.totpEnabled,
+    permissions: updated.permissions || {}
+  };
+}
+
+async function updateUserPermissions(id, permissions) {
+  const normalized = permissions && typeof permissions === "object" ? permissions : {};
+  const updated = await userRepository.updatePermissions(id, normalized);
+  if (!updated) throw new Error("Usuário não encontrado.");
+  return {
+    id: updated.id,
+    nome: updated.nome,
+    usuario: updated.usuario,
+    perfil: updated.perfil,
+    sector: updated.sector || "geral",
+    numero: updated.numero || "",
+    foto: updated.foto || "",
+    ativo: updated.ativo,
+    permissions: updated.permissions || {}
   };
 }
 
@@ -310,5 +330,6 @@ module.exports = {
   createUser,
   updateUserProfile,
   updateUserPassword,
+  updateUserPermissions,
   deactivateUser
 };

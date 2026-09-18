@@ -198,8 +198,3 @@ body.light-theme .chat-input-area #btn-send-conversation {
     max-width: none !important;
   }
 }
-
-/* Transcrição de áudio: destaque discreto, como no WhatsApp. */
-.chat-messages .bubble .audio-transcription {
-  font-style: italic !important;
-}

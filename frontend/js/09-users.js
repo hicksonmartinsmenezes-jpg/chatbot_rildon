@@ -1,6 +1,113 @@
 // 09-users.js
 
 // ─── Usuários do Painel ───────────────────────────────────────────────────────
+const PANEL_SCREEN_PERMISSIONS = [
+  { id: "dashboard", label: "Dashboard", icon: "fa-desktop", group: "Principal" },
+  { id: "conversations", label: "Atendimentos", icon: "fa-headset", group: "Atendimento" },
+  { id: "history", label: "Histórico", icon: "fa-clock-rotate-left", group: "Atendimento" },
+  { id: "contacts", label: "Contatos", icon: "fa-address-book", group: "Atendimento" },
+  { id: "catalogo", label: "Catálogo", icon: "fa-book", group: "Operação" },
+  { id: "channels", label: "Campanhas", icon: "fa-bullhorn", group: "Gestão" },
+  { id: "metrics", label: "Métricas", icon: "fa-chart-line", group: "Gestão" },
+  { id: "chatbot", label: "Chatbot", icon: "fa-robot", group: "Administração" },
+  { id: "settings", label: "Configurações", icon: "fa-gear", group: "Administração" }
+];
+
+const DEFAULT_SCREEN_PERMISSIONS = {
+  atendente: { dashboard:true, conversations:true, history:true, contacts:true, catalogo:true },
+  supervisor: { dashboard:true, conversations:true, history:true, contacts:true, catalogo:true, channels:true, metrics:true },
+  admin: Object.fromEntries(PANEL_SCREEN_PERMISSIONS.map(screen => [screen.id, true]))
+};
+
+function getUserScreenPermissions(perfil, permissions = {}) {
+  const base = { ...(DEFAULT_SCREEN_PERMISSIONS[perfil] || DEFAULT_SCREEN_PERMISSIONS.atendente) };
+  if (permissions && Object.keys(permissions).length) {
+    PANEL_SCREEN_PERMISSIONS.forEach(screen => {
+      if (typeof permissions[screen.id] === "boolean") base[screen.id] = permissions[screen.id];
+    });
+  }
+  if (perfil === "admin") return Object.fromEntries(PANEL_SCREEN_PERMISSIONS.map(screen => [screen.id, true]));
+  return base;
+}
+
+function renderUserPermissionChecklist(containerId, perfil, permissions = {}) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const selected = getUserScreenPermissions(perfil, permissions);
+  const disabled = perfil === "admin" ? " disabled" : "";
+  container.innerHTML = PANEL_SCREEN_PERMISSIONS.map(screen =>
+    '<label class="user-permission-option' + (selected[screen.id] ? " is-selected" : "") + '">' +
+      '<input type="checkbox" value="' + screen.id + '" ' + (selected[screen.id] ? "checked" : "") + disabled + '>' +
+      '<span class="user-permission-check"><i class="fa-solid fa-check"></i></span>' +
+      '<span class="user-permission-icon"><i class="fa-solid ' + screen.icon + '"></i></span>' +
+      '<span class="user-permission-copy"><strong>' + screen.label + '</strong><small>' + screen.group + '</small></span>' +
+    '</label>'
+  ).join("");
+  container.querySelectorAll('input[type="checkbox"]').forEach(input => {
+    input.addEventListener("change", () => input.closest(".user-permission-option")?.classList.toggle("is-selected", input.checked));
+  });
+}
+
+function readUserScreenPermissions(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return {};
+  return Object.fromEntries(PANEL_SCREEN_PERMISSIONS.map(screen => {
+    const input = container.querySelector('input[value="' + CSS.escape(screen.id) + '"]');
+    return [screen.id, !!input?.checked];
+  }));
+}
+
+function resetCreateUserPermissions() {
+  renderUserPermissionChecklist("user-permissions-list", getValue("user-role") || "atendente");
+}
+
+function toggleAllUserPermissions() {
+  const container = document.getElementById("user-permissions-list");
+  if (!container) return;
+  const inputs = [...container.querySelectorAll('input[type="checkbox"]:not(:disabled)')];
+  const shouldCheck = inputs.some(input => !input.checked);
+  inputs.forEach(input => {
+    input.checked = shouldCheck;
+    input.closest(".user-permission-option")?.classList.toggle("is-selected", shouldCheck);
+  });
+}
+
+let editingPermissionsUserId = null;
+
+function openUserPermissionsModal(id) {
+  const user = panelUsersCache.find(item => String(item.id) === String(id));
+  if (!user) return;
+  editingPermissionsUserId = user.id;
+  document.getElementById("user-permissions-modal-subtitle").textContent = user.nome + " • " + user.perfil;
+  renderUserPermissionChecklist("edit-user-permissions-list", user.perfil, user.permissions);
+  document.getElementById("user-permissions-modal")?.classList.remove("hidden");
+}
+
+function closeUserPermissionsModal() {
+  editingPermissionsUserId = null;
+  document.getElementById("user-permissions-modal")?.classList.add("hidden");
+}
+
+async function saveUserPermissions() {
+  if (!editingPermissionsUserId) return;
+  const permissions = readUserScreenPermissions("edit-user-permissions-list");
+  try {
+    const res = await apiFetch(BASE + "/api/users/" + encodeURIComponent(editingPermissionsUserId) + "/permissions", {
+      method: "PATCH",
+      body: JSON.stringify({ permissions })
+    });
+    if (!res) return;
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Erro ao salvar permissões.");
+    panelUsersCache = panelUsersCache.map(user => String(user.id) === String(data.id) ? { ...user, ...data } : user);
+    renderPanelUsers();
+    closeUserPermissionsModal();
+    showToast("✅ Permissões atualizadas.");
+  } catch (err) {
+    showToast("❌ " + err.message);
+  }
+}
+
 let panelUsersCache = [];
 let _panelUsersLoading = false;
 let _panelUsersRequestId = 0;
@@ -104,6 +211,7 @@ async function createPanelUser() {
   const senha   = getValue("user-password").trim();
   const perfil  = getValue("user-role");
   const sector  = getValue("user-sector");
+  const permissions = readUserScreenPermissions("user-permissions-list");
 
   if (!nome || !usuario || !senha) { showToast("Preencha nome, usuário e senha."); return; }
   if (!/^\d{4}$/.test(senha)) { showToast("A senha deve ter exatamente 4 dígitos numéricos."); return; }
@@ -115,7 +223,7 @@ async function createPanelUser() {
   try {
     const res = await apiFetch(`${BASE}/api/users`, {
       method: "POST",
-      body: JSON.stringify({ nome, usuario, senha, perfil, sector, numero, ativo: true })
+      body: JSON.stringify({ nome, usuario, senha, perfil, sector, numero, ativo: true, permissions })
     });
     if (!res) throw new Error("Falha de conexão ao criar usuário.");
     const data = await res.json();
@@ -127,6 +235,7 @@ async function createPanelUser() {
     setValue("user-name", ""); setValue("user-username", ""); setValue("user-password", "");
     setValue("user-phone", "");
     setValue("user-role", "atendente");
+    resetCreateUserPermissions();
     showToast(data.reactivated ? "✅ Usuário reativado com sucesso!" : "✅ Usuário criado com sucesso!");
     loadPanelUsers({ silent: true });
   } catch (err) {
@@ -217,6 +326,7 @@ function initPanelUsersDelegation() {
     const btn = event.target.closest("[data-user-action]");
     if (!btn || !list.contains(btn)) return;
     const id = btn.dataset.userId || "";
+    if (btn.dataset.userAction === "permissions") openUserPermissionsModal(id);
     if (btn.dataset.userAction === "reset-password") promptResetPassword(id);
     if (btn.dataset.userAction === "delete") confirmDeleteUser(id, btn.dataset.userName || "Usuário");
   });
@@ -228,3 +338,5 @@ function refreshPanelUsersFromSocket() {
 
 document.addEventListener("DOMContentLoaded", initPanelUsersDelegation);
 document.addEventListener("rildon:users-updated", refreshPanelUsersFromSocket);
+
+document.addEventListener("DOMContentLoaded", () => { resetCreateUserPermissions(); document.getElementById("user-role")?.addEventListener("change", resetCreateUserPermissions); });

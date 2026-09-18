@@ -63,7 +63,7 @@ router.post("/users", asyncHandler(async (req, res) => {
   // pessoal ao criar o usuário — createUser()/user.service.js já suporta
   // "numero" de ponta a ponta (usado também na edição do próprio perfil),
   // só faltava esta rota repassar o campo do corpo da requisição.
-  const { nome, usuario, senha, perfil, sector, numero, ativo, permissions } = req.body || {};
+  const { nome, usuario, senha, perfil, numero, ativo, permissions } = req.body || {};
 
   if (!nome || !usuario || !senha) {
     return res.status(400).json({ error: "Nome, usuário e senha são obrigatórios." });
@@ -76,7 +76,7 @@ router.post("/users", asyncHandler(async (req, res) => {
 
   let user;
   try {
-    user = await createUser({ nome, usuario, senha, perfil, sector, numero, ativo, permissions });
+    user = await createUser({ nome, usuario, senha, perfil, numero, ativo, permissions });
   } catch (err) {
     return res.status(400).json({ error: err.message });
   }

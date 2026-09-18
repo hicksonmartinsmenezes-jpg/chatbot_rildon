@@ -210,7 +210,6 @@ async function createPanelUser() {
   const numero  = getValue("user-phone").trim();
   const senha   = getValue("user-password").trim();
   const perfil  = getValue("user-role");
-  const sector  = getValue("user-sector");
   const permissions = readUserScreenPermissions("user-permissions-list");
 
   if (!nome || !usuario || !senha) { showToast("Preencha nome, usuário e senha."); return; }
@@ -223,7 +222,7 @@ async function createPanelUser() {
   try {
     const res = await apiFetch(`${BASE}/api/users`, {
       method: "POST",
-      body: JSON.stringify({ nome, usuario, senha, perfil, sector, numero, ativo: true, permissions })
+      body: JSON.stringify({ nome, usuario, senha, perfil, numero, ativo: true, permissions })
     });
     if (!res) throw new Error("Falha de conexão ao criar usuário.");
     const data = await res.json();

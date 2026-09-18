@@ -620,7 +620,7 @@ async function openConversation(userId, updateActive = true) {
           <div class="bubble client">
             ${replyBtn}
             ${renderMediaBubble(item)}
-            ${item.message && !ehPlaceholderMidia ? `<p class="${item.mediaMimetype?.startsWith("audio/") ? "audio-transcription" : ""}">${safe(item.message)}</p>` : ""}
+            ${item.message && !ehPlaceholderMidia ? `<p><i>${safe(item.message)}</i></p>` : ""}
             <small>${safe(shortTime(item.createdAt))}</small>
           </div>
         </div>

@@ -1005,6 +1005,22 @@ body.light-theme .metric-card strong {
   overflow-y: auto;
   line-height: 1.4;
   transition: height .1s ease;
+  /* O redimensionamento automático (JS) iguala a altura do textarea ao
+     scrollHeight do conteúdo, mas arredondamento de subpixel (varia com
+     zoom/DPI do navegador) às vezes deixa 1-2px de sobra — o suficiente pra
+     Chrome/Windows desenhar a barra de rolagem nativa mesmo numa linha só de
+     texto. Essa barra (retangular, cantos arredondados, cinza-clara) ficava
+     a poucos px do botão Enviar e parecia uma sobra/quebra grudada nele.
+     Esconde só a BARRA visualmente — a rolagem em si continua funcionando
+     (mensagem longa ainda rola, só sem o trilho visível), mesmo padrão do
+     composer do WhatsApp Web. */
+  scrollbar-width: none; /* Firefox */
+}
+
+#conversation-message::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 /* ─── Botão desabilitado: estilo neutro ─────────────────────────────────────*/

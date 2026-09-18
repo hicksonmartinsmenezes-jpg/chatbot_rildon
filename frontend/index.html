@@ -1450,6 +1450,22 @@ Como podemos ajudar você hoje?
                 <option value="garantia">Garantia</option>
               </select>
 
+              <div class="user-permissions-field">
+                <div class="user-permissions-header">
+                  <div>
+                    <strong>Acesso às telas</strong>
+                    <span>Escolha somente o que este usuário precisa acessar.</span>
+                  </div>
+                  <button type="button" class="user-permissions-all" data-action="toggleAllUserPermissions" data-target="user-permissions-list">
+                    Selecionar todas
+                  </button>
+                </div>
+                <div id="user-permissions-list" class="user-permissions-grid"></div>
+                <small id="user-permissions-hint" class="user-permissions-hint">
+                  As opções são sugeridas de acordo com o perfil e podem ser ajustadas.
+                </small>
+              </div>
+
               <button type="button" class="btn-save-settings" data-action="createPanelUser">
                 <i class="fa-solid fa-user-plus"></i>
                 Criar usuário
@@ -1461,6 +1477,29 @@ Como podemos ajudar você hoje?
               <div id="users-list"></div>
             </div>
           </div>
+
+
+        <div id="user-permissions-modal" class="user-permissions-modal hidden" data-backdrop-action="closeUserPermissionsModal">
+          <div class="user-permissions-dialog">
+            <div class="user-permissions-dialog-header">
+              <div>
+                <span class="user-permissions-dialog-kicker">PERMISSÕES</span>
+                <h3 id="user-permissions-modal-title">Acesso às telas</h3>
+                <p id="user-permissions-modal-subtitle"></p>
+              </div>
+              <button type="button" data-action="closeUserPermissionsModal" aria-label="Fechar">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+            <div id="edit-user-permissions-list" class="user-permissions-grid"></div>
+            <div class="user-permissions-dialog-footer">
+              <button type="button" class="btn-refresh" data-action="closeUserPermissionsModal">Cancelar</button>
+              <button type="button" class="btn-save-settings" data-action="saveUserPermissions">
+                <i class="fa-solid fa-check"></i> Salvar permissões
+              </button>
+            </div>
+          </div>
+        </div>
 
           <div class="settings-card settings-detail-card" data-settings-panel="empresa">
             <div class="settings-card-title">

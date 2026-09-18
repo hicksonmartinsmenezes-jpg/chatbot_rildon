@@ -47,6 +47,8 @@ function discoverPanelScreenPermissions() {
 }
 
 const DEFAULT_SCREEN_PERMISSIONS = {
+  // Perfil = conjunto máximo de telas. As permissões individuais só podem
+  // retirar telas desse conjunto, nunca acrescentar uma tela de outro perfil.
   atendente: { dashboard:true, conversations:true, history:true, contacts:true, catalogo:true },
   supervisor: { dashboard:true, conversations:true, history:true, contacts:true, catalogo:true, channels:true, metrics:true },
   admin: Object.fromEntries(PANEL_SCREEN_PERMISSIONS.map(screen => [screen.id, true]))
@@ -56,7 +58,9 @@ function getUserScreenPermissions(perfil, permissions = {}) {
   const base = { ...(DEFAULT_SCREEN_PERMISSIONS[perfil] || DEFAULT_SCREEN_PERMISSIONS.atendente) };
   if (permissions && Object.keys(permissions).length) {
     PANEL_SCREEN_PERMISSIONS.forEach(screen => {
-      if (typeof permissions[screen.id] === "boolean") base[screen.id] = permissions[screen.id];
+      if (typeof permissions[screen.id] === "boolean" && screen.id in base) {
+        base[screen.id] = permissions[screen.id];
+      }
     });
   }
   if (perfil === "admin") return Object.fromEntries(PANEL_SCREEN_PERMISSIONS.map(screen => [screen.id, true]));
@@ -67,15 +71,28 @@ function renderUserPermissionChecklist(containerId, perfil, permissions = {}) {
   const container = document.getElementById(containerId);
   if (!container) return;
   const selected = getUserScreenPermissions(perfil, permissions);
-  const disabled = perfil === "admin" ? " disabled" : "";
-  container.innerHTML = PANEL_SCREEN_PERMISSIONS.map(screen =>
-    '<label class="user-permission-option' + (selected[screen.id] ? " is-selected" : "") + '">' +
-      '<input type="checkbox" value="' + screen.id + '" ' + (selected[screen.id] ? "checked" : "") + disabled + '>' +
-      '<span class="user-permission-check"><i class="fa-solid fa-check"></i></span>' +
-      '<span class="user-permission-icon"><i class="fa-solid ' + screen.icon + '"></i></span>' +
-      '<span class="user-permission-copy"><strong>' + screen.label + '</strong><small>' + screen.group + '</small></span>' +
-    '</label>'
-  ).join("");
+  const allowedByProfile = DEFAULT_SCREEN_PERMISSIONS[perfil] || DEFAULT_SCREEN_PERMISSIONS.atendente;
+  const disabledAll = perfil === "admin";
+  container.innerHTML = PANEL_SCREEN_PERMISSIONS.map(screen => {
+    const available = perfil === "admin" || allowedByProfile[screen.id] === true;
+    const checked = selected[screen.id] === true;
+    const disabled = disabledAll || !available;
+    return (
+      '<label class="user-permission-option' +
+        (checked ? " is-selected" : "") +
+        (!available ? " is-disabled" : "") +
+        '">' +
+        '<input type="checkbox" value="' + screen.id + '" ' +
+          (checked ? "checked" : "") +
+          (disabled ? " disabled" : "") + '>' +
+        '<span class="user-permission-check"><i class="fa-solid fa-check"></i></span>' +
+        '<span class="user-permission-icon"><i class="fa-solid ' + screen.icon + '"></i></span>' +
+        '<span class="user-permission-copy"><strong>' + screen.label + '</strong><small>' +
+          screen.group + (!available ? " • não disponível neste perfil" : "") +
+        '</small></span>' +
+      '</label>'
+    );
+  }).join("");
   container.querySelectorAll('input[type="checkbox"]').forEach(input => {
     input.addEventListener("change", () => input.closest(".user-permission-option")?.classList.toggle("is-selected", input.checked));
   });

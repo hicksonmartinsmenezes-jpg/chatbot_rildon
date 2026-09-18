@@ -11,40 +11,118 @@
         .rildon-audio-avatar .chat-avatar,
         .rildon-audio-avatar .chat-avatar img,
         .rildon-audio-avatar .chat-avatar .avatar-fallback { width: 36px !important; height: 36px !important; min-width: 36px !important; min-height: 36px !important; border-radius: 50% !important; }
-        /* WhatsApp de verdade: a foto no balão de áudio é um círculo liso, sem
-           moldura. .chat-avatar (06-conversations.css) vem com box-shadow+border
-           pensados pra sidebar — zera os dois só aqui dentro do player. */
         .rildon-audio-avatar .chat-avatar { display: flex !important; align-items: center !important; justify-content: center !important; overflow: hidden !important; box-shadow: none !important; border: 0 !important; }
         .rildon-audio-play { align-self: center !important; justify-content: center !important; align-items: center !important; line-height: 1 !important; text-align: center !important; flex: 0 0 36px !important; }
         .rildon-audio-play i { display: block !important; width: 17px !important; height: 17px !important; line-height: 17px !important; text-align: center !important; margin: 0 !important; transform: translateX(1px) !important; }
         .rildon-audio-main { justify-content: center !important; }
         .rildon-audio-time { line-height: 11px !important; min-height: 11px; }
-        .rildon-audio-menu-wrap { position: relative; flex: 0 0 28px; width: 28px; height: 42px; display: flex; align-items: center; justify-content: center; }
-        .rildon-audio-menu-btn { width: 28px !important; min-width: 28px !important; height: 36px !important; min-height: 36px !important; padding: 0 !important; margin: 0 !important; border: 0 !important; border-radius: 50% !important; background: transparent !important; box-shadow: none !important; color: #8696a0 !important; display: flex !important; align-items: center !important; justify-content: center !important; cursor: pointer !important; }
+        .rildon-audio-menu-wrap { position: relative; flex: 0 0 30px; width: 30px; height: 42px; display: flex; align-items: center; justify-content: center; }
+        .rildon-audio-menu-btn { width: 30px !important; min-width: 30px !important; height: 36px !important; min-height: 36px !important; padding: 0 !important; margin: 0 !important; border: 0 !important; border-radius: 50% !important; background: transparent !important; box-shadow: none !important; color: #8696a0 !important; display: flex !important; align-items: center !important; justify-content: center !important; cursor: pointer !important; }
         .rildon-audio-menu-btn:hover, .rildon-audio-menu-btn[aria-expanded="true"] { background: rgba(255,255,255,.07) !important; color: #d1d7db !important; }
         .rildon-audio-menu-btn i { font-size: 15px !important; }
 
-        /* ─── Menu "..." reorganizado: rótulo + pílulas de velocidade + divisor + Baixar ─── */
-        .rildon-audio-menu { position: absolute; right: 0; bottom: 39px; z-index: 100; width: 172px; padding: 8px; border-radius: 12px; background: #233138; border: 1px solid rgba(255,255,255,.08); box-shadow: 0 10px 28px rgba(0,0,0,.32); display: none; }
+        /* Menu compacto, inspirado no menu contextual do WhatsApp. */
+        .rildon-audio-menu {
+          position: absolute;
+          right: 0;
+          bottom: 42px;
+          z-index: 100;
+          width: 190px;
+          padding: 5px;
+          border: 0;
+          border-radius: 9px;
+          background: #233138;
+          box-shadow: 0 5px 18px rgba(0,0,0,.30);
+          display: none;
+          overflow: hidden;
+        }
         .rildon-audio-menu.is-open { display: block; }
-        .rildon-audio-menu-label { padding: 2px 4px 6px; color: #8696a0; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
-        .rildon-audio-speed-group { display: flex; gap: 3px; background: rgba(255,255,255,.05); border-radius: 8px; padding: 3px; margin-bottom: 8px; }
-        .rildon-audio-speed-btn { flex: 1 1 0; width: auto !important; min-width: 0 !important; height: 26px !important; min-height: 26px !important; padding: 0 !important; margin: 0 !important; border: 0 !important; border-radius: 6px !important; background: transparent !important; box-shadow: none !important; color: #aebac1 !important; font-family: inherit; font-size: 11.5px !important; font-weight: 700 !important; cursor: pointer !important; transform: none !important; transition: background .12s ease, color .12s ease; }
-        .rildon-audio-speed-btn:hover { color: #e9edef !important; }
-        .rildon-audio-speed-btn.is-active { background: #1D9E75 !important; color: #fff !important; }
-        .rildon-audio-menu-divider { height: 1px; margin: 2px 2px 6px; background: rgba(255,255,255,.08); }
-        .rildon-audio-menu-item { width: 100% !important; min-width: 0 !important; height: 34px !important; min-height: 34px !important; padding: 0 8px !important; margin: 0 !important; border: 0 !important; border-radius: 7px !important; background: transparent !important; box-shadow: none !important; color: #e9edef !important; display: flex !important; align-items: center !important; justify-content: flex-start !important; gap: 9px; font-size: 12.5px !important; cursor: pointer !important; transform: none !important; }
+
+        .rildon-audio-menu-label {
+          padding: 7px 9px 5px;
+          color: #8696a0;
+          font-size: 10px;
+          font-weight: 600;
+          text-transform: none;
+          letter-spacing: 0;
+        }
+
+        .rildon-audio-speed-group {
+          display: flex;
+          gap: 0;
+          background: transparent;
+          border-radius: 0;
+          padding: 0;
+          margin: 0 0 3px;
+        }
+
+        .rildon-audio-speed-btn {
+          flex: 1 1 0;
+          width: auto !important;
+          min-width: 0 !important;
+          height: 31px !important;
+          min-height: 31px !important;
+          padding: 0 !important;
+          margin: 0 1px !important;
+          border: 0 !important;
+          border-radius: 6px !important;
+          background: transparent !important;
+          box-shadow: none !important;
+          color: #c9d1d5 !important;
+          font-family: inherit;
+          font-size: 12px !important;
+          font-weight: 500 !important;
+          cursor: pointer !important;
+          transform: none !important;
+          transition: background .12s ease, color .12s ease;
+        }
+        .rildon-audio-speed-btn:hover { background: rgba(255,255,255,.08) !important; color: #fff !important; }
+        .rildon-audio-speed-btn.is-active { background: rgba(255,255,255,.10) !important; color: #fff !important; font-weight: 600 !important; }
+
+        .rildon-audio-menu-divider {
+          height: 1px;
+          margin: 4px 5px;
+          background: rgba(255,255,255,.10);
+        }
+
+        .rildon-audio-menu-item {
+          width: 100% !important;
+          min-width: 0 !important;
+          height: 36px !important;
+          min-height: 36px !important;
+          padding: 0 9px !important;
+          margin: 0 !important;
+          border: 0 !important;
+          border-radius: 6px !important;
+          background: transparent !important;
+          box-shadow: none !important;
+          color: #e9edef !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: flex-start !important;
+          gap: 10px;
+          font-size: 12.5px !important;
+          font-weight: 400 !important;
+          cursor: pointer !important;
+          transform: none !important;
+        }
         .rildon-audio-menu-item:hover { background: rgba(255,255,255,.08) !important; }
-        .rildon-audio-menu-item i { width: 14px; text-align: center; color: #8696a0; font-size: 12px; }
-        body.light-theme .rildon-audio-menu { background: #fff; border-color: rgba(0,0,0,.08); box-shadow: 0 10px 28px rgba(0,0,0,.18); }
+        .rildon-audio-menu-item i { width: 15px; text-align: center; color: #aebac1; font-size: 12px; }
+
+        body.light-theme .rildon-audio-menu { background: #fff; box-shadow: 0 5px 18px rgba(0,0,0,.16); }
         body.light-theme .rildon-audio-menu-label { color: #667781; }
-        body.light-theme .rildon-audio-speed-group { background: rgba(0,0,0,.05); }
         body.light-theme .rildon-audio-speed-btn { color: #54656f !important; }
-        body.light-theme .rildon-audio-speed-btn.is-active { background: #1D9E75 !important; color: #fff !important; }
+        body.light-theme .rildon-audio-speed-btn:hover,
+        body.light-theme .rildon-audio-speed-btn.is-active { background: rgba(0,0,0,.06) !important; color: #263238 !important; }
         body.light-theme .rildon-audio-menu-divider { background: rgba(0,0,0,.08); }
         body.light-theme .rildon-audio-menu-item { color: #263238 !important; }
         body.light-theme .rildon-audio-menu-item i { color: #667781; }
-        @media (max-width: 600px) { .rildon-audio-menu-wrap { flex-basis: 26px; width: 26px; } .rildon-audio-menu-btn { width: 26px !important; min-width: 26px !important; } }
+
+        @media (max-width: 600px) {
+          .rildon-audio-menu-wrap { flex-basis: 28px; width: 28px; }
+          .rildon-audio-menu-btn { width: 28px !important; min-width: 28px !important; }
+          .rildon-audio-menu { width: 180px; }
+        }
       `;
       document.head.appendChild(style);
     }
@@ -67,7 +145,7 @@
         wrap.innerHTML = `
           <button type="button" class="rildon-audio-menu-btn" data-audio-menu-btn aria-expanded="false" aria-haspopup="true" aria-label="Mais opções do áudio" title="Mais opções"><i class="fa-solid fa-ellipsis-vertical"></i></button>
           <div class="rildon-audio-menu" data-audio-menu role="menu">
-            <div class="rildon-audio-menu-label">Velocidade</div>
+            <div class="rildon-audio-menu-label">Velocidade de reprodução</div>
             <div class="rildon-audio-speed-group" role="group" aria-label="Velocidade de reprodução">
               <button type="button" class="rildon-audio-speed-btn" data-audio-speed="1" role="menuitemradio">1x</button>
               <button type="button" class="rildon-audio-speed-btn" data-audio-speed="1.5" role="menuitemradio">1,5x</button>
@@ -90,21 +168,54 @@
             btn.setAttribute("aria-checked", String(active));
           });
         };
-        menuBtn.addEventListener("click", event => { event.stopPropagation(); const open = menu.classList.toggle("is-open"); closeMenus(open ? menu : null); menuBtn.setAttribute("aria-expanded", String(open)); if (open) refreshChecks(); });
-        speedButtons.forEach(btn => btn.addEventListener("click", event => { event.stopPropagation(); audio.playbackRate = Number(btn.dataset.audioSpeed) || 1; refreshChecks(); menu.classList.remove("is-open"); menuBtn.setAttribute("aria-expanded", "false"); }));
-        wrap.querySelector("[data-audio-download]")?.addEventListener("click", event => {
-          event.stopPropagation(); const src = audio.currentSrc || audio.src; if (!src) return;
-          const link = document.createElement("a"); link.href = src; link.download = `audio-${Date.now()}`; link.target = "_blank"; link.rel = "noopener"; document.body.appendChild(link); link.click(); link.remove();
-          menu.classList.remove("is-open"); menuBtn.setAttribute("aria-expanded", "false");
+
+        menuBtn.addEventListener("click", event => {
+          event.stopPropagation();
+          const open = menu.classList.toggle("is-open");
+          closeMenus(open ? menu : null);
+          menuBtn.setAttribute("aria-expanded", String(open));
+          if (open) refreshChecks();
         });
+
+        speedButtons.forEach(btn => btn.addEventListener("click", event => {
+          event.stopPropagation();
+          audio.playbackRate = Number(btn.dataset.audioSpeed) || 1;
+          refreshChecks();
+          menu.classList.remove("is-open");
+          menuBtn.setAttribute("aria-expanded", "false");
+        }));
+
+        wrap.querySelector("[data-audio-download]")?.addEventListener("click", event => {
+          event.stopPropagation();
+          const src = audio.currentSrc || audio.src;
+          if (!src) return;
+          const link = document.createElement("a");
+          link.href = src;
+          link.download = `audio-${Date.now()}`;
+          link.target = "_blank";
+          link.rel = "noopener";
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          menu.classList.remove("is-open");
+          menuBtn.setAttribute("aria-expanded", "false");
+        });
+
         refreshChecks();
       });
     };
 
     bind(document);
     const messagesBox = document.getElementById("chat-messages");
-    if (messagesBox && !messagesBox.dataset.audioMenuObserver) { messagesBox.dataset.audioMenuObserver = "true"; new MutationObserver(() => bind(messagesBox)).observe(messagesBox, { childList: true, subtree: true }); }
-    if (!document.body.dataset.audioMenuDocumentBound) { document.body.dataset.audioMenuDocumentBound = "true"; document.addEventListener("click", () => closeMenus()); }
+    if (messagesBox && !messagesBox.dataset.audioMenuObserver) {
+      messagesBox.dataset.audioMenuObserver = "true";
+      new MutationObserver(() => bind(messagesBox)).observe(messagesBox, { childList: true, subtree: true });
+    }
+    if (!document.body.dataset.audioMenuDocumentBound) {
+      document.body.dataset.audioMenuDocumentBound = "true";
+      document.addEventListener("click", () => closeMenus());
+    }
   };
+
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", install, { once: true }); else install();
 })();

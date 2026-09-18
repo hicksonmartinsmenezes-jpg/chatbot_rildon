@@ -56,6 +56,9 @@
     "saveSettings",
     "backToSettingsHome",
     "createPanelUser",
+    "openUserPermissionsModal",
+    "closeUserPermissionsModal",
+    "saveUserPermissions",
     "resetSettings",
     "requestWaReconnect",
     "loadMetricsCharts",
@@ -77,22 +80,13 @@
     "catalogoMostrarAbaCodigo",
     "catalogoMostrarAbaNome",
     "catalogoMostrarAbaCompleto",
-    // Nova aba "Catálogo Promocional" (2026-08-29) — sem isso, o clique na
-    // aba caía em nenhum dos branches abaixo e não fazia nada (silencioso,
-    // sem erro no console: `trigger` era achado, mas `action` não batia com
-    // simpleClickActions nem com nenhum "if (action === ...)" específico).
     "catalogoMostrarAbaPromocional",
-    // Feature: enviar arquivo (foto/vídeo/doc) + responder mensagem
-    // específica, igual WhatsApp (pedido do usuário, 2026-07-23).
     "openConversationFilePicker",
     "cancelMediaSelection",
     "cancelReplyTo",
-    // Toggle liga/desliga do bot, liberado para todos (2026-07-24)
     "toggleBotStatus",
-    // Tabela paginada "Evolução" em Métricas (2026-08-05)
     "metricsEvolucaoPagePrev",
     "metricsEvolucaoPageNext",
-    // Tabela paginada "Horários de Pico" em Métricas (2026-08-05)
     "metricsPicoPagePrev",
     "metricsPicoPageNext"
   ]);

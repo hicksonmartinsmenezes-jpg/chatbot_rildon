@@ -13,6 +13,39 @@ const PANEL_SCREEN_PERMISSIONS = [
   { id: "settings", label: "Configurações", icon: "fa-gear", group: "Administração" }
 ];
 
+function discoverPanelScreenPermissions() {
+  const known = new Set(PANEL_SCREEN_PERMISSIONS.map(screen => screen.id));
+  const icons = {
+    dashboard: "fa-desktop", conversations: "fa-headset", history: "fa-clock-rotate-left",
+    leads: "fa-list", contacts: "fa-address-book", catalogo: "fa-book",
+    channels: "fa-bullhorn", metrics: "fa-chart-line", chatbot: "fa-robot", settings: "fa-gear"
+  };
+
+  document.querySelectorAll(".sidebar [data-tab]").forEach(el => {
+    const id = String(el.dataset.tab || "").trim();
+    if (!id || known.has(id)) return;
+
+    const label = el.querySelector(".label")?.textContent?.trim()
+      || el.textContent?.trim()
+      || id;
+    const roleGroup = el.classList.contains("admin-only")
+      ? "Administração"
+      : el.classList.contains("supervisor-only")
+        ? "Gestão"
+        : "Painel";
+
+    PANEL_SCREEN_PERMISSIONS.push({
+      id,
+      label: label.replace(/\s+/g, " "),
+      icon: icons[id] || el.querySelector("i")?.className?.split(/\s+/).find(cls => cls.startsWith("fa-")) || "fa-circle",
+      group: roleGroup
+    });
+    known.add(id);
+  });
+
+  return PANEL_SCREEN_PERMISSIONS;
+}
+
 const DEFAULT_SCREEN_PERMISSIONS = {
   atendente: { dashboard:true, conversations:true, history:true, contacts:true, catalogo:true },
   supervisor: { dashboard:true, conversations:true, history:true, contacts:true, catalogo:true, channels:true, metrics:true },

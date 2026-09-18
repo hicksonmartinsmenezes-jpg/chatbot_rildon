@@ -368,6 +368,7 @@ function refreshPanelUsersFromSocket() {
   if (currentTab === "settings") loadPanelUsers({ silent: true });
 }
 
+document.addEventListener("DOMContentLoaded", () => discoverPanelScreenPermissions());
 document.addEventListener("DOMContentLoaded", initPanelUsersDelegation);
 document.addEventListener("rildon:users-updated", refreshPanelUsersFromSocket);
 

@@ -620,7 +620,7 @@ async function openConversation(userId, updateActive = true) {
           <div class="bubble client">
             ${replyBtn}
             ${renderMediaBubble(item)}
-            ${item.message && !ehPlaceholderMidia ? `<p>${item.mediaMimetype?.startsWith("audio/") ? `<i>${safe(item.message.replace(/\\?_\\*Transcrição\\\\?_\\*/gi, "").trim())}</i>` : safe(item.message)}</p>` : ""}
+            ${item.message && !ehPlaceholderMidia ? `<p>${item.mediaMimetype?.startsWith("audio/") ? `<i>${safe(item.message.replace(/^\\s*_\\*Transcrição\\*_\\*\\s*:?[\\s\\r\\n]*/i, "").trim())}</i>` : safe(item.message)}</p>` : ""}
             <small>${safe(shortTime(item.createdAt))}</small>
           </div>
         </div>

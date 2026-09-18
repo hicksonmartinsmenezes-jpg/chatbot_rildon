@@ -52,6 +52,11 @@
   box-sizing: border-box !important;
   position: relative !important;
   z-index: 1 !important;
+  /* A borda de 1px (06-conversations.css) contorna toda a pílula, inclusive
+     a ponta arredondada do lado direito — que fica a só 8px do botão Enviar
+     e aparece como uma sobra/quebra grudada nele. O fundo (#1a1a1a) já
+     contrasta com o fundo do balão sozinho, então a borda é dispensável. */
+  border-color: transparent !important;
 }
 
 /* O anel de foco do textarea (06-conversations.css) é "para fora" (box-shadow

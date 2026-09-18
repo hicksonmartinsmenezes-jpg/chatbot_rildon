@@ -191,7 +191,7 @@ function renderPanelUsers() {
         </p>
       </div>
       <div class="panel-user-actions">
-        <button type="button" data-user-action="reset-password" data-user-id="${escapeAttr(user.id)}" title="Alterar senha" aria-label="Alterar senha">
+        <button type="button" data-user-action="permissions" data-user-id="${escapeAttr(user.id)}" title="Permissões" aria-label="Permissões">\n          <i class="fa-solid fa-sliders"></i>\n        </button>\n        <button type="button" data-user-action="reset-password" data-user-id="${escapeAttr(user.id)}" title="Alterar senha" aria-label="Alterar senha">
           <i class="fa-solid fa-key"></i>
         </button>
         <button type="button" data-user-action="delete" data-user-id="${escapeAttr(user.id)}" data-user-name="${escapeAttr(user.nome)}" title="Excluir usuário" aria-label="Excluir usuário">

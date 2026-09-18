@@ -59,6 +59,7 @@
     "openUserPermissionsModal",
     "closeUserPermissionsModal",
     "saveUserPermissions",
+    "toggleAllUserPermissions",
     "resetSettings",
     "requestWaReconnect",
     "loadMetricsCharts",

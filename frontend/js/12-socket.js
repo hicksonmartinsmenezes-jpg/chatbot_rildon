@@ -202,6 +202,37 @@ if (typeof io !== "undefined") {
 
   socket.on("users_updated", data => {
     document.dispatchEvent(new CustomEvent("rildon:users-updated", { detail: data || {} }));
+
+    // Se a alteração foi feita no usuário desta própria sessão, atualiza as
+    // permissões imediatamente. Antes, o servidor já salvava no banco, mas
+    // esta tela continuava usando o objeto do login antigo em memória.
+    const updated = data?.user;
+    const current = typeof getCurrentUser === "function" ? getCurrentUser() : null;
+    if (!updated || !current || String(updated.id) !== String(current.id)) return;
+
+    const refreshedUser = { ...current, ...updated, permissions: updated.permissions || {} };
+    if (typeof setCurrentUser === "function") setCurrentUser(refreshedUser);
+    try {
+      localStorage.setItem(
+        `profile_${refreshedUser.usuario || refreshedUser.id}`,
+        JSON.stringify(refreshedUser)
+      );
+    } catch (_) {}
+
+    if (typeof applyUserPermissions === "function") applyUserPermissions();
+
+    // Se a permissão da tela atual foi retirada, volta imediatamente para
+    // o Dashboard (quando disponível), sem deixar a tela antiga aberta.
+    if (
+      typeof hasUserScreenPermission === "function" &&
+      typeof currentTab !== "undefined" &&
+      currentTab !== "dashboard" &&
+      !hasUserScreenPermission(currentTab)
+    ) {
+      switchTab("dashboard");
+    }
+
+    showToast("🔄 Suas permissões foram atualizadas.");
   });
 
   // Atualizações administrativas em tempo real

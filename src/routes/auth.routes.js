@@ -110,7 +110,8 @@ function toSessionUser(user) {
     sector: user.sector || "geral",
     numero: user.numero || "",
     foto: user.foto || "",
-    totpEnabled: !!user.totpEnabled
+    totpEnabled: !!user.totpEnabled,
+    permissions: user.permissions || {}
   };
 }
 
@@ -364,7 +365,7 @@ async function authSession(req, res, next) {
     // Revalida se o usuário ainda está ativo no banco (detecta desativação/promoção em tempo real)
     if (session.user?.id && session.user.id !== "api") {
       const dbUser = await pool.query(
-        `SELECT id, ativo, perfil FROM users WHERE id = $1 LIMIT 1`,
+        `SELECT id, ativo, perfil, permissions FROM users WHERE id = $1 LIMIT 1`,
         [session.user.id]
       );
       const row = dbUser.rows[0];
@@ -377,6 +378,7 @@ async function authSession(req, res, next) {
       if (row.perfil !== session.user.perfil) {
         session.user.perfil = row.perfil;
       }
+      session.user.permissions = row.permissions || {};
     }
 
     // Renova sessão apenas quando restar menos de 10 min (evita escrita a cada req)

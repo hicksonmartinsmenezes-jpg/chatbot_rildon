@@ -78,7 +78,7 @@ async function create(user) {
       id, nome, usuario, senha, perfil,
       sector, numero, foto, ativo, permissions
     )
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)
     RETURNING *
     `,
     [
@@ -91,17 +91,13 @@ async function create(user) {
       user.numero || "",
       user.foto || "",
       user.ativo,
-      user.permissions || {}
+      JSON.stringify(user.permissions || {})
     ]
   );
 
   return mapUser(result.rows[0]);
 }
 
-// Reativa um usuário previamente excluído (ativo=false) em vez de criar uma
-// linha nova — necessário porque "usuario" tem UNIQUE NOT NULL no schema e
-// deactivate() nunca apaga a linha de verdade (soft delete), então um INSERT
-// com o mesmo "usuario" sempre bateria nessa constraint.
 async function reactivate(id, user) {
   const result = await pool.query(
     `
@@ -112,7 +108,7 @@ async function reactivate(id, user) {
         sector   = $4,
         numero   = $5,
         foto     = $6,
-        permissions = $7,
+        permissions = $7::jsonb,
         ativo    = TRUE,
         updated_at = NOW()
     WHERE id = $8
@@ -125,7 +121,7 @@ async function reactivate(id, user) {
       user.sector,
       user.numero || "",
       user.foto || "",
-      user.permissions || {},
+      JSON.stringify(user.permissions || {}),
       id
     ]
   );
@@ -166,15 +162,19 @@ async function updatePassword(id, senhaHash) {
 }
 
 async function updatePermissions(id, permissions) {
+  const normalized = permissions && typeof permissions === "object" && !Array.isArray(permissions)
+    ? permissions
+    : {};
+
   const result = await pool.query(
     `
     UPDATE users
-    SET permissions = $1,
+    SET permissions = $1::jsonb,
         updated_at = NOW()
     WHERE id = $2
     RETURNING *
     `,
-    [permissions || {}, id]
+    [JSON.stringify(normalized), id]
   );
 
   return result.rows[0] ? mapUser(result.rows[0]) : null;

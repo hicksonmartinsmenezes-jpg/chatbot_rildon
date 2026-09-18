@@ -388,3 +388,150 @@
   color: var(--text);
   letter-spacing: 0.03em;
 }
+
+/* ─── Usuários: organização do cadastro ─────────────────────────────── */
+/* Formulário compacto em duas colunas: campo à esquerda, controle à direita. */
+.settings-detail-card[data-settings-panel="usuarios"] .settings-form {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.38fr) minmax(220px, 1fr);
+  column-gap: 18px;
+  row-gap: 10px;
+  align-items: center;
+}
+
+.settings-detail-card[data-settings-panel="usuarios"] .settings-form > label {
+  grid-column: 1;
+  margin: 0;
+  color: #aebdce;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .01em;
+}
+
+.settings-detail-card[data-settings-panel="usuarios"] .settings-form > input,
+.settings-detail-card[data-settings-panel="usuarios"] .settings-form > select,
+.settings-detail-card[data-settings-panel="usuarios"] .settings-form > .password-wrapper {
+  grid-column: 2;
+  margin: 0;
+  min-width: 0;
+}
+
+.settings-detail-card[data-settings-panel="usuarios"] .settings-form > input,
+.settings-detail-card[data-settings-panel="usuarios"] .settings-form > select,
+.settings-detail-card[data-settings-panel="usuarios"] .settings-form > .password-wrapper input {
+  min-height: 44px;
+}
+
+.settings-detail-card[data-settings-panel="usuarios"] .settings-form > input::placeholder {
+  color: #64748b;
+}
+
+.settings-detail-card[data-settings-panel="usuarios"] .settings-form > .password-wrapper {
+  width: 100%;
+}
+
+.settings-detail-card[data-settings-panel="usuarios"] .settings-form > .password-wrapper input {
+  width: 100%;
+}
+
+.settings-detail-card[data-settings-panel="usuarios"] .settings-form > button[data-action="createPanelUser"] {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-height: 46px;
+  justify-content: center;
+  margin-top: 8px;
+  border-radius: 11px;
+}
+
+.settings-detail-card[data-settings-panel="usuarios"] .settings-form > hr {
+  grid-column: 1 / -1;
+  width: 100%;
+  margin: 18px 0 4px;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.settings-detail-card[data-settings-panel="usuarios"] .settings-form > h3 {
+  grid-column: 1 / -1;
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.settings-detail-card[data-settings-panel="usuarios"] #users-list {
+  grid-column: 1 / -1;
+  min-width: 0;
+  margin-top: 2px;
+}
+
+.settings-detail-card[data-settings-panel="usuarios"] .panel-user-item {
+  margin-bottom: 8px;
+  padding: 11px 12px;
+  border-radius: 12px;
+  transition: border-color .15s, background .15s;
+}
+
+.settings-detail-card[data-settings-panel="usuarios"] .panel-user-item:hover {
+  border-color: rgba(29, 108, 245, .45);
+  background: color-mix(in srgb, var(--panel-2) 92%, var(--primary));
+}
+
+.settings-detail-card[data-settings-panel="usuarios"] .panel-user-info strong {
+  font-size: 14px;
+}
+
+.settings-detail-card[data-settings-panel="usuarios"] .panel-user-info p {
+  margin-top: 3px;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.settings-detail-card[data-settings-panel="usuarios"] .panel-user-actions {
+  flex-shrink: 0;
+}
+
+.settings-detail-card[data-settings-panel="usuarios"] .panel-user-actions button {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+}
+
+.settings-detail-card[data-settings-panel="usuarios"] .panel-user-actions button:first-child {
+  background: rgba(29, 108, 245, .10);
+  color: #60a5fa;
+}
+
+.settings-detail-card[data-settings-panel="usuarios"] .panel-user-actions button:first-child:hover {
+  background: rgba(29, 108, 245, .18);
+}
+
+.settings-detail-card[data-settings-panel="usuarios"] .panel-user-actions button:last-child {
+  background: rgba(239, 68, 68, .10);
+  color: #f87171;
+}
+
+.settings-detail-card[data-settings-panel="usuarios"] .panel-user-actions button:last-child:hover {
+  background: rgba(239, 68, 68, .18);
+}
+
+@media (max-width: 620px) {
+  .settings-detail-card[data-settings-panel="usuarios"] .settings-form {
+    grid-template-columns: 1fr;
+    row-gap: 6px;
+  }
+
+  .settings-detail-card[data-settings-panel="usuarios"] .settings-form > label,
+  .settings-detail-card[data-settings-panel="usuarios"] .settings-form > input,
+  .settings-detail-card[data-settings-panel="usuarios"] .settings-form > select,
+  .settings-detail-card[data-settings-panel="usuarios"] .settings-form > .password-wrapper {
+    grid-column: 1;
+  }
+
+  .settings-detail-card[data-settings-panel="usuarios"] .settings-form > label:not(:first-child) {
+    margin-top: 7px;
+  }
+
+  .settings-detail-card[data-settings-panel="usuarios"] .panel-user-item {
+    align-items: flex-start;
+  }
+}

@@ -538,6 +538,93 @@
 
 
 /* ─── Usuários: seleção de telas ─────────────────────────────────────────── */
+.user-permission-group {
+  display: block;
+  margin-bottom: 14px;
+}
+
+.user-permission-group:last-child {
+  margin-bottom: 0;
+}
+
+.user-permission-group-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 7px;
+  padding: 0 2px;
+}
+
+.user-permission-group-title span {
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+}
+
+.user-permission-group-title small {
+  color: var(--text-muted, #7d8a9a);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.user-permission-group-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.user-permission-option {
+  min-height: 54px;
+  padding: 8px 9px;
+  border-radius: 9px;
+}
+
+.user-permission-copy strong {
+  font-size: 11.5px;
+}
+
+.user-permission-copy small {
+  font-size: 9.5px;
+}
+
+.user-permission-option.is-disabled {
+  opacity: .48;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+.user-permission-option.is-disabled:hover {
+  border-color: var(--border);
+}
+
+.user-permissions-field {
+  padding: 13px;
+}
+
+.user-permissions-header {
+  padding-bottom: 2px;
+}
+
+.user-permissions-dialog > .user-permissions-grid {
+  padding: 16px 20px;
+}
+
+@media (max-width: 800px) {
+  .user-permission-group-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .user-permission-group-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+
 .user-permissions-field {
   grid-column: 1 / -1;
   margin-top: 6px;

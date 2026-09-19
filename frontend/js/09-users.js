@@ -47,23 +47,27 @@ function discoverPanelScreenPermissions() {
 }
 
 const DEFAULT_SCREEN_PERMISSIONS = {
-  // Perfil = conjunto máximo de telas. As permissões individuais só podem
-  // retirar telas desse conjunto, nunca acrescentar uma tela de outro perfil.
+  // Perfil = sugestão inicial de telas (usada só quando a tela ainda não
+  // foi definida explicitamente pra este usuário). A partir de 2026-09-19
+  // (pedido do usuário: "não consigo dar permissão... mesmo que seja
+  // atendente ou supervisor") isso deixou de ser um TETO — qualquer tela
+  // pode ser marcada individualmente pra qualquer perfil, inclusive
+  // Chatbot/Configurações pra um atendente. Mesma lógica espelhada em
+  // normalizeScreenPermissions (src/services/user.service.js).
   atendente: { dashboard:true, conversations:true, history:true, contacts:true, catalogo:true },
   supervisor: { dashboard:true, conversations:true, history:true, contacts:true, catalogo:true, channels:true, metrics:true },
   admin: Object.fromEntries(PANEL_SCREEN_PERMISSIONS.map(screen => [screen.id, true]))
 };
 
 function getUserScreenPermissions(perfil, permissions = {}) {
-  const base = { ...(DEFAULT_SCREEN_PERMISSIONS[perfil] || DEFAULT_SCREEN_PERMISSIONS.atendente) };
-  if (permissions && Object.keys(permissions).length) {
+  if (perfil === "admin") return Object.fromEntries(PANEL_SCREEN_PERMISSIONS.map(screen => [screen.id, true]));
+  const suggested = DEFAULT_SCREEN_PERMISSIONS[perfil] || DEFAULT_SCREEN_PERMISSIONS.atendente;
+  const base = Object.fromEntries(PANEL_SCREEN_PERMISSIONS.map(screen => [screen.id, suggested[screen.id] === true]));
+  if (permissions && typeof permissions === "object") {
     PANEL_SCREEN_PERMISSIONS.forEach(screen => {
-      if (typeof permissions[screen.id] === "boolean" && screen.id in base) {
-        base[screen.id] = permissions[screen.id];
-      }
+      if (typeof permissions[screen.id] === "boolean") base[screen.id] = permissions[screen.id];
     });
   }
-  if (perfil === "admin") return Object.fromEntries(PANEL_SCREEN_PERMISSIONS.map(screen => [screen.id, true]));
   return base;
 }
 
@@ -71,24 +75,23 @@ function renderUserPermissionChecklist(containerId, perfil, permissions = {}) {
   const container = document.getElementById(containerId);
   if (!container) return;
   const selected = getUserScreenPermissions(perfil, permissions);
-  const allowedByProfile = DEFAULT_SCREEN_PERMISSIONS[perfil] || DEFAULT_SCREEN_PERMISSIONS.atendente;
+  // admin sempre tem tudo marcado e travado (evita autoexclusão acidental
+  // do próprio painel); atendente/supervisor agora podem marcar QUALQUER
+  // tela — o checkbox nunca mais fica desabilitado por causa do perfil.
   const disabledAll = perfil === "admin";
   container.innerHTML = PANEL_SCREEN_PERMISSIONS.map(screen => {
-    const available = perfil === "admin" || allowedByProfile[screen.id] === true;
     const checked = selected[screen.id] === true;
-    const disabled = disabledAll || !available;
     return (
       '<label class="user-permission-option' +
         (checked ? " is-selected" : "") +
-        (!available ? " is-disabled" : "") +
         '">' +
         '<input type="checkbox" value="' + screen.id + '" ' +
           (checked ? "checked" : "") +
-          (disabled ? " disabled" : "") + '>' +
+          (disabledAll ? " disabled" : "") + '>' +
         '<span class="user-permission-check"><i class="fa-solid fa-check"></i></span>' +
         '<span class="user-permission-icon"><i class="fa-solid ' + screen.icon + '"></i></span>' +
         '<span class="user-permission-copy"><strong>' + screen.label + '</strong><small>' +
-          screen.group + (!available ? " • não disponível neste perfil" : "") +
+          screen.group +
         '</small></span>' +
       '</label>'
     );

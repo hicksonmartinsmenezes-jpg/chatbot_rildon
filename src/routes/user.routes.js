@@ -17,8 +17,12 @@ const { emitEvent } = require("../services/socket.service");
 
 const router = express.Router();
 
-// requireAdmin já é aplicado em app.js para todas as rotas de /api/users
-// requireRole("admin") interno removido — checagem dupla desnecessária
+// requireScreenAccess("settings") já é aplicado em app.js para todas as
+// rotas de /api/users (trocado de requireAdmin em 2026-09-19 — ver
+// comentário em app.js/auth.routes.js: agora um atendente/supervisor com a
+// tela "settings" liberada individualmente também gerencia usuários, não
+// só admin). requireRole("admin") interno removido — checagem dupla
+// desnecessária.
 
 function sanitizeUser(user) {
   return {

@@ -133,15 +133,16 @@ function applyUserPermissions() {
     el.style.display = ["admin", "supervisor"].includes(perfil) ? "" : "none";
   });
 
-  // Permissões individuais: só escondem o que o perfil já poderia acessar.
+  // Visibilidade da aba no menu = só a permissão individual da tela
+  // (allowed[tab], já com o fallback pro padrão do perfil — ver
+  // getUserScreenPermissions/09-users.js). Antes disso, as classes
+  // .admin-only/.supervisor-only no HTML (loops acima) travavam
+  // Chatbot/Configurações/Campanhas/Métricas pra atendente/supervisor
+  // mesmo com a tela marcada em "Acesso às telas" — pedido do usuário
+  // (2026-09-19) foi exatamente permitir esse override tela por tela.
   document.querySelectorAll(".sidebar [data-tab]").forEach(el => {
     const tab = el.dataset.tab;
-    const roleAllows = el.classList.contains("admin-only")
-      ? perfil === "admin"
-      : el.classList.contains("supervisor-only")
-        ? ["admin", "supervisor"].includes(perfil)
-        : true;
-    const visible = roleAllows && (perfil === "admin" || allowed[tab] === true);
+    const visible = perfil === "admin" || allowed[tab] === true;
     el.style.display = visible ? "" : "none";
     el.setAttribute("aria-hidden", visible ? "false" : "true");
   });

@@ -19,8 +19,7 @@ const broadcastRoutes   = require("./routes/broadcast.routes");
 const {
   router: authRouter,
   authSession,
-  requireAdmin,
-  requireRole
+  requireScreenAccess
 } = require("./routes/auth.routes");
 
 const ticketRoutes   = require("./routes/ticket.routes");
@@ -175,20 +174,24 @@ app.use("/api", authSession, botStatusRoutes);
 // separado do API_TOKEN geral — ver comentário completo em mcp.routes.js.
 app.use("/api", mcpRoutes);
 
-// Rotas apenas admin
-app.use("/api", authSession, requireAdmin, settingsRoutes);
-app.use("/api", authSession, requireAdmin, quickReplyRoutes);
-app.use("/api", authSession, requireAdmin, userRoutes);
-app.use("/api", authSession, requireAdmin, activityLogRoutes);
-// A aba Métricas do painel (frontend/index.html, data-tab="metrics") já é
-// supervisor-only na UI, mas a rota exigia admin — supervisor via a aba e
-// caía em 403 ao carregar. Corrigido junto com a pesquisa de satisfação
-// (o motivo que trouxe essa inconsistência à tona: supervisor precisa ver
-// a média de satisfação por atendente aqui).
-app.use("/api", authSession, requireRole("admin", "supervisor"), metricsRoutes);
-// Pedido do usuário: supervisor também deve poder ver/usar Campanhas, não
-// só admin (o resto das rotas administrativas continua exigindo admin).
-app.use("/api", authSession, requireRole("admin", "supervisor"), broadcastRoutes);
+// Rotas gated por tela do menu (requireScreenAccess, ver auth.routes.js) em
+// vez de requireAdmin/requireRole fixo por perfil (trocado 2026-09-19,
+// pedido do usuário: "não consigo dar permissão... mesmo que seja atendente
+// ou supervisor" — o checkbox "Acesso às telas" do cadastro de usuário
+// salvava a permissão, mas essas rotas continuavam travadas só no `perfil`,
+// ignorando o `permissions` individual). requireScreenAccess cai pro padrão
+// do perfil quando a tela não foi definida explicitamente, então ninguém
+// perde acesso que já tinha — só passa a ser possível CONCEDER mais.
+//
+// settingsRoutes atende DUAS abas do menu (Chatbot: liga/desliga do bot +
+// Respostas Rápidas fica em quickReplyRoutes; Configurações: cards
+// Atendimento/WhatsApp) — por isso aceita "chatbot" OU "settings".
+app.use("/api", authSession, requireScreenAccess("chatbot", "settings"), settingsRoutes);
+app.use("/api", authSession, requireScreenAccess("chatbot"), quickReplyRoutes);
+app.use("/api", authSession, requireScreenAccess("settings"), userRoutes);
+app.use("/api", authSession, requireScreenAccess("settings"), activityLogRoutes);
+app.use("/api", authSession, requireScreenAccess("metrics"), metricsRoutes);
+app.use("/api", authSession, requireScreenAccess("channels"), broadcastRoutes);
 
 // ── Health check handler (rotas registradas antes da autenticação) ───────────
 async function healthCheck(req, res) {

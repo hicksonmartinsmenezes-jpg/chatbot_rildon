@@ -414,6 +414,58 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+// ─── Acesso por tela (permite override de qualquer tela pra qualquer perfil) ──
+// Pedido do usuário (2026-09-19): até aqui, Chatbot/Configurações (e
+// Campanhas/Métricas fora do teto do perfil) ficavam bloqueadas pra
+// atendente/supervisor mesmo marcando o checkbox em "Acesso às telas" —
+// o checkbox só existia no frontend (09-users.js), mas as rotas por trás
+// continuavam presas em requireAdmin/requireRole, que olham só pro
+// `perfil`, nunca pro `permissions` individual do usuário. Isso tornava a
+// UI enganosa: marcar a tela "funcionava" (salvava no banco), só que a API
+// respondia 403 do mesmo jeito.
+//
+// PROFILE_DEFAULT_SCREENS espelha exatamente PROFILE_SCREEN_ACCESS
+// (user.service.js) e DEFAULT_SCREEN_PERMISSIONS (frontend/js/09-users.js)
+// — as 3 cópias precisam ficar em sincronia; é a mesma duplicação de 3
+// lugares já aceita no resto do projeto pra essa feature (ver comentário
+// em normalizeScreenPermissions), não vale abstrair pra um módulo
+// compartilhado só por isso (evitar overengineering, CLAUDE.md) porque
+// frontend/backend não compartilham módulo hoje.
+const PROFILE_DEFAULT_SCREENS = {
+  atendente: new Set(["dashboard", "conversations", "history", "contacts", "catalogo"]),
+  supervisor: new Set(["dashboard", "conversations", "history", "contacts", "catalogo", "channels", "metrics"])
+};
+
+// Perfil sugere um padrão (PROFILE_DEFAULT_SCREENS acima), mas a permissão
+// individual (users.permissions, migration 027) sempre pode sobrepor — tanto
+// pra LIBERAR uma tela fora do padrão do perfil (o pedido de hoje) quanto
+// pra RETIRAR uma tela que o perfil teria por padrão (comportamento que já
+// existia). Usuários antigos (antes de 2026-09-18) têm permissions='{}' —
+// por isso o fallback pro padrão do perfil quando a chave está ausente é
+// obrigatório, senão todo supervisor/admin antigo perderia acesso de
+// uma hora pra outra ao trocar requireAdmin/requireRole por esta função.
+function hasScreenAccess(user, screenId) {
+  if (!user) return false;
+  if (user.perfil === "admin") return true;
+  const permissions = user.permissions || {};
+  if (typeof permissions[screenId] === "boolean") return permissions[screenId];
+  const defaultSet = PROFILE_DEFAULT_SCREENS[user.perfil] || PROFILE_DEFAULT_SCREENS.atendente;
+  return defaultSet.has(screenId);
+}
+
+// requireScreenAccess("settings") — ou requireScreenAccess("chatbot",
+// "settings") quando a mesma rota atende duas telas do menu (ex:
+// settingsRoutes é usado tanto pela aba Chatbot quanto pela aba
+// Configurações — ver comentário em app.js). Passa se o usuário tiver
+// acesso a QUALQUER uma das telas informadas.
+function requireScreenAccess(...screenIds) {
+  return (req, res, next) => {
+    if (!req.user) return res.status(401).json({ error: "Sessão inválida." });
+    if (screenIds.some(id => hasScreenAccess(req.user, id))) return next();
+    return res.status(403).json({ error: "Acesso negado para este perfil." });
+  };
+}
+
 // Limpeza de sessões expiradas a cada 5 min.
 // unref(): não deve ser o único motivo do processo continuar rodando (não
 // atrapalha shutdown gracioso) — e evita que testes/scripts que só fazem
@@ -427,4 +479,4 @@ setInterval(async () => {
   try { await twoFactorService.limparDesafiosExpirados(); } catch (_) {}
 }, 5 * 60 * 1000).unref();
 
-module.exports = { router, authSession, requireAdmin, requireRole, buscarSessao };
+module.exports = { router, authSession, requireAdmin, requireRole, requireScreenAccess, buscarSessao };

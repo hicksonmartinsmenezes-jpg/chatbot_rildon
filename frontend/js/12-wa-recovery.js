@@ -143,5 +143,19 @@
   };
 
   window.startWaQrRecovery = startWaStatusPolling;
-  ensureRecoveryWidget(); bindQrSocket(); startWaStatusPolling();
+
+  // BUG CORRIGIDO (2026-09-19): startWaStatusPolling() rodava aqui direto,
+  // no carregamento do script — ANTES do login. refreshWaStatus() usa
+  // apiFetch(), que já mostra "Sua sessão expirou. Faça login novamente."
+  // em qualquer 401 (ver apiFetch/showSessionExpired em 02-auth.js); sem
+  // sessão ainda, cada tick do polling (a cada 1.5s) batia 401 e o toast
+  // reaparecia em loop pra quem nem tinha tentado logar ainda — exatamente
+  // o mesmo bug que já foi corrigido uma vez pro socket.io (ver comentário
+  // "BUG CORRIGIDO" em 12-socket.js sobre autoConnect). ensureRecoveryWidget()
+  // (só cria o DOM do widget, sem rede) e bindQrSocket() (só registra o
+  // listener "qr_code", não dispara nada sozinho) continuam seguros de
+  // rodar aqui incondicionalmente. startWaStatusPolling() passou a ser
+  // chamado só depois de sessão confirmada — junto de connectPanelSocket(),
+  // em login()/submitTwoFactorLogin()/checkAuth() (02-auth.js).
+  ensureRecoveryWidget(); bindQrSocket();
 })();

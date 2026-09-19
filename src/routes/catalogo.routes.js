@@ -19,6 +19,7 @@ const {
   buscarPorCodigoHandler,
   buscarPorNomeHandler,
   exportarPdfHandler,
+  exportarPdfSelecionadosHandler,
   exportarPdfPromocionalHandler,
   importarArquivoPromocionalHandler,
   recarregarEstoqueHandler,
@@ -107,6 +108,14 @@ router.get("/catalogo/buscar-nome", buscarPorNomeHandler);
 // critérios de /catalogo/buscar (ou um `codigo` isolado), mas sem o teto de
 // 200 da tela — traz tudo que bateu no filtro, até MAX_EXPORT_PDF.
 router.get("/catalogo/exportar-pdf", exportarPdfHandler);
+// "Exportar selecionados (PDF)" da aba Critérios de Pesquisa (melhoria,
+// pedido do usuário 2026-09-19 — ver comentário completo no handler,
+// catalogo.controller.js): lista de códigos escolhida manualmente na UI,
+// mesmo layout do Catálogo Completo (gerarPdfCatalogo agora delega pra
+// gerarPdfCatalogoCompleto). POST porque a lista de códigos não cabe
+// confortavelmente numa query string GET; body JSON simples (sem upload de
+// arquivo, ao contrário do Catálogo Promocional abaixo).
+router.post("/catalogo/exportar-selecionados-pdf", uploadLimiter, exportarPdfSelecionadosHandler);
 // "Catálogo Promocional" (nova função, pedido do usuário 2026-08-29): lista
 // selecionada de produtos + preço promocional por CSV, mesmo layout com
 // foto/aplicação do Catálogo Completo mas sem sub-agrupamento por marca (ver

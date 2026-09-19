@@ -329,6 +329,11 @@ const PAGE_MARGIN = 10;
 // foto + código + nome, cabeçalho/rodapé da marca do mesmo tamanho de
 // sempre) — usuário escolheu "deixa comigo" entre um meio-termo (~30/pág)
 // e um modo mais agressivo (lista sem foto).
+// 2026-09-19: COLS/ROWS_POR_PAGINA abaixo pararam de ser usadas por
+// gerarPdfCatalogo (agora delega pra gerarPdfCatalogoCompleto, que usa
+// COLS_COMPLETO/ROWS_POR_PAGINA_COMPLETO — ver comentário na função).
+// Mantidas aqui (não deletadas) só como referência histórica da grade
+// 5×6 antiga — Knip pode acusar como não usadas, é esperado.
 const COLS = 5;
 const GAP = 10;
 // Largura de desenho da imagem do cabeçalho — página inteira (595.28pt em
@@ -1842,12 +1847,15 @@ function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight
 
 // Extraído de gerarPdfCatalogo (2026-08-26, Issue #21) — desenha um card de
 // produto completo em x/y dados, sem saber nada sobre grade/paginação.
-// Reusado por gerarPdfCatalogo (grade 5×6, catálogo comum) e
-// gerarPdfCatalogoCompleto (grade 4×5, por fabricante). 2026-08-27: os dois
-// modos agora têm layouts DIFERENTES (ver _desenharCardCatalogoCompleto) —
-// catálogo comum mantém o desenho original (selo sobre a foto + nome
-// abaixo), Catálogo Completo usa o cabeçalho novo (selo+descrição lado a
-// lado + OEM em vermelho + foto maior + aplicação em preto).
+// 2026-09-19: gerarPdfCatalogo passou a delegar 100% pra
+// gerarPdfCatalogoCompleto (ver comentário lá), que só chama esta função
+// com comAplicacao=true (grade 4×5, cabeçalho novo — selo+descrição lado a
+// lado + OEM em vermelho + foto maior + aplicação em preto, ver
+// _desenharCardCatalogoCompleto). O ramo comAplicacao=false abaixo (desenho
+// original: selo sobre a foto + nome abaixo, sem aplicação) ficou sem
+// nenhum call site — mantido de propósito (não deletado) como referência
+// caso algum modo futuro precise do card mais simples de volta; Knip pode
+// acusar como não usado, é esperado.
 function _desenharCard(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth, photoBoxHeight, comAplicacao = false, marcaAtual = null, preco = null, estilo = "eletrica") {
   _desenharCardVidro(doc, x, y, cardWidth, cardHeight);
 
@@ -3280,71 +3288,36 @@ function _desenharLinhaIndice(doc, textoLinha, numeroPagina, y, larguraTotal) {
  * chama já seta os headers de Content-Type/Content-Disposition antes).
  * Não retorna Promise: o próprio doc.end() encerra a escrita/resposta.
  */
+// Pedido do usuário (2026-09-19, melhoria "unificar layout Critérios de
+// Pesquisa/Catálogo Completo"): até aqui esta função desenhava sua PRÓPRIA
+// grade simples (5 colunas × 6 linhas, sem índice, sem agrupar por Linha/
+// Marca, card mais raso sem texto de aplicação — ver histórico do arquivo
+// se precisar recuperar essa versão antiga). O usuário comparou o PDF de
+// Critérios de Pesquisa lado a lado com o Catálogo Completo e pediu:
+// "organize linhas e colunas igual, ajuste a foto também da mesma maneira,
+// assim como todo o resto de design, a única diferença mesmo é que posso
+// fazer catálogo com apenas aqueles selecionados" — ou seja, o layout
+// (índice, agrupamento por Linha/Marca, grade 4×5, foto real + aplicação
+// no card, cabeçalho/rodapé) deve ficar IDÊNTICO ao Catálogo Completo; a
+// única diferença legítima entre os dois modos é QUAIS produtos entram
+// (resultado de busca/seleção manual aqui, "todo o catálogo de 1
+// fabricante" lá) — não como eles são desenhados.
+//
+// Por isso esta função agora delega inteiramente pra
+// gerarPdfCatalogoCompleto: fabricante="" (não há um fabricante isolado
+// numa busca por veículo/código/nome/seleção manual — cai sempre no
+// estilo "eletrica" padrão, ver _estiloCatalogoCompleto) e
+// agruparPorMarca=false (agrupa por Linha normalmente, com o mesmo sub-
+// agrupamento por marca de veículo dentro de cada Linha que o Catálogo
+// Completo já faz). `tituloBusca` deixou de ser desenhado como texto de
+// cabeçalho — o Catálogo Completo mostra o nome da Linha em cada página,
+// não a busca em si, e é exatamente esse comportamento que passa a valer
+// aqui também (mesmo pro modo "fabricante isolado + outro filtro", que já
+// caía nesta função antes — ver modoCompleto em catalogo.controller.js).
+// Parâmetro mantido no signature (compatibilidade dos call sites
+// existentes) mesmo sem uso direto no corpo.
 async function gerarPdfCatalogo(produtos, tituloBusca, destino) {
-  const doc = new PDFDocument({ size: "A4", margin: 0, autoFirstPage: false, bufferPages: true });
-  doc.pipe(destino);
-  // Registrada uma vez por documento — precisa vir antes de qualquer
-  // doc.font(TITULO_FONTE) (ver _desenharCabecalho).
-  doc.registerFont(TITULO_FONTE, TITULO_FONTE_ARQUIVO);
-  // Fonte do número de página no rodapé (pedido do usuário, 2026-09-08) —
-  // ver comentário em RODAPE_NUMERO_FONTE acima.
-  doc.registerFont(RODAPE_NUMERO_FONTE, RODAPE_NUMERO_FONTE_ARQUIVO);
-
-  let pagina = 0;
-
-  function novaPagina() {
-    doc.addPage();
-    pagina += 1;
-    _desenharCabecalho(doc, tituloBusca);
-    _desenharRodape(doc, pagina);
-    doc.y = AREA_TOPO_Y;
-  }
-
-  novaPagina();
-
-  // 2026-08-26 (Issue #21): matemática de grade extraída pra _geometriaGrid
-  // (reusada também por gerarPdfCatalogoCompleto) — mesmo cálculo de
-  // sempre, só que agora numa função parametrizada por cols/rows em vez de
-  // usar COLS/ROWS_POR_PAGINA direto aqui dentro.
-  const { cardWidth, cardHeight, photoBoxWidth, photoBoxHeight, areaFimY } =
-    _geometriaGrid(doc, COLS, ROWS_POR_PAGINA);
-
-  let col = 0;
-  let linhaY = doc.y;
-
-  for (let i = 0; i < produtos.length; i += 1) {
-    const produto = produtos[i];
-    // Epsilon de 0.5pt: como cardHeight é calculado pra preencher
-    // EXATAMENTE o espaço disponível (ver _geometriaGrid), a soma
-    // acumulada de ROWS_POR_PAGINA linhas bate matematicamente igual a
-    // areaFimY — mas ponto flutuante às vezes fecha com um resto de
-    // ~1e-13, e sem essa margem isso já disparou uma quebra de página
-    // falsa na última linha (12 cards numa página + 4 sozinhos na próxima,
-    // em vez dos 16 numa página só). O epsilon absorve esse resto sem
-    // abrir espaço perceptível de verdade.
-    if (col === 0 && linhaY + cardHeight > areaFimY + 0.5) {
-      novaPagina();
-      linhaY = doc.y;
-    }
-
-    const x = PAGE_MARGIN + col * (cardWidth + GAP);
-    const y = linhaY;
-
-    _desenharCard(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth, photoBoxHeight);
-
-    col += 1;
-    if (col >= COLS) {
-      col = 0;
-      linhaY += cardHeight + GAP;
-    }
-
-    // Ver comentário de CEDER_A_CADA_N_BLOCOS no topo do arquivo — devolve
-    // o controle ao event loop periodicamente pra não travar o servidor
-    // inteiro durante uma exportação grande.
-    if (i > 0 && i % CEDER_A_CADA_N_BLOCOS === 0) await _cederEventLoop();
-  }
-
-  doc.end();
+  return gerarPdfCatalogoCompleto(produtos, "", destino, null, false);
 }
 
 /**

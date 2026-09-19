@@ -84,8 +84,18 @@
           margin: 0 !important;
           transform: translateX(1px) !important;
         }
+        /* .rildon-audio-main empilha onda+tempo (33px de conteúdo) dentro de
+           uma linha de 50px — centralizar esse BLOCO INTEIRO (como
+           justify-content:center fazia) deixa o centro da ONDA ~6.5px acima
+           do centro real da foto/play (que são ícones únicos de 38px,
+           perfeitamente centralizados na linha). Medido ao vivo com
+           getBoundingClientRect: com justify-content:center o centro da
+           onda ficava 6.5px acima do centro da foto/play. Em vez de
+           centralizar o bloco (onda+tempo) inteiro, ancora só a ONDA no
+           centro da linha e deixa o tempo (0:00) cair naturalmente embaixo. */
         .rildon-audio-main {
-          justify-content: center !important;
+          align-self: flex-start !important;
+          margin-top: 15px !important;
         }
         .rildon-audio-time {
           line-height: 11px !important;

@@ -151,14 +151,24 @@ function applyUserPermissions() {
 }
 
 function applyUserProfileVisual(user) {
-  const name    = user.nome || user.usuario || "Usuário";
+  const name = user.nome || user.usuario || "Usuário";
   const topName = document.getElementById("top-user-name");
-  const avatar  = document.getElementById("top-user-avatar");
+  const avatar = document.getElementById("top-user-avatar");
+  const menuName = document.getElementById("user-menu-name");
+  const menuAvatar = document.getElementById("user-menu-avatar");
+
+  // O cabeçalho mostra só a foto, mas o menu aberto deve identificar
+  // claramente quem está logado pelo nome cadastrado.
   if (topName) topName.textContent = name;
-  if (avatar) {
-    const photo = safeUrl(user.foto);
-    avatar.innerHTML = photo ? `<img src="${escapeAttr(photo)}" alt="Perfil">` : safe(initials(name));
-  }
+  if (menuName) menuName.textContent = name;
+
+  const photo = safeUrl(user.foto);
+  const avatarMarkup = photo
+    ? `<img src="${escapeAttr(photo)}" alt="Perfil">`
+    : safe(initials(name));
+
+  if (avatar) avatar.innerHTML = avatarMarkup;
+  if (menuAvatar) menuAvatar.innerHTML = avatarMarkup;
 }
 
 document

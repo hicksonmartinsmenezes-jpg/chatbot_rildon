@@ -115,7 +115,7 @@ function _pareceEscapeDeFeedback(message) {
 async function _getReopenWindowMs() {
   const settings = await getSettings();
   const minutos = Number(settings?.atendimento?.tempoReaberturaSemPesquisa);
-  return (Number.isFinite(minutos) && minutos > 0 ? minutos : 60) * 60 * 1000;
+  return (Number.isFinite(minutos) && minutos > 0 ? minutos : 240) * 60 * 1000;
 }
 
 // Cooldown de reabertura: evita reabrir o mesmo ticket múltiplas vezes em rajada

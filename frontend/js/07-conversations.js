@@ -106,7 +106,7 @@ async function _loadConversationsCore(silent = false) {
 
     // BUG CORRIGIDO (relatado pelo usuário): cliente com ticket fechado que
     // manda mensagem FORA da janela de reopen (TICKET_REOPEN_WINDOW_MINUTOS,
-    // padrão 60min) não reabre o ticket antigo de propósito (ver comentário
+    // padrão 240min/4h) não reabre o ticket antigo de propósito (ver comentário
     // em reopenTicketIfClosed, ticket.service.js) — o bot responde
     // normalmente, mas nenhum ticket novo é criado só por isso (uma saudação
     // não deveria virar ticket sozinha). Resultado: ticketsByUser[uid] ainda

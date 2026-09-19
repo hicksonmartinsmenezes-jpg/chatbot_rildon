@@ -191,10 +191,6 @@
       </div>
 
       <div class="top-actions">
-        <button type="button" class="icon-btn" title="Atualizar" data-action="refreshAll">
-          <i class="fa-solid fa-arrows-rotate"></i>
-        </button>
-
         <!-- Liga/desliga o bot — liberado para qualquer atendente logado
              (pedido do usuário, 2026-07-24). Backend: /api/bot-status. -->
         <button type="button" class="icon-btn" id="bot-toggle-btn" title="Bot: carregando..." data-action="toggleBotStatus">
@@ -224,30 +220,34 @@
           </div>
         </div>
 
-       <div class="avatar-wrap" data-action="openProfileModal" role="button" tabindex="0">
-
-      <div
-        class="avatar"
-        id="top-user-avatar"
-      >
-        R
-      </div>
-
-      <div class="avatar-text">
-
-        <strong id="top-user-name">
-          Admin
-        </strong>
-        
-            <span id="status-badge" class="badge badge-off">● Offline</span>
+        <div class="user-menu-wrap">
+          <button type="button" class="avatar-wrap" data-action="toggleUserMenu" aria-expanded="false" aria-haspopup="true">
+            <div class="avatar" id="top-user-avatar">R</div>
+            <div class="avatar-text">
+              <strong id="top-user-name">Admin</strong>
+              <span id="status-badge" class="badge badge-off">● Offline</span>
+            </div>
+            <i class="fa-solid fa-chevron-down user-menu-chevron"></i>
+          </button>
+          <div id="user-menu-dropdown" class="user-menu-dropdown hidden" role="menu">
+            <div class="user-menu-header">
+              <div class="user-menu-avatar" id="user-menu-avatar">R</div>
+              <div>
+                <strong id="user-menu-name">Admin</strong>
+                <span id="user-menu-status">Conta ativa</span>
+              </div>
+            </div>
+            <div class="user-menu-divider"></div>
+            <button type="button" class="user-menu-item" data-action="openProfileModal">
+              <i class="fa-solid fa-user"></i>
+              <span><strong>Meu perfil</strong><small>Dados pessoais e segurança</small></span>
+            </button>
+            <button type="button" class="user-menu-item user-menu-danger" data-action="logout">
+              <i class="fa-solid fa-right-from-bracket"></i>
+              <span><strong>Sair</strong><small>Encerrar sessão</small></span>
+            </button>
           </div>
-          <i class="fa-solid fa-chevron-down"></i>
         </div>
-
-        <button type="button" class="logout-btn" data-action="logout">
-          <i class="fa-solid fa-right-from-bracket"></i>
-          Sair
-        </button>
       </div>
     </header>
 

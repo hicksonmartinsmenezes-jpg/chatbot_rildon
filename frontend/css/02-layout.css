@@ -356,11 +356,13 @@ body.light-theme .brand-logo-light { display: block; }
 .avatar-wrap {
   display: flex;
   align-items: center;
-  gap: 10px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  padding: 6px 12px 6px 6px;
-  border-radius: var(--radius-full);
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
   cursor: pointer;
 }
 
@@ -395,9 +397,8 @@ body.light-theme .brand-logo-light { display: block; }
   font-weight: 800;
 }
 
-.avatar-wrap i {
-  font-size: 12px;
-  color: #9ca3af;
+.avatar-wrap:hover .avatar {
+  box-shadow: 0 0 0 2px var(--primary);
 }
 
 .green-bar {
@@ -700,8 +701,9 @@ body.light-theme .brand-logo-light { display: block; }
   }
 
   .avatar-wrap {
-    padding: 2px 6px 2px 2px;
-    gap: 6px;
+    width: 30px;
+    height: 30px;
+    padding: 0;
   }
 
   .avatar-wrap i {

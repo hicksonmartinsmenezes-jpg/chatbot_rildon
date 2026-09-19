@@ -6,9 +6,24 @@
       const style = document.createElement("style");
       style.id = styleId;
       style.textContent = `
+        /* CAUSA RAIZ do menu gigante (achada ao vivo, inspecionando
+           getComputedStyle no navegador real do usuário): .bubble usa
+           white-space:pre-wrap pra preservar quebra de linha de mensagem de
+           texto — e isso é HERDADO por tudo dentro de .rildon-audio-player,
+           inclusive os espaços/quebras de linha de indentação dos template
+           literals HTML deste arquivo. Com pre-wrap, esses espaços em branco
+           entre as tags (<div>\n  <div>\n  ...) viram conteúdo VISÍVEL —
+           linhas em branco de verdade — e é isso que inflava o menu de
+           opções pra ~350px de altura mesmo com só 4 itens curtos dentro.
+           As 3 tentativas anteriores (1ecbfa4/0c791aa/8ececd3) só mexeram em
+           padding/tamanho e nunca resolveram porque não era espaçamento
+           excessivo de propósito — era espaço em branco do código-fonte
+           sendo renderizado como texto. Corta a herança aqui, na raiz do
+           player, antes de qualquer outra regra. */
         .rildon-audio-player {
           align-items: center !important;
           gap: 7px !important;
+          white-space: normal !important;
         }
 
         /* Avatar alinhado ao centro do conjunto do áudio. */
@@ -127,6 +142,7 @@
           box-shadow: 0 4px 18px rgba(0,0,0,.32);
           display: none;
           overflow: hidden;
+          white-space: normal;
         }
         .rildon-audio-menu.is-open {
           display: block;

@@ -73,26 +73,47 @@ function renderUserPermissionChecklist(containerId, perfil, permissions = {}) {
   const selected = getUserScreenPermissions(perfil, permissions);
   const allowedByProfile = DEFAULT_SCREEN_PERMISSIONS[perfil] || DEFAULT_SCREEN_PERMISSIONS.atendente;
   const disabledAll = perfil === "admin";
-  container.innerHTML = PANEL_SCREEN_PERMISSIONS.map(screen => {
-    const available = perfil === "admin" || allowedByProfile[screen.id] === true;
-    const checked = selected[screen.id] === true;
-    const disabled = disabledAll || !available;
-    return (
-      '<label class="user-permission-option' +
-        (checked ? " is-selected" : "") +
-        (!available ? " is-disabled" : "") +
-        '">' +
-        '<input type="checkbox" value="' + screen.id + '" ' +
-          (checked ? "checked" : "") +
-          (disabled ? " disabled" : "") + '>' +
-        '<span class="user-permission-check"><i class="fa-solid fa-check"></i></span>' +
-        '<span class="user-permission-icon"><i class="fa-solid ' + screen.icon + '"></i></span>' +
-        '<span class="user-permission-copy"><strong>' + screen.label + '</strong><small>' +
-          screen.group + (!available ? " • não disponível neste perfil" : "") +
-        '</small></span>' +
-      '</label>'
-    );
-  }).join("");
+  const groups = [];
+  const groupMap = new Map();
+  PANEL_SCREEN_PERMISSIONS.forEach(screen => {
+    if (!groupMap.has(screen.group)) {
+      const group = { name: screen.group, items: [] };
+      groupMap.set(screen.group, group);
+      groups.push(group);
+    }
+    groupMap.get(screen.group).items.push(screen);
+  });
+
+  container.innerHTML = groups.map(group => (
+    '<section class="user-permission-group">' +
+      '<div class="user-permission-group-title">' +
+        '<span>' + group.name + '</span>' +
+        '<small>' + group.items.filter(screen => perfil === "admin" || DEFAULT_SCREEN_PERMISSIONS[perfil]?.[screen.id] === true).length + ' disponíveis</small>' +
+      '</div>' +
+      '<div class="user-permission-group-grid">' +
+        group.items.map(screen => {
+          const available = perfil === "admin" || allowedByProfile[screen.id] === true;
+          const checked = selected[screen.id] === true;
+          const disabled = disabledAll || !available;
+          return (
+            '<label class="user-permission-option' +
+              (checked ? " is-selected" : "") +
+              (!available ? " is-disabled" : "") +
+              '">' +
+              '<input type="checkbox" value="' + screen.id + '" ' +
+                (checked ? "checked" : "") +
+                (disabled ? " disabled" : "") + '>' +
+              '<span class="user-permission-check"><i class="fa-solid fa-check"></i></span>' +
+              '<span class="user-permission-icon"><i class="fa-solid ' + screen.icon + '"></i></span>' +
+              '<span class="user-permission-copy"><strong>' + screen.label + '</strong><small>' +
+                (!available ? "Não disponível neste perfil" : "Acesso permitido") +
+              '</small></span>' +
+            '</label>'
+          );
+        }).join("") +
+      '</div>' +
+    '</section>'
+  )).join("");
   container.querySelectorAll('input[type="checkbox"]').forEach(input => {
     input.addEventListener("change", () => input.closest(".user-permission-option")?.classList.toggle("is-selected", input.checked));
   });

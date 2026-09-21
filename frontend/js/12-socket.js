@@ -300,6 +300,15 @@ socket.on("nova_mensagem", (data) => {
   // Valida estrutura mínima
   if (!data?.userId || typeof data.userId !== "string") return;
 
+  // Pedido do usuário (2026-09-21): usuário sem a tela "Atendimentos"
+  // liberada (permissions.conversations, ver 09-users.js/11-profile.js —
+  // agora dá pra tirar essa tela de qualquer perfil, não só do atendente
+  // padrão) não deve receber NADA relacionado a conversa — nem badge, nem
+  // som, nem toast, nem notificação do SO. O evento chega pro socket de
+  // TODO mundo logado (não é filtrado no servidor por tela), então o corte
+  // tem que ser aqui, antes de qualquer efeito colateral.
+  if (typeof hasUserScreenPermission === "function" && !hasUserScreenPermission("conversations")) return;
+
   // O backend emite esse evento DUAS vezes para a mesma mensagem do cliente:
   // 1) ao chegar (response: null) e 2) depois do bot/IA processar (response
   // preenchido) — mesmo messageId nos dois. Antes, quando o messageId batia,

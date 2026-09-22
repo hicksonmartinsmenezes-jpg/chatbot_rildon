@@ -244,6 +244,28 @@
                 <button class="primary-blue full" data-action="estoque-baixar-agora">Baixar CSV agora</button>
               </div>
             </div>
+
+            <!-- PEDIDO DO USUÁRIO (2026-09-22): reenviar TODOS os catálogos
+                 "- Mecânica" ao Drive de uma vez (correção de estilo que
+                 antes saía errado pra qualquer fabricante que não fosse
+                 PERFECT). Ação rápida de 1 clique — não abre Chrome nem
+                 mexe no X2, só bot + Drive, por isso não usa a aba
+                 "Execução" (POST síncrono, ver server.js
+                 /api/drive/reenviar-mecanica). -->
+            <div class="acao-rapida" data-acao-rapida="drive-mecanica">
+              <div class="acao-rapida-linha" data-tab="drive-mecanica">
+                <div class="acao-rapida-icone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 17l4-4 4 4"/><path d="M12 21V13"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 4 16.29"/></svg></div>
+                <div class="acao-rapida-texto">
+                  <div class="acao-rapida-titulo">Reenviar Mecânica ao Drive</div>
+                  <div class="acao-rapida-sub">Gera de novo e sobe todos os catálogos "- Mecânica" (todos os fabricantes)</div>
+                </div>
+                <svg class="acao-rapida-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+              </div>
+              <div class="acao-rapida-painel">
+                <p class="descricao" style="margin:0 0 12px;">Sem opções — busca a lista de fabricantes com catálogo "- Mecânica" (mesma do seletor de Catálogo Completo no painel do bot), gera o PDF de cada um já no layout certo e substitui o arquivo na pasta do Drive. Pode levar um tempinho (1 PDF por fabricante, em sequência).</p>
+                <button class="primary-blue full" data-action="drive-reenviar-mecanica">Reenviar agora</button>
+              </div>
+            </div>
           </div>
         </div>
 

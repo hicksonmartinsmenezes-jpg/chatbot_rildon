@@ -786,7 +786,31 @@ app.get('/api/lancamentos-x2/xlsx/:nomeBase', async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="${nomeBase}.xlsx"`);
     res.send(Buffer.from(buffer));
   } catch (e) {
-    res.status(500).json({ error: `Erro ao gerar planilha: ${e.message}` });
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+// PEDIDO DO USUÁRIO (2026-09-22): reenviar manualmente TODOS os catálogos
+// "- Mecânica" ao Drive — depois de corrigir o bug que fazia esses PDFs
+// saírem no estilo elétrica (ver Issue/PR de hoje sobre
+// _estiloCatalogoCompleto), os arquivos já subidos antes do fix ficaram
+// com o layout errado na pasta do Drive; precisam ser gerados/enviados de
+// novo com o estilo certo. Ação rápida SEM passar por rodarAcao()/SSE — só
+// chama o bot e o Drive, não abre Chrome nem mexe no X2 (mesmo espírito de
+// "leve" do reenvio automático pós-Lançamentos), então um JSON síncrono já
+// basta, sem precisar da aba "Execução". Ver
+// x2-drive-lancamentos.js/rodarUploadTodosMecanica().
+app.post('/api/drive/reenviar-mecanica', async (req, res) => {
+  try {
+    const resultado = await driveLancamentos.rodarUploadTodosMecanica();
+    if (!resultado.enviados.length && !resultado.erros.length && !resultado.fabricantes.length) {
+      // config ausente (API_TOKEN/OAuth/pasta) — rodarUploadTodosMecanica já
+      // logou o motivo específico no console do servidor.
+      return res.status(400).json({ error: 'Upload pro Drive não está configurado — confira o .env (ver console do servidor pro motivo exato).' });
+    }
+    res.json(resultado);
+  } catch (e) {
+    res.status(500).json({ error: `Erro ao reenviar catálogos Mecânica ao Drive: ${e.message}` });
   }
 });
 

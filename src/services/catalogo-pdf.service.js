@@ -773,7 +773,25 @@ const MECANICA_TITULO_FONTE = "Montserrat-ExtraBold";
 // "mecanica" só por causa do .includes("PERFECT") acima — então
 // tipoCompleto === "eletrica" força o estilo "eletrica" incondicionalmente,
 // e tipoCompleto === "mecanica"/null preserva o comportamento de sempre.
+//
+// CORRIGIDO (2026-09-22, pedido do usuário: "itens que existem Mecânica no
+// cadastro preciso que virem catálogos específicos de Mecânica [...]
+// padronize mesmo template e layout de perfect"): o lado de DADOS já
+// oferecia "{fabricante} - Mecânica" como opção pra QUALQUER fabricante com
+// produto na seção MECÂNICA, não só PERFECT (ver
+// listarFabricantesCatalogoCompleto em catalogo-x2.service.js — tipoCompleto
+// chega aqui certinho pra qualquer um deles). Mas esta função só decidia o
+// ESTILO VISUAL "mecanica" checando o NOME "PERFECT" — pra todo fabricante
+// diferente de PERFECT, mesmo selecionando "{fabricante} - Mecânica" no
+// seletor, o PDF saía no estilo "eletrica" por engano (nunca padronizava
+// com o layout do PERFECT como o pedido original de 2026-09-03 pretendia).
+// Agora tipoCompleto === "mecanica" força o estilo "mecanica"
+// incondicionalmente (era só "eletrica" que tinha esse tratamento) — o
+// fallback por nome (.includes("PERFECT")) continua existindo só pra
+// chamadas antigas sem tipoCompleto (ex.: scripts/x2-drive-lancamentos.js,
+// que chama ?fabricante=PERFECT sem esse parâmetro).
 function _estiloCatalogoCompleto(fabricante, tipoCompleto = null) {
+  if (tipoCompleto === "mecanica") return "mecanica";
   if (tipoCompleto === "eletrica") return "eletrica";
   return String(fabricante || "").toUpperCase().includes("PERFECT") ? "mecanica" : "eletrica";
 }

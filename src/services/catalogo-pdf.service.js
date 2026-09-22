@@ -833,6 +833,24 @@ const MECANICA_RODAPE_LOGO_OMRE_RATIO = 447 / 129;
 // pixel na referência (~56pt do fim da página até a linha).
 const MECANICA_RODAPE_ALTURA = 58;
 
+// PEDIDO DO USUÁRIO (2026-09-22): "muito espaço do cabeçalho até a linha e
+// embaixo tem muito espaço também" — antes o cabeçalho Mecânica reusava
+// HEADER_HEIGHT (~123pt, calculado a partir da ARTE da elétrica, CABECALHO_
+// IMG_RATIO 719/146) mesmo só precisando centralizar um texto/logo de
+// ~22pt, sobrando quase 50pt de vão vazio em cima E embaixo do texto até a
+// linha fina navy. MECANICA_HEADER_HEIGHT é uma altura própria, medida pro
+// conteúdo real do cabeçalho Mecânica (texto 22pt + respiro), e passa a ser
+// usada em TODA a área do cabeçalho Mecânica — página de índice e páginas
+// de conteúdo (_desenharLogoCabecalhoMecanica/_desenharCabecalho/
+// _desenharCabecalhoIndice) — e também no cálculo de onde a grade de cards
+// começa (areaTopoY em gerarPdfCatalogoCompleto, via overrides de
+// _geometriaGrid), senão o cabeçalho encolhe mas os cards continuam
+// começando na mesma altura de antes, só aumentando o vão em outro lugar.
+// Ainda sobra espaço suficiente pra uma logo de fabricante de verdade
+// (alturaMax = MECANICA_HEADER_HEIGHT - 16 = 44pt) quando o usuário
+// registrar os arquivos em MECANICA_LOGOS_FABRICANTE.
+const MECANICA_HEADER_HEIGHT = 60;
+
 // Registry de logo por fabricante pro cabeçalho Mecânica (pedido do
 // usuário: "logo de cada fabricante", 2026-09-04). Vazio de propósito:
 // nenhum arquivo de logo LIMPO (sem a grade de medição/marca d'água que
@@ -873,7 +891,10 @@ function _desenharFundoGradienteMecanica(doc) {
 function _desenharLogoCabecalhoMecanica(doc, fabricante) {
   const w = doc.page.width;
   const logo = _logoFabricante(fabricante);
-  const alturaMax = HEADER_HEIGHT - 16;
+  // 2026-09-22: usa MECANICA_HEADER_HEIGHT (própria, mais enxuta) em vez de
+  // HEADER_HEIGHT (herdada da arte da elétrica) — ver comentário na
+  // constante acima.
+  const alturaMax = MECANICA_HEADER_HEIGHT - 16;
   const larguraMax = 260;
   if (logo) {
     let largura = larguraMax;
@@ -882,15 +903,15 @@ function _desenharLogoCabecalhoMecanica(doc, fabricante) {
       altura = alturaMax;
       largura = altura * logo.ratio;
     }
-    doc.image(logo.img, (w - largura) / 2, (HEADER_HEIGHT - altura) / 2, { width: largura, height: altura });
+    doc.image(logo.img, (w - largura) / 2, (MECANICA_HEADER_HEIGHT - altura) / 2, { width: largura, height: altura });
   } else {
     // Fallback: nome do fabricante em texto (sem logo cadastrada ainda —
     // ver MECANICA_LOGOS_FABRICANTE acima).
     doc.font(MECANICA_TITULO_FONTE).fontSize(22).fillColor(MECANICA_TITULO_FUNDO)
-      .text(String(fabricante || "").toUpperCase(), 0, (HEADER_HEIGHT - 22) / 2, { width: w, align: "center" });
+      .text(String(fabricante || "").toUpperCase(), 0, (MECANICA_HEADER_HEIGHT - 22) / 2, { width: w, align: "center" });
     doc.fillColor("#111827").font("Helvetica");
   }
-  doc.moveTo(PAGE_MARGIN, HEADER_HEIGHT).lineTo(w - PAGE_MARGIN, HEADER_HEIGHT)
+  doc.moveTo(PAGE_MARGIN, MECANICA_HEADER_HEIGHT).lineTo(w - PAGE_MARGIN, MECANICA_HEADER_HEIGHT)
     .lineWidth(MECANICA_LINHA_FINA_ESPESSURA).strokeColor(MECANICA_LINHA_FINA_COR).stroke();
 }
 
@@ -1085,7 +1106,10 @@ const INDICE_TITULO_GAP_LINHAS = 34;
 // Início da área de conteúdo da página de índice — mesma lógica de
 // AREA_TOPO_Y acima, só com as constantes maiores específicas do índice
 // (cabeçalho/respiros/título) em vez das compartilhadas.
-const AREA_TOPO_Y_INDICE = INDICE_HEADER_HEIGHT + INDICE_TITULO_GAP_TOPO + INDICE_TITULO_TAMANHO + INDICE_TITULO_GAP_LINHAS;
+// 2026-09-22: a fórmula em si passou a ser calculada localmente dentro de
+// gerarPdfCatalogoCompleto (`areaTopoYIndiceEfetivo`), porque o estilo
+// mecânica precisa trocar INDICE_HEADER_HEIGHT por MECANICA_HEADER_HEIGHT
+// (ver Issue #377) — não dá mais pra ser uma constante fixa de módulo.
 
 // Pedido do usuário (2026-07-30): remover o fundo cinza clarinho atrás da
 // foto (existia desde 2026-07-28 pra dar contraste com fotos de fundo
@@ -1986,7 +2010,9 @@ function _desenharCabecalho(doc, tituloBusca, estilo = "eletrica", fabricante = 
   // Pedido do usuário (2026-07-30, 2ª rodada): título começa SÓ DEPOIS que a
   // arte do cabeçalho termina (HEADER_HEIGHT + TITULO_GAP_TOPO) — nunca mais
   // sobreposto à imagem, então não tem como "encostar" no cinza da arte.
-  const tituloY = HEADER_HEIGHT + TITULO_GAP_TOPO;
+  // 2026-09-22: estilo mecânica usa MECANICA_HEADER_HEIGHT (mais enxuta,
+  // ver comentário na constante) em vez de HEADER_HEIGHT (arte da elétrica).
+  const tituloY = (estilo === "mecanica" ? MECANICA_HEADER_HEIGHT : HEADER_HEIGHT) + TITULO_GAP_TOPO;
   const tituloLargura = w - PAGE_MARGIN * 2;
 
   // Estilo "Mecânica" (pedido do usuário, 2026-09-03, fabricante PERFECT —
@@ -3073,9 +3099,18 @@ function _calcularLayoutConteudo(
     // menos que os 30,349pt padrão), reduzindo o espaço até o rodapé
     // nessas páginas específicas em vez de encolher qualquer card. Guarda
     // de segurança: só desenha se ainda sobrar pelo menos 2pt antes do
-    // rodapé de verdade (A4_ALTURA - FOOTER_HEIGHT) — nunca desenha por
+    // rodapé de verdade (A4_ALTURA - alturaRodapeReal) — nunca desenha por
     // cima do rodapé.
-    if (y + cardHeight <= A4_ALTURA - FOOTER_HEIGHT - 2) {
+    // 2026-09-22 BUG REAL achado ao ajustar o espaçamento do estilo
+    // mecânica (Issue #377): esta guarda usava FOOTER_HEIGHT (fixo, o
+    // rodapé bem mais alto da elétrica) direto, ignorando o parâmetro
+    // `alturaRodapeReal` que o resto da função já recebe — pro estilo
+    // mecânica (rodapé mais baixo, MECANICA_RODAPE_ALTURA) isso fazia a
+    // ÚLTIMA linha de cards vazios de preenchimento (a que fecha a página
+    // até areaFimY) ser descartada por engano, sumindo com a borda/moldura
+    // da última linha inteira (regressão visual introduzida pelo próprio
+    // ajuste de espaçamento — pego ao comparar a amostra antes/depois).
+    if (y + cardHeight <= A4_ALTURA - alturaRodapeReal - 2) {
       for (let col = 0; col < COLS_COMPLETO; col += 1) {
         preenchimentoFinal.push({ pagina: p, x: PAGE_MARGIN + col * (cardWidth + GAP), y, cardWidth, cardHeight });
       }
@@ -3215,7 +3250,10 @@ function _desenharCabecalhoIndice(doc, estilo = "eletrica", fabricante = "") {
   // Pedido do usuário (2026-08-26): respiro maior entre o cabeçalho e o
   // título "ÍNDICE" — INDICE_TITULO_GAP_TOPO em vez do TITULO_GAP_TOPO
   // compartilhado (8pt) usado no resto do PDF.
-  const tituloY = INDICE_HEADER_HEIGHT + INDICE_TITULO_GAP_TOPO;
+  // 2026-09-22: estilo mecânica usa MECANICA_HEADER_HEIGHT em vez de
+  // INDICE_HEADER_HEIGHT (= HEADER_HEIGHT, arte da elétrica) — mesmo motivo
+  // do tituloY em _desenharCabecalho.
+  const tituloY = (estilo === "mecanica" ? MECANICA_HEADER_HEIGHT : INDICE_HEADER_HEIGHT) + INDICE_TITULO_GAP_TOPO;
   const tituloLargura = w - PAGE_MARGIN * 2;
 
   // Pedido do usuário (2026-08-26): título "ÍNDICE" centralizado na página
@@ -3399,10 +3437,23 @@ async function gerarPdfCatalogoCompleto(produtos, fabricante, destino, tipoCompl
     ? _agruparPorMarca(produtos).map(({ marca, produtos: itens }) => ({ linha: marca, itens }))
     : _agruparPorLinha(produtos);
 
+  // 2026-09-22 (pedido do usuário: "muito espaço do cabeçalho até a linha e
+  // embaixo tem muito espaço também"): estilo mecânica usa cabeçalho
+  // (MECANICA_HEADER_HEIGHT) e rodapé (MECANICA_RODAPE_ALTURA) próprios, bem
+  // mais enxutos que a arte/imagem da elétrica (HEADER_HEIGHT/FOOTER_HEIGHT)
+  // — daqui pra baixo, toda conta de área disponível (índice E grade de
+  // cards) usa estas duas variáveis "efetivas" em vez das constantes fixas,
+  // senão o cabeçalho/rodapé encolhem mas a área de conteúdo continua
+  // reservando o vão antigo, maior, só empurrando o espaço sobrando pra
+  // outro lugar da página.
+  const headerHeightIndiceEfetivo = estilo === "mecanica" ? MECANICA_HEADER_HEIGHT : INDICE_HEADER_HEIGHT;
+  const areaTopoYIndiceEfetivo = headerHeightIndiceEfetivo + INDICE_TITULO_GAP_TOPO + INDICE_TITULO_TAMANHO + INDICE_TITULO_GAP_LINHAS;
+  const alturaRodapeReal = estilo === "mecanica" ? MECANICA_RODAPE_ALTURA : FOOTER_HEIGHT;
+
   // --- Pré-cálculo da paginação do índice (ver comentário acima) ---
   const larguraUtilIndice = A4_LARGURA - PAGE_MARGIN * 2;
-  const areaFimYIndice = A4_ALTURA - FOOTER_HEIGHT - 8;
-  const alturaDisponivelIndice = areaFimYIndice - AREA_TOPO_Y_INDICE;
+  const areaFimYIndice = A4_ALTURA - alturaRodapeReal - 8;
+  const alturaDisponivelIndice = areaFimYIndice - areaTopoYIndiceEfetivo;
   const linhasPorPaginaIndice = Math.max(1, Math.floor(alturaDisponivelIndice / INDICE_LINHA_ALTURA));
   const paginasIndice = Math.max(1, Math.ceil(grupos.length / linhasPorPaginaIndice));
 
@@ -3426,8 +3477,21 @@ async function gerarPdfCatalogoCompleto(produtos, fabricante, destino, tipoCompl
   // geométrica (ver comentário na função), então index/paginação real se
   // ajustam sozinhos a partir daqui.
   const rowsCompleto = estilo === "mecanica" ? ROWS_POR_PAGINA_COMPLETO_MECANICA : ROWS_POR_PAGINA_COMPLETO;
-  const geometriaCompleto = _geometriaGrid(doc, COLS_COMPLETO, rowsCompleto, true);
-  const { posicoes, preenchimentoFinal } = _calcularLayoutConteudo(sequencia, geometriaCompleto, alturaHeaderMarca);
+  // 2026-09-22: mesma lógica de overrides já usada pelo Catálogo Promocional
+  // (ver comentário em _geometriaGrid) — pro estilo mecânica, recalcula
+  // areaTopoY/areaFimY com MECANICA_HEADER_HEIGHT/MECANICA_RODAPE_ALTURA em
+  // vez das constantes AREA_TOPO_Y/FOOTER_HEIGHT (calibradas pro cabeçalho/
+  // rodapé bem mais altos da elétrica). Estilo elétrica passa a mesma conta
+  // que os defaults internos de _geometriaGrid já faziam — comportamento
+  // idêntico a antes, sem mudança.
+  const geometriaOverrides = estilo === "mecanica"
+    ? {
+        areaTopoY: MECANICA_HEADER_HEIGHT + TITULO_GAP_TOPO + TITULO_TAMANHO + TITULO_GAP_CARDS,
+        areaFimY: A4_ALTURA - alturaRodapeReal - 30.349,
+      }
+    : { areaTopoY: AREA_TOPO_Y, areaFimY: A4_ALTURA - alturaRodapeReal - 30.349 };
+  const geometriaCompleto = _geometriaGrid(doc, COLS_COMPLETO, rowsCompleto, true, geometriaOverrides);
+  const { posicoes, preenchimentoFinal } = _calcularLayoutConteudo(sequencia, geometriaCompleto, alturaHeaderMarca, false, alturaRodapeReal);
   const paginaInicialPorGrupo = primeiroIndicePorGrupo.map(
     (idx) => paginasIndice + 1 + posicoes[idx].pagina
   );
@@ -3444,7 +3508,7 @@ async function gerarPdfCatalogoCompleto(produtos, fabricante, destino, tipoCompl
 
     const offset = p * linhasPorPaginaIndice;
     const linhasDestaPagina = grupos.slice(offset, offset + linhasPorPaginaIndice);
-    let y = AREA_TOPO_Y_INDICE;
+    let y = areaTopoYIndiceEfetivo;
     linhasDestaPagina.forEach((grupo, i) => {
       _desenharLinhaIndice(doc, grupo.linha, paginaInicialPorGrupo[offset + i], y, larguraUtilIndice);
       y += INDICE_LINHA_ALTURA;

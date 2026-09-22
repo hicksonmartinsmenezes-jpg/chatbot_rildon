@@ -26,14 +26,28 @@
  * Authorization: Bearer API_TOKEN contra BASE_URL (ver x2-whatsapp-alerta.js).
  *
  * ─── Configuração (.env, ver .env.example) ─────────────────────────────
- *   GOOGLE_DRIVE_CREDENCIAIS_PATH  caminho pro JSON da conta de serviço
+ *   GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET  credenciais do
+ *     OAuth Client ID criado no Google Cloud Console
+ *   GOOGLE_DRIVE_OAUTH_TOKEN_PATH  caminho pro token gerado uma vez por
+ *     scripts/x2-drive-oauth-setup.js (autorização interativa, ver esse
+ *     arquivo)
  *   GOOGLE_DRIVE_PASTA_LANCAMENTOS_ID  ID da pasta única no Drive
- * Sem essas duas variáveis (ou sem o arquivo de credenciais existir de
- * verdade no caminho indicado), o módulo AVISA no log e sai sem erro —
- * mesmo espírito do guard de API_TOKEN em _forcarReloadCatalogo(): o
- * cadastro e as fotos já foram feitos e salvos corretamente, então isso
- * nunca pode derrubar a execução por causa de uma etapa opcional/posterior
- * ainda não configurada.
+ * Sem essas variáveis (ou sem o arquivo de token existir de verdade no
+ * caminho indicado), o módulo AVISA no log e sai sem erro — mesmo espírito
+ * do guard de API_TOKEN em _forcarReloadCatalogo(): o cadastro e as fotos
+ * já foram feitos e salvos corretamente, então isso nunca pode derrubar a
+ * execução por causa de uma etapa opcional/posterior ainda não configurada.
+ *
+ * TROCADO DE CONTA DE SERVIÇO PRA OAUTH (2026-09-16, migração concluída em
+ * 2026-09-22): conta de serviço falhava com "Service Accounts do not have
+ * storage quota" — não tem cota própria em pasta de Gmail pessoal, só
+ * funciona com Drive Compartilhado (exclusivo de Google Workspace). Até
+ * 2026-09-22 o .env já tinha sido trocado pras variáveis OAuth, mas
+ * scripts/x2-drive-oauth-setup.js (referenciado desde 2026-09-16) nunca
+ * tinha sido criado de fato e este arquivo ainda checava a variável antiga
+ * GOOGLE_DRIVE_CREDENCIAIS_PATH — então o upload ficava sempre pendente,
+ * silenciosamente (achado investigando por que um PDF não subiu ao Drive
+ * depois de uma atualização de fotos/produtos em 2026-09-21).
  */
 
 const fs = require('fs');
@@ -98,7 +112,14 @@ function _escaparNomeParaQuery(nome) {
 }
 
 let _driveClientCache = null;
-async function _clienteDrive(credenciaisPath) {
+// TROCADO DE CONTA DE SERVIÇO PRA OAUTH (2026-09-16, completo em 2026-09-22):
+// conta de serviço falha com "Service Accounts do not have storage quota" —
+// não tem cota própria em pasta de Gmail pessoal, só funciona com Drive
+// Compartilhado (exclusivo de Workspace). O token OAuth (com refresh_token)
+// é gerado uma vez por scripts/x2-drive-oauth-setup.js e salvo em
+// GOOGLE_DRIVE_OAUTH_TOKEN_PATH — este módulo só lê o arquivo e deixa a lib
+// googleapis renovar o access_token sozinha quando expira.
+async function _clienteDrive(clientId, clientSecret, tokenPath) {
   if (_driveClientCache) return _driveClientCache;
   // googleapis só é exigido aqui dentro (require tardio) — assim, se a
   // dependência ainda não foi instalada (`npm install` pendente) mas as
@@ -106,11 +127,10 @@ async function _clienteDrive(credenciaisPath) {
   // rodarUploadDrive() já saiu antes de chegar aqui, sem quebrar o resto do
   // encadeamento por causa de um `require` no topo do arquivo.
   const { google } = require('googleapis');
-  const auth = new google.auth.GoogleAuth({
-    keyFile: credenciaisPath,
-    scopes: ['https://www.googleapis.com/auth/drive'],
-  });
-  _driveClientCache = google.drive({ version: 'v3', auth });
+  const tokens = JSON.parse(fs.readFileSync(tokenPath, 'utf8'));
+  const oAuth2Client = new google.auth.OAuth2(clientId, clientSecret, 'urn:ietf:wg:oauth:2.0:oob');
+  oAuth2Client.setCredentials(tokens);
+  _driveClientCache = google.drive({ version: 'v3', auth: oAuth2Client });
   return _driveClientCache;
 }
 
@@ -149,14 +169,16 @@ async function rodarUploadDrive(codigos) {
     console.log('(API_TOKEN não configurado no .env — não deu pra consultar o catálogo do bot pra descobrir fabricante(s); PDF/Drive dessa rodada ficou pendente.)');
     return resultado;
   }
-  const credenciaisPath = process.env.GOOGLE_DRIVE_CREDENCIAIS_PATH;
+  const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+  const tokenPath = process.env.GOOGLE_DRIVE_OAUTH_TOKEN_PATH;
   const pastaId = process.env.GOOGLE_DRIVE_PASTA_LANCAMENTOS_ID;
-  if (!credenciaisPath || !pastaId) {
-    console.log('(GOOGLE_DRIVE_CREDENCIAIS_PATH / GOOGLE_DRIVE_PASTA_LANCAMENTOS_ID não configurados no .env — upload automático pro Drive ainda não foi ligado; ver .env.example.)');
+  if (!clientId || !clientSecret || !tokenPath || !pastaId) {
+    console.log('(GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET / GOOGLE_DRIVE_OAUTH_TOKEN_PATH / GOOGLE_DRIVE_PASTA_LANCAMENTOS_ID não configurados no .env — upload automático pro Drive ainda não foi ligado; ver .env.example.)');
     return resultado;
   }
-  if (!fs.existsSync(credenciaisPath)) {
-    console.log(`(Arquivo de credenciais do Google Drive não encontrado em "${credenciaisPath}" — confira GOOGLE_DRIVE_CREDENCIAIS_PATH no .env.)`);
+  if (!fs.existsSync(path.resolve(tokenPath))) {
+    console.log(`(Token OAuth do Google Drive não encontrado em "${tokenPath}" — rode "node scripts/x2-drive-oauth-setup.js" pra autorizar uma vez.)`);
     return resultado;
   }
 
@@ -171,7 +193,7 @@ async function rodarUploadDrive(codigos) {
   }
   console.log(`[x2-drive] gerando e subindo PDF de ${fabricantes.length} fabricante(s) ao Drive: ${fabricantes.join(', ')}`);
 
-  const drive = await _clienteDrive(path.resolve(credenciaisPath));
+  const drive = await _clienteDrive(clientId, clientSecret, path.resolve(tokenPath));
 
   for (const fabricante of fabricantes) {
     try {

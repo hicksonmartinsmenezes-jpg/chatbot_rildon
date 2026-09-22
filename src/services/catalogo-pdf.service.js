@@ -1523,13 +1523,31 @@ function _bboxConteudoFoto(buffer, mimetype, cacheKey = null) {
 // continua cuidando do fallback "sem foto" pra ESSE produto, mas o
 // vazamento de clip que quebrava TODOS os produtos seguintes na página
 // para de acontecer.
+//
+// PEDIDO DO USUÁRIO (2026-09-22, "preciso que ajuste imagens" ->
+// "tamanho/proporção da foto na caixa"): o "contain" puro (Math.min)
+// nunca corta nada, mas peças compridas e finas (amortecedor fotografado
+// na diagonal ou deitado, por exemplo) têm bbox muito mais larga que
+// alta (ou o contrário) — encaixar isso inteiro numa caixa quase
+// quadrada sobra MUITO espaço em branco no eixo curto. Usuário não teve
+// preferência entre "corta um pouco" vs. "aumenta só a caixa" — optei
+// por um meio-termo controlado: zoom até FOTO_LIMITE_ZOOM_CROP vezes
+// maior que o "contain" (nunca mais que o "cover" full, que preencheria
+// a caixa inteira mas podia cortar bem mais que isso pras peças mais
+// extremas), sempre centralizado — fotos quase quadradas (a maioria)
+// não mudam quase nada, só as bem alongadas ganham zoom real, com corte
+// pequeno e previsível nas pontas (nunca mais que o necessário pra caber
+// no fator de zoom escolhido).
+const FOTO_LIMITE_ZOOM_CROP = 1.3;
 function _desenharFotoAjustada(doc, buffer, mimetype, x, y, boxWidth, boxHeight, cacheKey = null) {
   const bbox = _bboxConteudoFoto(buffer, mimetype, cacheKey);
   if (!bbox) {
     doc.image(buffer, x, y, { fit: [boxWidth, boxHeight], align: "center", valign: "center" });
     return;
   }
-  const escala = Math.min(boxWidth / bbox.width, boxHeight / bbox.height);
+  const escalaContain = Math.min(boxWidth / bbox.width, boxHeight / bbox.height);
+  const escalaCover = Math.max(boxWidth / bbox.width, boxHeight / bbox.height);
+  const escala = Math.min(escalaCover, escalaContain * FOTO_LIMITE_ZOOM_CROP);
   const larguraDesenho = bbox.imgWidth * escala;
   const alturaDesenho = bbox.imgHeight * escala;
   const xDesenho = x + (boxWidth - bbox.width * escala) / 2 - bbox.x * escala;

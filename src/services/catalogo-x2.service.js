@@ -862,13 +862,35 @@ function listarFabricantes() {
 // (agrupa por marca de veículo em vez de por Linha, já que aqui todo
 // mundo compartilha a mesma Linha catch-all — agrupar por ela seria
 // inútil).
-const PSEUDO_FABRICANTE_DIVERSOS = "DIVERSOS";
+// BUG REAL achado em auditoria (2026-09-23): PSEUDO_FABRICANTE_DIVERSOS
+// usava o MESMO literal "DIVERSOS" tanto pra (a) identificar produtos cuja
+// Linha é "DIVERSOS" (catch-all de categoria, ver comentário acima) quanto
+// pra (b) ser o `value` do dropdown que o frontend manda de volta como
+// filtro de FABRICANTE. Só que existe um fabricante DE VERDADE cadastrado
+// no X2 chamado, coincidentemente, "DIVERSOS" — com produtos Mecânica E
+// Elétrica próprios (nada a ver com a Linha catch-all). Como
+// buscarProdutosPainel (abaixo) decide "é a pseudo-opção?" comparando
+// fabricanteNorm === PSEUDO_FABRICANTE_DIVERSOS, selecionar esse fabricante
+// real no dropdown ("DIVERSOS - Mecânica"/"DIVERSOS - Elétrica") caía
+// sempre no ramo da pseudo-opção — filtrando por p.linha="DIVERSOS" (nunca
+// visto nesses produtos) em vez de por p.fabricante="DIVERSOS" — resultado:
+// "DIVERSOS - Mecânica" sempre devolvia 0 produtos, e "DIVERSOS - Elétrica"
+// devolvia os produtos ERRADOS (os da pseudo-opção, não os do fabricante).
+// Fix: dois identificadores agora, cada um só usado pro seu próprio fim.
+// LINHA_DIVERSOS continua "DIVERSOS" (é o valor de verdade que existe em
+// p.linha, não pode mudar). PSEUDO_FABRICANTE_DIVERSOS vira um sentinel que
+// nenhum fabricante real jamais teria por acaso, eliminando a colisão —
+// muda só o `value` que o frontend recebe/devolve pra essa opção específica,
+// sem afetar em nada o fabricante real "DIVERSOS" nem o restante do fluxo
+// (rótulo exibido ao usuário continua "Diversos (todos os fabricantes)").
+const LINHA_DIVERSOS = "DIVERSOS";
+const PSEUDO_FABRICANTE_DIVERSOS = "__DIVERSOS_TODOS_FABRICANTES__";
 
 function listarFabricantesCatalogoCompleto() {
   const porFabricante = new Map(); // fabricante -> { temMecanica, temOutras }
   let temProdutoDiversos = false;
   todosProdutos.forEach((p) => {
-    if (_normalizar(p.linha) === _normalizar(PSEUDO_FABRICANTE_DIVERSOS)) temProdutoDiversos = true;
+    if (_normalizar(p.linha) === _normalizar(LINHA_DIVERSOS)) temProdutoDiversos = true;
     if (!p.fabricante) return;
     if (!porFabricante.has(p.fabricante)) porFabricante.set(p.fabricante, { temMecanica: false, temOutras: false });
     const info = porFabricante.get(p.fabricante);
@@ -1361,7 +1383,7 @@ function buscarProdutosPainel({ marca = "", modelo = "", ano = null, anoInicio =
         // Pseudo-fabricante "Diversos" (ver listarFabricantesCatalogoCompleto):
         // ignora p.fabricante de propósito — agrega por p.linha="DIVERSOS"
         // cruzando TODOS os fabricantes, não só um.
-        if (_normalizar(p.linha) !== _normalizar(PSEUDO_FABRICANTE_DIVERSOS)) return false;
+        if (_normalizar(p.linha) !== _normalizar(LINHA_DIVERSOS)) return false;
       } else if (fabricanteNorm) {
         if (!p.fabricante || p.fabricante.toUpperCase() !== fabricanteNorm) return false;
         // Pedido do usuário (2026-09-05, follow-up): produto linha="DIVERSOS"
@@ -1370,8 +1392,11 @@ function buscarProdutosPainel({ marca = "", modelo = "", ano = null, anoInicio =
         // acima). Sem isso, o mesmo produto aparecia nos dois lugares (bug
         // real reportado: card "126633 - PORCA CONEXAO... MBB" ainda surgia
         // dentro do catálogo comum de um fabricante, como transição de Linha
-        // "DIVERSOS — MBB" no meio da página).
-        if (_normalizar(p.linha) === _normalizar(PSEUDO_FABRICANTE_DIVERSOS)) return false;
+        // "DIVERSOS — MBB" no meio da página). Vale inclusive pro fabricante
+        // real "DIVERSOS" (ver comentário grande na constante acima) — seus
+        // próprios produtos linha="DIVERSOS", se algum dia existir algum,
+        // seguem a mesma regra de qualquer outro fabricante.
+        if (_normalizar(p.linha) === _normalizar(LINHA_DIVERSOS)) return false;
       }
       if (!filtroTipoCompleto(p)) return false;
       return true;

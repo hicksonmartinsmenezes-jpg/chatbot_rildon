@@ -3732,7 +3732,23 @@ async function gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino, m
   // reverte a decisão anterior ("Mantém cabeçalho de Linha" via índice, ver
   // comentário acima no JSDoc) só pra esta função; `gerarPdfCatalogoCompleto`
   // continua com índice normalmente, não é afetado.
-  const { sequencia } = _construirSequenciaConteudoPromocional(grupos, modo === "fabricante");
+  // BUG REAL achado em auditoria (2026-09-23): modo "linha" passava `false`
+  // aqui — grupos (Linhas) diferentes podiam compartilhar a MESMA linha da
+  // grade, coluna a coluna, sem quebra nenhuma entre eles. Como o cabeçalho
+  // grande da página (_desenharCabecalhoPromo, logo abaixo) só é redesenhado
+  // em troca de PÁGINA, nunca em troca de Linha no meio dela, uma seleção
+  // promocional misturando categorias (comum — é o uso normal do recurso)
+  // podia mostrar um título ("AMORTECEDOR DE CAPO", por exemplo) cobrindo
+  // produtos de Linhas completamente diferentes embaixo (chicote, estator,
+  // induzido — nenhuma relação com o título). Mesma classe de bug já
+  // corrigida no Catálogo Completo em 2026-09-05 (Linha nova no meio da
+  // página sem indicação nenhuma) — lá a correção foi repetir o nome da
+  // Linha; aqui, sem o mecanismo de cabeçalho de marca do Completo, a
+  // correção equivalente mais simples e já testada é sempre iniciar cada
+  // grupo numa linha de grade nova (`true`, como o modo "fabricante" já
+  // fazia) — ver forcarQuebraEntreGrupos logo abaixo, que passa a valer
+  // pros dois modos.
+  const { sequencia } = _construirSequenciaConteudoPromocional(grupos, true);
   // 2026-08-31 (pedido do usuário: "reduza mais esse espaço e suba mais um
   // pouco o rodapé"): a grade do Promocional reusava AREA_TOPO_Y/
   // FOOTER_HEIGHT do Catálogo padrão (cabeçalho/rodapé bem mais altos),
@@ -3751,9 +3767,12 @@ async function gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino, m
     areaTopoY: alturaCabecalhoPromo + GAP,
     areaFimY: A4_ALTURA - alturaRodapePromo - GAP,
   });
-  // forcarQuebraEntreGrupos só no modo "fabricante" (ver comentário em
-  // _construirSequenciaConteudoPromocional) — modo "linha" mantém a
-  // paginação contínua de sempre, sem quebra forçada entre Linhas.
+  // forcarQuebraEntreGrupos agora SEMPRE true, nos dois modos (antes só no
+  // "fabricante" — ver comentário no call site de
+  // _construirSequenciaConteudoPromocional acima sobre o bug de título
+  // divergente do conteúdo que isso corrige no modo "linha"). Mesmo
+  // princípio já documentado pro "fabricante": "o cabeçalho da página
+  // precisa sempre corresponder a TODOS os cards que aparecem nela".
   // BUG REAL 2026-09-14 (ver comentário completo em _calcularLayoutConteudo
   // sobre `alturaRodapeReal`): passa `alturaRodapePromo` (o rodapé de
   // verdade, mais baixo, deste catálogo) em vez de deixar a função usar o
@@ -3762,7 +3781,7 @@ async function gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino, m
   // que cabia de verdade, e a linha vazia de "preenchimento" tomava o lugar
   // dos produtos que deveriam estar ali.
   const { posicoes, preenchimentoFinal } = _calcularLayoutConteudo(
-    sequencia, geometriaCompleto, 0, modo === "fabricante", alturaRodapePromo
+    sequencia, geometriaCompleto, 0, true, alturaRodapePromo
   );
 
   let pagina = 0;

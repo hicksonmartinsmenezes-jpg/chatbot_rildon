@@ -318,6 +318,20 @@ async function _loadConversationsCore(silent = false) {
     // mudou de verdade e reordena via appendChild — visualmente só a
     // conversa que recebeu mensagem nova "sobe" pro topo, o resto não é
     // tocado.
+    // BUG CORRIGIDO (relatado pelo usuário: "minhas mensagens está
+    // carregando infinitamente mas não aparece nenhuma mensagem"): a
+    // reconciliação só reaproveita/adiciona nós `.chat-item` — mas não
+    // limpava o que sobrava de ANTES na lista (o skeleton de "Carregando..."
+    // do início da função, ou a mensagem de "Nenhuma conversa encontrada"/
+    // erro de uma chamada anterior). Sem isso, os itens reais eram
+    // adicionados DEPOIS do skeleton em vez de substituí-lo — a lista
+    // parecia travada "carregando" pra sempre porque o skeleton nunca saía
+    // da tela. Remove qualquer coisa que não seja um item de conversa antes
+    // de reconciliar.
+    Array.from(list.children).forEach(node => {
+      if (!node.classList.contains("chat-item")) node.remove();
+    });
+
     const existingChatNodes = new Map();
     list.querySelectorAll(":scope > .chat-item").forEach(node => {
       if (node.dataset.user) existingChatNodes.set(node.dataset.user, node);

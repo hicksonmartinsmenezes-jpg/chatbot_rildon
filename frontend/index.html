@@ -23,7 +23,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css">
   <!-- CSS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <link rel="stylesheet" href="dist/bundle.a980aa0628.css">
+  <link rel="stylesheet" href="dist/bundle.8ec6a5b173.css">
   <!-- CSS_BUNDLE_END -->
 <style>
     /* Centraliza colunas da tabela de histórico */
@@ -548,6 +548,23 @@
         </section>
 
         <div id="history-container" class="history-timeline"></div>
+
+        <!-- Paginação (pedido do usuário, 2026-09-23: "distribua 1-2-3 igual
+             contatos") — mesmas classes do rodapé de Contatos (.contacts-footer/
+             .contacts-pagination/.ct-page-btn/.ct-page-info), reaproveitadas
+             aqui sem duplicar CSS. -->
+        <div class="contacts-footer">
+          <span class="contacts-showing" id="history-showing">0 clientes</span>
+          <div class="contacts-pagination">
+            <button type="button" class="ct-page-btn" id="history-prev" data-action="historyPagePrev" disabled>
+              <i class="fa-solid fa-chevron-left"></i>
+            </button>
+            <span class="ct-page-info" id="history-page-info">1 / 1</span>
+            <button type="button" class="ct-page-btn" id="history-next" data-action="historyPageNext" disabled>
+              <i class="fa-solid fa-chevron-right"></i>
+            </button>
+          </div>
+        </div>
       </section>
 
       <!-- Páginas futuras -->

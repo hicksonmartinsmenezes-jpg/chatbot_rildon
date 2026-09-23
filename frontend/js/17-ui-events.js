@@ -125,7 +125,9 @@
     "metricsEvolucaoPagePrev",
     "metricsEvolucaoPageNext",
     "metricsPicoPagePrev",
-    "metricsPicoPageNext"
+    "metricsPicoPageNext",
+    "historyPagePrev",
+    "historyPageNext"
   ]);
 
   document.addEventListener("submit", (event) => {
@@ -156,7 +158,7 @@
 
     if (action === "loadHistoryTrue") {
       event.preventDefault();
-      call("loadHistory", true);
+      call("loadHistoryFiltered");
       return;
     }
 
@@ -232,7 +234,7 @@
         call("loadTickets");
         break;
       case "loadHistoryTrue":
-        call("loadHistory", true);
+        call("loadHistoryFiltered");
         break;
       case "contactsFilterTag":
         call("contactsFilterTag", el.value);
@@ -286,7 +288,7 @@
         call("autoResizeTextarea", el);
         break;
       case "loadHistoryTrue":
-        call("loadHistory", true);
+        call("loadHistoryFiltered");
         break;
       case "contactsSearch":
         call("contactsSearch", el.value);

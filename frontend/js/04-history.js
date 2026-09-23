@@ -10,7 +10,7 @@ function renderHistoryRow({ latest, count }) {
   const ident       = isPhone ? phoneRaw : "ID WhatsApp";
 
   return `
-    <div class="hrow">
+    <div class="hrow" data-user-id="${escapeAttr(userId)}">
       <span class="hrow-client">
         ${avatarHtml(userId, nameDisplay)}
         <span class="hrow-info">
@@ -39,6 +39,53 @@ function renderHistoryRow({ latest, count }) {
 
 // Mantém nome antigo como alias para não quebrar chamadas externas
 const renderHistoryCard = renderHistoryRow;
+
+// Reconciliação incremental da tabela (em vez de reconstruir tudo do zero a
+// cada loadHistory) — mesmo padrão/motivo de _loadConversationsCore em
+// 07-conversations.js: reaproveita as linhas (.hrow) já no DOM pela chave
+// data-user-id, só troca o conteúdo de quem mudou de verdade e reordena via
+// appendChild. Evita "piscar" a tabela inteira a cada mensagem nova que o
+// socket usa pra recarregar a aba Histórico aberta (12-socket.js).
+function renderHistoryTable(container, groups) {
+  let table = container.querySelector(".history-table");
+  if (!table) {
+    container.innerHTML = `
+      <div class="history-table">
+        <div class="hrow hrow-head">
+          <span class="hrow-client">Cliente</span>
+          <span class="hrow-count" style="display:flex;align-items:center;justify-content:center;">Atend.</span>
+          <span class="hrow-date" style="display:flex;align-items:center;justify-content:center;">Última interação</span>
+          <span class="hrow-actions">Ações</span>
+        </div>
+      </div>
+    `;
+    table = container.querySelector(".history-table");
+  }
+
+  const existingRows = new Map();
+  table.querySelectorAll(":scope > .hrow:not(.hrow-head)").forEach(node => {
+    if (node.dataset.userId) existingRows.set(node.dataset.userId, node);
+  });
+
+  const tmp = document.createElement("template");
+  for (const group of groups) {
+    const userId = group.latest.userId || group.latest.user_id || "";
+    tmp.innerHTML = renderHistoryRow(group).trim();
+    const fresh = tmp.content.firstElementChild;
+
+    let node = existingRows.get(userId);
+    if (node) {
+      existingRows.delete(userId);
+      if (node.innerHTML !== fresh.innerHTML) node.innerHTML = fresh.innerHTML;
+    } else {
+      node = fresh;
+    }
+    table.appendChild(node);
+  }
+
+  // Remove quem saiu da página atual (mudou de página/filtro)
+  for (const node of existingRows.values()) node.remove();
+}
 
 function initHistoryDelegation() {
   const container = document.getElementById("history-container");
@@ -149,7 +196,16 @@ async function loadHistory(render = true) {
   const endTime   = document.getElementById("history-time-end")?.value   || "";
   const container = document.getElementById("history-container");
 
-  if (render && container) {
+  // Só mostra o spinner de "Carregando..." quando ainda não existe uma
+  // tabela na tela (1º carregamento real, ou depois de um estado vazio/erro).
+  // ANTES, todo reload — inclusive os disparados em segundo plano pelo socket
+  // a cada mensagem nova (ver 12-socket.js, _histReloadTimer) — sobrescrevia
+  // a tabela inteira com o spinner e depois reconstruía tudo de novo, mesmo
+  // com o usuário só olhando parado pra lista. Pedido do usuário (2026-09-23:
+  // "a página atualiza sozinha, queria só que subisse a mensagem") — mesma
+  // correção aplicada à lista de Conversas em 07-conversations.js.
+  const jaTemTabela = !!container?.querySelector(".history-table");
+  if (render && container && !jaTemTabela) {
     container.innerHTML = `
       <div class="history-loading">
         <i class="fa-solid fa-circle-notch fa-spin"></i>
@@ -185,17 +241,7 @@ async function loadHistory(render = true) {
         renderHistoryEmpty(container);
       } else {
         const groups = history.map(item => ({ latest: item, count: item.count || 1 }));
-        container.innerHTML = `
-          <div class="history-table">
-            <div class="hrow hrow-head">
-              <span class="hrow-client">Cliente</span>
-              <span class="hrow-count" style="display:flex;align-items:center;justify-content:center;">Atend.</span>
-              <span class="hrow-date" style="display:flex;align-items:center;justify-content:center;">Última interação</span>
-              <span class="hrow-actions">Ações</span>
-            </div>
-            ${groups.map(renderHistoryRow).join("")}
-          </div>
-        `;
+        renderHistoryTable(container, groups);
       }
     }
 

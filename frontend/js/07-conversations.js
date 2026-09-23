@@ -306,7 +306,24 @@ async function _loadConversationsCore(silent = false) {
       return;
     }
 
-    list.innerHTML = users.map(userId => {
+    // Reconciliação incremental do DOM (pedido do usuário, 2026-09-23:
+    // "sempre que chega mensagem... a página atualiza sozinha, queria só
+    // que subisse a mensagem"). Antes, mesmo com `silent=true` (o próprio
+    // comentário da função já dizia que o objetivo era "evitar piscar em
+    // polls automáticos"), esta etapa final fazia `list.innerHTML =` com
+    // TODOS os itens de novo a cada nova mensagem — inclusive conversas que
+    // não mudaram nada. Isso recriava a lista inteira (perde scroll/hover,
+    // "pisca" tudo) só pra fazer 1 item mudar de posição. Agora reaproveita
+    // os nós já no DOM (chave = data-user), só troca o conteúdo de quem
+    // mudou de verdade e reordena via appendChild — visualmente só a
+    // conversa que recebeu mensagem nova "sobe" pro topo, o resto não é
+    // tocado.
+    const existingChatNodes = new Map();
+    list.querySelectorAll(":scope > .chat-item").forEach(node => {
+      if (node.dataset.user) existingChatNodes.set(node.dataset.user, node);
+    });
+
+    for (const userId of users) {
       const last    = getLastHistoryItem(userId);
       const name    = getContactName(userId) || formatPhone(userId);
       const preview = lastMessage(userId);
@@ -323,8 +340,7 @@ async function _loadConversationsCore(silent = false) {
       // laranja/azul/vermelho ilegível antes.
       const unreadLabel = unread > 99 ? "99+" : unread; // igual ao badge da sidebar (updateSidebarUnreadBadge)
 
-      return `
-        <button type="button" class="chat-item ${statusClass}" data-user="${escapeAttr(userId)}" data-conv-list-action="open">
+      const innerHtml = `
           ${avatarHtml(userId, name)}
           <span class="chat-item-body">
             <span class="chat-item-top">
@@ -337,9 +353,31 @@ async function _loadConversationsCore(silent = false) {
             </span>
             ${statusPill ? `<span class="chat-item-row3">${statusPill}</span>` : ""}
           </span>
-        </button>
       `;
-    }).join("");
+      const className = `chat-item ${statusClass}`.trim();
+
+      let node = existingChatNodes.get(userId);
+      if (node) {
+        existingChatNodes.delete(userId);
+        if (node.className !== className) node.className = className;
+        if (node.innerHTML !== innerHtml) node.innerHTML = innerHtml;
+      } else {
+        node = document.createElement("button");
+        node.type = "button";
+        node.dataset.user = userId;
+        node.dataset.convListAction = "open";
+        node.className = className;
+        node.innerHTML = innerHtml;
+      }
+      // appendChild move o nó se já existir no DOM, ou insere no fim se for
+      // novo — como o loop segue a ordem final (`users`, já ordenado por
+      // última atividade), o resultado é a ordem correta sem recriar nada.
+      list.appendChild(node);
+    }
+
+    // Remove quem saiu da lista (mudou de aba/filtro, ticket sumiu, etc.)
+    for (const node of existingChatNodes.values()) node.remove();
+
     bindConversationListDelegation();
     if (!silent) applyStaggerIn(list);
 

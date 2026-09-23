@@ -157,19 +157,41 @@ async function _loadConversationsCore(silent = false) {
     // pesquisa de satisfação como efeito colateral. Ticket genuinamente
     // "aberto" continua pendente independente do dia (esse não foi o caso
     // relatado, e um ticket aberto de verdade sempre precisa de ação).
-    const hoje = new Date().toDateString();
+    //
+    // BUG CORRIGIDO (pedido do usuário, 2026-09-23: "analise se as condições
+    // de reabrir esta batendo"): o corte acima usava "mesmo dia do
+    // calendário" (toDateString()), recalculado a cada render — diferente da
+    // janela em HORAS (configurável, padrão 240min/4h) que o BACKEND usa pra
+    // tudo relacionado a reabertura (reopenTicketIfClosed, preservar nota de
+    // satisfação, pular saudação/pesquisa — ver ticket.service.js,
+    // _getReopenWindowMs). Resultado: um cliente que reengajava uma conversa
+    // fechada há muito tempo (fora da janela do backend, sem gerar ticket
+    // novo) perto da meia-noite aparecia em Pendentes, e SUMIA sozinho da
+    // lista assim que o dia virava — mesmo sem nenhum atendente ter visto ou
+    // respondido. Agora usa a MESMA janela rolante (em minutos, cacheada em
+    // window.reopenWindowMinutosAtual por loadBotToggleStatus, 08-settings.js
+    // — /api/settings é admin-only, por isso vem de /api/bot-status) contada
+    // a partir da mensagem em si, não da data do calendário.
     function estaPendente(uid) {
       const t = ticketsByUser[uid];
       const lastMsg = lastMsgAtByUser[uid];
-      const ehDeHoje = !!(lastMsg && new Date(lastMsg).toDateString() === hoje);
-      if (!t) return ehDeHoje;
+      const janelaMs = (Number(window.reopenWindowMinutosAtual) || 240) * 60 * 1000;
+      const dentroDaJanela = !!(lastMsg && (Date.now() - lastMsg) <= janelaMs);
+      if (!t) return dentroDaJanela;
       if (t.status === "aberto") return true;
       if (t.status === "resolvido" || t.status === "cancelado") {
-        return !!(lastMsg && t.updatedAt && lastMsg > new Date(t.updatedAt).getTime() && ehDeHoje);
+        return !!(lastMsg && t.updatedAt && lastMsg > new Date(t.updatedAt).getTime() && dentroDaJanela);
       }
       return false;
     }
     window.estaPendente = estaPendente; // usado por _scheduleConvReload em 12-socket.js
+
+    // Ainda usado abaixo por dois cálculos que são GENUINAMENTE "mesmo dia do
+    // calendário" por definição (não janela de reabertura): reconciliação do
+    // contador de não-lidas (universoNaoLidaValido) e a aba "Fechados" (só
+    // mostra quem fechou HOJE) — diferente de estaPendente() acima, que agora
+    // usa a janela rolante de reabertura em vez disso.
+    const hoje = new Date().toDateString();
 
     // BUG CORRIGIDO DE VEZ (relatado pelo usuário 2026-08-17: "painel mostra
     // 44 notificações porém existe apenas uma única mensagem nova"):
@@ -231,8 +253,19 @@ async function _loadConversationsCore(silent = false) {
     // não é visível PRA MIM). A lista realmente exibida já excluía esses
     // usuários via hiddenActiveUserIds (linha abaixo, "usersSeen") — o badge
     // não aplicava esse mesmo filtro. Agora aplica.
-    const pendentes   = Object.keys(ticketsByUser).filter(uid => estaPendente(uid)).length
-      + Object.keys(lastMsgAtByUser).filter(uid => !ticketsByUser[uid] && !hiddenActiveUserIds.has(uid) && new Date(lastMsgAtByUser[uid]).toDateString() === hoje).length;
+    //
+    // BUG CORRIGIDO (2026-09-23, mesma análise de "condições de reabrir"):
+    // o 2º termo (uid "sem ticket") tinha sua PRÓPRIA cópia da regra de
+    // "pendente" (toDateString() === hoje), em vez de chamar estaPendente()
+    // como o 1º termo já fazia — quando estaPendente() passou a usar a
+    // janela rolante de reabertura em vez do corte por dia do calendário
+    // (ver comentário acima da função), esse 2º termo ficou desalinhado: o
+    // NÚMERO do badge podia dizer uma coisa e a LISTA (que usa estaPendente
+    // pra TODOS os uids, com ou sem ticket) mostrar outra. Unificado num só
+    // conjunto de uids passando pela mesma função, pra nunca mais divergir.
+    const todosOsUidsComAtividade = new Set([...Object.keys(ticketsByUser), ...Object.keys(lastMsgAtByUser)]);
+    const pendentes = [...todosOsUidsComAtividade]
+      .filter(uid => !hiddenActiveUserIds.has(uid) && estaPendente(uid)).length;
     const emAndamento = Object.values(ticketsByUser).filter(t => t.status === "em_andamento").length;
     const badgeP = document.getElementById("badge-pendentes");
     const badgeA = document.getElementById("badge-em_andamento");

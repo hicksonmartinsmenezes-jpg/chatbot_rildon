@@ -54,10 +54,20 @@ const conn = {
   cachedConfig:        null,
   lastConfigCheck:     0,
   messageHandler:      null, // processMessage — guardado para reconexões forçadas
-  lastQr:              null  // último QR pendente (até conectar) — permite buscar via API
+  lastQr:              null, // último QR pendente (até conectar) — permite buscar via API
+  ownNumber:           null, // dígitos do próprio número (sem @s.whatsapp.net) — usado pelo watchdog
+  watchdogFails:       0     // falhas consecutivas da checagem ativa do watchdog (ver watchdogTick)
 };
 
 const MAX_RECONNECT_DELAY_MS = 30_000;
+// PEDIDO DO USUÁRIO (2026-09-23): "as vezes meu whatsapp cai e fica uma queda
+// fantasma onde eu so consigo saber porque mais nenhuma notificação chega" —
+// ver watchdogTick() mais abaixo para o diagnóstico completo (o painel só
+// detectava desconexão via evento passivo do Baileys, que pode nunca disparar
+// numa queda de rede "silenciosa").
+const WATCHDOG_INTERVAL_MS = 90_000; // intervalo entre checagens ativas
+const WATCHDOG_TIMEOUT_MS  = 15_000; // timeout de cada checagem individual
+const WATCHDOG_MAX_FAILS   = 2;      // falhas seguidas exigidas antes de forçar reconexão (~3min no total)
 const MESSAGE_PROCESSING_TIMEOUT_MS = Number(process.env.BOT_MESSAGE_TIMEOUT_MS || 45_000);
 const BOT_PROCESSING_FALLBACK =
   process.env.BOT_PROCESSING_FALLBACK ||
@@ -197,21 +207,7 @@ async function onConnectionUpdate({ connection, lastDisconnect, qr }) {
         return;
       }
 
-      conn.reconnecting = true;
-      const delay   = getReconnectDelay();
-      const oldSock = conn.sock;
-
-      logger.info(`Reconectando em ${delay / 1000}s... (tentativa ${conn.reconnectAttempts})`);
-
-      setTimeout(async () => {
-        try {
-          await limparSocketAntigo(oldSock);
-          await connectWhatsApp(conn.messageHandler);
-        } finally {
-          conn.reconnecting = false;
-        }
-      }, delay);
-
+      iniciarReconexaoComBackoff();
       return;
     }
 
@@ -224,8 +220,73 @@ async function onConnectionUpdate({ connection, lastDisconnect, qr }) {
     conn.reconnecting        = false;
     conn.isWhatsAppConnected = true;
     conn.lastQr              = null; // conectou: não há mais QR pendente
+    conn.watchdogFails       = 0;    // conexão nova/saudável — zera contador do watchdog
     logger.info("[WhatsApp] ✓ Conectado com sucesso!");
     emitEvent("whatsapp_status", { status: "connected" });
+  }
+}
+
+// Dispara a MESMA sequência de reconexão-com-backoff usada pelo handler de
+// connection.update "close" (getReconnectDelay + limparSocketAntigo +
+// connectWhatsApp) — reaproveitada aqui pelo watchdog para não duplicar essa
+// lógica. `conn.reconnecting` já protege contra as duas fontes (evento real
+// do Baileys e watchdog) dispararem reconexão ao mesmo tempo.
+function iniciarReconexaoComBackoff() {
+  if (conn.reconnecting) return;
+
+  conn.reconnecting = true;
+  const delay   = getReconnectDelay();
+  const oldSock = conn.sock;
+
+  logger.info(`Reconectando em ${delay / 1000}s... (tentativa ${conn.reconnectAttempts})`);
+
+  setTimeout(async () => {
+    try {
+      await limparSocketAntigo(oldSock);
+      await connectWhatsApp(conn.messageHandler);
+    } finally {
+      conn.reconnecting = false;
+    }
+  }, delay);
+}
+
+// PEDIDO DO USUÁRIO (2026-09-23): "as vezes meu whatsapp cai e fica uma queda
+// fantasma onde eu so consigo saber porque mais nenhuma notificação chega" —
+// até este fix, conn.isWhatsAppConnected só virava false quando o Baileys
+// disparava connection.update com connection==="close". Em certas quedas de
+// rede (wifi instável, NAT que derruba a sessão sem mandar RST/FIN de
+// verdade — bem comum em rede residencial/celular) o WebSocket fica preso
+// "aberto": nada mais chega nem sai, mas esse evento nunca dispara, então o
+// painel continuava mostrando "Conectado" indefinidamente — o usuário só
+// percebia a queda na prática (WhatsApp parava de notificar).
+//
+// Watchdog ATIVO: a cada WATCHDOG_INTERVAL_MS, se o estado interno diz
+// "conectado", faz uma checagem real de ida-e-volta contra o WhatsApp
+// (onWhatsApp() do próprio número — mesma chamada já usada em sendMessage/
+// sendMedia para validar destinatário, aqui reaproveitada só para confirmar
+// que o socket ainda troca dados de verdade com o servidor) com timeout
+// curto. WATCHDOG_MAX_FAILS falhas SEGUIDAS (~3min no total, não uma única
+// falha isolada — evita reconectar por causa de um soluço passageiro) faz o
+// watchdog tratar como desconexão de verdade: emite o mesmo evento que uma
+// queda real dispararia e entra no mesmo fluxo de reconexão com backoff.
+async function watchdogTick() {
+  if (!conn.isWhatsAppConnected || !conn.sock || conn.reconnecting) return;
+  if (!conn.ownNumber) return; // ainda não temos o próprio número salvo — pula esta rodada
+
+  try {
+    await withTimeout(conn.sock.onWhatsApp(conn.ownNumber), WATCHDOG_TIMEOUT_MS, "watchdog de conexão");
+    conn.watchdogFails = 0;
+  } catch (err) {
+    conn.watchdogFails += 1;
+    logger.warn(`[Watchdog] Checagem de conexão falhou (${conn.watchdogFails}/${WATCHDOG_MAX_FAILS}): ${err.message}`);
+
+    if (conn.watchdogFails >= WATCHDOG_MAX_FAILS) {
+      logger.error("[Watchdog] Conexão parece morta (sem resposta do WhatsApp) — forçando reconexão.");
+      conn.watchdogFails = 0;
+      conn.isWhatsAppConnected = false;
+      emitEvent("whatsapp_status", { status: "disconnected", code: "watchdog_timeout" });
+      iniciarReconexaoComBackoff();
+    }
   }
 }
 
@@ -947,6 +1008,13 @@ async function connectWhatsApp(onMessage) {
       path.join(__dirname, "../../auth_info")
     ));
     ({ version } = await fetchLatestBaileysVersion());
+
+    // Salva o próprio número (só dígitos) pra o watchdog usar em onWhatsApp()
+    // — só existe depois do primeiro pareamento (state.creds.me), então fica
+    // null até lá (watchdogTick já trata esse caso pulando a checagem).
+    if (state.creds?.me?.id) {
+      conn.ownNumber = state.creds.me.id.split(":")[0].split("@")[0];
+    }
   } catch (err) {
     logger.error(`[WhatsApp] Falha ao inicializar: ${err.message}`);
     emitEvent("whatsapp_status", { status: "error", message: err.message });
@@ -1181,6 +1249,13 @@ function isConnected() {
 }
 
 startDedupCleanup();
+
+// Intervalo único do watchdog, iniciado uma vez no carregamento do módulo
+// (não a cada connectWhatsApp/reconexão — watchdogTick já lê conn.sock/
+// conn.isWhatsAppConnected por closure, então não precisa ser recriado).
+setInterval(() => {
+  watchdogTick().catch(err => logger.error(`[Watchdog] Erro inesperado: ${err.message}`));
+}, WATCHDOG_INTERVAL_MS);
 
 
 async function getBotConfigCached() {

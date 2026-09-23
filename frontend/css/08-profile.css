@@ -8,7 +8,6 @@
   border: 1px solid var(--border);
   border-radius: 28px;
   padding: 28px;
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
   animation: profileShow 0.22s ease;
 }
 
@@ -39,7 +38,6 @@
   object-fit: cover;
   border: 4px solid var(--border);
   background: var(--panel-2);
-  box-shadow: 0 10px 35px rgba(0, 0, 0, 0.35);
 }
 
 #profile-photo {
@@ -92,7 +90,6 @@
 .profile-box input[type="text"]:focus,
 .profile-box input[type="tel"]:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 4px rgba(29, 108, 245, 0.14);
 }
 
 /* ─── Botão salvar ─────────────────────── */
@@ -103,7 +100,6 @@
   font-size: 15px;
   font-weight: 900;
   background: linear-gradient(135deg, var(--primary), #1554c7);
-  box-shadow: 0 12px 30px rgba(29, 108, 245, 0.28);
 }
 
 .profile-box .send-btn:hover {
@@ -263,7 +259,6 @@
   background: var(--panel-2) !important;
   color: var(--text) !important;
   border: 1px solid var(--border);
-  box-shadow: none !important;
 }
 
 .twofa-secondary-btn:hover {
@@ -351,7 +346,6 @@
 .twofa-box input[type="text"]:focus,
 .twofa-box input[type="password"]:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 4px rgba(29, 108, 245, 0.14);
 }
 
 .twofa-error {
@@ -365,7 +359,6 @@
 
 .twofa-danger-btn {
   background: linear-gradient(135deg, #ef4444, #b91c1c) !important;
-  box-shadow: 0 12px 30px rgba(239, 68, 68, 0.28) !important;
 }
 
 .twofa-backup-list {
@@ -704,7 +697,6 @@
   border: 1px solid var(--border);
   border-radius: 16px;
   background: var(--panel);
-  box-shadow: 0 24px 70px rgba(0,0,0,.32);
 }
 
 .user-permissions-dialog-header {

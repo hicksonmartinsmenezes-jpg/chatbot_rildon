@@ -15,8 +15,6 @@
   --surface-soft: rgba(255, 255, 255, 0.035);
   --surface-hover: rgba(255, 255, 255, 0.07);
   --ring: rgba(37, 99, 235, 0.22);
-  --shadow-soft: 0 4px 24px rgba(0, 0, 0, 0.4);
-  --shadow-strong: 0 12px 48px rgba(0, 0, 0, 0.55);
 }
 
 html {
@@ -79,7 +77,6 @@ body::selection {
     linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.018)),
     var(--panel);
   border: 1px solid var(--border);
-  box-shadow: var(--shadow-soft);
   backdrop-filter: blur(10px);
 }
 
@@ -92,7 +89,6 @@ body::selection {
 .sidebar {
   background: rgba(14, 14, 14, 0.97);
   border-right: 1px solid var(--border);
-  box-shadow: 12px 0 35px rgba(0, 0, 0, 0.28);
   z-index: 50;
 }
 
@@ -128,7 +124,6 @@ body::selection {
 .sidebar a.highlight {
   background: rgba(255, 255, 255, 0.09);
   border-color: rgba(255, 255, 255, 0.14);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 }
 
 .sidebar.open a.active::before,
@@ -157,7 +152,6 @@ body::selection {
 .avatar-wrap {
   background: rgba(255,255,255,.045);
   border-color: var(--border);
-  box-shadow: 0 10px 24px rgba(0,0,0,.14);
 }
 
 .icon-btn:hover,
@@ -166,11 +160,6 @@ body::selection {
   background: rgba(255,255,255,.085);
   border-color: rgba(255,255,255,.14);
 }
-
-.avatar {
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
-}
-
 .green-bar {
   background: linear-gradient(180deg, #22c55e, #2563eb);
   opacity: .9;
@@ -232,21 +221,18 @@ button,
 .btn-refresh:hover {
   background: rgba(37, 99, 235, 0.14);
   border-color: rgba(37, 99, 235, 0.32);
-  box-shadow: 0 12px 30px rgba(37, 99, 235, .15);
 }
 
 .send-btn,
 .btn-save-settings,
 .campaign-item button {
   background: linear-gradient(135deg, var(--primary), var(--primary-2));
-  box-shadow: 0 14px 35px rgba(37, 99, 235, 0.24);
 }
 
 .send-btn:hover,
 .btn-save-settings:hover,
 .campaign-item button:hover {
   filter: brightness(1.08);
-  box-shadow: 0 18px 42px rgba(37, 99, 235, 0.32);
 }
 
 /* Abas superiores */
@@ -276,7 +262,6 @@ body.hide-top-tabs #top-tabs-panel {
 
 .tab.active {
   background: linear-gradient(135deg, var(--primary), #1e40af);
-  box-shadow: 0 12px 30px rgba(37, 99, 235, .22);
 }
 
 /* Campos e formulários */
@@ -325,7 +310,6 @@ textarea:focus,
 .campaign-form-card textarea:focus,
 .chat-box textarea:focus {
   border-color: rgba(255, 255, 255, 0.20);
-  box-shadow: 0 0 0 3px rgba(255,255,255,0.05);
 }
 
 label,
@@ -385,7 +369,6 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   background:
     radial-gradient(circle at 80% 0%, rgba(96, 165, 250, 0.16), transparent 55%),
     linear-gradient(135deg, #1a1a1a 0%, #111111 50%, #0d0d0d 100%);
-  box-shadow: var(--shadow-strong);
 }
 
 .dashboard-executive-hero h1 {
@@ -441,7 +424,6 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .whatsapp-panel {
   border-radius: 24px;
   border-color: rgba(148, 163, 184, 0.16);
-  box-shadow: var(--shadow-strong);
 }
 
 .chat-sidebar-header,
@@ -470,11 +452,6 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     radial-gradient(circle at top right, rgba(37, 99, 235, 0.06), transparent 34%),
     #0b141a;
 }
-
-.chat-bubble {
-  box-shadow: 0 12px 24px rgba(0,0,0,.12);
-}
-
 .chat-input-area textarea {
   min-height: 48px;
 }
@@ -545,7 +522,6 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .campaign-tab.active {
   background: linear-gradient(135deg, var(--primary), #1e40af);
   color: #fff;
-  box-shadow: 0 10px 24px rgba(37, 99, 235, .20);
 }
 
 #campaign-panel-create {
@@ -586,7 +562,6 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .campaign-stat-card {
   background: linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.018));
   border: 1px solid var(--border);
-  box-shadow: var(--shadow-soft);
 }
 
 .campaign-item {
@@ -606,7 +581,6 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   width: 76px;
   height: 76px;
   border-radius: 16px;
-  box-shadow: 0 12px 24px rgba(0,0,0,.22);
 }
 
 .campaign-progress {
@@ -631,7 +605,6 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.018)),
     #0f172a;
   border-color: rgba(148, 163, 184, 0.16);
-  box-shadow: var(--shadow-strong);
 }
 
 .chat-header button {
@@ -648,7 +621,6 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   background:
     linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(17, 24, 39, 0.98));
   border: 1px solid rgba(148, 163, 184, 0.16);
-  box-shadow: var(--shadow-strong);
 }
 
 /* Tema claro básico mais confortável */
@@ -1134,7 +1106,6 @@ body.is-offline::before {
   color: #fff;
   font-size: 12px;
   font-weight: 800;
-  box-shadow: 0 10px 30px rgba(0,0,0,.28);
 }
 
 .app-state {

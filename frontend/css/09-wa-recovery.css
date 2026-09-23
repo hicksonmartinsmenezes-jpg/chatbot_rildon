@@ -8,7 +8,6 @@
   background: var(--panel, #111827);
   border: 1px solid var(--border, rgba(255,255,255,.10));
   border-radius: 18px;
-  box-shadow: 0 24px 70px rgba(0, 0, 0, .35);
   overflow: hidden;
   animation: waRecoveryIn .24s ease;
 }

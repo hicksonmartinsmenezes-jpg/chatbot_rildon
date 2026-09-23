@@ -1538,7 +1538,24 @@ function _bboxConteudoFoto(buffer, mimetype, cacheKey = null) {
 // não mudam quase nada, só as bem alongadas ganham zoom real, com corte
 // pequeno e previsível nas pontas (nunca mais que o necessário pra caber
 // no fator de zoom escolhido).
-const FOTO_LIMITE_ZOOM_CROP = 1.3;
+//
+// REVERTIDO (pedido do usuário, 2026-09-23: "preciso que não corte
+// absolutamente nenhuma imagem"): o meio-termo acima (1.3x) cortava um
+// pouco as peças bem alongadas, exatamente o cenário que motivou o pedido
+// original — o usuário decidiu agora que nenhum corte é aceitável, nem
+// esse "pequeno e previsível". FOTO_LIMITE_ZOOM_CROP = 1 faz
+// `escala = Math.min(escalaCover, escalaContain * 1)` sempre resolver
+// pra `escalaContain` (contain nunca é maior que cover) — volta a ser
+// "contain" puro sobre o bbox do conteúdo real: a foto inteira sempre
+// cabe na caixa, sem cortar nenhum pixel do produto fotografado. O clip
+// continua ativo só por segurança (evita vazar por cima de cards
+// vizinhos em casos extremos de arredondamento), mas na prática não deve
+// cortar mais nada — nesse fator ele só corta a margem branca da própria
+// imagem original, quando ela ultrapassa ligeiramente a caixa depois do
+// contain, nunca o produto em si. Mesma constante usada em TODOS os
+// tipos de catálogo em PDF (Completo, Promocional, Diversos) porque
+// todos passam por _desenharFotoAjustada via _desenharCard.
+const FOTO_LIMITE_ZOOM_CROP = 1;
 function _desenharFotoAjustada(doc, buffer, mimetype, x, y, boxWidth, boxHeight, cacheKey = null) {
   const bbox = _bboxConteudoFoto(buffer, mimetype, cacheKey);
   if (!bbox) {

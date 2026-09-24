@@ -155,13 +155,33 @@ app.get("/api/live", (req, res) => res.json({ status: "ok", uptime: process.upti
 // ── Rotas da API ──────────────────────────────────────────────────────────────
 app.use("/api", authRouter);
 
-// Rotas autenticadas (qualquer usuário logado)
+// Rotas autenticadas (qualquer usuário logado). atendenteRoutes fica de
+// fora do gate por tela de propósito: só expõe nome/perfil/setor de
+// atendentes ativos (sem PII de cliente), e é consumida por dropdowns de
+// várias telas diferentes (atribuir ticket, filtro de Contatos, seletor de
+// vendedor em Campanhas) — o mesmo raciocínio já documentado em
+// botStatus.routes.js pra liberar geral em vez de tela específica.
 app.use("/api", authSession, atendenteRoutes);
-app.use("/api", authSession, contactRoutes);
-app.use("/api", authSession, ticketRoutes);
-app.use("/api", authSession, historyRoutes);
-app.use("/api", authSession, catalogoRoutes);
-app.use("/api", authSession, messageRoutes);
+//
+// BUG CORRIGIDO (auditoria de versão 1.0, 2026-09-24): as 5 rotas abaixo
+// (contatos, tickets, histórico, catálogo, mensagens) NUNCA tiveram
+// requireScreenAccess — só o requireScreenAccess("chatbot"/"settings"/
+// "metrics"/"channels") mais abaixo existia. Isso tornava o checkbox
+// "Acesso às telas" (Contatos/Histórico/Catálogo/Atendimentos, ver
+// PROFILE_DEFAULT_SCREENS acima e 09-users.js) puramente cosmético pra
+// essas 5 telas especificamente: desmarcar a tela escondia a aba no
+// frontend, mas a API por trás continuava respondendo 200 pra QUALQUER
+// atendente logado (curl/DevTools), incluindo o histórico de conversa e a
+// base de clientes inteira — dado sensível de verdade. Cada rota abaixo
+// aceita a(s) tela(s) que de fato a consomem (mapeado lendo os fetch()
+// reais no frontend, não só pelo nome): "dashboard" e "conversations"
+// também usam tickets/histórico porque mostram os mesmos dados ali;
+// "channels" (Campanhas) também usa /api/contacts pra montar a audiência.
+app.use("/api", authSession, requireScreenAccess("contacts", "channels"), contactRoutes);
+app.use("/api", authSession, requireScreenAccess("dashboard", "conversations"), ticketRoutes);
+app.use("/api", authSession, requireScreenAccess("dashboard", "conversations", "history"), historyRoutes);
+app.use("/api", authSession, requireScreenAccess("catalogo"), catalogoRoutes);
+app.use("/api", authSession, requireScreenAccess("conversations"), messageRoutes);
 // Pedido do usuário: liga/desliga do bot liberado pra QUALQUER atendente
 // logado (não só admin) — ver botStatus.routes.js para o motivo de ser uma
 // rota separada de settings.routes.js em vez de reaproveitar /api/settings.

@@ -19,8 +19,7 @@ const broadcastRoutes   = require("./routes/broadcast.routes");
 const {
   router: authRouter,
   authSession,
-  requireAdmin,
-  requireRole
+  requireScreenAccess
 } = require("./routes/auth.routes");
 
 const ticketRoutes   = require("./routes/ticket.routes");
@@ -31,6 +30,10 @@ const settingsRoutes    = require("./routes/settings.routes");
 const botStatusRoutes   = require("./routes/botStatus.routes");
 const atendenteRoutes   = require("./routes/atendentes.routes");
 const catalogoRoutes    = require("./routes/catalogo.routes");
+// MCP somente-leitura (nova função, pedido do usuário 2026-09-09) —
+// desligado por padrão via MCP_ENABLED, ver comentário no próprio
+// mcp.routes.js/mcp.service.js.
+const mcpRoutes         = require("./routes/mcp.routes");
 
 const app = express();
 
@@ -54,6 +57,16 @@ app.use(helmet({
       connectSrc:     ["'self'", "ws:", "wss:"],
       objectSrc:      ["'none'"],
       frameAncestors: ["'none'"],
+      // Issue #22 (2026-08-26): pré-visualização do "Catálogo Completo"
+      // embute o PDF gerado num <iframe src="blob:...">. Sem essa diretiva,
+      // frame-src cai no fallback de defaultSrc ("'self'"), que NÃO cobre
+      // blob: — o navegador bloqueia silenciosamente ("Este conteúdo está
+      // bloqueado", sem erro nenhum no console) e o iframe mostra o ícone de
+      // "documento quebrado" em vez do PDF. blob: é seguro aqui porque o
+      // Blob é criado no próprio browser a partir de uma resposta do nosso
+      // backend (fetch em /api/catalogo/exportar-pdf), nunca de conteúdo de
+      // terceiros.
+      frameSrc:       ["'self'", "blob:"],
       // CAUSA RAIZ REAL do ERR_SSL_PROTOCOL_ERROR em outros computadores
       // (2026-07-13): o Helmet, com useDefaults implícito (true), MESCLA
       // suas diretivas padrão às nossas — e uma delas é
@@ -142,32 +155,63 @@ app.get("/api/live", (req, res) => res.json({ status: "ok", uptime: process.upti
 // ── Rotas da API ──────────────────────────────────────────────────────────────
 app.use("/api", authRouter);
 
-// Rotas autenticadas (qualquer usuário logado)
+// Rotas autenticadas (qualquer usuário logado). atendenteRoutes fica de
+// fora do gate por tela de propósito: só expõe nome/perfil/setor de
+// atendentes ativos (sem PII de cliente), e é consumida por dropdowns de
+// várias telas diferentes (atribuir ticket, filtro de Contatos, seletor de
+// vendedor em Campanhas) — o mesmo raciocínio já documentado em
+// botStatus.routes.js pra liberar geral em vez de tela específica.
 app.use("/api", authSession, atendenteRoutes);
-app.use("/api", authSession, contactRoutes);
-app.use("/api", authSession, ticketRoutes);
-app.use("/api", authSession, historyRoutes);
-app.use("/api", authSession, catalogoRoutes);
-app.use("/api", authSession, messageRoutes);
+//
+// BUG CORRIGIDO (auditoria de versão 1.0, 2026-09-24): as 5 rotas abaixo
+// (contatos, tickets, histórico, catálogo, mensagens) NUNCA tiveram
+// requireScreenAccess — só o requireScreenAccess("chatbot"/"settings"/
+// "metrics"/"channels") mais abaixo existia. Isso tornava o checkbox
+// "Acesso às telas" (Contatos/Histórico/Catálogo/Atendimentos, ver
+// PROFILE_DEFAULT_SCREENS acima e 09-users.js) puramente cosmético pra
+// essas 5 telas especificamente: desmarcar a tela escondia a aba no
+// frontend, mas a API por trás continuava respondendo 200 pra QUALQUER
+// atendente logado (curl/DevTools), incluindo o histórico de conversa e a
+// base de clientes inteira — dado sensível de verdade. Cada rota abaixo
+// aceita a(s) tela(s) que de fato a consomem (mapeado lendo os fetch()
+// reais no frontend, não só pelo nome): "dashboard" e "conversations"
+// também usam tickets/histórico porque mostram os mesmos dados ali;
+// "channels" (Campanhas) também usa /api/contacts pra montar a audiência.
+app.use("/api", authSession, requireScreenAccess("contacts", "channels"), contactRoutes);
+app.use("/api", authSession, requireScreenAccess("dashboard", "conversations"), ticketRoutes);
+app.use("/api", authSession, requireScreenAccess("dashboard", "conversations", "history"), historyRoutes);
+app.use("/api", authSession, requireScreenAccess("catalogo"), catalogoRoutes);
+app.use("/api", authSession, requireScreenAccess("conversations"), messageRoutes);
 // Pedido do usuário: liga/desliga do bot liberado pra QUALQUER atendente
 // logado (não só admin) — ver botStatus.routes.js para o motivo de ser uma
 // rota separada de settings.routes.js em vez de reaproveitar /api/settings.
 app.use("/api", authSession, botStatusRoutes);
+// MCP somente-leitura pra clientes de IA locais (Claude Code/Desktop) — o
+// próprio handler retorna 404 quando MCP_ENABLED não é "true", então montar
+// a rota sempre é seguro (nunca fica exposta sem o opt-in explícito). NÃO
+// usa o authSession genérico aqui de propósito: esta rota autentica sozinha
+// (dentro de mcp.routes.js) contra um token PRÓPRIO (MCP_API_TOKEN),
+// separado do API_TOKEN geral — ver comentário completo em mcp.routes.js.
+app.use("/api", mcpRoutes);
 
-// Rotas apenas admin
-app.use("/api", authSession, requireAdmin, settingsRoutes);
-app.use("/api", authSession, requireAdmin, quickReplyRoutes);
-app.use("/api", authSession, requireAdmin, userRoutes);
-app.use("/api", authSession, requireAdmin, activityLogRoutes);
-// A aba Métricas do painel (frontend/index.html, data-tab="metrics") já é
-// supervisor-only na UI, mas a rota exigia admin — supervisor via a aba e
-// caía em 403 ao carregar. Corrigido junto com a pesquisa de satisfação
-// (o motivo que trouxe essa inconsistência à tona: supervisor precisa ver
-// a média de satisfação por atendente aqui).
-app.use("/api", authSession, requireRole("admin", "supervisor"), metricsRoutes);
-// Pedido do usuário: supervisor também deve poder ver/usar Campanhas, não
-// só admin (o resto das rotas administrativas continua exigindo admin).
-app.use("/api", authSession, requireRole("admin", "supervisor"), broadcastRoutes);
+// Rotas gated por tela do menu (requireScreenAccess, ver auth.routes.js) em
+// vez de requireAdmin/requireRole fixo por perfil (trocado 2026-09-19,
+// pedido do usuário: "não consigo dar permissão... mesmo que seja atendente
+// ou supervisor" — o checkbox "Acesso às telas" do cadastro de usuário
+// salvava a permissão, mas essas rotas continuavam travadas só no `perfil`,
+// ignorando o `permissions` individual). requireScreenAccess cai pro padrão
+// do perfil quando a tela não foi definida explicitamente, então ninguém
+// perde acesso que já tinha — só passa a ser possível CONCEDER mais.
+//
+// settingsRoutes atende DUAS abas do menu (Chatbot: liga/desliga do bot +
+// Respostas Rápidas fica em quickReplyRoutes; Configurações: cards
+// Atendimento/WhatsApp) — por isso aceita "chatbot" OU "settings".
+app.use("/api", authSession, requireScreenAccess("chatbot", "settings"), settingsRoutes);
+app.use("/api", authSession, requireScreenAccess("chatbot"), quickReplyRoutes);
+app.use("/api", authSession, requireScreenAccess("settings"), userRoutes);
+app.use("/api", authSession, requireScreenAccess("settings"), activityLogRoutes);
+app.use("/api", authSession, requireScreenAccess("metrics"), metricsRoutes);
+app.use("/api", authSession, requireScreenAccess("channels"), broadcastRoutes);
 
 // ── Health check handler (rotas registradas antes da autenticação) ───────────
 async function healthCheck(req, res) {

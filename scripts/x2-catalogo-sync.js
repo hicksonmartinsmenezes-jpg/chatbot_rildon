@@ -606,6 +606,40 @@ const LABEL_PARA_SLUG = Object.fromEntries(
   Object.entries(SECOES).map(([slug, label]) => [_normLabel(label), slug])
 );
 
+// CORRIGIDO (2026-09-22, achado testando o upload automático pro Drive pós-
+// Lançamentos — ver Issue do upload Drive): a busca por código AVULSO
+// (usada aqui e em sincronizarPorCodigos) traz `produto.secao` às vezes com
+// um rótulo colado na frente ("Seção/Linha: SISTEMA DE IGNIÇÃO", em vez de
+// só "SISTEMA DE IGNIÇÃO" como na busca por seção inteira) — o match EXATO
+// contra LABEL_PARA_SLUG falhava mesmo a seção sendo uma das conhecidas, e
+// o produto ficava de fora do cadastro (e, em cascata, sem fabricante
+// resolvido pra _descobrirFabricantes em x2-drive-lancamentos.js — o PDF
+// daquele fabricante nem entrava na lista de upload). Mesmo espírito de
+// mapearSecoesTocadas() em x2-lancamentos-scraper.js (tenta exato, cai pra
+// prefixo/contém antes de desistir) — duplicado aqui de propósito porque as
+// duas funções resolvem coisas diferentes (uma decide SEÇÕES pra buscar
+// foto, esta decide o slug de 1 produto) e já divergiam uma vez (só a de
+// lá tinha o fallback fuzzy) — ver princípio DRY-com-critério no CLAUDE.md.
+function _resolverSlugPorSecaoTexto(textoSecaoBruto) {
+  let texto = String(textoSecaoBruto || '').trim();
+  if (!texto) return null;
+  // remove rótulo "Seção/Linha:", "Seção:" etc. se vier colado no valor
+  texto = texto.replace(/^se[cç][aã]o(\s*\/\s*linha)?\s*:\s*/i, '');
+  // se ainda sobrar "SEÇÃO > LINHA" (formato da busca por seção inteira),
+  // fica só com a parte antes do '>'
+  texto = texto.split('>')[0].trim();
+
+  const norm = _normLabel(texto);
+  if (LABEL_PARA_SLUG[norm]) return LABEL_PARA_SLUG[norm];
+
+  for (const [labelNorm, slug] of Object.entries(LABEL_PARA_SLUG)) {
+    if (norm.startsWith(labelNorm) || labelNorm.startsWith(norm) || norm.includes(labelNorm)) {
+      return slug;
+    }
+  }
+  return null;
+}
+
 // PEDIDO DO USUÁRIO (2026-08-10) — ver comentário de buscarPorCodigo().
 // Busca uma LISTA de códigos individualmente (1 pesquisa por código, Seção
 // = Todos), agrupa os achados por seção (usando o texto "Seção > Linha" que
@@ -637,9 +671,9 @@ async function sincronizarPorCodigos(page, codigos, { dryRun, deveParar } = {}) 
     }
 
     const produto = encontrados[0];
-    const slug = produto.secao ? LABEL_PARA_SLUG[_normLabel(produto.secao)] : null;
+    const slug = _resolverSlugPorSecaoTexto(produto.secao);
     if (!slug) {
-      console.log(`  ? ${codigo} — ${produto.nome} — achei no X2 (Seção: "${produto.secao || '?'}") mas não bate com nenhuma das 26 seções conhecidas. Precisa mapear manualmente.`);
+      console.log(`  ? ${codigo} — ${produto.nome} — achei no X2 (Seção: "${produto.secao || '?'}") mas não bate com nenhuma das ${Object.keys(SECOES).length} seções conhecidas. Precisa mapear manualmente.`);
       semSecaoReconhecida.push({ codigo, produto });
       continue;
     }
@@ -820,6 +854,39 @@ async function rodarDiffEstoque({ caminhoCsv, channel, dryRun, confirmar, modoAu
   }
 }
 
+// PEDIDO DO USUÁRIO (2026-09-11): mesmo fluxo ponta-a-ponta de
+// rodarDiffEstoque acima (abre navegador, garante a tela do Catálogo de
+// Produtos aberta, busca cada código, fecha no final) — mas pra quem já tem
+// a LISTA de códigos pronta de outra fonte, sem precisar comparar nenhum
+// CSV. Caso de uso real: o encadeamento automático pós-Lançamentos em
+// x2-painel/server.js, que já sabe exatamente quais códigos tiveram
+// lançamento naquela semana (ver snapshotLancamentos.produtos) e antes
+// disparava sync.rodar(seções) — varrendo a(s) seção(ões) inteira(s) só pra
+// achar um punhado de códigos novos. sincronizarPorCodigos() já faz a busca
+// pontual certa; faltava só este wrapper pra abrir/fechar o navegador sozinho
+// como os outros modos de `main()` abaixo já fazem.
+async function rodarPorCodigos(codigos, { channel, dryRun, confirmar, modoAutomatico, deveParar } = {}) {
+  console.log(`Cadastro por código: ${codigos.length} código(s) — ${codigos.join(', ')}`);
+
+  const context = await abrirNavegador(channel);
+  try {
+    const page = await garantirTelaCatalogoAberta(context, { confirmar, modoAutomatico });
+    const resultado = await sincronizarPorCodigos(page, codigos, { dryRun, deveParar });
+
+    console.log('\n=== Resumo ===');
+    for (const g of resultado.gravados) console.log(`${g.slug}: +${g.adicionados} produto(s)`);
+    if (resultado.naoEncontrados.length) console.log(`Não encontrados no X2: ${resultado.naoEncontrados.join(', ')}`);
+    if (resultado.semSecaoReconhecida.length) console.log(`Seção não reconhecida (precisa checar manualmente): ${resultado.semSecaoReconhecida.map((s) => s.codigo).join(', ')}`);
+    const totalAdicionado = resultado.gravados.reduce((a, g) => a + g.adicionados, 0);
+    if (totalAdicionado && !dryRun) {
+      await _forcarReloadCatalogo();
+    }
+    return resultado;
+  } finally {
+    await context.close().catch(() => {});
+  }
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const secaoArg = args.find((a) => a.startsWith('--secao='));
@@ -893,4 +960,6 @@ module.exports = {
   codigosFaltandoNoCatalogo,
   sincronizarPorCodigos,
   rodarDiffEstoque,
+  rodarPorCodigos,
+  _resolverSlugPorSecaoTexto,
 };

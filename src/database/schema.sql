@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS users (
   numero      VARCHAR(30) NOT NULL DEFAULT '',
   email       VARCHAR(255),
   foto        TEXT,
+  permissions JSONB NOT NULL DEFAULT '{}'::jsonb,
   ativo       BOOLEAN NOT NULL DEFAULT TRUE,
   -- 2FA (TOTP) — ver migrations/011_add_totp_2fa.sql para o histórico
   totp_secret         TEXT,

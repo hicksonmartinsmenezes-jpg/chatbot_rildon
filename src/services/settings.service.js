@@ -59,7 +59,7 @@ const DEFAULT_SETTINGS = {
     // novo ao fechar. Antes só existia via variável de ambiente
     // TICKET_REOPEN_WINDOW_MINUTOS (sem UI); o default abaixo preserva o
     // valor já configurado no .env pra quem já tinha isso ajustado.
-    tempoReaberturaSemPesquisa: Number(process.env.TICKET_REOPEN_WINDOW_MINUTOS) || 60
+    tempoReaberturaSemPesquisa: Number(process.env.TICKET_REOPEN_WINDOW_MINUTOS) || 240
   },
   aparencia: {
     tema: "dark",

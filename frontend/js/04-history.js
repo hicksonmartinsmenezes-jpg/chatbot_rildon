@@ -10,7 +10,7 @@ function renderHistoryRow({ latest, count }) {
   const ident       = isPhone ? phoneRaw : "ID WhatsApp";
 
   return `
-    <div class="hrow">
+    <div class="hrow" data-user-id="${escapeAttr(userId)}">
       <span class="hrow-client">
         ${avatarHtml(userId, nameDisplay)}
         <span class="hrow-info">
@@ -39,6 +39,53 @@ function renderHistoryRow({ latest, count }) {
 
 // Mantém nome antigo como alias para não quebrar chamadas externas
 const renderHistoryCard = renderHistoryRow;
+
+// Reconciliação incremental da tabela (em vez de reconstruir tudo do zero a
+// cada loadHistory) — mesmo padrão/motivo de _loadConversationsCore em
+// 07-conversations.js: reaproveita as linhas (.hrow) já no DOM pela chave
+// data-user-id, só troca o conteúdo de quem mudou de verdade e reordena via
+// appendChild. Evita "piscar" a tabela inteira a cada mensagem nova que o
+// socket usa pra recarregar a aba Histórico aberta (12-socket.js).
+function renderHistoryTable(container, groups) {
+  let table = container.querySelector(".history-table");
+  if (!table) {
+    container.innerHTML = `
+      <div class="history-table">
+        <div class="hrow hrow-head">
+          <span class="hrow-client">Cliente</span>
+          <span class="hrow-count" style="display:flex;align-items:center;justify-content:center;">Atend.</span>
+          <span class="hrow-date" style="display:flex;align-items:center;justify-content:center;">Última interação</span>
+          <span class="hrow-actions">Ações</span>
+        </div>
+      </div>
+    `;
+    table = container.querySelector(".history-table");
+  }
+
+  const existingRows = new Map();
+  table.querySelectorAll(":scope > .hrow:not(.hrow-head)").forEach(node => {
+    if (node.dataset.userId) existingRows.set(node.dataset.userId, node);
+  });
+
+  const tmp = document.createElement("template");
+  for (const group of groups) {
+    const userId = group.latest.userId || group.latest.user_id || "";
+    tmp.innerHTML = renderHistoryRow(group).trim();
+    const fresh = tmp.content.firstElementChild;
+
+    let node = existingRows.get(userId);
+    if (node) {
+      existingRows.delete(userId);
+      if (node.innerHTML !== fresh.innerHTML) node.innerHTML = fresh.innerHTML;
+    } else {
+      node = fresh;
+    }
+    table.appendChild(node);
+  }
+
+  // Remove quem saiu da página atual (mudou de página/filtro)
+  for (const node of existingRows.values()) node.remove();
+}
 
 function initHistoryDelegation() {
   const container = document.getElementById("history-container");
@@ -111,6 +158,15 @@ async function exportHistoryTxt(userId, clientName) {
   }
 }
 
+// ─── Paginação (pedido do usuário, 2026-09-23: "meu histórico ainda
+// carrega absolutamente todos, preciso que distribua 1-2-3 igual
+// contatos") ────────────────────────────────────────────────────────────
+// Mesmo padrão de estado do painel de Contatos (16-contacts.js:
+// _contactsPage/_contactsTotal/_contactsLimit).
+let _historyPage  = 1;
+let _historyTotal = 0;
+const _HISTORY_LIMIT = 40;
+
 // ─── loadHistory com filtros server-side ──────────────────────────────────────
 // BUG CORRIGIDO (usuário: "sinto que não está salvando todas as
 // conversas"): esta função buscava as N mensagens mais recentes de TODA A
@@ -121,6 +177,16 @@ async function exportHistoryTxt(userId, clientName) {
 // buscados). Agora usa /api/history/grouped, que já traz uma linha por
 // cliente (mensagem mais recente + total de interações) direto do banco —
 // ver history.repository.js (findGroupedByUser) para o motivo da mudança.
+//
+// PAGINAÇÃO (2026-09-23): antes buscava até 500 clientes de uma vez e
+// renderizava tudo junto — travava com muitos clientes. Agora busca só
+// _HISTORY_LIMIT (40) por vez, com `page`, igual o painel de Contatos. A
+// filtragem client-side "de fallback" que existia aqui foi removida: ela
+// rodava DEPOIS do limit/offset do servidor, então com paginação de
+// verdade ela reduziria ainda mais uma página já cortada, quebrando a
+// conta de totalPages (o backend já filtra de verdade — ver
+// history.repository.js/_buildGroupedWhere — não é mais só um "quando o
+// backend suportar").
 async function loadHistory(render = true) {
   const search    = document.getElementById("search-history")?.value    || "";
   const startDate = document.getElementById("history-date-start")?.value || "";
@@ -130,7 +196,16 @@ async function loadHistory(render = true) {
   const endTime   = document.getElementById("history-time-end")?.value   || "";
   const container = document.getElementById("history-container");
 
-  if (render && container) {
+  // Só mostra o spinner de "Carregando..." quando ainda não existe uma
+  // tabela na tela (1º carregamento real, ou depois de um estado vazio/erro).
+  // ANTES, todo reload — inclusive os disparados em segundo plano pelo socket
+  // a cada mensagem nova (ver 12-socket.js, _histReloadTimer) — sobrescrevia
+  // a tabela inteira com o spinner e depois reconstruía tudo de novo, mesmo
+  // com o usuário só olhando parado pra lista. Pedido do usuário (2026-09-23:
+  // "a página atualiza sozinha, queria só que subisse a mensagem") — mesma
+  // correção aplicada à lista de Conversas em 07-conversations.js.
+  const jaTemTabela = !!container?.querySelector(".history-table");
+  if (render && container && !jaTemTabela) {
     container.innerHTML = `
       <div class="history-loading">
         <i class="fa-solid fa-circle-notch fa-spin"></i>
@@ -141,9 +216,9 @@ async function loadHistory(render = true) {
 
   try {
     const params = new URLSearchParams();
-    params.append("limit", "500");
+    params.append("page",  String(_historyPage));
+    params.append("limit", String(_HISTORY_LIMIT));
 
-    // Envia filtros ao servidor quando disponíveis para reduzir payload
     if (search)    params.append("q",    search);
     if (startDate) params.append("from", startDate);
     if (endDate)   params.append("to",   endDate);
@@ -154,59 +229,67 @@ async function loadHistory(render = true) {
     if (!res) return [];
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-    const raw        = await res.json();
-    const historyRaw = Array.isArray(raw) ? raw : raw.data || [];
+    const raw     = await res.json();
+    const history = Array.isArray(raw) ? raw : raw.data || [];
 
-    // Filtragem client-side como fallback (para backends que não suportam os params)
-    const searchTerm = normalizeHistoryText(search);
-
-    const history = historyRaw.filter(item => {
-      const haystack = normalizeHistoryText([
-        item.userId, item.user_id,
-        item.contactName, item.contact_name,
-        item.message, item.response,
-        item.sector,
-        formatPhone(item.userId || item.user_id)
-      ].join(" "));
-
-      const matchesSearch = !searchTerm || haystack.includes(searchTerm);
-      const matchesDate   = isHistoryInsideDateRange(item, startDate, endDate, startTime, endTime);
-      return matchesSearch && matchesDate;
-    });
-
-    updateHistorySummary(history);
-    // updateHistorySummary conta 1 por linha — como cada linha aqui já é 1
-    // cliente (visão agrupada), "Total de registros" ficaria igual a
-    // "Clientes únicos". Corrige só esse card somando o total real de
-    // interações (campo "count" de cada cliente).
-    setText("history-total-count", history.reduce((acc, item) => acc + (item.count || 1), 0));
+    _historyTotal = Number(raw.total) || 0;
+    updateHistorySummary(raw.summary);
+    renderHistoryFooter();
 
     if (render && container) {
       if (!history.length) {
         renderHistoryEmpty(container);
       } else {
         const groups = history.map(item => ({ latest: item, count: item.count || 1 }));
-        container.innerHTML = `
-          <div class="history-table">
-            <div class="hrow hrow-head">
-              <span class="hrow-client">Cliente</span>
-              <span class="hrow-count" style="display:flex;align-items:center;justify-content:center;">Atend.</span>
-              <span class="hrow-date" style="display:flex;align-items:center;justify-content:center;">Última interação</span>
-              <span class="hrow-actions">Ações</span>
-            </div>
-            ${groups.map(renderHistoryRow).join("")}
-          </div>
-        `;
+        renderHistoryTable(container, groups);
       }
     }
 
     return history;
   } catch (err) {
     console.error("[loadHistory]", err);
-    updateHistorySummary([]);
+    updateHistorySummary(null);
     if (render && container) renderHistoryEmpty(container, "Erro ao carregar histórico.");
     return [];
   }
+}
+
+function renderHistoryFooter() {
+  const showing = document.getElementById("history-showing");
+  const pagInfo = document.getElementById("history-page-info");
+  const btnPrev = document.getElementById("history-prev");
+  const btnNext = document.getElementById("history-next");
+
+  const totalPages = Math.max(1, Math.ceil(_historyTotal / _HISTORY_LIMIT));
+  const start = (_historyPage - 1) * _HISTORY_LIMIT + 1;
+  const end   = Math.min(_historyPage * _HISTORY_LIMIT, _historyTotal);
+
+  if (showing) showing.textContent = _historyTotal > 0 ? `${start}–${end} de ${_historyTotal} clientes` : "0 clientes";
+  if (pagInfo) pagInfo.textContent = `${_historyPage} / ${totalPages}`;
+  if (btnPrev) btnPrev.disabled = _historyPage <= 1;
+  if (btnNext) btnNext.disabled = _historyPage >= totalPages;
+}
+
+function historyPagePrev() {
+  if (_historyPage > 1) { _historyPage--; loadHistory(true); }
+}
+
+function historyPageNext() {
+  const totalPages = Math.ceil(_historyTotal / _HISTORY_LIMIT);
+  if (_historyPage < totalPages) { _historyPage++; loadHistory(true); }
+}
+
+// Chamado por toda mudança de FILTRO (busca, datas, horários, botão
+// atualizar — ver data-input-action/data-change-action/data-action
+// "loadHistoryTrue" em 17-ui-events.js) — diferente dos cliques do pager
+// (historyPagePrev/Next), que preservam _historyPage de propósito. Sem
+// isso, filtrar a partir de uma página > 1 mandaria `page` desatualizado
+// pro backend e podia voltar uma página vazia (mesmo bug que
+// contactsSearch/contactsFilterTag evitam resetando _contactsPage em
+// 16-contacts.js).
+function loadHistoryFiltered() {
+  _historyPage = 1;
+  loadHistory(true);
 }
 
 function clearHistoryFilters() {
@@ -214,6 +297,7 @@ function clearHistoryFilters() {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
+  _historyPage = 1;
   loadHistory(true);
 }
 

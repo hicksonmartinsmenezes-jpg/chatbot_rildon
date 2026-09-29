@@ -8,7 +8,8 @@ const {
   countActiveAdmins,
   createUser,
   updateUserPassword,
-  deactivateUser
+  deactivateUser,
+  updateUserPermissions
 } = require("../services/user.service");
 
 const { auditLog } = require("../services/audit.service");
@@ -16,8 +17,12 @@ const { emitEvent } = require("../services/socket.service");
 
 const router = express.Router();
 
-// requireAdmin já é aplicado em app.js para todas as rotas de /api/users
-// requireRole("admin") interno removido — checagem dupla desnecessária
+// requireScreenAccess("settings") já é aplicado em app.js para todas as
+// rotas de /api/users (trocado de requireAdmin em 2026-09-19 — ver
+// comentário em app.js/auth.routes.js: agora um atendente/supervisor com a
+// tela "settings" liberada individualmente também gerencia usuários, não
+// só admin). requireRole("admin") interno removido — checagem dupla
+// desnecessária.
 
 function sanitizeUser(user) {
   return {
@@ -28,7 +33,8 @@ function sanitizeUser(user) {
     sector:  user.sector || "geral",
     numero:  user.numero || "",
     foto:    user.foto   || "",
-    ativo:   user.ativo
+    ativo:   user.ativo,
+    permissions: user.permissions || {}
   };
 }
 
@@ -61,7 +67,7 @@ router.post("/users", asyncHandler(async (req, res) => {
   // pessoal ao criar o usuário — createUser()/user.service.js já suporta
   // "numero" de ponta a ponta (usado também na edição do próprio perfil),
   // só faltava esta rota repassar o campo do corpo da requisição.
-  const { nome, usuario, senha, perfil, sector, numero, ativo } = req.body || {};
+  const { nome, usuario, senha, perfil, numero, ativo, permissions } = req.body || {};
 
   if (!nome || !usuario || !senha) {
     return res.status(400).json({ error: "Nome, usuário e senha são obrigatórios." });
@@ -74,7 +80,7 @@ router.post("/users", asyncHandler(async (req, res) => {
 
   let user;
   try {
-    user = await createUser({ nome, usuario, senha, perfil, sector, numero, ativo });
+    user = await createUser({ nome, usuario, senha, perfil, numero, ativo, permissions });
   } catch (err) {
     return res.status(400).json({ error: err.message });
   }
@@ -91,6 +97,43 @@ router.post("/users", asyncHandler(async (req, res) => {
   // 201 para usuário novo; 200 para reativação de um usuário antes excluído
   // (mesmo "usuario" — ver comentário em createUser()/user.service.js).
   res.status(user.reactivated ? 200 : 201).json({ ...sanitizeUser(user), reactivated: !!user.reactivated });
+}));
+
+router.patch("/users/:id/permissions", asyncHandler(async (req, res) => {
+  const targetId = String(req.params.id || "");
+  const permissions = req.body?.permissions;
+
+  if (!permissions || typeof permissions !== "object" || Array.isArray(permissions)) {
+    return res.status(400).json({ error: "Permissões inválidas." });
+  }
+
+  if (targetId === String(req.user?.id || "")) {
+    return res.status(400).json({ error: "As permissões do próprio administrador não podem ser alteradas por esta tela." });
+  }
+
+  const targetUser = await getUserById(targetId);
+  if (!targetUser || targetUser.ativo === false) {
+    return res.status(404).json({ error: "Usuário não encontrado." });
+  }
+
+  // Permissões personalizadas são administradas somente por admin e não
+  // permitem transformar o usuário em outro perfil — apenas telas.
+  let user;
+  try {
+    user = await updateUserPermissions(targetId, permissions);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+
+  await auditLog({
+    user: req.user,
+    action: "UPDATE_USER_PERMISSIONS",
+    target: targetId,
+    details: { usuario: targetUser.usuario, permissions: user.permissions }
+  });
+
+  emitEvent("users_updated", { action: "permissions_updated", user: sanitizeUser(user) });
+  res.json(sanitizeUser(user));
 }));
 
 router.delete("/users/:id", asyncHandler(async (req, res) => {

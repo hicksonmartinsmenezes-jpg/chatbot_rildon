@@ -123,7 +123,7 @@ function fillSettingsForm(s) {
   setValue("set-human-sectors",     atendimento.setores);
   setValue("set-default-status",    atendimento.statusPadrao || "aberto");
   setValue("set-transfer-message",  atendimento.mensagemTransferencia);
-  setValue("set-reopen-window-minutes", atendimento.tempoReaberturaSemPesquisa || 60);
+  setValue("set-reopen-window-minutes", atendimento.tempoReaberturaSemPesquisa || 240);
 
   setValue("set-panel-name",    aparencia.nomePainel);
   setValue("set-primary-color", aparencia.corPrincipal || "#1d6cf5");
@@ -162,7 +162,7 @@ function collectSettingsForm() {
       setores:               getValue("set-human-sectors"),
       statusPadrao:          getValue("set-default-status"),
       mensagemTransferencia: getValue("set-transfer-message"),
-      tempoReaberturaSemPesquisa: getNumberValue("set-reopen-window-minutes", 60)
+      tempoReaberturaSemPesquisa: getNumberValue("set-reopen-window-minutes", 240)
     },
     aparencia: {
       nomePainel:  getValue("set-panel-name"),
@@ -250,6 +250,16 @@ function resetSettings() {
 // de /api/settings — ver src/routes/botStatus.routes.js.
 window.botAtivoAtual = true;
 
+// Janela de reabertura (minutos) — pedido do usuário (2026-09-23): "analise
+// se as condições de reabrir esta batendo". Cacheada aqui (mesma resposta de
+// /api/bot-status, ver comentário em src/routes/botStatus.routes.js) e usada
+// por estaPendente() em 07-conversations.js, no lugar do antigo corte "mesmo
+// dia do calendário" que fazia um cliente reengajado sumir de Pendentes na
+// virada da meia-noite sem ninguém ter atendido. Valor default (240min/4h)
+// até a 1ª resposta chegar — mesmo default usado no backend
+// (_getReopenWindowMs, ticket.service.js) quando a config não foi definida.
+window.reopenWindowMinutosAtual = 240;
+
 function renderBotToggleStatus(ativo) {
   window.botAtivoAtual = ativo;
   const btn = document.getElementById("bot-toggle-btn");
@@ -262,7 +272,8 @@ async function loadBotToggleStatus() {
   try {
     const res = await apiFetch(`${BASE}/api/bot-status`);
     if (!res?.ok) return;
-    const { ativo } = await res.json();
+    const { ativo, tempoReaberturaMinutos } = await res.json();
+    if (Number(tempoReaberturaMinutos) > 0) window.reopenWindowMinutosAtual = Number(tempoReaberturaMinutos);
     renderBotToggleStatus(ativo !== false);
   } catch (_) {}
 }

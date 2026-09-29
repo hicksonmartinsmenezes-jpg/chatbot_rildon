@@ -65,13 +65,33 @@ const TIPOS_SEM_SECOES = ['estoque', 'painel-produtos', 'diff-estoque', 'cortes-
 
 const TIPOS_VALIDOS = ['baixar', 'sync', 'estoque', 'painel-produtos', 'diff-estoque', 'cortes-produtos', 'produtos-parados', 'lancamentos-x2'];
 
+// PEDIDO DO USUÁRIO (2026-09-11): "a proposta de exportar relatorio csv é
+// capturar preços e estoque atualizados de 5 em 5 horas" — até aqui só
+// existia "diaria"/"semanal" (hora fixa do relógio). "horas" é uma
+// frequência nova, genérica (qualquer tipo de rotina pode usar, não só
+// Estoque): roda de novo sempre que passar `intervaloHoras` horas desde a
+// ÚLTIMA execução — sem hora fixa, sem `diaSemana`. Modelo mais simples e
+// mais robusto a reinício do computador/painel do que tentar alinhar num
+// horário de relógio: se o painel ficou fechado além do intervalo, a rotina
+// dispara assim que checar de novo, em vez de esperar até a próxima "hora
+// cheia" programada.
+const FREQUENCIAS_VALIDAS = ['diaria', 'semanal', 'horas'];
+const INTERVALO_HORAS_MAXIMO = 168; // 1 semana — além disso, "semanal" já resolve melhor.
+
 function validarRotina(dados) {
   const erros = [];
   if (!dados.nome || !String(dados.nome).trim()) erros.push('nome é obrigatório.');
   if (!TIPOS_VALIDOS.includes(dados.tipo)) erros.push(`tipo precisa ser um de: ${TIPOS_VALIDOS.join(', ')}.`);
   if (!TIPOS_SEM_SECOES.includes(dados.tipo) && (!Array.isArray(dados.secoes) || !dados.secoes.length)) erros.push('secoes precisa ser uma lista não vazia.');
-  if (!['diaria', 'semanal'].includes(dados.frequencia)) erros.push('frequencia precisa ser "diaria" ou "semanal".');
-  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(dados.horario || '')) erros.push('horario precisa estar no formato HH:MM (24h).');
+  if (!FREQUENCIAS_VALIDAS.includes(dados.frequencia)) erros.push(`frequencia precisa ser um de: ${FREQUENCIAS_VALIDAS.join(', ')}.`);
+  if (dados.frequencia === 'horas') {
+    const n = Number(dados.intervaloHoras);
+    if (!Number.isInteger(n) || n < 1 || n > INTERVALO_HORAS_MAXIMO) {
+      erros.push(`intervaloHoras precisa ser um número inteiro entre 1 e ${INTERVALO_HORAS_MAXIMO}.`);
+    }
+  } else if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(dados.horario || '')) {
+    erros.push('horario precisa estar no formato HH:MM (24h).');
+  }
   if (dados.frequencia === 'semanal' && (dados.diaSemana === undefined || dados.diaSemana === null || Number(dados.diaSemana) < 0 || Number(dados.diaSemana) > 6)) {
     erros.push('diaSemana (0=domingo..6=sábado) é obrigatório pra frequência semanal.');
   }
@@ -89,8 +109,9 @@ function criarRotina(dados) {
     secoes: dados.secoes || [],
     opcoes: dados.opcoes || {},
     frequencia: dados.frequencia,
-    horario: dados.horario,
+    horario: dados.frequencia === 'horas' ? null : dados.horario,
     diaSemana: dados.frequencia === 'semanal' ? Number(dados.diaSemana) : null,
+    intervaloHoras: dados.frequencia === 'horas' ? Number(dados.intervaloHoras) : null,
     ativa: dados.ativa !== false,
     criadaEm: new Date().toISOString(),
     ultimaExecucao: null,
@@ -110,7 +131,7 @@ function atualizarRotina(id, mudancas) {
   const idx = lista.findIndex((r) => r.id === id);
   if (idx === -1) throw Object.assign(new Error('Rotina não encontrada.'), { status: 404 });
   const proposta = { ...lista[idx], ...mudancas };
-  const tocouAgendamento = ['nome', 'tipo', 'secoes', 'frequencia', 'horario', 'diaSemana'].some((campo) => mudancas[campo] !== undefined);
+  const tocouAgendamento = ['nome', 'tipo', 'secoes', 'frequencia', 'horario', 'diaSemana', 'intervaloHoras'].some((campo) => mudancas[campo] !== undefined);
   if (tocouAgendamento) {
     const erros = validarRotina(proposta);
     if (erros.length) throw Object.assign(new Error(erros.join(' ')), { status: 400 });
@@ -141,6 +162,13 @@ function registrarExecucao(id, { resultado, erro }) {
 // pra testar sem depender do relógio real do sistema. ─────────────────────
 
 function proximaExecucao(rotina, agora = new Date()) {
+  // "horas" não tem hora fixa — a próxima é sempre "última execução +
+  // intervaloHoras" (ou agora mesmo, se nunca rodou ainda).
+  if (rotina.frequencia === 'horas') {
+    if (!rotina.ultimaExecucao) return new Date(agora);
+    return new Date(new Date(rotina.ultimaExecucao).getTime() + rotina.intervaloHoras * 60 * 60 * 1000);
+  }
+
   const [h, m] = rotina.horario.split(':').map(Number);
   const candidato = new Date(agora);
   candidato.setHours(h, m, 0, 0);
@@ -165,6 +193,16 @@ function proximaExecucao(rotina, agora = new Date()) {
 // religar, em vez de esperar o próximo dia).
 function deveRodarAgora(rotina, agora = new Date()) {
   if (!rotina.ativa) return false;
+
+  // "horas": não olha pra relógio nenhum — só "já passou intervaloHoras
+  // desde a última vez?" (ou "nunca rodou ainda" → roda assim que a rotina
+  // for checada pela 1ª vez depois de criada/ativada).
+  if (rotina.frequencia === 'horas') {
+    if (!rotina.ultimaExecucao) return true;
+    const decorridoMs = agora.getTime() - new Date(rotina.ultimaExecucao).getTime();
+    return decorridoMs >= rotina.intervaloHoras * 60 * 60 * 1000;
+  }
+
   if (rotina.frequencia === 'semanal' && agora.getDay() !== Number(rotina.diaSemana)) return false;
 
   const [h, m] = rotina.horario.split(':').map(Number);
@@ -182,6 +220,8 @@ module.exports = {
   ROTINAS_PATH,
   TIPOS_VALIDOS,
   TIPOS_SEM_SECOES,
+  FREQUENCIAS_VALIDAS,
+  INTERVALO_HORAS_MAXIMO,
   carregarRotinas,
   salvarRotinas,
   validarRotina,

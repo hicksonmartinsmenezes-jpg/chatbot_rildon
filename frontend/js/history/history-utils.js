@@ -1,57 +1,21 @@
 // history-utils.js
 // Helpers de histórico e resumo.
 
-function normalizeHistoryText(value) {
-  return String(value || "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-}
 
-function sameLocalDate(a, b) {
-  if (!a || !b) return false;
-  const da = new Date(a);
-  const db = new Date(b);
-  return (
-    da.getFullYear() === db.getFullYear() &&
-    da.getMonth()    === db.getMonth()    &&
-    da.getDate()     === db.getDate()
-  );
-}
-
-// Pedido do usuário (2026-07-30): "quero poder filtrar atendimentos por
-// horário por dia também" — startTime/endTime são "HH:MM", comparados
-// contra a hora LOCAL (do navegador) da última interação do cliente, além
-// do intervalo de data já existente.
-function isHistoryInsideDateRange(item, start, end, startTime, endTime) {
-  if (!start && !end && !startTime && !endTime) return true;
-  if (!item?.createdAt) return false;
-  const itemDate = new Date(item.createdAt);
-  if (start) { const s = new Date(`${start}T00:00:00`); if (itemDate < s) return false; }
-  if (end)   { const e = new Date(`${end}T23:59:59`);   if (itemDate > e) return false; }
-
-  const minutosDoDia = itemDate.getHours() * 60 + itemDate.getMinutes();
-  if (startTime) {
-    const [h, m] = startTime.split(":").map(Number);
-    if (minutosDoDia < h * 60 + m) return false;
-  }
-  if (endTime) {
-    const [h, m] = endTime.split(":").map(Number);
-    if (minutosDoDia > h * 60 + m) return false;
-  }
-  return true;
-}
-
-function updateHistorySummary(history) {
-  const today   = new Date();
-  const clients = new Set(history.map(item => item.userId).filter(Boolean));
-  const todayCount    = history.filter(item => sameLocalDate(item.createdAt, today)).length;
-  const responseCount = history.filter(item => item.response).length;
-
-  setText("history-total-count",    history.length);
-  setText("history-client-count",   clients.size);
-  setText("history-today-count",    todayCount);
-  setText("history-response-count", responseCount);
+// PAGINAÇÃO DO HISTÓRICO (pedido do usuário, 2026-09-23): antes recebia o
+// array inteiro (até 500 clientes) e calculava os 4 cards contando em cima
+// dele no navegador — agora a tela só tem UMA PÁGINA de clientes carregada
+// por vez, então essa conta ficaria errada (só refletiria a página atual).
+// Os totais agora vêm prontos do backend (GET /api/history/grouped →
+// summary, ver history.controller.js/history.repository.js
+// getGroupedSummary), calculados via SQL sobre TODAS as linhas que batem
+// no filtro — mais exato inclusive do que a versão antiga (que já cortava
+// em 500 registros).
+function updateHistorySummary(summary) {
+  setText("history-total-count",    summary?.totalRegistros ?? 0);
+  setText("history-client-count",   summary?.totalClientes  ?? 0);
+  setText("history-today-count",    summary?.hoje           ?? 0);
+  setText("history-response-count", summary?.comResposta    ?? 0);
 }
 
 function renderHistoryEmpty(container, message = "Nenhum histórico encontrado.") {

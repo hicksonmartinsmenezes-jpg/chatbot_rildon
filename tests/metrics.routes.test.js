@@ -33,6 +33,13 @@
  * novo. Foi exatamente isso que aconteceu quando o CI passou a rodar contra
  * Postgres de verdade e esta suíte não tinha sido atualizada junto com o
  * service.
+ *
+ * Nota (2026-09-16, pedido do usuário "exportar métricas do mês anterior"):
+ * buscarMetricas() ganhou uma query PRELIMINAR (_resolverLimites, roda ANTES
+ * do Promise.all das 11) que resolve os limites de data (mês/mês anterior/
+ * janela dos gráficos) — precisa de mock próprio (identificado por "AS
+ * mes_inicio") ou a suíte inteira quebra igual ao caso acima, antes mesmo de
+ * chegar nas outras 11.
  */
 jest.mock("../src/database/postgres", () => ({ query: jest.fn() }));
 jest.mock("../src/services/activityLog.service", () => ({
@@ -65,6 +72,22 @@ const ATENDENTE = { id: "at-1", nome: "Bruno", perfil: "atendente", sector: "ven
 function installFakePool() {
   pool.query.mockImplementation(async (text) => {
     const sql = String(text).replace(/\s+/g, " ").trim();
+
+    // Query preliminar de _resolverLimites (2026-09-16) — roda ANTES das 11
+    // abaixo. Os valores em si não importam pro resto do mock (as outras
+    // queries mockadas ignoram os parâmetros, só olham o texto do SQL), só
+    // precisam existir pra não quebrar a desestruturação em buscarMetricas().
+    if (/AS mes_inicio/.test(sql)) {
+      return {
+        rows: [{
+          mes_inicio: new Date("2026-07-01T00:00:00Z"),
+          mes_fim: new Date("2026-08-01T00:00:00Z"),
+          mes_anterior_inicio: new Date("2026-06-01T00:00:00Z"),
+          janela_inicio: new Date("2026-06-15T00:00:00Z"),
+          janela_fim: new Date("2026-07-15T00:00:00Z")
+        }]
+      };
+    }
 
     if (/COUNT\(\*\)::int\s+AS total/.test(sql) && /AS hoje/.test(sql)) {
       return {

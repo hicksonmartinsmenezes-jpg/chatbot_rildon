@@ -57,6 +57,14 @@ async function listHistoryGrouped({ q, from, to, horaInicio, horaFim, limit, off
   });
 }
 
+// Ver comentário em history.repository.js (getGroupedSummary) — usado pelo
+// painel de Histórico pra paginar de verdade (pedido do usuário,
+// 2026-09-23) mantendo os 4 cards de resumo corretos mesmo mostrando só
+// uma página de clientes.
+async function getHistoryGroupedSummary({ q, from, to, horaInicio, horaFim } = {}) {
+  return historyRepository.getGroupedSummary({ q, from, to, horaInicio, horaFim });
+}
+
 async function listHistoryByUser(userId) {
   return historyRepository.findAll({ userId, limit: 500 });
 }
@@ -75,6 +83,7 @@ module.exports = {
   saveHistory,
   listHistory,
   listHistoryGrouped,
+  getHistoryGroupedSummary,
   listHistoryByUser,
   getHistoryById,
   updateMessageStatus

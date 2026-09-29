@@ -23,6 +23,12 @@ jest.mock("../src/services/catalogo.service", () => ({
 jest.mock("../src/services/catalogo-fotos.service", () => ({
   listarFotos: jest.fn(),
   obterFoto: jest.fn(),
+  // 2026-09-08: usado por buscarProdutosHandler pra anexar produto.duasFotos
+  // em cada item da resposta — default false (produto com 1 foto só, o caso
+  // comum) pra não quebrar os testes que não têm opinião sobre isso.
+  temMultiplasFotos: jest.fn(() => false),
+  // 2026-09-08 (nova função "adicionar foto"): usado por adicionarFotoHandler.
+  adicionarFotoManual: jest.fn(),
 }));
 jest.mock("../src/services/estoque.service", () => ({
   carregarEstoque: jest.fn(),
@@ -35,6 +41,7 @@ const request = require("supertest");
 const { buscarProdutosPainel, buscarPorCodigo, buscarPorNomePainel, listarFabricantes } = require("../src/services/catalogo-x2.service");
 const { listarSecoes, listarLinhasPorSecao } = require("../src/services/catalogo.service");
 const { carregarEstoque, statusCache } = require("../src/services/estoque.service");
+const { temMultiplasFotos, adicionarFotoManual } = require("../src/services/catalogo-fotos.service");
 const catalogoRoutes = require("../src/routes/catalogo.routes");
 
 function buildApp() {
@@ -60,7 +67,9 @@ describe("GET /api/catalogo/buscar", () => {
     const res = await request(buildApp()).get("/api/catalogo/buscar").query({ categoria: "ABRAÇADEIRA DE NYLON" });
     expect(res.status).toBe(200);
     expect(buscarProdutosPainel).toHaveBeenCalledWith({
-      marca: "", modelo: "", ano: null, categoria: "ABRAÇADEIRA DE NYLON", fabricante: "",
+      marca: "", modelo: "", ano: null, anoInicio: null, anoFim: null, motor: "",
+      categoria: "ABRAÇADEIRA DE NYLON", fabricante: "", tipoCompleto: null,
+      limite: 400, offset: 0,
     });
   });
 
@@ -71,7 +80,9 @@ describe("GET /api/catalogo/buscar", () => {
     const res = await request(buildApp()).get("/api/catalogo/buscar").query({ fabricante: "MOBENSANI" });
     expect(res.status).toBe(200);
     expect(buscarProdutosPainel).toHaveBeenCalledWith({
-      marca: "", modelo: "", ano: null, categoria: "", fabricante: "MOBENSANI",
+      marca: "", modelo: "", ano: null, anoInicio: null, anoFim: null, motor: "",
+      categoria: "", fabricante: "MOBENSANI", tipoCompleto: null,
+      limite: 400, offset: 0,
     });
   });
 
@@ -94,9 +105,11 @@ describe("GET /api/catalogo/buscar", () => {
       .query({ marca: "GM", modelo: "Astra", ano: "2005", categoria: "alternador" });
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ total: 1, produtos: [{ codigo: "P1" }] });
+    expect(res.body).toEqual({ total: 1, produtos: [{ codigo: "P1", duasFotos: false }], pagina: 1, limite: 400 });
     expect(buscarProdutosPainel).toHaveBeenCalledWith({
-      marca: "GM", modelo: "Astra", ano: 2005, categoria: "alternador", fabricante: "",
+      marca: "GM", modelo: "Astra", ano: 2005, anoInicio: null, anoFim: null, motor: "",
+      categoria: "alternador", fabricante: "", tipoCompleto: null,
+      limite: 400, offset: 0,
     });
   });
 
@@ -105,7 +118,9 @@ describe("GET /api/catalogo/buscar", () => {
     const res = await request(buildApp()).get("/api/catalogo/buscar").query({ modelo: "Corolla" });
     expect(res.status).toBe(200);
     expect(buscarProdutosPainel).toHaveBeenCalledWith({
-      marca: "", modelo: "Corolla", ano: null, categoria: "", fabricante: "",
+      marca: "", modelo: "Corolla", ano: null, anoInicio: null, anoFim: null, motor: "",
+      categoria: "", fabricante: "", tipoCompleto: null,
+      limite: 400, offset: 0,
     });
   });
 
@@ -116,8 +131,60 @@ describe("GET /api/catalogo/buscar", () => {
       .query({ marca: "GM", modelo: "Vectra", fabricante: "FABRICANTEX" });
     expect(res.status).toBe(200);
     expect(buscarProdutosPainel).toHaveBeenCalledWith({
-      marca: "GM", modelo: "Vectra", ano: null, categoria: "", fabricante: "FABRICANTEX",
+      marca: "GM", modelo: "Vectra", ano: null, anoInicio: null, anoFim: null, motor: "",
+      categoria: "", fabricante: "FABRICANTEX", tipoCompleto: null,
+      limite: 400, offset: 0,
     });
+  });
+
+  // Paginação (pedido do usuário, 2026-09-02 — trazida de volta em 2026-09-08
+  // depois de ficar esquecida numa branch sem merge): "pagina" na query
+  // vira offset repassado pro service; resposta inclui pagina/limite pro
+  // frontend montar o pager.
+  test("?pagina=2 → calcula offset e devolve pagina/limite na resposta", async () => {
+    buscarProdutosPainel.mockReturnValue({ total: 566, produtos: [{ codigo: "P900" }] });
+    const res = await request(buildApp())
+      .get("/api/catalogo/buscar")
+      .query({ fabricante: "GAUSS", pagina: "2" });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ total: 566, produtos: [{ codigo: "P900", duasFotos: false }], pagina: 2, limite: 400 });
+    expect(buscarProdutosPainel).toHaveBeenCalledWith({
+      marca: "", modelo: "", ano: null, anoInicio: null, anoFim: null, motor: "",
+      categoria: "", fabricante: "GAUSS", tipoCompleto: null,
+      limite: 400, offset: 400,
+    });
+  });
+
+  // 2026-09-08 (pedido do usuário: "duas fotos como no PDF" também nos
+  // cards de Critérios de Pesquisa): cada produto da resposta ganha
+  // duasFotos, calculado por temMultiplasFotos (catalogo-fotos.service) —
+  // barato o bastante pra rodar pra cada item da página sem custo real.
+  test("anexa duasFotos por produto usando temMultiplasFotos (catalogo-fotos.service)", async () => {
+    buscarProdutosPainel.mockReturnValue({
+      total: 2,
+      produtos: [{ codigo: "P1" }, { codigo: "P2" }],
+    });
+    temMultiplasFotos.mockImplementation(codigo => codigo === "P2");
+
+    const res = await request(buildApp()).get("/api/catalogo/buscar").query({ fabricante: "3RHO" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.produtos).toEqual([
+      { codigo: "P1", duasFotos: false },
+      { codigo: "P2", duasFotos: true },
+    ]);
+    expect(temMultiplasFotos).toHaveBeenCalledWith("P1");
+    expect(temMultiplasFotos).toHaveBeenCalledWith("P2");
+  });
+
+  test("?pagina inválida (0, negativa ou não numérica) → cai pra página 1", async () => {
+    buscarProdutosPainel.mockReturnValue({ total: 12, produtos: [] });
+    const res = await request(buildApp())
+      .get("/api/catalogo/buscar")
+      .query({ fabricante: "MOBENSANI", pagina: "abc" });
+    expect(res.status).toBe(200);
+    expect(res.body.pagina).toBe(1);
+    expect(buscarProdutosPainel).toHaveBeenCalledWith(expect.objectContaining({ offset: 0 }));
   });
 
   test("erro interno do service → 500 genérico", async () => {
@@ -189,7 +256,7 @@ describe("GET /api/catalogo/buscar-codigo", () => {
     buscarPorCodigo.mockReturnValue([{ codigo: "P1", nome: "ALOJAMENTO ALTER TESTE" }]);
     const res = await request(buildApp()).get("/api/catalogo/buscar-codigo").query({ codigo: "REF1" });
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ total: 1, produtos: [{ codigo: "P1", nome: "ALOJAMENTO ALTER TESTE" }] });
+    expect(res.body).toEqual({ total: 1, produtos: [{ codigo: "P1", nome: "ALOJAMENTO ALTER TESTE", duasFotos: false }] });
     expect(buscarPorCodigo).toHaveBeenCalledWith("REF1");
   });
 
@@ -223,7 +290,7 @@ describe("GET /api/catalogo/buscar-nome", () => {
     buscarPorNomePainel.mockReturnValue({ total: 1, produtos: [{ codigo: "P1", nome: "ALTERNADOR TESTE" }] });
     const res = await request(buildApp()).get("/api/catalogo/buscar-nome").query({ nome: "alternador" });
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ total: 1, produtos: [{ codigo: "P1", nome: "ALTERNADOR TESTE" }] });
+    expect(res.body).toEqual({ total: 1, produtos: [{ codigo: "P1", nome: "ALTERNADOR TESTE", duasFotos: false }] });
     expect(buscarPorNomePainel).toHaveBeenCalledWith("alternador");
   });
 
@@ -238,6 +305,56 @@ describe("GET /api/catalogo/buscar-nome", () => {
     buscarPorNomePainel.mockImplementation(() => { throw new Error("boom"); });
     const res = await request(buildApp()).get("/api/catalogo/buscar-nome").query({ nome: "alternador" });
     expect(res.status).toBe(500);
+  });
+});
+
+// Nova função (pedido do usuário, 2026-09-08): "criar possibilidade de
+// adicionar foto" — atendente envia uma foto do computador via upload.
+describe("POST /api/catalogo/produtos/:codigo/fotos/upload", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  test("sem arquivo → 400, não chama o service", async () => {
+    const res = await request(buildApp()).post("/api/catalogo/produtos/P1/fotos/upload");
+    expect(res.status).toBe(400);
+    expect(adicionarFotoManual).not.toHaveBeenCalled();
+  });
+
+  test("código inválido → 400, não chama o service", async () => {
+    const res = await request(buildApp())
+      .post("/api/catalogo/produtos/P!1/fotos/upload")
+      .attach("foto", Buffer.from([0xff, 0xd8, 0xff, 0xd9]), "foto.jpg");
+    expect(res.status).toBe(400);
+    expect(adicionarFotoManual).not.toHaveBeenCalled();
+  });
+
+  test("arquivo JPG válido → 200, repassa o buffer pro service", async () => {
+    adicionarFotoManual.mockReturnValue([{ indice: 0, nomeArquivo: "123-abc.jpg", oculta: false, manual: true }]);
+    const res = await request(buildApp())
+      .post("/api/catalogo/produtos/P1/fotos/upload")
+      .attach("foto", Buffer.from([0xff, 0xd8, 0xff, 0xd9]), "foto.jpg");
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.fotos).toEqual([{ indice: 0, nomeArquivo: "123-abc.jpg", oculta: false, manual: true }]);
+    expect(adicionarFotoManual).toHaveBeenCalledWith("P1", expect.any(Buffer));
+  });
+
+  test("service rejeita arquivo (erro de negócio) → 400", async () => {
+    adicionarFotoManual.mockImplementation(() => {
+      throw new Error("Não consegui reconhecer esse arquivo como uma foto JPG ou PNG válida.");
+    });
+    const res = await request(buildApp())
+      .post("/api/catalogo/produtos/P1/fotos/upload")
+      .attach("foto", Buffer.from([0xff, 0xd8, 0xff, 0xd9]), "foto.jpg");
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/JPG ou PNG/);
+  });
+
+  test("mimetype não permitido (fileFilter do multer) → rejeitado", async () => {
+    const res = await request(buildApp())
+      .post("/api/catalogo/produtos/P1/fotos/upload")
+      .attach("foto", Buffer.from("não é imagem"), { filename: "arquivo.txt", contentType: "text/plain" });
+    expect(res.status).not.toBe(200);
+    expect(adicionarFotoManual).not.toHaveBeenCalled();
   });
 });
 

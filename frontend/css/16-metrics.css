@@ -26,9 +26,6 @@
   background:
     radial-gradient(circle at 100% 0%, rgba(37, 99, 235, 0.20), transparent 55%),
     linear-gradient(160deg, #1b1b1b 0%, #141414 60%, #101010 100%);
-  box-shadow:
-    0 16px 40px rgba(0, 0, 0, 0.42),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .metrics-hero::after {
@@ -108,14 +105,12 @@
   font-size: 14px;
   font-weight: 800;
   cursor: pointer;
-  box-shadow: 0 10px 26px rgba(37, 99, 235, 0.35);
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast), filter var(--transition-fast);
+  transition: transform var(--transition-fast), filter var(--transition-fast);
 }
 
 .metrics-refresh-btn:hover {
   transform: translateY(-2px);
   filter: brightness(1.06);
-  box-shadow: 0 14px 32px rgba(37, 99, 235, 0.45);
 }
 
 .metrics-refresh-btn:active { transform: translateY(0); }
@@ -204,10 +199,7 @@ body.light-theme .metrics-export-btn:hover:not(:disabled) { background: #e6ebf2;
   background:
     radial-gradient(circle at 85% 0%, rgba(255, 255, 255, 0.04), transparent 55%),
     linear-gradient(160deg, #1e1e1e 0%, #151515 60%, #121212 100%);
-  box-shadow:
-    0 14px 34px rgba(0, 0, 0, 0.40),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  transition: transform var(--transition-normal), box-shadow var(--transition-normal), border-color var(--transition-normal);
+  transition: transform var(--transition-normal), border-color var(--transition-normal);
 }
 
 /* Faixa de destaque no topo (cor por métrica) */
@@ -223,9 +215,6 @@ body.light-theme .metrics-export-btn:hover:not(:disabled) { background: #e6ebf2;
 #tab-metrics .metric-card:hover {
   transform: translateY(-4px);
   border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
-  box-shadow:
-    0 20px 46px rgba(0, 0, 0, 0.50),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .metric-card-icon {
@@ -254,7 +243,6 @@ body.light-theme .metrics-export-btn:hover:not(:disabled) { background: #e6ebf2;
   line-height: 1;
   letter-spacing: -0.03em;
   color: #fff;
-  text-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
 }
 
 .metric-card-label {
@@ -330,9 +318,6 @@ body.light-theme .metric-card-trend.is-neutral { color: #64748b; }
   background:
     radial-gradient(circle at 90% 0%, rgba(255, 255, 255, 0.035), transparent 55%),
     linear-gradient(160deg, #1c1c1c 0%, #141414 60%, #111111 100%);
-  box-shadow:
-    0 14px 34px rgba(0, 0, 0, 0.38),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 #tab-metrics .chart-card.chart-wide { grid-column: 1 / -1; }
@@ -431,10 +416,36 @@ body.light-theme .metric-periodo-btn:hover { color: #0f172a; }
 .metrics-tabs-bar {
   display: flex;
   align-items: center;
-  gap: 22px;
+  gap: 16px;
+  flex-wrap: wrap;
   border-bottom: 1px solid var(--border);
   margin-bottom: 18px;
+}
+
+/* Pedido do usuário (2026-09-16): "ajuste a pagina... esta ficando
+   desajustado" — as abas e o grupo de ações (seletor de mês + Exportar
+   PDF) viraram dois wrappers separados dentro da tabs-bar. As abas rolam
+   horizontalmente sozinhas quando não cabem (min-width:0 é o que permite
+   um filho flex encolher abaixo do seu conteúdo); o grupo de ações nunca
+   encolhe (flex-shrink:0) e quebra pra uma linha própria, alinhado à
+   direita, em vez de espremer as abas ou vazar da tela. */
+.metrics-tabs-bar-tabs {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  min-width: 0;
+  flex: 1 1 auto;
   overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.metrics-tabs-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-bottom: 4px;
 }
 
 .metrics-tab-btn {
@@ -467,12 +478,59 @@ body.light-theme .metrics-tab-btn.active { color: var(--metrics-accent); }
    date range na referência), no lugar do antigo botão "Atualizar"
    (removido — a aba já recarrega os dados sozinha ao ser aberta). */
 .metrics-tabs-bar .metrics-export-btn {
-  margin-left: auto;
   flex-shrink: 0;
   padding: 8px 14px;
   font-size: 12px;
   border-radius: 10px;
 }
+
+/* Pedido do usuário (2026-09-16: "melhore o script e css da data") —
+   trocado de <input type="month"> nativo (renderização inconsistente
+   entre navegadores, sem controle de estilo) pra <select> populado via JS
+   (_metricsPopularSeletorMes em 05-metrics.js). Mesma altura/raio do botão
+   Exportar PDF ao lado, pra formar um par visual único; seta customizada
+   via background-image (appearance:none remove a seta nativa do navegador,
+   que não respeita cor/tamanho do resto do painel). */
+.metrics-export-mes-select {
+  flex-shrink: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 8px 30px 8px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%2393a4bd' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>")
+    no-repeat right 12px center,
+    rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  max-width: 160px;
+  transition: border-color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.metrics-export-mes-select:hover { border-color: rgba(255, 255, 255, 0.22); }
+
+.metrics-export-mes-select:focus-visible {
+  outline: none;
+  border-color: var(--metrics-accent);
+}
+
+.metrics-export-mes-select option { background: #1c1c1c; color: #e2e8f0; }
+
+body.light-theme .metrics-export-mes-select {
+  background:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%2364748b' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>")
+    no-repeat right 12px center,
+    #f1f5f9;
+  border-color: #dbe3ee;
+  color: #0f172a;
+}
+
+body.light-theme .metrics-export-mes-select:hover { background-color: #e6ebf2; }
+body.light-theme .metrics-export-mes-select option { background: #fff; color: #0f172a; }
 
 .metrics-tab-panel.hidden { display: none; }
 
@@ -517,12 +575,11 @@ body.light-theme .metrics-tab-btn.active { color: var(--metrics-accent); }
   font-family: inherit;
   outline: none;
   box-sizing: border-box;
-  transition: border-color .15s, box-shadow .15s;
+  transition: border-color .15s;
 }
 
 .metrics-tab-search-wrap input:focus {
   border-color: var(--metrics-accent);
-  box-shadow: 0 0 0 3px rgba(34,197,94,.15);
 }
 
 /* Seletor "Linhas por página" da tabela paginada da aba Evolução. */
@@ -623,6 +680,13 @@ body.light-theme .metric-satisfaction-table th { color: #475569; }
   .metrics-refresh-btn { width: 100%; justify-content: center; }
   #tab-metrics .metrics-cards { grid-template-columns: 1fr; }
   #tab-metrics .metric-card strong { font-size: 34px; }
+
+  /* Tela estreita: grupo de ações (seletor de mês + Exportar PDF) ocupa a
+     largura toda numa linha própria embaixo das abas, em vez de espremer
+     os dois lado a lado. */
+  .metrics-tabs-bar-actions { width: 100%; margin-left: 0; }
+  .metrics-export-mes-select { flex: 1 1 auto; max-width: none; }
+  .metrics-tabs-bar .metrics-export-btn { flex: 1 1 auto; justify-content: center; }
 }
 
 /* ─── Tema claro ───────────────────────────────────────────────── */
@@ -631,7 +695,6 @@ body.light-theme .metrics-hero {
     radial-gradient(circle at 100% 0%, rgba(37, 99, 235, 0.10), transparent 55%),
     linear-gradient(160deg, #ffffff 0%, #f5f7fb 100%);
   border-color: #dbe3ee;
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
 }
 
 body.light-theme .metrics-hero h2 { color: #0f172a; }
@@ -640,16 +703,14 @@ body.light-theme .metrics-hero p  { color: #475569; }
 body.light-theme #tab-metrics .metric-card {
   background: #ffffff;
   border-color: #dbe3ee;
-  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.07);
 }
 
-body.light-theme #tab-metrics .metric-card strong { color: #0f172a; text-shadow: none; }
+body.light-theme #tab-metrics .metric-card strong { color: #0f172a;}
 body.light-theme .metric-card-label { color: #475569; }
 
 body.light-theme #tab-metrics .chart-card {
   background: #ffffff;
   border-color: #dbe3ee;
-  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.07);
 }
 
 body.light-theme #tab-metrics .chart-card h3 { color: #0f172a; }

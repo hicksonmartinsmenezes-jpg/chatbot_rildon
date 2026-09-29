@@ -29,7 +29,10 @@
  *
  * ─── Cache ──────────────────────────────────────────────────────────────
  * Escanear e reparsear TODOS os CSVs a cada consulta ficaria mais lento
- * conforme o histórico cresce (1 CSV/dia, ~5.200 linhas cada). Por isso o
+ * conforme o histórico cresce (1 CSV/dia — export real de 2026-09-05 teve
+ * 17.569 linhas; o "~5.200" citado aqui antes era de um export truncado
+ * por um bug no scraper, fixado 2026-08-10 em x2-estoque-export.js, nunca
+ * revalidado até agora). Por isso o
  * índice (`codigo -> primeira vez visto + dados do produto`) é calculado
  * uma vez e cacheado em `~/.x2-rildon-scraper/estoque/lancamentos-
  * indice.json`, invalidado só quando a LISTA de arquivos CSV muda (novo

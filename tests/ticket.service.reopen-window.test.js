@@ -5,7 +5,8 @@
  *
  * Decisão (discutida com o usuário): não é all-or-nothing. Reabre o MESMO
  * ticket só se o fechamento foi recente (TICKET_REOPEN_WINDOW_MINUTOS,
- * padrão 60min) — cobre o caso real de atendimento encerrado por engano
+ * padrão 240min/4h — pedido do usuário em 2026-09-19, era 60min) — cobre o
+ * caso real de atendimento encerrado por engano
  * (timeout de inatividade) e o cliente responder minutos depois. Fora da
  * janela, retorna false e o fluxo normal (main.flow.js) cria um ticket novo
  * naturalmente quando o cliente pedir algo — sem reciclar um protocolo
@@ -44,7 +45,7 @@ describe("reopenTicketIfClosed — janela de tempo (TICKET_REOPEN_WINDOW_MINUTOS
     clearReopenCooldown("cliente-1");
   });
 
-  test("fechado há 5 minutos (dentro da janela padrão de 60min) → reabre o mesmo ticket", async () => {
+  test("fechado há 5 minutos (dentro da janela padrão de 240min/4h) → reabre o mesmo ticket", async () => {
     ticketRepository.findByUserIds.mockResolvedValue([ticketFechado(5)]);
     ticketRepository.updateStatus.mockResolvedValue({ id: 42, status: "aberto" });
 
@@ -69,8 +70,8 @@ describe("reopenTicketIfClosed — janela de tempo (TICKET_REOPEN_WINDOW_MINUTOS
     expect(emitEvent).not.toHaveBeenCalled();
   });
 
-  test("fechado exatamente no limite da janela (59min) ainda reabre", async () => {
-    ticketRepository.findByUserIds.mockResolvedValue([ticketFechado(59)]);
+  test("fechado exatamente no limite da janela (239min) ainda reabre", async () => {
+    ticketRepository.findByUserIds.mockResolvedValue([ticketFechado(239)]);
     ticketRepository.updateStatus.mockResolvedValue({ id: 42, status: "aberto" });
 
     const resultado = await reopenTicketIfClosed("cliente-1");

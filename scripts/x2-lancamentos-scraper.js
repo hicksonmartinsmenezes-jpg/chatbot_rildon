@@ -97,6 +97,8 @@ const {
   salvarDiagnostico,
 } = require('./x2-nav-helpers');
 
+const { SECOES, normalizar } = require('./x2-fotos-scraper');
+
 const LANCAMENTOS_DIR = path.join(RAIZ_WORK_DIR, 'lancamentos-x2');
 const ULTIMA_CAPTURA_PATH = path.join(LANCAMENTOS_DIR, 'ultima-captura.json');
 
@@ -300,6 +302,55 @@ function _normalizarLancamentos(linhasCruas) {
     });
   }
   return Array.from(porCodigo.values());
+}
+
+// PEDIDO DO USUÁRIO (2026-09-08): "quando utilizar a ferramenta Lançamentos
+// já faça a captura de foto e do produto no mesmo instante" — até aqui,
+// Lançamentos só listava código/descrição pra um Excel de referência, sem
+// tocar no catálogo de verdade do bot (src/config/catalogo-x2/). Cadastrar
+// ficha (x2-catalogo-sync.js) e baixar foto (x2-fotos-scraper.js) só existem
+// por SEÇÃO inteira (não por código avulso) — em vez de construir uma
+// captura nova por código (mais trabalho, mais superfície pra bug), a
+// decisão foi mapear a(s) Seção(ões) que tiveram lançamento nessa semana e
+// disparar as duas rotinas existentes só nelas (ver server.js, dentro de
+// rodarAcao, tipo "lancamentos-x2").
+//
+// `produto.secao` vem como texto livre "SEÇÃO > SUBSEÇÃO" (ver cabeçalho do
+// arquivo, cell[2] do resultado) — NUNCA confirmado ao vivo contra um volume
+// grande de seções distintas (só ~17 produtos, todos aparentemente da mesma
+// seção, no teste de 2026-08-11). Por isso o match é best-effort: tenta
+// igualdade exata primeiro (normalizado, sem acento/maiúsculo — mesmo
+// critério de x2-fotos-scraper.js), cai pra "começa com"/"contém" se não
+// bater, e todo texto que não encontrar seção nenhuma vai pra
+// `naoMapeados` em vez de travar a captura inteira ou ser descartado
+// silenciosamente — quem chama decide o que fazer (hoje: só loga um aviso).
+function mapearSecoesTocadas(produtos) {
+  const porLabelNormalizado = new Map(
+    Object.entries(SECOES).map(([slug, label]) => [normalizar(label), slug])
+  );
+  const slugs = new Set();
+  const naoMapeados = [];
+
+  for (const p of produtos || []) {
+    const textoSecao = String(p.secao || '').split('>')[0].trim();
+    if (!textoSecao) { naoMapeados.push({ codigo: p.codigo, secaoTexto: p.secao || null }); continue; }
+    const norm = normalizar(textoSecao);
+
+    let slug = porLabelNormalizado.get(norm);
+    if (!slug) {
+      for (const [labelNorm, s] of porLabelNormalizado) {
+        if (norm.startsWith(labelNorm) || labelNorm.startsWith(norm) || norm.includes(labelNorm)) {
+          slug = s;
+          break;
+        }
+      }
+    }
+
+    if (slug) slugs.add(slug);
+    else naoMapeados.push({ codigo: p.codigo, secaoTexto: p.secao || null });
+  }
+
+  return { slugs: Array.from(slugs), naoMapeados };
 }
 
 /** dd/mm/aaaa -> Date. Retorna null se o texto não bater no formato (em vez
@@ -533,6 +584,7 @@ module.exports = {
   abrirCatalogoProdutosCompras,
   configurarFiltrosLancamentos,
   capturarLancamentos,
+  mapearSecoesTocadas,
   produtosParaXlsxBuffer,
   salvarCaptura,
   carregarUltimaCaptura,

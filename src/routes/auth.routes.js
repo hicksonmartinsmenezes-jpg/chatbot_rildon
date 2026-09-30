@@ -130,15 +130,58 @@ async function abrirSessao(res, user, extra = {}) {
   return res.json({ user, expiresIn: SESSION_MS, ...extra });
 }
 
+// ─── Bloqueio temporário por conta (varredura 2026-09-30) ─────────────────────
+// Senha é PIN de 4 dígitos (decisão do usuário), então o limite por IP não basta:
+// vários IPs poderiam testar as 10.000 combinações. Após 5 erros seguidos na
+// mesma conta, bloqueia novos logins dela por 15 min. Em memória (zera ao
+// reiniciar o servidor) — suficiente para conter tentativa automatizada.
+const LOGIN_MAX_FALHAS = Number(process.env.LOGIN_MAX_FAILURES) || 5;
+const LOGIN_BLOQUEIO_MS = (Number(process.env.LOGIN_LOCK_MINUTES) || 15) * 60 * 1000;
+const _falhasLogin = new Map(); // usuario -> { count, until }
+
+function _chaveLogin(usuario) {
+  return String(usuario || "").trim().toLowerCase().slice(0, 100);
+}
+function _bloqueadoAte(usuario) {
+  const e = _falhasLogin.get(_chaveLogin(usuario));
+  if (e?.until && e.until > Date.now()) return e.until;
+  return 0;
+}
+function _registrarFalhaLogin(usuario) {
+  const k = _chaveLogin(usuario);
+  if (!k) return;
+  const e = _falhasLogin.get(k) || { count: 0, until: 0 };
+  if (e.until && e.until <= Date.now()) { e.count = 0; e.until = 0; }
+  e.count += 1;
+  if (e.count >= LOGIN_MAX_FALHAS) e.until = Date.now() + LOGIN_BLOQUEIO_MS;
+  _falhasLogin.set(k, e);
+}
+setInterval(() => {
+  const agora = Date.now();
+  for (const [k, e] of _falhasLogin) {
+    if ((e.until && e.until <= agora) || _falhasLogin.size > 5000) _falhasLogin.delete(k);
+  }
+}, 10 * 60 * 1000).unref();
+
 // ─── POST /api/auth/login ─────────────────────────────────────────────────────
 router.post("/auth/login", async (req, res) => {
   try {
     const { usuario, senha } = req.body || {};
+
+    const bloqueadoAte = _bloqueadoAte(usuario);
+    if (bloqueadoAte) {
+      const min = Math.max(1, Math.ceil((bloqueadoAte - Date.now()) / 60000));
+      return res.status(429).json({ error: `Conta temporariamente bloqueada por excesso de tentativas. Tente novamente em ${min} min.` });
+    }
+
     const user = await validateUser(usuario, senha);
 
     if (!user) {
+      _registrarFalhaLogin(usuario);
       return res.status(401).json({ error: "Usuário ou senha inválidos." });
     }
+
+    _falhasLogin.delete(_chaveLogin(usuario));
 
     // 2FA ativo: não abre sessão ainda — exige um segundo passo com o código.
     const fullUser = await userRepository.findById(user.id);

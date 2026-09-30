@@ -10,7 +10,10 @@ function notFoundHandler(req, res) {
 
 // Express identifica o error handler pela aridade (4 args): "next" precisa existir mesmo sem uso.
 function errorHandler(err, req, res, next) {
-  const status = Number(err.status || err.statusCode || 500);
+  // Erros do multer (tipo/tamanho de arquivo inválido) são do cliente: 400,
+  // não 500 "Erro interno" (varredura 2026-09-30).
+  const ehErroDeUpload = err && (err.name === "MulterError" || /Apenas imagens/.test(err.message || ""));
+  const status = ehErroDeUpload ? 400 : Number(err.status || err.statusCode || 500);
   const safeStatus = status >= 400 && status < 600 ? status : 500;
   const requestId = req.id || req.headers["x-request-id"] || "";
   const context = `${req.method} ${req.originalUrl || req.path}${requestId ? ` #${requestId}` : ""}`;

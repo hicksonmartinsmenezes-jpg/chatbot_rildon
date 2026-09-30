@@ -81,9 +81,9 @@ function installFakePool(state) {
   pool.query.mockImplementation(async (text, params = []) => {
     const sql = String(text).replace(/\s+/g, " ").trim();
 
-    if (/^SELECT id, ativo, perfil FROM users WHERE id = \$1/.test(sql)) {
+    if (/^SELECT id, ativo, perfil(, permissions)? FROM users WHERE id = \$1/.test(sql)) {
       const u = state.users.find(u => u.id === params[0]);
-      return { rows: u ? [{ id: u.id, ativo: u.ativo, perfil: u.perfil }] : [] };
+      return { rows: u ? [{ id: u.id, ativo: u.ativo, perfil: u.perfil, permissions: u.permissions || {} }] : [] };
     }
     if (/^SELECT \* FROM users WHERE id = \$1/.test(sql)) {
       const u = state.users.find(u => u.id === params[0]);
@@ -277,6 +277,18 @@ describe("auth.routes", () => {
     test("faltando código ou token retorna 400", async () => {
       const res = await request(app).post("/api/auth/login/verify-2fa").send({});
       expect(res.status).toBe(400);
+    });
+  });
+
+  describe("bloqueio por conta", () => {
+    test("5 senhas erradas seguidas bloqueiam a conta (429)", async () => {
+      // Usuário próprio deste teste: o bloqueio é por nome e fica em memória.
+      for (let n = 0; n < 5; n++) {
+        const r = await request(app).post("/api/auth/login").send({ usuario: "conta-bloqueio", senha: "0000x" });
+        expect(r.status).toBe(401);
+      }
+      const bloqueado = await request(app).post("/api/auth/login").send({ usuario: "conta-bloqueio", senha: "0000x" });
+      expect(bloqueado.status).toBe(429);
     });
   });
 

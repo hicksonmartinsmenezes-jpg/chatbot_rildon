@@ -332,7 +332,7 @@ function mapearSecoesTocadas(produtos) {
   const naoMapeados = [];
 
   for (const p of produtos || []) {
-    const textoSecao = String(p.secao || '').split('>')[0].trim();
+    const textoSecao = String(p.secao || '').replace(/^\s*se[cç][aã]o(\s*\/\s*linha)?\s*:\s*/i, '').split('>')[0].replace(/\s*fornecedores\s*:.*$/i, '').trim();
     if (!textoSecao) { naoMapeados.push({ codigo: p.codigo, secaoTexto: p.secao || null }); continue; }
     const norm = normalizar(textoSecao);
 

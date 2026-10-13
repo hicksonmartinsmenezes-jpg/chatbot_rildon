@@ -2,6 +2,7 @@
 // Recuperação do QR Code do WhatsApp no painel.
 (() => {
   const POLL_MS = 1500;
+  let waConectado = false;
   const RECOVERY_TIMEOUT_MS = 45000;
   let statusTimer = null;
   let recoveryTimer = null;
@@ -64,8 +65,10 @@
       if (!res?.ok) return false;
       const info = await res.json();
       if (info.connected) {
+        waConectado = true;
         updateWaStatusPanel("connected"); hideRecoveryWidget(); stopRecoveryPolling(); return true;
       }
+      waConectado = false;
       if (info.qr || info.qrImage) {
         updateWaStatusPanel("qr");
         if (info.qr) renderWaQr(info.qr);
@@ -78,8 +81,13 @@
 
   function startWaStatusPolling() {
     if (statusTimer) return;
-    refreshWaStatus();
-    statusTimer = setInterval(refreshWaStatus, POLL_MS);
+    const tick = async () => {
+      await refreshWaStatus();
+      // conectado: poll lento (o socket avisa mudanças); desconectado/QR: rápido
+      statusTimer = setTimeout(tick, waConectado ? 20000 : POLL_MS);
+    };
+    statusTimer = setTimeout(() => {}, 0);
+    tick();
   }
   function stopRecoveryPolling() { clearInterval(recoveryTimer); recoveryTimer = null; }
   function waitForWaQr() {

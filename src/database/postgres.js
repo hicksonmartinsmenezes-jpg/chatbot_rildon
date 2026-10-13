@@ -12,9 +12,19 @@ const pool = new Pool({
   // Garantir string — DB_PASSWORD undefined causa erro SASL no driver pg
   password: String(process.env.DB_PASSWORD || ""),
   database: process.env.DB_NAME     || "chatbot_rildon",
-  max:      Number(process.env.DB_POOL_MAX)                || 20,
+  max:      Number(process.env.DB_POOL_MAX)                || 30,
   idleTimeoutMillis:       Number(process.env.DB_POOL_IDLE_TIMEOUT)        || 30000,
   connectionTimeoutMillis: Number(process.env.DB_POOL_CONNECTION_TIMEOUT)  || 15000,
+  // 2026-10-09 (auditoria): sem statement_timeout, uma query pesada (busca com
+  // ILIKE '%...%' no histórico, por exemplo) segurava um dos slots do pool
+  // indefinidamente; bastavam algumas pra esgotar o pool inteiro e fazer todo
+  // o resto estourar com "Connection terminated due to connection timeout".
+  statement_timeout: Number(process.env.DB_STATEMENT_TIMEOUT) || 20000,
+  query_timeout:     Number(process.env.DB_QUERY_TIMEOUT)     || 25000,
+  // Conexões ociosas morrendo em silêncio atrás do NAT do Docker só davam erro
+  // na próxima query; o keepalive evita isso.
+  keepAlive: true,
+  keepAliveInitialDelayMillis: 10000,
   // MELHORIA: suporte a SSL para conexões em produção (ex: Heroku, Railway, Render)
   ssl: process.env.DB_SSL === "true" ? { rejectUnauthorized: false } : false
 });
@@ -22,6 +32,18 @@ const pool = new Pool({
 pool.on("error", (err) => {
   logger.error(`[PostgreSQL] Erro inesperado no pool: ${err.message}`);
 });
+
+// 2026-10-09 (auditoria): sem isto não havia como saber que o pool estava
+// saturado — o sintoma chegava só como "Connection terminated due to
+// connection timeout" espalhado por vários módulos, sem apontar a causa.
+// Se `fila` aparecer com frequência no log, o pool é o gargalo.
+setInterval(() => {
+  if (pool.waitingCount > 0) {
+    logger.warn(
+      `[PostgreSQL] pool saturado — conexões=${pool.totalCount} ociosas=${pool.idleCount} fila=${pool.waitingCount}`
+    );
+  }
+}, 15000).unref();
 
 /**
  * Verifica conexão com o banco na inicialização.

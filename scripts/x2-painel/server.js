@@ -63,6 +63,39 @@ const lancamentosX2 = require('../x2-lancamentos-scraper');
 // (require tardio), então isso aqui não quebra se a dependência ainda não
 // foi instalada e ninguém configurou o Drive ainda.
 const driveLancamentos = require('../x2-drive-lancamentos');
+
+// Auditoria 2026-09-30: falha de rotina, Drive ou estoque parado só ia pro
+// log do console. Agora avisa por WhatsApp (best-effort, nunca lança erro;
+// no máximo 1 aviso igual a cada 6 h pra não spammar).
+const ALERTAS_INFO = {
+  'cadeia-sync': { titulo: 'Lançamentos: cadastro falhou', acao: 'Rode "Cadastrar produtos" no painel e depois as fotos. Fotos e Drive não foram executados.' },
+  'cadeia-fotos': { titulo: 'Lançamentos: fotos falharam', acao: 'Rode "Atualizar fotos" no painel e clique em "Catálogo de Produtos" quando pedir. O Drive não foi atualizado.' },
+  'drive': { titulo: 'Drive: PDF não atualizado', acao: 'Confira o Drive (token OAuth) e rode: node scripts\\x2-drive-lancamentos.js --verificar' },
+  'drive-sem-fabricante': { nivel: 'aviso', titulo: 'Drive: lançamentos sem fabricante', acao: 'Cadastre o fabricante desses códigos no catálogo para eles entrarem no PDF.' },
+  'secao-nao-mapeada': { nivel: 'aviso', titulo: 'Lançamentos fora do catálogo', acao: 'A Seção desses códigos não está mapeada. Me envie a Seção para eu incluir.' },
+  'estoque-parado': { titulo: 'Estoque/preço desatualizado', acao: 'Confira se o Painel X2 está aberto e rode "Exportar estoque".' },
+  'estoque-sem': { titulo: 'Estoque nunca importado', acao: 'Rode "Exportar estoque" no Painel X2.' },
+  'acao': { titulo: 'Rotina do Painel X2 falhou', acao: 'Abra o painel, veja o log da rotina e rode de novo.' },
+};
+const _alertasRecentes = new Map();
+async function alertarFalhaX2(chave, mensagem) {
+  try {
+    const agora = Date.now();
+    if (agora - (_alertasRecentes.get(chave) || 0) < 6 * 60 * 60 * 1000) return;
+    _alertasRecentes.set(chave, agora);
+    const { enviarAlertaWhatsApp, formatarAlerta } = require('../x2-whatsapp-alerta');
+    try { require('../relatorio-mensal').registrarAlertaEnviado(mensagem); } catch { /* best-effort */ }
+    const info = ALERTAS_INFO[chave] || ALERTAS_INFO[String(chave).split('-').slice(0, 2).join('-')] || ALERTAS_INFO[String(chave).split('-')[0]] || {};
+    await enviarAlertaWhatsApp(formatarAlerta({
+      nivel: info.nivel || 'erro',
+      titulo: info.titulo || 'Painel X2 — atenção',
+      linhas: [mensagem],
+      acao: info.acao || 'Abra o Painel X2 (http://127.0.0.1:4123) e confira o log da última execução.',
+    }));
+  } catch (e) {
+    console.error('[x2-painel] não consegui enviar alerta WhatsApp:', e.message);
+  }
+}
 const qualidadeApenasCadastrados = require('./qualidade-apenas-cadastrados');
 const { listarEntradas } = require('../../src/utils/zip-reader');
 const rotinasStore = require('./rotinas');
@@ -275,6 +308,10 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
           limit: opcoes.limit || null,
           channel: 'chrome',
           retrySemFoto: !!opcoes.retrySemFoto,
+          // Rotina automática de fotos (sem lista de códigos) renova aos poucos as fotos
+          // com mais de X2_RENOVAR_FOTOS_DIAS dias (padrão 60), até 300 por seção/execução.
+          renovarAposDias: opcoes.renovarAposDias || ((origemRotina && !(opcoes.codigosEspecificos && opcoes.codigosEspecificos.length)) ? (Number(process.env.X2_RENOVAR_FOTOS_DIAS) || 60) : undefined),
+          renovarLimite: opcoes.renovarLimite || undefined,
           reiniciar: !!opcoes.reiniciar,
           confirmar: modoAutomatico ? undefined : confirmarFactory(),
           modoAutomatico,
@@ -300,7 +337,8 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
         console.log('\n▶ Publicando (montando zip) as seções que já ficaram 100% completas...');
         for (const slug of opcoes.secoes) {
           try {
-            await montarZipFinal(slug);
+            // Rodada restrita a códigos (Lançamentos): zip parcial preserva as fotos já publicadas.
+            await montarZipFinal(slug, { parcial: !!(opcoes.codigosEspecificos && opcoes.codigosEspecificos.length) });
           } catch (e) {
             console.error(`Erro ao montar zip de "${slug}": ${e.message}`);
           }
@@ -415,6 +453,7 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
           const { slugs, naoMapeados } = lancamentosX2.mapearSecoesTocadas(snapshotLancamentos.produtos);
           if (naoMapeados.length) {
             console.log(`\n⚠ ${naoMapeados.length} lançamento(s) com Seção não reconhecida (fica só no Excel, sem cadastro/foto automático): ${naoMapeados.map((n) => n.codigo).join(', ')}`);
+            alertarFalhaX2('secao-nao-mapeada', `${naoMapeados.length} lançamento(s) com Seção não reconhecida ficaram fora do catálogo: ${naoMapeados.slice(0, 10).map((n) => n.codigo).join(', ')}`);
           }
           if (slugs.length) {
             console.log(`\n▶ ${slugs.length} Seção(ões) com lançamento novo — cadastro de ficha + fotos serão disparados automaticamente em seguida: ${slugs.join(', ')}`);
@@ -444,6 +483,9 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
     execucao.erro = e.message;
     execucao.terminal.escrever(`\n❌ Erro: ${e.message}\n`);
     if (origemRotina) rotinasStore.registrarExecucao(origemRotina, { resultado: 'erro', erro: e.message });
+    if (origemRotina || (opcoes && opcoes.automatico)) {
+      alertarFalhaX2(`acao-${tipo}`, `a rotina "${rotulo || tipo}" falhou: ${String(e.message).slice(0, 300)}`);
+    }
   } finally {
     process.stdout.write = origWrite;
     process.stderr.write = origErrorWrite;
@@ -479,6 +521,11 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
           console.log('[x2-painel] cadastro de ficha cancelado — pulando download de fotos automático.');
           return null;
         }
+        if (execucao && execucao.erro) {
+          console.log('[x2-painel] cadastro de ficha FALHOU — pulando fotos e PDF/Drive para não subir catálogo incompleto.');
+          alertarFalhaX2('cadeia-sync', `Lançamentos: o cadastro dos ${codigosParaAutoCaptura.length} código(s) novos falhou (${String(execucao.erro).slice(0, 200)}). Fotos e Drive NÃO foram executados.`);
+          return null;
+        }
         return rodarAcao('baixar', { secoes: secoesParaAutoCaptura, codigosEspecificos: codigosParaAutoCaptura, automatico: true }, { rotulo: 'Fotos Lançamentos' });
       })
       .then((fotosRodou) => {
@@ -495,7 +542,57 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
           console.log('[x2-painel] download de fotos cancelado — pulando geração/upload de PDF automático.');
           return null;
         }
-        return driveLancamentos.rodarUploadDrive(codigosParaAutoCaptura);
+        if (execucao && execucao.erro) {
+          console.log('[x2-painel] download de fotos FALHOU — pulando PDF/Drive para não subir catálogo sem as fotos novas.');
+          alertarFalhaX2('cadeia-fotos', `Lançamentos: o download das fotos dos códigos novos falhou (${String(execucao.erro).slice(0, 200)}). O PDF NÃO foi enviado ao Drive.`);
+          return null;
+        }
+        // Só os fabricantes dos códigos que entraram em Lançamentos nesta semana
+        // (decisão do usuário 2026-09-30: o reenvio completo é manual, via
+        // `node scripts/x2-drive-lancamentos.js --todos`, nunca automático).
+        return driveLancamentos.rodarUploadDrive(codigosParaAutoCaptura).then((alvo) => {
+          const erros = alvo.erros || [];
+          if (erros.length) {
+            const lista = erros.slice(0, 5).map((x) => `${x.fabricante || 'geral'}: ${String(x.erro).slice(0, 120)}`).join(' | ');
+            alertarFalhaX2('drive', `envio de PDFs ao Drive teve ${erros.length} falha(s). ${lista}`);
+          }
+          if (alvo.semFabricante && alvo.semFabricante.length) {
+            alertarFalhaX2('drive-sem-fabricante', `${alvo.semFabricante.length} código(s) de lançamento sem fabricante não foram ao Drive: ${alvo.semFabricante.slice(0, 10).join(', ')}`);
+          }
+          if (!erros.length) {
+            // Resumo de sucesso da semana — best-effort.
+            try {
+              const { enviarAlertaWhatsApp, formatarAlerta } = require('../x2-whatsapp-alerta');
+              const fabs = alvo.fabricantes || [];
+              enviarAlertaWhatsApp(formatarAlerta({
+                nivel: 'ok',
+                titulo: 'Lançamentos da semana concluídos',
+                linhas: [
+                  `Produtos novos: ${codigosParaAutoCaptura.length}`,
+                  `Seções atualizadas: ${secoesParaAutoCaptura.join(', ') || '—'}`,
+                  `PDFs atualizados no Drive: ${fabs.length}${fabs.length ? ` (${fabs.join(', ')})` : ''}`,
+                ],
+              })).catch(() => {});
+            } catch { /* best-effort */ }
+          }
+          // Export (Excel) da captura da semana, enviado ao WhatsApp de alertas
+          // logo depois do resumo — independe do Drive ter dado erro ou não.
+          setTimeout(() => {
+            try {
+              const lancDir = path.join(require('os').homedir(), '.x2-rildon-scraper', 'lancamentos-x2');
+              const ultimo = fs.readdirSync(lancDir)
+                .filter((f) => /^captura-.*\.xlsx$/.test(f))
+                .map((f) => ({ f, t: fs.statSync(path.join(lancDir, f)).mtimeMs }))
+                .sort((a, b) => b.t - a.t)[0];
+              if (ultimo) {
+                const periodo = ultimo.f.replace(/^captura-/, '').replace(/\.xlsx$/, '').replace('_a_', ' a ').replace(/-/g, '/');
+                require('../x2-whatsapp-alerta')
+                  .enviarDocumentoWhatsApp(path.join(lancDir, ultimo.f), `📋 Lançamentos da semana (${periodo})`)
+                  .catch(() => {});
+              }
+            } catch { /* best-effort */ }
+          }, 5000);
+        });
       })
       .catch((e) => {
         console.error('[x2-painel] erro na captura automática de foto/ficha/PDF pós-Lançamentos:', e.message);
@@ -1064,4 +1161,23 @@ server.listen(PORT, '127.0.0.1', () => {
   // janela minimizada, por exemplo), não só ser aberto uma vez.
   setInterval(checarRotinas, 60 * 1000);
   checarRotinas();
+
+  // Relatório mensal em PDF por WhatsApp (pedido 2026-09-30): último dia do
+  // mês às 20h (ou dia 1º às 8h se o painel estava fechado). Ver
+  // scripts/relatorio-mensal.js. Checa a cada 15 min; 1 envio por mês.
+  const relatorioMensal = require('../relatorio-mensal');
+  setInterval(() => relatorioMensal.verificarEEnviarSeDevido(), 15 * 60 * 1000);
+  setTimeout(() => relatorioMensal.verificarEEnviarSeDevido(), 60 * 1000);
+
+  // Vigia de estoque parado (auditoria 2026-09-30): se o CSV que alimenta
+  // preço/estoque do bot tem mais de 12 h, avisa por WhatsApp (1x a cada 6 h).
+  const CSV_ESTOQUE = path.join(__dirname, '..', '..', 'src', 'data', 'estoque-latest.csv');
+  setInterval(() => {
+    try {
+      const idadeH = (Date.now() - fs.statSync(CSV_ESTOQUE).mtimeMs) / 3600000;
+      if (idadeH > 12) alertarFalhaX2('estoque-parado', `o estoque/preço do bot não atualiza há ${Math.round(idadeH)} h (rotina de 5 h parada?). Confira se o Painel X2 está aberto.`);
+    } catch {
+      alertarFalhaX2('estoque-sem-csv', 'não achei src/data/estoque-latest.csv — estoque/preço nunca foi importado nesta máquina.');
+    }
+  }, 30 * 60 * 1000);
 });

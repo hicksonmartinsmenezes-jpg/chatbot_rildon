@@ -1,7 +1,7 @@
 const crypto = require("crypto");
 const ExcelJS = require("exceljs");
 const logger = require("../utils/logger");
-const { listarFotos, obterFoto, obterFotoPorNome, definirFotoPreferida, ocultarFoto, recarregarIndice: recarregarIndiceFotos, obterVersaoFotos, temMultiplasFotos, adicionarFotoManual } = require("../services/catalogo-fotos.service");
+const { listarFotos, obterFoto, obterFotoPorNome, definirFotoPreferida, ocultarFoto, recarregarIndice: recarregarIndiceFotos, obterVersaoFotos, temMultiplasFotos, temAlgumaFoto, adicionarFotoManual } = require("../services/catalogo-fotos.service");
 const { buscarProdutosPainel, buscarPorCodigo, buscarPorNomePainel, listarFabricantes, listarFabricantesCatalogoCompleto, listarMarcasVeiculoConhecidas, decodificarFabricanteCompleto, recarregarIndices: recarregarIndicesProdutos, listarLinhasParaEdicaoCategoria, definirLinhaProduto, PSEUDO_FABRICANTE_DIVERSOS } = require("../services/catalogo-x2.service");
 const { listarSecoes, listarLinhasPorSecao } = require("../services/catalogo.service");
 const { gerarPdfCatalogo, gerarPdfCatalogoCompleto, gerarPdfCatalogoPromocional, limparCacheBboxFotos } = require("../services/catalogo-pdf.service");
@@ -351,13 +351,22 @@ async function exportarPdfHandler(req, res) {
         });
       }
 
-      // Pedido do usuário (2026-09-05): também só entra produto com foto —
-      // listarFotos é metadados só (índice em memória, sem ler bytes),
-      // barato de chamar por produto mesmo em listas grandes. Aplicado
-      // DEPOIS do filtro de preço, com mensagem própria, pra distinguir no
-      // erro qual dos dois filtros zerou o resultado.
+      // Pedido do usuário (2026-09-05): também só entra produto com foto.
+      // Aplicado DEPOIS do filtro de preço, com mensagem própria, pra
+      // distinguir no erro qual dos dois filtros zerou o resultado.
+      //
+      // 2026-10-09 (auditoria de performance): este filtro usava
+      // `listarFotos(p.codigo).length > 0`, e o comentário antigo afirmava
+      // que listarFotos era "metadados só, sem ler bytes, barato". ERRADO —
+      // listarFotos chama _reordenarFotos, que EXTRAI OS BYTES de cada foto
+      // (openSync + readSync + inflateRawSync no zip) pra ler as dimensões.
+      // Num fabricante de 1000 produtos isso eram ~900 leituras de arquivo
+      // síncronas num único .filter(), com o event loop travado, ANTES de
+      // qualquer header HTTP — o maior travamento de toda a exportação, e
+      // fora do alcance do _cederEventLoop do gerador. temAlgumaFoto responde
+      // a mesma pergunta olhando só o índice em memória.
       const totalAntesDaFoto = produtos.length;
-      produtos = produtos.filter(p => listarFotos(p.codigo).length > 0);
+      produtos = produtos.filter(p => temAlgumaFoto(p.codigo));
       if (!produtos.length) {
         return res.status(404).json({
           error: `${totalAntesDaFoto} peça(s) com preço encontrada(s) pra "${fabricanteCompleto}", mas nenhuma tem foto cadastrada — nada pra exportar.`,

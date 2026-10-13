@@ -14,6 +14,21 @@ jest.mock("../src/services/catalogo-x2.service", () => ({
   buscarPorCodigo: jest.fn(),
   buscarPorNomePainel: jest.fn(),
   listarFabricantes: jest.fn(),
+  // 2026-10-09: o mock tinha ficado para trás do controller/serviço, e o
+  // resultado era pior que um teste vermelho — a suíte INTEIRA deixava de
+  // carregar ("listarMarcasVeiculoConhecidas is not a function", chamada no
+  // carregamento de catalogo-pdf.service), então 32 testes apareciam como "1
+  // suite failed to run" e ninguém via que 12 deles estavam quebrados.
+  // Em particular decodificarFabricanteCompleto é chamada logo no começo de
+  // buscarProdutosHandler, ANTES da validação de parâmetros: sem ela, toda
+  // requisição de busca virava 500 em vez do 400/200 esperado.
+  listarMarcasVeiculoConhecidas: jest.fn(() => []),
+  listarFabricantesCatalogoCompleto: jest.fn(() => []),
+  decodificarFabricanteCompleto: jest.fn((v) => ({ fabricante: String(v || ""), tipoCompleto: null })),
+  recarregarIndices: jest.fn(),
+  listarLinhasParaEdicaoCategoria: jest.fn(() => []),
+  definirLinhaProduto: jest.fn(),
+  PSEUDO_FABRICANTE_DIVERSOS: "__DIVERSOS__",
 }));
 jest.mock("../src/services/catalogo.service", () => ({
   listarSecoes: jest.fn(),
@@ -29,6 +44,10 @@ jest.mock("../src/services/catalogo-fotos.service", () => ({
   temMultiplasFotos: jest.fn(() => false),
   // 2026-09-08 (nova função "adicionar foto"): usado por adicionarFotoHandler.
   adicionarFotoManual: jest.fn(),
+  // 2026-10-09: filtro "só produto com foto" da exportação passou a usar esta
+  // função (antes usava listarFotos, que lia bytes do zip — ver comentário no
+  // controller). Default true pra não zerar o resultado dos testes de export.
+  temAlgumaFoto: jest.fn(() => true),
 }));
 jest.mock("../src/services/estoque.service", () => ({
   carregarEstoque: jest.fn(),

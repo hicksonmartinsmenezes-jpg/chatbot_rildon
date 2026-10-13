@@ -90,4 +90,39 @@ async function enviarAlertaWhatsApp(mensagem, { numero } = {}) {
   return corpo;
 }
 
-module.exports = { enviarAlertaWhatsApp, BASE_URL };
+const NIVEIS = { erro: '🔴', aviso: '🟡', ok: '🟢', info: '🔵' };
+/** Monta mensagem de WhatsApp padronizada: título em negrito, linhas, "o que fazer" e horário. */
+function formatarAlerta({ nivel = 'aviso', titulo, linhas = [], acao } = {}) {
+  const quando = new Date().toLocaleString('pt-BR', { timeZone: process.env.TZ_NEGOCIO || 'America/Maceio', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const partes = [`${NIVEIS[nivel] || NIVEIS.aviso} *${titulo}*`];
+  if (linhas.length) partes.push(linhas.map((l) => `• ${l}`).join('\n'));
+  if (acao) partes.push(`👉 *O que fazer:* ${acao}`);
+  partes.push(`_Chatbot Rildon · ${quando}_`);
+  return partes.join('\n\n');
+}
+
+/** Envia um arquivo (PDF etc.) pelo bot Rildon (POST /api/messages/send-media). */
+async function enviarDocumentoWhatsApp(caminho, legenda = '', { numero } = {}) {
+  const fs = require('fs');
+  const apiToken = process.env.API_TOKEN;
+  const destino = numero || process.env.ALERTA_WHATSAPP_NUMERO;
+  if (!apiToken) throw new Error('API_TOKEN não configurado no .env.');
+  if (!destino) throw new Error('ALERTA_WHATSAPP_NUMERO não configurado no .env.');
+  const form = new FormData();
+  form.append('userId', destino);
+  if (legenda) form.append('caption', legenda);
+  const ext = path.extname(caminho).toLowerCase();
+  const tipo = ext === '.pdf' ? 'application/pdf' : 'application/octet-stream';
+  form.append('media', new Blob([fs.readFileSync(caminho)], { type: tipo }), path.basename(caminho));
+  let resposta;
+  try {
+    resposta = await fetch(`${BASE_URL}/api/messages/send-media`, { method: 'POST', headers: { Authorization: `Bearer ${apiToken}` }, body: form });
+  } catch (e) {
+    throw new Error(`Não consegui chamar o bot Rildon em ${BASE_URL}: ${e.message}`);
+  }
+  const corpo = await resposta.json().catch(() => ({}));
+  if (!resposta.ok) throw new Error(`Bot Rildon recusou o arquivo (HTTP ${resposta.status}): ${corpo.error || 'sem detalhe.'}`);
+  return corpo;
+}
+
+module.exports = { enviarAlertaWhatsApp, enviarDocumentoWhatsApp, formatarAlerta, BASE_URL };

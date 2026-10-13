@@ -791,6 +791,9 @@ const MECANICA_TITULO_FONTE = "Montserrat-ExtraBold";
 // chamadas antigas sem tipoCompleto (ex.: scripts/x2-drive-lancamentos.js,
 // que chama ?fabricante=PERFECT sem esse parâmetro).
 function _estiloCatalogoCompleto(fabricante, tipoCompleto = null) {
+  // Catálogo com layout PRÓPRIO do fabricante (Arielo, 2026-10-01) — ver
+  // catalogo-pdf-arielo.service.js. Vale antes de qualquer outra regra.
+  if (/ARIELO/i.test(String(fabricante || ""))) return "arielo";
   if (tipoCompleto === "mecanica") return "mecanica";
   if (tipoCompleto === "eletrica") return "eletrica";
   return String(fabricante || "").toUpperCase().includes("PERFECT") ? "mecanica" : "eletrica";
@@ -1137,6 +1140,9 @@ const LINHA_DIVISORIA = "#e5e7eb"; // separa a área da foto da área de texto
 // mapa é a fonte PRIMÁRIA; o corte por " - " continua só como fallback pra
 // produto que não estiver no mapa (sincronizado depois da extração).
 function _rotuloProduto(produto) {
+  // Catálogos de layout próprio (Arielo): o card representa uma FAMÍLIA de
+  // códigos (EST349 = EST800349/EST600349…), então o rótulo vem de fora.
+  if (produto._rotuloOverride) return produto._rotuloOverride;
   const codigoFornecedor =
     CODIGO_FORNECEDOR_MAP.get(String(produto.codigo)) ||
     (produto.referencia ? String(produto.referencia).split(" - ")[0].trim() : null);
@@ -3452,7 +3458,21 @@ async function gerarPdfCatalogoCompleto(produtos, fabricante, destino, tipoCompl
   // dois grupos — ver catalogo.controller.js/catalogo-x2.service.js.
   const estilo = _estiloCatalogoCompleto(fabricante, tipoCompleto);
 
-  const doc = new PDFDocument({ size: "A4", margin: 0, autoFirstPage: false, bufferPages: true });
+  if (estilo === "arielo") {
+    // eslint-disable-next-line global-require
+    return require("./catalogo-pdf-arielo.service").gerarPdfCatalogoArielo(produtos, fabricante, destino, _interno());
+  }
+
+  // 2026-10-09 (auditoria de performance): `bufferPages: true` REMOVIDO.
+  // Com ela, o pdfkit não finaliza nenhuma página no addPage: guarda todas em
+  // _pageBuffer e, só no doc.end(), roda um zlib.deflateSync POR PÁGINA de uma
+  // vez só — um bloqueio síncrono de vários segundos no fim da geração, depois
+  // do último await, justamente quando o usuário acha que acabou. A flag não
+  // servia pra nada aqui: ela só é necessária pra doc.switchToPage(), que este
+  // gerador evita de propósito (ver comentário mais abaixo). Sem ela, cada
+  // página é finalizada no addPage seguinte — dentro do laço, entre as
+  // chamadas de _cederEventLoop — distribuindo o custo. O PDF sai idêntico.
+  const doc = new PDFDocument({ size: "A4", margin: 0, autoFirstPage: false });
   doc.pipe(destino);
   doc.registerFont(TITULO_FONTE, TITULO_FONTE_ARQUIVO);
   // Quicksand só é usada no card do Catálogo Completo (_desenharCardCatalogoCompleto)
@@ -3718,7 +3738,16 @@ async function gerarPdfCatalogoCompleto(produtos, fabricante, destino, tipoCompl
  * (mesmo campo, significado diferente por modo — ver _agruparPorFabricante).
  */
 async function gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino, modo = "linha") {
-  const doc = new PDFDocument({ size: "A4", margin: 0, autoFirstPage: false, bufferPages: true });
+  // 2026-10-09 (auditoria de performance): `bufferPages: true` REMOVIDO.
+  // Com ela, o pdfkit não finaliza nenhuma página no addPage: guarda todas em
+  // _pageBuffer e, só no doc.end(), roda um zlib.deflateSync POR PÁGINA de uma
+  // vez só — um bloqueio síncrono de vários segundos no fim da geração, depois
+  // do último await, justamente quando o usuário acha que acabou. A flag não
+  // servia pra nada aqui: ela só é necessária pra doc.switchToPage(), que este
+  // gerador evita de propósito (ver comentário mais abaixo). Sem ela, cada
+  // página é finalizada no addPage seguinte — dentro do laço, entre as
+  // chamadas de _cederEventLoop — distribuindo o custo. O PDF sai idêntico.
+  const doc = new PDFDocument({ size: "A4", margin: 0, autoFirstPage: false });
   doc.pipe(destino);
   doc.registerFont(TITULO_FONTE, TITULO_FONTE_ARQUIVO);
   doc.registerFont(PROMO_TITULO_FONTE, PROMO_TITULO_FONTE_ARQUIVO);
@@ -3843,6 +3872,20 @@ async function gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino, m
   if (paginaLocalAtual !== -1) _desenharPreenchimentoDaPagina(paginaLocalAtual);
 
   doc.end();
+}
+
+// Helpers de desenho compartilhados com os catálogos de layout próprio
+// (catalogo-pdf-arielo.service.js) — função (e não objeto) pra resolver os
+// nomes só na hora da chamada, depois de todo o módulo carregado.
+function _interno() {
+  return {
+    _geometriaGrid, _desenharCardCatalogoCompleto, AREA_TOPO_Y, GAP, _desenharCardVidro, _desenharCardVazio,
+    obterFoto, _agruparPorLinha, _cederEventLoop, _desenharCabecalho, _desenharRodape,
+    _desenharCabecalhoIndice, _desenharLinhaIndice, _desenharFotoAjustada, _truncarParaAltura,
+    TITULO_FONTE, TITULO_FONTE_ARQUIVO, RODAPE_NUMERO_FONTE, RODAPE_NUMERO_FONTE_ARQUIVO,
+    A4_LARGURA, A4_ALTURA, PAGE_MARGIN, FOOTER_HEIGHT,
+    INDICE_HEADER_HEIGHT, INDICE_TITULO_GAP_TOPO, INDICE_TITULO_TAMANHO, INDICE_TITULO_GAP_LINHAS, INDICE_LINHA_ALTURA,
+  };
 }
 
 module.exports = { gerarPdfCatalogo, gerarPdfCatalogoCompleto, gerarPdfCatalogoPromocional, limparCacheBboxFotos };

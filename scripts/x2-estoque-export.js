@@ -470,6 +470,9 @@ async function _dispararImportacaoNoDocker(caminhoCsvOrigem) {
       { timeout: 60000 },
       async (err, stdout, stderr) => {
         if (err) {
+          try {
+            require('./x2-whatsapp-alerta').enviarAlertaWhatsApp(`⚠️ Painel X2: o CSV de estoque foi baixado mas o import no banco falhou (${String(err.message).slice(0, 200)}). Preço/estoque do bot ficaram desatualizados.`).catch(() => {});
+          } catch { /* best-effort */ }
           console.log(
             `(import pro banco não rodou: ${err.message} — o CSV foi baixado normalmente, só o "estoque ao vivo" do ` +
             `Catálogo que não atualizou. Confira se o Docker/container "${DOCKER_CONTAINER}" está rodando e a migration ` +

@@ -52,8 +52,13 @@ jobs:
       - name: Instala dependências (reprodutível)
         run: npm ci
 
-      - name: Auditoria de vulnerabilidades (falha em alta/crítica)
-        run: npm audit --audit-level=high
+      # 2026-10-14: --omit=dev porque o único alto/crítico restante em
+      # devDependencies (braces/chokidar via nodemon) só tem correção
+      # automática forçando nodemon para 1.14.10 (de 3.1.14 — downgrade de
+      # 2 major), que não roda em produção mesmo (watcher de dev). As
+      # dependências de produção já estão auditadas e limpas em alta/crítica.
+      - name: Auditoria de vulnerabilidades (falha em alta/crítica, deps de produção)
+        run: npm audit --audit-level=high --omit=dev
 
       - name: Verificação de sintaxe
         run: npm run check

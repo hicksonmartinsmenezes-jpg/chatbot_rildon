@@ -83,10 +83,26 @@ const { listarMarcasVeiculoConhecidas } = require("./catalogo-x2.service");
 // Produto sincronizado DEPOIS dessa extração (via x2-catalogo-sync.js) não
 // vai estar nesse mapa — nesse caso o rótulo cai pro fallback antigo
 // (fabricante + referencia limpa) em vez de quebrar.
-const CODIGO_FORNECEDOR_MAP = new Map(
-  JSON.parse(fs.readFileSync(path.join(__dirname, "../config/catalogo-x2/cod-fornecedor.json"), "utf8"))
-    .map(item => [String(item.codigo), item.cod_fornecedor])
-);
+// 2026-10-14: src/config/catalogo-x2/ e gitignored (~157MB, gerado pelo
+// scraper -- ver comentario no .gitignore) e nao existe em checkout novo
+// (CI, clone recem-feito, ambiente de teste). Antes isso quebrava o
+// require deste modulo inteiro (ENOENT direto no carregamento), o que por
+// sua vez derrubava catalogo.controller.js -> catalogo.routes.js -> toda
+// suite que so queria montar as rotas com os servicos mockados. O mapa ja
+// era projetado pra ter buracos (ver comentario acima: produto fora dele
+// cai no fallback antigo), entao "arquivo ausente" vira so mapa vazio,
+// igual a todo produto estar fora dele -- comportamento real em producao
+// (onde o arquivo existe) nao muda nada.
+let CODIGO_FORNECEDOR_MAP;
+try {
+  CODIGO_FORNECEDOR_MAP = new Map(
+    JSON.parse(fs.readFileSync(path.join(__dirname, "../config/catalogo-x2/cod-fornecedor.json"), "utf8"))
+      .map(item => [String(item.codigo), item.cod_fornecedor])
+  );
+} catch (e) {
+  console.warn("[catalogo-pdf.service] cod-fornecedor.json indisponivel (" + (e.code || e.message) + ") -- rotulo de fornecedor cai no fallback antigo pra todo produto.");
+  CODIGO_FORNECEDOR_MAP = new Map();
+}
 
 // Carregada uma única vez no require — reusada em toda geração de PDF, sem
 // I/O repetido por página.

@@ -1125,17 +1125,42 @@ app.post('/api/rotinas/:id/rodar-agora', (req, res) => {
 // manuais — ferramenta de uso solo, não faz sentido rodar 2 coisas juntas);
 // se mais de uma rotina "vencer" no mesmo minuto, as outras esperam a
 // próxima checagem (1 min depois, inofensivo pra esse tipo de tarefa).
+// 2026-10-14: antes, quando uma rotina vencia com outra ação rodando, o
+// agendador só saía calado — e como `ultimaExecucao` não era atualizada, a
+// mesma rotina vencia de novo no minuto seguinte, e no seguinte. O log do
+// servidor ficava com a mesma linha repetida minuto a minuto sem ninguém
+// entender por quê (visto ao vivo em 14/10 com "Atualização de
+// Estoque/Preço" enquanto a captura de fotos rodava). Agora o aviso sai uma
+// vez a cada 10 minutos e diz CLARAMENTE que foi adiada, e por causa de quê.
+const rotinaAdiadaAvisadaEm = new Map(); // id da rotina -> Date.now() do último aviso
+const INTERVALO_AVISO_ADIADA_MS = 10 * 60 * 1000;
+
 function checarRotinas() {
-  if (execucao && execucao.rodando) return;
   const agora = new Date();
   const pendente = rotinasStore.carregarRotinas().find((r) => rotinasStore.deveRodarAgora(r, agora));
   if (!pendente) return;
+
+  if (execucao && execucao.rodando) {
+    const ultimoAviso = rotinaAdiadaAvisadaEm.get(pendente.id) || 0;
+    if (Date.now() - ultimoAviso >= INTERVALO_AVISO_ADIADA_MS) {
+      rotinaAdiadaAvisadaEm.set(pendente.id, Date.now());
+      console.log(`[x2-painel] rotina "${pendente.nome}" venceu mas foi ADIADA — "${execucao.tipo}" ainda está rodando. Ela roda assim que liberar.`);
+    }
+    return;
+  }
+  rotinaAdiadaAvisadaEm.delete(pendente.id);
   // PEDIDO DO USUÁRIO (2026-09-11): rotina "a cada N horas" não tem
   // `horario` (fica null, ver rotinas.js) — log deixa claro qual dos dois
   // modelos de agendamento venceu.
   const quandoVenceu = pendente.frequencia === 'horas' ? `a cada ${pendente.intervaloHoras}h` : pendente.horario;
   console.log(`[x2-painel] rotina "${pendente.nome}" venceu (${quandoVenceu}) — disparando automaticamente...`);
   rodarAcao(pendente.tipo, { ...pendente.opcoes, secoes: pendente.secoes }, { origemRotina: pendente.id }).catch((e) => {
+    // 409 = outra ação começou entre a checagem acima e o disparo. Não é
+    // erro: a rotina continua vencida e tenta de novo na próxima checagem.
+    if (e && e.status === 409) {
+      console.log(`[x2-painel] rotina "${pendente.nome}" adiada — outra ação começou primeiro.`);
+      return;
+    }
     console.error(`[x2-painel] erro não tratado na rotina ${pendente.nome}:`, e.message);
   });
 }

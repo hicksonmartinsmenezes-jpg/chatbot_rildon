@@ -87,7 +87,10 @@ const FOTOS_DIR = path.join(CATALOGO_DIR, 'fotos');
 
 // Fora do OneDrive de propósito — ver comentário do topo do arquivo.
 const WORK_DIR = path.join(os.homedir(), '.x2-rildon-scraper');
-const PROFILE_DIR = path.join(WORK_DIR, 'chrome-profile');
+// 2026-10-14: perfil por tipo de tarefa — ver scripts/x2-perfil-chrome.js.
+// Antes todos compartilhavam 'chrome-profile', e duas tarefas simultaneas
+// derrubavam uma a outra ("Target page, context or browser has been closed").
+const PROFILE_DIR = require('./x2-perfil-chrome').perfilChrome('fotos');
 const STAGING_DIR = path.join(WORK_DIR, 'staging');
 const PROGRESS_DIR = path.join(WORK_DIR, 'progress');
 

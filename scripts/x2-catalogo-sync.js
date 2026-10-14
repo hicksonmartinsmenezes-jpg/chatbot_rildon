@@ -85,11 +85,15 @@ require('dotenv').config({ path: path.join(__dirname, '../.env') });
 const PROJECT_ROOT = path.join(__dirname, '..');
 const CATALOGO_DIR = path.join(PROJECT_ROOT, 'src', 'config', 'catalogo-x2');
 
-// Reusa o MESMO perfil de Chrome (e portanto o mesmo login já salvo) do
-// script de fotos — não faz sentido logar duas vezes em ferramentas
-// irmãs. Fora do OneDrive de propósito (ver x2-fotos-scraper.js).
+// Perfil próprio (semeado com o login já salvo do perfil antigo na 1ª vez)
+// — ver scripts/x2-perfil-chrome.js. Antes reusava o mesmo perfil do script
+// de fotos, o que impedia as duas tarefas de rodarem ao mesmo tempo.
+// Fora do OneDrive de propósito (ver x2-fotos-scraper.js).
 const WORK_DIR = path.join(os.homedir(), '.x2-rildon-scraper');
-const PROFILE_DIR = path.join(WORK_DIR, 'chrome-profile');
+// 2026-10-14: perfil por tipo de tarefa — ver scripts/x2-perfil-chrome.js.
+// Antes todos compartilhavam 'chrome-profile', e duas tarefas simultaneas
+// derrubavam uma a outra ("Target page, context or browser has been closed").
+const PROFILE_DIR = require('./x2-perfil-chrome').perfilChrome('catalogo');
 
 const LOGIN_URL = 'https://sistemas7.xprocess.com.br/seguranca/www/login_form.jsp';
 

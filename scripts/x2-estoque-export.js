@@ -75,7 +75,10 @@ const { avaliarEmQualquerFrame, comRetry } = require('./x2-nav-helpers');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
 const WORK_DIR = path.join(os.homedir(), '.x2-rildon-scraper');
-const PROFILE_DIR = path.join(WORK_DIR, 'chrome-profile');
+// 2026-10-14: perfil por tipo de tarefa — ver scripts/x2-perfil-chrome.js.
+// Antes todos compartilhavam 'chrome-profile', e duas tarefas simultaneas
+// derrubavam uma a outra ("Target page, context or browser has been closed").
+const PROFILE_DIR = require('./x2-perfil-chrome').perfilChrome('estoque');
 const ESTOQUE_DIR = path.join(WORK_DIR, 'estoque');
 
 const HOME_URL = 'https://sistemas7.xprocess.com.br/x2rildon/www/index_main4.jsp';
@@ -278,7 +281,20 @@ async function configurarFiltros(page, { estoqueOpcao }) {
 // de novo a cada tentativa — se a tabela ainda estiver instável na
 // tentativa 1, a 2ª/3ª acha o elemento já estável. Ainda não validado ao
 // vivo — próxima falha (se houver) deve trazer um log diferente.
-async function clicarPorTexto(page, texto, { tentativas = 3 } = {}) {
+//
+// ⚠️ 3ª correção (2026-10-14, falha reproduzida ao vivo no servidor): o
+// clique em "Exportar em CSV" passou a estourar o timeout de 8s SEM dar
+// erro de elemento — o log do Playwright mostra "element is visible,
+// enabled and stable" → "performing click action" → timeout. Isso é o
+// sintoma clássico de o clique ter saído e a PÁGINA travar: o onclick
+// chama exportTableToCSV() sobre uma tabela de ~17 mil linhas, o que
+// bloqueia a thread principal do renderer por bem mais de 8s, e o
+// Playwright não consegue confirmar o clique nesse meio tempo. Duas
+// saídas, as duas usadas aqui: timeout maior pro clique (timeoutClique)
+// e, com tolerarTimeout, NÃO tratar o estouro como falha — o clique
+// provavelmente saiu, então quem decide é o waitForEvent('download') lá
+// fora, que tem o seu próprio limite.
+async function clicarPorTexto(page, texto, { tentativas = 3, timeoutClique = 8000, tolerarTimeout = false } = {}) {
   const MARK_ATTR = 'data-x2-click-target';
   let ultimoErro = null;
 
@@ -300,10 +316,16 @@ async function clicarPorTexto(page, texto, { tentativas = 3 } = {}) {
     if (!achou) return false; // elemento não existe de jeito nenhum — não adianta retentar
 
     try {
-      await page.frameLocator('iframe[name="principal"]').locator(`[${MARK_ATTR}="1"]`).first().click({ timeout: 8000 });
+      await page.frameLocator('iframe[name="principal"]').locator(`[${MARK_ATTR}="1"]`).first().click({ timeout: timeoutClique });
       return true;
     } catch (e) {
       ultimoErro = e;
+      // Estouro de tempo DEPOIS do clique ter sido despachado: segue em
+      // frente em vez de falhar (ver comentário da 3ª correção acima).
+      if (tolerarTimeout && /Timeout .* exceeded/i.test(e.message || '')) {
+        console.log(`(clique em "${texto}" não confirmou em ${timeoutClique}ms — provavelmente a página travou gerando o arquivo; seguindo e esperando o download)`);
+        return true;
+      }
       if (tentativa < tentativas) {
         console.log(`(clique em "${texto}" falhou na tentativa ${tentativa}/${tentativas} — tabela ainda deve estar carregando, tentando de novo...)`);
         await page.waitForTimeout(1000);
@@ -402,7 +424,7 @@ async function exportarEstoque(context, { estoqueOpcao = 'Com e sem estoque', mo
   const [download] = await Promise.all([
     context.waitForEvent('download', { timeout: 90000 }),
     (async () => {
-      const clicouOk = await clicarPorTexto(page, 'Exportar em CSV');
+      const clicouOk = await clicarPorTexto(page, 'Exportar em CSV', { timeoutClique: 60000, tolerarTimeout: true });
       if (!clicouOk) throw new Error('Não achei o botão "Exportar em CSV" — só aparece depois de Pesquisar retornar resultado; confirme numa sessão ao vivo se o clique automatizado funciona nele (nunca testado antes de hoje).');
     })(),
   ]);

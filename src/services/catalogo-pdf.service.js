@@ -1578,10 +1578,19 @@ function _bboxConteudoFoto(buffer, mimetype, cacheKey = null) {
 // tipos de catálogo em PDF (Completo, Promocional, Diversos) porque
 // todos passam por _desenharFotoAjustada via _desenharCard.
 const FOTO_LIMITE_ZOOM_CROP = 1;
-function _desenharFotoAjustada(doc, buffer, mimetype, x, y, boxWidth, boxHeight, cacheKey = null) {
+// `imagemAberta` (2026-10-14): imagem já parseada por doc.openImage() — ver
+// _fotosUtilizaveis abaixo. pdfkit aceita no 1º argumento de doc.image()
+// tanto o buffer cru quanto um objeto de imagem já aberto (ele só checa
+// `src.width && src.height` antes de chamar openImage por conta própria),
+// então passar o objeto aqui evita re-parsear o mesmo arquivo e, mais
+// importante, garante que o parse (onde o EXIF malformado estoura) já
+// aconteceu ANTES de qualquer decisão de layout. O bbox continua sendo
+// medido no buffer cru, que é o que o jpeg-js decodifica.
+function _desenharFotoAjustada(doc, buffer, mimetype, x, y, boxWidth, boxHeight, cacheKey = null, imagemAberta = null) {
+  const origem = imagemAberta || buffer;
   const bbox = _bboxConteudoFoto(buffer, mimetype, cacheKey);
   if (!bbox) {
-    doc.image(buffer, x, y, { fit: [boxWidth, boxHeight], align: "center", valign: "center" });
+    doc.image(origem, x, y, { fit: [boxWidth, boxHeight], align: "center", valign: "center" });
     return;
   }
   const escalaContain = Math.min(boxWidth / bbox.width, boxHeight / bbox.height);
@@ -1594,9 +1603,83 @@ function _desenharFotoAjustada(doc, buffer, mimetype, x, y, boxWidth, boxHeight,
   doc.save();
   try {
     doc.rect(x, y, boxWidth, boxHeight).clip();
-    doc.image(buffer, xDesenho, yDesenho, { width: larguraDesenho, height: alturaDesenho });
+    doc.image(origem, xDesenho, yDesenho, { width: larguraDesenho, height: alturaDesenho });
   } finally {
     doc.restore();
+  }
+}
+
+// BUG REAL reportado pelo usuário (2026-10-14): "alguns catálogos quando
+// gerados, apesar de não ter duas fotos no sistema, ele é arrastado para o
+// canto esquerdo e com a marca 'sem foto', como SPEED BRAKE por exemplo".
+//
+// Causa raiz: os dois desenhos de card (_desenharCardCatalogoCompleto e
+// _desenharCard) escolhiam o layout — 1 foto grande vs. 2 lado a lado —
+// olhando só o MIMETYPE das fotos, e o mimetype vem da EXTENSÃO do arquivo
+// indexado (ver obterFoto em catalogo-fotos.service.js). Ou seja, a
+// pergunta respondida era "existe um 2º arquivo .jpg indexado?", não "esse
+// arquivo abre?". Quando o 2º arquivo era uma foto que o pdfkit não
+// consegue parsear (EXIF malformado -> RangeError de dentro do jpeg-exif,
+// comum em parte do acervo real da loja — ver comentário grande acima), a
+// sequência era:
+//   1) layout decidido como "2 fotos"  -> foto 1 desenhada em MEIA largura;
+//   2) foto 2 estoura no doc.image();
+//   3) o catch, que era único pro bloco inteiro, escrevia "sem foto" na
+//      largura CHEIA — por cima da foto 1, que já estava desenhada.
+// Daí o sintoma: a foto encolhida e encostada à esquerda, com o aviso "sem
+// foto" em cima dela, num produto que TEM foto. (O try/finally de
+// 2026-09-04 consertou o vazamento de clip, que apagava os cards seguintes
+// da página, mas não este sintoma — são dois efeitos da mesma exceção.)
+//
+// Fix: parsear ANTES de decidir o layout. doc.openImage() faz só o parse,
+// sem desenhar nada, e é exatamente onde a exceção acontece — então o
+// layout passa a ser escolhido a partir das fotos que REALMENTE abrem.
+// Efeitos colaterais desejados: "sem foto" só aparece quando NENHUMA foto
+// abre; e produto cuja 1ª foto está corrompida mas a 2ª está boa agora
+// mostra a 2ª em largura cheia, em vez de "sem foto".
+function _fotosUtilizaveis(doc, codigoProduto) {
+  const utilizaveis = [];
+  for (const indice of [0, 1]) {
+    let foto;
+    try {
+      foto = obterFoto(codigoProduto, indice);
+    } catch {
+      continue; // falha ao extrair do zip — mesmo efeito de foto ausente
+    }
+    if (!foto) continue;
+    if (foto.mimetype !== "image/jpeg" && foto.mimetype !== "image/png") continue;
+    let imagem;
+    try {
+      imagem = doc.openImage(foto.buffer);
+    } catch {
+      continue; // arquivo indexado mas ilegível (EXIF quebrado etc.)
+    }
+    if (!imagem || !imagem.width || !imagem.height) continue;
+    utilizaveis.push({
+      buffer: foto.buffer,
+      mimetype: foto.mimetype,
+      imagem,
+      // Chave de cache do bbox por FOTO (não por produto): o bbox depende
+      // só do arquivo, então indexar por "codigo#indice" vale pros dois
+      // layouts. Antes, a foto única era cacheada sob a chave "codigo" e a
+      // mesma foto no layout de 2 sob "codigo#0" — duas entradas pro mesmo
+      // arquivo.
+      cacheKey: `${codigoProduto}#${indice}`,
+    });
+  }
+  return utilizaveis;
+}
+
+// Rede de segurança por FOTO: o parse já passou em _fotosUtilizaveis, mas se
+// o desenho ainda falhar (bug de pdfkit, buffer truncado), perde-se só
+// aquela foto — não o card inteiro, e não se escreve "sem foto" por cima de
+// uma foto que já foi desenhada. Devolve se desenhou ou não.
+function _desenharFotoProtegida(doc, foto, x, y, boxWidth, boxHeight) {
+  try {
+    _desenharFotoAjustada(doc, foto.buffer, foto.mimetype, x, y, boxWidth, boxHeight, foto.cacheKey, foto.imagem);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -1865,24 +1948,18 @@ function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight
   // inconsistente entre cards da mesma página — trade-off aceito, a
   // alternativa (2ª caixa sempre reservada, vazia quando não existe) foi
   // rejeitada.
-  try {
-    const foto1 = obterFoto(produto.codigo, 0);
-    const foto2 = obterFoto(produto.codigo, 1);
-    const temDuasFotos =
-      foto1 && (foto1.mimetype === "image/jpeg" || foto1.mimetype === "image/png") &&
-      foto2 && (foto2.mimetype === "image/jpeg" || foto2.mimetype === "image/png");
-
-    if (temDuasFotos) {
-      const larguraMetade = (larguraConteudo - GAP_DUAS_FOTOS) / 2;
-      _desenharFotoAjustada(doc, foto1.buffer, foto1.mimetype, xConteudo, yFoto, larguraMetade, photoBoxHeight, `${produto.codigo}#0`);
-      _desenharFotoAjustada(doc, foto2.buffer, foto2.mimetype, xConteudo + larguraMetade + GAP_DUAS_FOTOS, yFoto, larguraMetade, photoBoxHeight, `${produto.codigo}#1`);
-    } else if (foto1 && (foto1.mimetype === "image/jpeg" || foto1.mimetype === "image/png")) {
-      _desenharFotoAjustada(doc, foto1.buffer, foto1.mimetype, xConteudo, yFoto, larguraConteudo, photoBoxHeight, produto.codigo);
-    } else {
-      doc.font("Helvetica").fontSize(7).fillColor("#9ca3af")
-        .text("sem foto", xConteudo, yFoto + photoBoxHeight / 2 - 5, { width: larguraConteudo, align: "center" });
-    }
-  } catch {
+  // 2026-10-14: layout decidido pelas fotos que ABREM, não pelas que estão
+  // indexadas — ver _fotosUtilizaveis para o bug que isso corrige.
+  let fotosDesenhadas = 0;
+  const fotosOk = _fotosUtilizaveis(doc, produto.codigo);
+  if (fotosOk.length >= 2) {
+    const larguraMetade = (larguraConteudo - GAP_DUAS_FOTOS) / 2;
+    if (_desenharFotoProtegida(doc, fotosOk[0], xConteudo, yFoto, larguraMetade, photoBoxHeight)) fotosDesenhadas += 1;
+    if (_desenharFotoProtegida(doc, fotosOk[1], xConteudo + larguraMetade + GAP_DUAS_FOTOS, yFoto, larguraMetade, photoBoxHeight)) fotosDesenhadas += 1;
+  } else if (fotosOk.length === 1) {
+    if (_desenharFotoProtegida(doc, fotosOk[0], xConteudo, yFoto, larguraConteudo, photoBoxHeight)) fotosDesenhadas += 1;
+  }
+  if (!fotosDesenhadas) {
     doc.font("Helvetica").fontSize(7).fillColor("#9ca3af")
       .text("sem foto", xConteudo, yFoto + photoBoxHeight / 2 - 5, { width: larguraConteudo, align: "center" });
   }
@@ -1972,24 +2049,17 @@ function _desenharCard(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth,
   // tinha ganhado o mesmo comportamento na época. Produto com 2 fotos
   // cadastradas mostra as 2 lado a lado; com 1 foto só, continua exatamente
   // como sempre foi (foto grande, ocupando a caixa toda).
-  try {
-    const foto1 = obterFoto(produto.codigo, 0);
-    const foto2 = obterFoto(produto.codigo, 1);
-    const temDuasFotos =
-      foto1 && (foto1.mimetype === "image/jpeg" || foto1.mimetype === "image/png") &&
-      foto2 && (foto2.mimetype === "image/jpeg" || foto2.mimetype === "image/png");
-
-    if (temDuasFotos) {
-      const larguraMetade = (photoBoxWidth - GAP_DUAS_FOTOS) / 2;
-      _desenharFotoAjustada(doc, foto1.buffer, foto1.mimetype, xFoto, yFoto, larguraMetade, photoBoxHeight, `${produto.codigo}#0`);
-      _desenharFotoAjustada(doc, foto2.buffer, foto2.mimetype, xFoto + larguraMetade + GAP_DUAS_FOTOS, yFoto, larguraMetade, photoBoxHeight, `${produto.codigo}#1`);
-    } else if (foto1 && (foto1.mimetype === "image/jpeg" || foto1.mimetype === "image/png")) {
-      _desenharFotoAjustada(doc, foto1.buffer, foto1.mimetype, xFoto, yFoto, photoBoxWidth, photoBoxHeight, produto.codigo);
-    } else {
-      doc.font("Helvetica").fontSize(7).fillColor("#9ca3af")
-        .text("sem foto", xFoto, yFoto + photoBoxHeight / 2 - 5, { width: photoBoxWidth, align: "center" });
-    }
-  } catch {
+  // 2026-10-14: mesma correção do Catálogo Completo — ver _fotosUtilizaveis.
+  let fotosDesenhadas = 0;
+  const fotosOk = _fotosUtilizaveis(doc, produto.codigo);
+  if (fotosOk.length >= 2) {
+    const larguraMetade = (photoBoxWidth - GAP_DUAS_FOTOS) / 2;
+    if (_desenharFotoProtegida(doc, fotosOk[0], xFoto, yFoto, larguraMetade, photoBoxHeight)) fotosDesenhadas += 1;
+    if (_desenharFotoProtegida(doc, fotosOk[1], xFoto + larguraMetade + GAP_DUAS_FOTOS, yFoto, larguraMetade, photoBoxHeight)) fotosDesenhadas += 1;
+  } else if (fotosOk.length === 1) {
+    if (_desenharFotoProtegida(doc, fotosOk[0], xFoto, yFoto, photoBoxWidth, photoBoxHeight)) fotosDesenhadas += 1;
+  }
+  if (!fotosDesenhadas) {
     doc.font("Helvetica").fontSize(7).fillColor("#9ca3af")
       .text("sem foto", xFoto, yFoto + photoBoxHeight / 2 - 5, { width: photoBoxWidth, align: "center" });
   }

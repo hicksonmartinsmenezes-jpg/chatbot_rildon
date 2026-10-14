@@ -62,6 +62,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const crypto = require('crypto');
 const readline = require('readline');
 const { execFile } = require('child_process');
 const { chromium } = require('playwright');
@@ -87,6 +88,29 @@ const LOGIN_URL = 'https://sistemas7.xprocess.com.br/seguranca/www/login_form.js
 const ESTOQUE_HREF_MARK = 'estoque_produto.jsp';
 
 const OPCOES_ESTOQUE_VALIDAS = ['Com e sem estoque', 'Apenas com estoque', 'Apenas sem estoque'];
+
+const LIMIAR_COMPLETUDE_EXPORT = 0.9;
+
+function validarCompletudeCsv(conteudo, linhasTabela, parseCsv) {
+  const registrosCsv = parseCsv ? parseCsv(conteudo) : [];
+  const linhasCsv = registrosCsv.length; // registros lógicos; quoted newlines não contam como novos produtos
+  const linhasDadosTabela = Math.max(0, Number(linhasTabela) - 1); // tabela inclui cabeçalho
+  let valido = linhasDadosTabela > 0 && Array.isArray(registrosCsv) && linhasCsv > 0;
+  let motivo = null;
+  if (linhasDadosTabela <= 0) motivo = 'stable table row count is unavailable';
+  else if (!Array.isArray(registrosCsv) || linhasCsv <= 0) motivo = 'CSV has no parseable records';
+  else if (linhasCsv < linhasDadosTabela * LIMIAR_COMPLETUDE_EXPORT) {
+    valido = false;
+    motivo = 'CSV below 90% of observed stable table rows (heuristic, not proof of completeness)';
+  }
+  return { valido, linhasCsv, linhasTabela: linhasDadosTabela, motivo };
+}
+
+function nomeArquivoExecucao(nomeBase, id = crypto.randomUUID()) {
+  const ext = path.extname(nomeBase);
+  const stem = path.basename(nomeBase, ext);
+  return `${stem}-${id}${ext}`;
+}
 
 function garantirPastas() {
   fs.mkdirSync(PROFILE_DIR, { recursive: true });
@@ -415,7 +439,11 @@ async function exportarEstoque(context, { estoqueOpcao = 'Com e sem estoque', mo
   const linhasEsperadas = await aguardarTabelaEstavel(page);
 
   console.log('Clicando em "Exportar em CSV" e aguardando o download...');
-  const nomeArquivo = nomeArquivoTimestamp();
+  const nomeArquivo = nomeArquivoExecucao(nomeArquivoTimestamp());
+  const stagingDir = path.join(ESTOQUE_DIR, '.staging');
+  const rejeitadosDir = path.join(ESTOQUE_DIR, 'rejeitados');
+  fs.mkdirSync(stagingDir, { recursive: true });
+  const temporario = path.join(stagingDir, nomeArquivo);
   const destino = path.join(ESTOQUE_DIR, nomeArquivo);
 
   // 90s (era 60) — dá mais folga pro clique com retry (clicarPorTexto pode
@@ -429,39 +457,36 @@ async function exportarEstoque(context, { estoqueOpcao = 'Com e sem estoque', mo
     })(),
   ]);
 
-  await download.saveAs(destino);
-  console.log(`CSV salvo em: ${destino}`);
+  await download.saveAs(temporario);
+  console.log(`CSV baixado para staging: ${temporario}`);
 
-  // Checagem de sanidade (2026-08-10): compara o Nº de linhas do CSV salvo
-  // com o Nº de linhas que a tabela tinha quando estabilizou (linhasEsperadas,
-  // acima). Não bloqueia nem tenta de novo sozinho — só avisa bem alto no
-  // log, já que depois de aguardarTabelaEstavel um export pequeno de
-  // verdade (ex.: "Apenas sem estoque" com poucos itens) é legítimo, não dá
-  // pra travar nisso. Serve pra próxima falha (se houver) já vir com
-  // diagnóstico pronto em vez de precisar investigar do zero de novo.
+  // Heurística de integridade: compara CSV parseado com a contagem observada
+  // quando a tabela parou de crescer. O limiar de 90% reduz falsos aceites,
+  // mas não prova completude do relatório.
+  let verificacao;
   try {
-    const conteudo = fs.readFileSync(destino, 'utf8');
-    const linhasCsv = conteudo.split('\n').filter((l) => l.trim()).length - 1; // -1 = cabeçalho
-    if (linhasEsperadas > 0 && linhasCsv < linhasEsperadas * 0.9) {
-      console.log(
-        `⚠ ATENÇÃO: a tabela tinha ${linhasEsperadas} linhas quando estabilizou, mas o CSV salvo só tem ` +
-        `${linhasCsv} produtos — pode ser um export incompleto (mesmo bug de antes). Confira o arquivo antes de usar.`
-      );
-    } else {
-      console.log(`(checagem ok: ${linhasCsv} produtos no CSV, tabela tinha ${linhasEsperadas} linhas)`);
-    }
+    const conteudo = fs.readFileSync(temporario, 'utf8');
+    const { parseCsvEstoque } = require('../src/services/estoque.service');
+    verificacao = validarCompletudeCsv(conteudo, linhasEsperadas, parseCsvEstoque);
   } catch (e) {
-    console.log(`(não consegui checar o Nº de linhas do CSV salvo: ${e.message})`);
+    verificacao = { valido: false, motivo: `CSV could not be parsed: ${e.message}`, linhasTabela: Math.max(0, linhasEsperadas - 1), linhasCsv: 0 };
   }
+  if (!verificacao.valido) {
+    fs.mkdirSync(rejeitadosDir, { recursive: true });
+    const rejeitado = path.join(rejeitadosDir, nomeArquivo.replace(/\.csv$/i, '.rejeitado.csv'));
+    fs.renameSync(temporario, rejeitado);
+    throw new Error(`Export refused by heuristic validation: ${verificacao.motivo} (observed table rows: ${verificacao.linhasTabela}, CSV rows: ${verificacao.linhasCsv}). Preserved at ${rejeitado}; import skipped.`);
+  }
+  // O identificador aleatório por execução evita colisões entre processos.
+  // O rename publica o snapshot somente após a validação.
+  fs.renameSync(temporario, destino);
+  fs.writeFileSync(`${destino}.meta.json`, JSON.stringify({ estoqueOpcao, completo: estoqueOpcao === 'Com e sem estoque', validado: true, linhasCsv: verificacao.linhasCsv, linhasTabela: verificacao.linhasTabela, capturadoEm: new Date().toISOString() }, null, 2));
+  console.log(`(heuristic validation passed: ${verificacao.linhasCsv} CSV products; table observed ${verificacao.linhasTabela})`);
+  let importacao = { estado: 'nao_aplicavel', motivo: 'export filtrado não substitui o estoque completo no banco' };
+  if (estoqueOpcao === 'Com e sem estoque') importacao = await _dispararImportacaoNoDocker(destino);
+  else console.log('(filtered export saved for reference; database import skipped to avoid replacing full inventory with a subset)');
 
-  // PEDIDO DO USUÁRIO (2026-08-07): "Estoque ao vivo no Catálogo/orçamento"
-  // — depois de baixar, dispara a importação pro banco automaticamente.
-  // Best-effort: se falhar (Docker parado, container com outro nome etc.),
-  // não derruba o export — o CSV já está salvo, só o Catálogo do painel
-  // não vai refletir os dados novos até rodar manualmente.
-  await _dispararImportacaoNoDocker(destino);
-
-  return { arquivo: destino, nomeArquivo };
+  return { arquivo: destino, nomeArquivo, importacao };
 }
 
 // Copia o CSV pra dentro do repo (src/data/estoque-latest.csv — mesma pasta
@@ -474,18 +499,140 @@ const REPO_ROOT = path.join(__dirname, '..');
 const CSV_HANDOFF_HOST = path.join(REPO_ROOT, 'src', 'data', 'estoque-latest.csv');
 const CSV_HANDOFF_CONTAINER = '/app/src/data/estoque-latest.csv';
 const DOCKER_CONTAINER = 'chatbot_rildon_app';
+const CSV_IMPORT_LOCK = path.join(ESTOQUE_DIR, 'estoque-import.lock');
+const CSV_IMPORT_LOCK_STALE_MS = 15 * 60 * 1000;
+
+function _lockObsoleto(caminhoLock) {
+  try {
+    const lock = JSON.parse(fs.readFileSync(caminhoLock, 'utf8'));
+    const pid = Number(lock.pid);
+    const adquiridoEm = Date.parse(lock.adquiridoEm);
+    if (!Number.isInteger(pid) || pid <= 0 || !Number.isFinite(adquiridoEm)
+      || Date.now() - adquiridoEm < CSV_IMPORT_LOCK_STALE_MS) return false;
+    try { process.kill(pid, 0); return false; } catch (e) { return e.code === 'ESRCH'; }
+  } catch (e) {
+    // Arquivo incompleto/corrompido só pode ser recuperado depois de 1 hora;
+    // isso cobre encerramento no intervalo entre criação e gravação do lock.
+    try { return Date.now() - fs.statSync(caminhoLock).mtimeMs > 60 * 60 * 1000; } catch { return false; }
+  }
+}
+
+function _removerLockObsoleto(caminhoLock) {
+  const recoveryLock = `${caminhoLock}.recovery`;
+  let fd;
+  try {
+    fd = fs.openSync(recoveryLock, 'wx');
+  } catch (e) {
+    if (e.code !== 'EEXIST') throw e;
+    // Uma queda durante a recuperação pode deixar o lock auxiliar para trás.
+    // Só removemos após a mesma checagem PID + idade do lock principal.
+    if (!_lockObsoleto(recoveryLock)) return false;
+    try { fs.unlinkSync(recoveryLock); } catch { return false; }
+    try { fd = fs.openSync(recoveryLock, 'wx'); } catch (retryError) {
+      if (retryError.code === 'EEXIST') return false;
+      throw retryError;
+    }
+  }
+  try {
+    fs.writeFileSync(fd, JSON.stringify({ pid: process.pid, adquiridoEm: new Date().toISOString() }));
+    if (!_lockObsoleto(caminhoLock)) return false;
+    fs.unlinkSync(caminhoLock);
+    return true;
+  } finally {
+    fs.closeSync(fd);
+    fs.unlinkSync(recoveryLock);
+  }
+}
+
+async function executarComLockArquivo(caminhoLock, operacao) {
+  const token = crypto.randomUUID();
+  let fd;
+  try {
+    fd = fs.openSync(caminhoLock, 'wx');
+  } catch (e) {
+    if (e.code === 'EEXIST') {
+      if (!_removerLockObsoleto(caminhoLock)) return { acquired: false };
+      try { fd = fs.openSync(caminhoLock, 'wx'); } catch (retryError) {
+        if (retryError.code === 'EEXIST') return { acquired: false };
+        throw retryError;
+      }
+    } else {
+      throw e;
+    }
+  }
+  try {
+    fs.writeFileSync(fd, JSON.stringify({ token, pid: process.pid, adquiridoEm: new Date().toISOString() }));
+    await operacao();
+    return { acquired: true };
+  } finally {
+    fs.closeSync(fd);
+    try {
+      const lock = JSON.parse(fs.readFileSync(caminhoLock, 'utf8'));
+      if (lock.token === token) fs.unlinkSync(caminhoLock);
+    } catch { /* lock já removido/trocado; não remover lock alheio */ }
+  }
+}
+
+async function executarComLockComEspera(caminhoLock, operacao, {
+  maxWaitMs = 2 * 60 * 1000,
+  intervaloMs = 1000,
+  aguardar = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+} = {}) {
+  const inicio = Date.now();
+  while (true) {
+    const resultado = await executarComLockArquivo(caminhoLock, operacao);
+    if (resultado.acquired) return resultado;
+    const decorrido = Date.now() - inicio;
+    if (decorrido >= maxWaitMs) return { acquired: false, expirou: true };
+    await aguardar(Math.min(intervaloMs, maxWaitMs - decorrido));
+  }
+}
 
 async function _dispararImportacaoNoDocker(caminhoCsvOrigem) {
+  fs.mkdirSync(ESTOQUE_DIR, { recursive: true });
+  let estado;
+  const resultado = await executarComLockComEspera(CSV_IMPORT_LOCK, async () => {
+    estado = await _copiarEImportarNoDocker(caminhoCsvOrigem);
+  });
+  if (!resultado.acquired) {
+    console.log('(importação pendente: lock continuou ocupado após 2 minutos; CSV e sidecar foram preservados, rode novamente para tentar importar)');
+    return { estado: 'pendente', motivo: 'lock ocupado por mais de 2 minutos; snapshot preservado' };
+  }
+  return { estado: estado || 'concluida' };
+}
+
+async function _copiarEImportarNoDocker(caminhoCsvOrigem) {
+  let origemMs;
+  try { origemMs = Date.parse(JSON.parse(fs.readFileSync(`${caminhoCsvOrigem}.meta.json`, 'utf8')).capturadoEm); } catch {
+    console.log('(importação recusada: sidecar de captura ausente ou inválido)');
+    return 'falha_metadados';
+  }
+  const maisRecenteMs = fs.readdirSync(ESTOQUE_DIR)
+    .filter((nome) => nome.endsWith('.csv'))
+    .reduce((maior, nome) => {
+      try {
+        const meta = JSON.parse(fs.readFileSync(path.join(ESTOQUE_DIR, `${nome}.meta.json`), 'utf8'));
+        if (meta.validado === true && meta.completo === true && meta.estoqueOpcao === 'Com e sem estoque') {
+          return Math.max(maior, Date.parse(meta.capturadoEm) || 0);
+        }
+      } catch { /* legado sem proveniência não altera a ordem de importação */ }
+      return maior;
+    }, 0);
+  if (!Number.isFinite(origemMs) || origemMs < maisRecenteMs) {
+    console.log('(importação ignorada: há snapshot completo mais recente que esta captura)');
+    return 'ignorado_snapshot_antigo';
+  }
+
   try {
     fs.mkdirSync(path.dirname(CSV_HANDOFF_HOST), { recursive: true });
     fs.copyFileSync(caminhoCsvOrigem, CSV_HANDOFF_HOST);
   } catch (e) {
     console.log(`(não consegui copiar o CSV pra ${CSV_HANDOFF_HOST}: ${e.message} — import pro banco não vai rodar.)`);
-    return;
+    return 'falha_copia';
   }
 
   console.log('Importando estoque pro banco (docker exec)...');
-  await new Promise((resolve) => {
+  return new Promise((resolve) => {
     execFile(
       'docker',
       ['exec', DOCKER_CONTAINER, 'npm', 'run', 'importar-estoque', '--', CSV_HANDOFF_CONTAINER],
@@ -501,12 +648,13 @@ async function _dispararImportacaoNoDocker(caminhoCsvOrigem) {
             '024 foi aplicada — pode rodar à mão depois com: docker exec ' + DOCKER_CONTAINER +
             ' npm run importar-estoque -- ' + CSV_HANDOFF_CONTAINER + ')'
           );
+          resolve('falha_importacao');
         } else {
           console.log('Estoque importado pro banco.');
           if (stdout) console.log(stdout.trim());
           await _forcarReloadCacheEstoque();
+          resolve('importado');
         }
-        resolve();
       }
     );
   });
@@ -605,6 +753,10 @@ module.exports = {
   ESTOQUE_DIR,
   OPCOES_ESTOQUE_VALIDAS,
   nomeArquivoTimestamp,
+  validarCompletudeCsv,
+  nomeArquivoExecucao,
+  executarComLockArquivo,
+  executarComLockComEspera,
   carregarExports,
   rodar,
 };

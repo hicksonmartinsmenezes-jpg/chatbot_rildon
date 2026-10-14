@@ -63,6 +63,7 @@ const lancamentosX2 = require('../x2-lancamentos-scraper');
 // (require tardio), então isso aqui não quebra se a dependência ainda não
 // foi instalada e ninguém configurou o Drive ainda.
 const driveLancamentos = require('../x2-drive-lancamentos');
+const { aguardarTarefaComTimeout } = require('./aguardar-tarefa');
 
 // Auditoria 2026-09-30: falha de rotina, Drive ou estoque parado só ia pro
 // log do console. Agora avisa por WhatsApp (best-effort, nunca lança erro;
@@ -184,42 +185,29 @@ function confirmarFactory() {
 // visível na aba Fotos) e o usuário nunca viu/clicou nele porque estava
 // noutra aba (ex: Estoque) — o `execucao.rodando` fica true PARA SEMPRE
 // nesse caso, travando qualquer ação nova até reiniciar o servidor. Duas
-// redes de segurança:
-//   1) TIMEOUT_MAXIMO_MS abaixo: nenhuma ação roda pra sempre, mesmo que
-//      trave em algum ponto sem confirmação pendente (ex: Playwright preso
-//      numa página que nunca responde).
-//   2) /api/cancelar (rota nova): libera a trava manualmente a qualquer
-//      momento, sem precisar reiniciar o processo inteiro.
+// O timeout solicita cancelamento cooperativo depois de 20 minutos. Ele nao
+// interrompe chamadas Playwright que nao aceitam cancelamento: o lock fica
+// ativo ate a Promise original encerrar, mesmo que isso exija intervencao
+// externa se o navegador tiver travado de forma irrecuperavel.
 const TIMEOUT_MAXIMO_MS = 20 * 60 * 1000; // 20 minutos — generoso (rodar todas as seções de fotos pode demorar), mas finito.
 
 function cancelarExecucaoAtual(motivo) {
   if (!execucao || !execucao.rodando) return false;
-  // BUG REAL corrigido (2026-08-13, usuário relatou "mesmo com Cancelado
-  // ainda está baixando fotos"): antes, essa função só rejeitava a Promise
-  // de confirmação (quando havia uma pendente) OU só destravava a UI (sem
-  // confirmação pendente) — nos dois casos, se o script já estava DENTRO de
-  // um loop item-a-item (ex: baixando fotos de uma seção de 1751 produtos),
-  // ele continuava rodando sozinho em segundo plano, só que o painel dizia
-  // "Cancelado". Marcar `execucao.cancelado = true` aqui, sempre, dá aos
-  // loops longos (ver `deveParar` em rodarAcao abaixo, checado a cada item
-  // em x2-fotos-scraper.js/x2-catalogo-sync.js) uma forma de perguntar "o
-  // usuário já cancelou?" e parar de verdade em poucos segundos.
+  // Marca o pedido de cancelamento para que os loops item-a-item parem. Se
+  // Playwright estiver numa operação não cancelável, o lock continua ativo
+  // até a Promise da execução terminar.
   execucao.cancelado = true;
+  execucao.erro = motivo;
   if (execucao.aguardando && execucao.aguardando.rejeitador) {
-    // Rejeita a Promise que `confirmar()` estava esperando — a função que
-    // deu await nisso (dentro de rodarMuitasSecoes/sync.rodar/etc.) recebe
-    // o erro e cai no catch/finally de rodarAcao normalmente, liberando
-    // tudo do jeito certo (browser fechado etc.), não só "esquece" o estado.
-    execucao.aguardando.rejeitador(new Error(motivo));
+    // Remove a confirmação antes de rejeitar para impedir que /api/confirmar
+    // resolva a mesma espera durante a propagação do cancelamento.
+    const pendente = execucao.aguardando;
+    execucao.aguardando = null;
+    pendente.rejeitador(new Error(motivo));
+    transmitir();
   } else {
-    // Sem confirmação pendente pra rejeitar (ex: travou no meio de uma
-    // chamada do Playwright que nunca resolve) — não dá pra interromper a
-    // Promise em voo com segurança, então só libera a TRAVA (deixa novas
-    // ações rodarem). Best-effort: a janela do Chrome da execução anterior
-    // pode continuar aberta sozinha em segundo plano; fechar manualmente se
-    // aparecer na barra de tarefas.
-    execucao.erro = motivo;
-    execucao.rodando = false;
+    // Sem confirmação pendente, Playwright pode não aceitar cancelamento
+    // imediato. Mantenha o lock até a Promise real terminar.
     execucao.aguardando = null;
     transmitir();
   }
@@ -254,7 +242,8 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
   // próprio X2, não login). Agora `opcoes.automatico` (mandado pelo
   // frontend) também liga o modo automático, não só origemRotina.
   const modoAutomatico = !!origemRotina || !!opcoes.automatico;
-  execucao = { tipo, terminal: new TerminalVirtual(), rodando: true, aguardando: null, erro: null, origemRotina: origemRotina || null, rotulo: rotulo || null, cancelado: false };
+  const execucaoLocal = { tipo, terminal: new TerminalVirtual(), rodando: true, aguardando: null, erro: null, origemRotina: origemRotina || null, rotulo: rotulo || null, cancelado: false };
+  execucao = execucaoLocal;
   transmitir();
 
   // PEDIDO DO USUÁRIO (2026-09-08): "quando utilizar a ferramenta Lançamentos
@@ -276,7 +265,7 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
 
   // Passado pra dentro dos loops item-a-item de x2-fotos-scraper.js e
   // x2-catalogo-sync.js — ver comentário em cancelarExecucaoAtual().
-  const deveParar = () => !!(execucao && execucao.cancelado);
+  const deveParar = () => execucaoLocal.cancelado;
 
   // Redireciona console.log/console.error/process.stdout.write pro terminal
   // virtual ENQUANTO a ação roda — os scripts originais (x2-fotos-scraper.js,
@@ -284,7 +273,7 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
   const origWrite = process.stdout.write.bind(process.stdout);
   const origErrorWrite = process.stderr.write.bind(process.stderr);
   const capturar = (texto) => {
-    execucao.terminal.escrever(texto);
+    execucaoLocal.terminal.escrever(texto);
     transmitir();
     return true;
   };
@@ -292,7 +281,7 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
   process.stderr.write = capturar;
 
   if (modoAutomatico) {
-    execucao.terminal.escrever('▶ Rotina automática — sem clique humano: tentando login automático + abrir a tela sozinho (ver comentários em x2-fotos-scraper.js/x2-catalogo-sync.js, essa parte ainda não foi validada ao vivo).\n');
+    execucaoLocal.terminal.escrever('▶ Rotina automática — sem clique humano: tentando login automático + abrir a tela sozinho (ver comentários em x2-fotos-scraper.js/x2-catalogo-sync.js, essa parte ainda não foi validada ao vivo).\n');
   }
 
   try {
@@ -466,22 +455,19 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
       }
     })();
 
-    let timeoutId;
-    const timeoutPromise = new Promise((_, reject) => {
-      timeoutId = setTimeout(() => {
-        reject(new Error(`Passou de ${Math.round(TIMEOUT_MAXIMO_MS / 60000)} minutos sem terminar — travei a rede de segurança em vez de deixar "rodando" pra sempre. Se uma janela do Chrome da execução anterior ainda estiver aberta, pode fechar manualmente.`));
-      }, TIMEOUT_MAXIMO_MS);
+    await aguardarTarefaComTimeout(tarefa, {
+      timeoutMs: TIMEOUT_MAXIMO_MS,
+      aoTimeout: () => cancelarExecucaoAtual('timeout'),
+      criarErroTimeout: () => new Error(
+        `Passou de ${Math.round(TIMEOUT_MAXIMO_MS / 60000)} minutos sem terminar; cancelamento solicitado. O lock permanece ate a tarefa Playwright encerrar.`,
+      ),
     });
-    try {
-      await Promise.race([tarefa, timeoutPromise]);
-    } finally {
-      clearTimeout(timeoutId);
-    }
+    if (execucaoLocal.cancelado) throw new Error(execucaoLocal.erro || 'Execucao cancelada.');
 
     if (origemRotina) rotinasStore.registrarExecucao(origemRotina, { resultado: 'sucesso' });
   } catch (e) {
-    execucao.erro = e.message;
-    execucao.terminal.escrever(`\n❌ Erro: ${e.message}\n`);
+    execucaoLocal.erro = e.message;
+    execucaoLocal.terminal.escrever(`\n❌ Erro: ${e.message}\n`);
     if (origemRotina) rotinasStore.registrarExecucao(origemRotina, { resultado: 'erro', erro: e.message });
     if (origemRotina || (opcoes && opcoes.automatico)) {
       alertarFalhaX2(`acao-${tipo}`, `a rotina "${rotulo || tipo}" falhou: ${String(e.message).slice(0, 300)}`);
@@ -489,8 +475,8 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
   } finally {
     process.stdout.write = origWrite;
     process.stderr.write = origErrorWrite;
-    execucao.rodando = false;
-    execucao.aguardando = null;
+    execucaoLocal.rodando = false;
+    execucaoLocal.aguardando = null;
     transmitir();
   }
 
@@ -501,7 +487,7 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
   // terminar. `execucao` ainda aponta pra essa execução que acabou de
   // terminar — `execucao.cancelado` reflete se ELA foi cancelada; se foi,
   // não faz sentido continuar disparando cadastro/foto por trás.
-  if (slugsAutoCaptura && slugsAutoCaptura.length && !execucao.cancelado) {
+  if (slugsAutoCaptura && slugsAutoCaptura.length && !execucaoLocal.cancelado) {
     const secoesParaAutoCaptura = slugsAutoCaptura;
     // PEDIDO DO USUÁRIO (2026-09-11): cadastro e fotos agora restritos aos
     // códigos exatos do lançamento (ver comentário na declaração de
@@ -517,13 +503,13 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
         // terminar (baixar só reatribui a variável quando chamado a
         // seguir) — se o usuário cancelou o cadastro de ficha, não faz
         // sentido continuar sozinho pro download de fotos.
-        if (execucao && execucao.cancelado) {
+        if (execucaoLocal.cancelado) {
           console.log('[x2-painel] cadastro de ficha cancelado — pulando download de fotos automático.');
           return null;
         }
-        if (execucao && execucao.erro) {
+        if (execucaoLocal.erro) {
           console.log('[x2-painel] cadastro de ficha FALHOU — pulando fotos e PDF/Drive para não subir catálogo incompleto.');
-          alertarFalhaX2('cadeia-sync', `Lançamentos: o cadastro dos ${codigosParaAutoCaptura.length} código(s) novos falhou (${String(execucao.erro).slice(0, 200)}). Fotos e Drive NÃO foram executados.`);
+          alertarFalhaX2('cadeia-sync', `Lançamentos: o cadastro dos ${codigosParaAutoCaptura.length} código(s) novos falhou (${String(execucaoLocal.erro).slice(0, 200)}). Fotos e Drive NÃO foram executados.`);
           return null;
         }
         return rodarAcao('baixar', { secoes: secoesParaAutoCaptura, codigosEspecificos: codigosParaAutoCaptura, automatico: true }, { rotulo: 'Fotos Lançamentos' });
@@ -1054,8 +1040,8 @@ app.post('/api/confirmar', (req, res) => {
   res.json({ ok: true });
 });
 
-// 2026-08-07 — ver comentário em cancelarExecucaoAtual(). Libera a trava
-// "já tem uma ação rodando" manualmente, sem precisar reiniciar o servidor.
+// 2026-08-07 — ver comentário em cancelarExecucaoAtual(). Solicita o
+// cancelamento sem liberar o lock enquanto Playwright ainda estiver ativo.
 app.post('/api/cancelar', (req, res) => {
   const cancelou = cancelarExecucaoAtual('Cancelado manualmente pelo usuário.');
   if (!cancelou) {

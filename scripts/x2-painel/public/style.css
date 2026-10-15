@@ -645,3 +645,8 @@
   .toast.saindo { animation: toast-out .15s ease forwards; }
   @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
   @keyframes toast-out { from { opacity: 1; } to { opacity: 0; transform: translateY(4px); } }
+
+/* UX: opções avançadas recolhidas por padrão */
+.opcoes-avancadas { margin: 8px 0 12px; }
+.opcoes-avancadas > summary { cursor: pointer; font-size: 13px; color: var(--muted, #667085); margin-bottom: 8px; }
+.opcoes-avancadas > label { display: block; margin: 6px 0; }

@@ -201,17 +201,41 @@ async function fireSchedule(schedule) {
 // Chamada pelo tick — busca agendamentos vencidos (ativos, next_run_at no
 // passado) e dispara um por vez (evita sobrecarregar o WhatsApp caso vários
 // vençam no mesmo minuto).
-async function runDueSchedules() {
-  const res = await pool.query(
-    `SELECT * FROM campaign_schedules WHERE status = 'active' AND next_run_at <= NOW() ORDER BY next_run_at ASC`
-  );
+// 2026-10-09 (auditoria): o tick é de 60s, mas fireSchedule chama
+// startBroadcast, que envia de verdade pelo WhatsApp com pausa entre
+// destinatários — leva MUITO mais que 60s. Como o next_run_at só era
+// atualizado no FIM de fireSchedule, o tick seguinte relia a mesma linha com
+// next_run_at ainda no passado e DISPARAVA A MESMA CAMPANHA DE NOVO, mandando
+// a mensagem repetida para os clientes. Com o servidor lento (o quadro de
+// 01/10), isso acontecia a cada rodada.
+//
+// A guarda abaixo impede a reentrância. A correção completa seria reservar as
+// linhas no próprio banco (UPDATE ... FOR UPDATE SKIP LOCKED antes de
+// disparar); fica anotado, mas a guarda em processo já resolve para uma única
+// instância do app, que é o caso aqui.
+let _tickEmExecucao = false;
 
-  for (const schedule of res.rows) {
-    try {
-      await fireSchedule(schedule);
-    } catch (err) {
-      logger.error(`[CampaignSchedule] Erro ao disparar agendamento #${schedule.id}: ${err.message}`);
+async function runDueSchedules() {
+  if (_tickEmExecucao) {
+    logger.warn("[CampaignSchedule] tick anterior ainda em execução — pulando este para não disparar a mesma campanha duas vezes.");
+    return;
+  }
+  _tickEmExecucao = true;
+
+  try {
+    const res = await pool.query(
+      `SELECT * FROM campaign_schedules WHERE status = 'active' AND next_run_at <= NOW() ORDER BY next_run_at ASC`
+    );
+
+    for (const schedule of res.rows) {
+      try {
+        await fireSchedule(schedule);
+      } catch (err) {
+        logger.error(`[CampaignSchedule] Erro ao disparar agendamento #${schedule.id}: ${err.message}`);
+      }
     }
+  } finally {
+    _tickEmExecucao = false;
   }
 }
 

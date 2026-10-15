@@ -72,6 +72,12 @@ jest.mock("qrcode-terminal", () => ({ generate: jest.fn() }));
 jest.mock("@whiskeysockets/baileys", () => ({
   __esModule: true,
   default: jest.fn(),
+  // 2026-10-14: faltava aqui — src/config/whatsapp.js usa
+  // makeCacheableSignalKeyStore(state.keys, ...) de verdade; sem isso no
+  // mock, a chamada estourava "makeCacheableSignalKeyStore is not a
+  // function" em toda suite que carrega o modulo (confirmado: mesmo erro
+  // nas 7 suites que mockam este modulo).
+  makeCacheableSignalKeyStore: jest.fn((keys) => keys),
   useMultiFileAuthState: jest.fn(async () => ({ state: {}, saveCreds: jest.fn() })),
   DisconnectReason: { loggedOut: 401 },
   fetchLatestBaileysVersion: jest.fn(async () => ({ version: [2, 3000, 0] })),

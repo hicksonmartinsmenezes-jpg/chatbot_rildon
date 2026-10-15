@@ -119,6 +119,11 @@ let totalProdutosIndexados = 0;
 // interno, ex: nome de carro "KADET T - CORSA - ASTRA") não dá pra confiar
 // no parsing — produto fica sem fabricante identificado, mas continua
 // aparecendo normalmente em qualquer busca por veículo/categoria.
+// Preenchido em _carregarIndices (pré-varredura) antes de indexar.
+let fabricantesParaFallback = new Set();
+let _fallbackFabricanteContagem = 0;
+const FABRICANTE_MIN_PARA_FALLBACK = 20;
+
 function _extrairFabricante(nome) {
   // BUG REAL achado 2026-09-01 (testando import do Catálogo Promocional com
   // arquivo real do usuário, "Wega Estoque.xlsx"): produto "ELEMENTO
@@ -137,6 +142,17 @@ function _extrairFabricante(nome) {
   // redor — continuam sem fabricante identificado, como já era o caso.
   const normalizado = String(nome || "").replace(/(?<=\S)-(?=\s)/g, " -");
   const partes = normalizado.split(" - ");
+  if (partes.length === 2) {
+    // Padrão "<descrição> - ZEN 24131" (sem o 2º hífen): o fabricante é a
+    // 1ª palavra da referência, MAS só quando ela já é um fabricante conhecido
+    // (visto em 20+ produtos no padrão de 3 blocos) — ver _carregarIndices.
+    const primeira = partes[1].trim().split(/\s+/)[0].toUpperCase();
+    if (primeira && fabricantesParaFallback.has(primeira)) {
+      _fallbackFabricanteContagem++;
+      return primeira;
+    }
+    return null;
+  }
   if (partes.length !== 3) return null;
   return partes[1].trim();
 }
@@ -683,6 +699,21 @@ function _carregarIndices() {
   // depois (busca por veículo/nome/código, Catálogo Completo, índice do
   // PDF, dropdown de Linhas), sem precisar duplicar a lógica em cada lugar.
   const correcoes = _garantirCorrecoesCategoria();
+
+  // Fabricantes "conhecidos" = os que aparecem em 20+ produtos no padrão de
+  // 3 blocos. Servem só pro fallback de nomes "<descrição> - ZEN 24131".
+  const contagem3 = new Map();
+  for (const p of melhorPorCodigo.values()) {
+    const partes = String(p.nome || "").replace(/(?<=\S)-(?=\s)/g, " -").split(" - ");
+    if (partes.length !== 3) continue;
+    const f = _normalizarFabricante(partes[1].trim());
+    if (f) contagem3.set(f, (contagem3.get(f) || 0) + 1);
+  }
+  fabricantesParaFallback = new Set(
+    [...contagem3].filter(([f, n]) => n >= FABRICANTE_MIN_PARA_FALLBACK && !/\s/.test(f)).map(([f]) => f)
+  );
+  _fallbackFabricanteContagem = 0;
+
   for (const p of melhorPorCodigo.values()) {
     const correcao = correcoes.get(String(p.codigo));
     if (correcao) p.linha = correcao.linha;
@@ -693,7 +724,8 @@ function _carregarIndices() {
     `[catalogo-x2.service] índice pronto: ${totalProdutosIndexados} produtos, ` +
     `${equivalenteIndex.size} códigos equivalentes, ${produtosComAplicacao.length} com aplicação/veículo ` +
     `(${todosProdutos.length - produtosComAplicacao.length} sem aplicação, navegáveis só por Seção/Linha), ` +
-    `${fabricanteCount.size} fabricantes distintos identificados.`
+    `${fabricanteCount.size} fabricantes distintos identificados ` +
+    `(${_fallbackFabricanteContagem} deles pelo padrão "descrição - FAB referência").`
   );
 }
 

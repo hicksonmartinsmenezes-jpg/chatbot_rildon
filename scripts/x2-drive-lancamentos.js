@@ -198,6 +198,7 @@ async function rodarUploadDrive(codigos) {
   const config = _configDriveOuMotivo();
   if (!config.ok) {
     console.log(`(${config.motivo} PDF/Drive dessa rodada ficou pendente.)`);
+    resultado.erros.push({ fabricante: null, erro: config.motivo });
     return resultado;
   }
 
@@ -214,9 +215,15 @@ async function rodarUploadDrive(codigos) {
 
   const drive = await _clienteDrive(config.clientId, config.clientSecret, path.resolve(config.tokenPath));
 
+  // Auditoria 2026-09-30: fabricante que tem catálogo "- Mecânica" tem o
+  // "<fabricante>.pdf" do Drive no estilo Mecânica (reenvio manual de
+  // 22/09). Antes o envio automático mandava o estilo elétrica por cima.
+  const mecanica = await _fabricantesComVersaoMecanica({ baseUrl: BASE_URL, apiToken: config.apiToken });
+
   for (const fabricante of fabricantes) {
     try {
-      const bufferPdf = await _baixarPdfFabricante(fabricante, { baseUrl: BASE_URL, apiToken: config.apiToken });
+      const valorPdf = mecanica.has(fabricante) ? `${fabricante}::mecanica` : fabricante;
+      const bufferPdf = await _baixarPdfFabricante(valorPdf, { baseUrl: BASE_URL, apiToken: config.apiToken });
       const envio = await _enviarPdfParaDrive(drive, config.pastaId, fabricante, bufferPdf);
       resultado.enviados.push(envio);
       console.log(`[x2-drive] ${fabricante}.pdf — ${envio.acao} no Drive.`);
@@ -288,7 +295,98 @@ async function rodarUploadTodosMecanica() {
   return resultado;
 }
 
-module.exports = { rodarUploadDrive, rodarUploadTodosMecanica };
+// Lista dos fabricantes que têm opção "- Mecânica" no Catálogo Completo.
+// Best-effort: se a consulta falhar, devolve Set vazio (comportamento antigo).
+async function _fabricantesComVersaoMecanica({ baseUrl, apiToken }) {
+  try {
+    const r = await fetch(`${baseUrl}/api/catalogo/fabricantes-completo`, { headers: { Authorization: `Bearer ${apiToken}` } });
+    if (!r.ok) return new Set();
+    const d = await r.json();
+    return new Set((d.opcoes || []).filter((o) => String(o.value).endsWith('::mecanica')).map((o) => String(o.value).split('::')[0]));
+  } catch {
+    return new Set();
+  }
+}
+
+// Reenvio SEMANAL de todos os catálogos (auditoria 2026-09-30): o envio
+// pós-Lançamentos só cobria fabricantes com código novo, então preço, foto
+// e ficha alterados em produto antigo nunca chegavam ao PDF do Drive.
+// `exceto` = fabricantes que acabaram de ser enviados nesta rodada.
+async function rodarUploadTodosFabricantes({ exceto = [], so = null, limite = 0, pausaSegundos = 20 } = {}) {
+  const resultado = { fabricantes: [], enviados: [], erros: [] };
+  const config = _configDriveOuMotivo();
+  if (!config.ok) {
+    console.log(`(${config.motivo} Reenvio completo ao Drive não rodou.)`);
+    resultado.erros.push({ fabricante: null, erro: config.motivo });
+    return resultado;
+  }
+  const { BASE_URL } = require('./x2-whatsapp-alerta');
+  const respostaLista = await fetch(`${BASE_URL}/api/catalogo/fabricantes-completo`, {
+    headers: { Authorization: `Bearer ${config.apiToken}` },
+  });
+  if (!respostaLista.ok) throw new Error(`Falha ao listar fabricantes do Catálogo Completo (HTTP ${respostaLista.status}).`);
+  const opcoes = (await respostaLista.json()).opcoes || [];
+  const mecanicaBase = new Set(opcoes.filter((o) => String(o.value).endsWith('::mecanica')).map((o) => String(o.value).split('::')[0]));
+  const pulados = new Set(exceto);
+  // Mecânica vence quando o fabricante tem as duas versões (mesma regra do
+  // reenvio manual: o "<fabricante>.pdf" do Drive é o Mecânica).
+  const alvo = opcoes.filter((o) => {
+    const base = String(o.value).split('::')[0];
+    if (pulados.has(base)) return false;
+    return String(o.value).endsWith('::mecanica') || !mecanicaBase.has(base);
+  });
+  // Filtros para rodar em lotes (evita sobrecarregar o bot): `so` = lista de
+  // nomes (sem acento/maiúsculas não importam), `limite` = máximo por execução.
+  let alvoFinal = alvo;
+  if (so && so.length) {
+    const alvos = new Set(so.map((n) => String(n).trim().toUpperCase()));
+    alvoFinal = alvoFinal.filter((o) => alvos.has(String(o.value).split('::')[0].toUpperCase()));
+  }
+  if (limite > 0) alvoFinal = alvoFinal.slice(0, limite);
+  alvo.length = 0; alvo.push(...alvoFinal);
+  resultado.fabricantes = alvo.map((o) => String(o.value).split('::')[0]);
+  if (!alvo.length) return resultado;
+  console.log(`[x2-drive] reenvio completo: ${alvo.length} catálogo(s) ao Drive (1 por vez, pausa de ${pausaSegundos}s entre eles).`);
+  const drive = await _clienteDrive(config.clientId, config.clientSecret, path.resolve(config.tokenPath));
+  for (const opcao of alvo) {
+    const nome = String(opcao.value).split('::')[0];
+    // Só gera o próximo PDF se o bot estiver respondendo rápido (protege o
+    // painel de atendimento — gerar PDF pesa muito no mesmo processo).
+    const ok = await _aguardarBotSaudavel(BASE_URL, config.apiToken);
+    if (!ok) {
+      resultado.erros.push({ fabricante: nome, erro: 'bot lento/indisponível — reenvio interrompido para proteger o painel' });
+      console.error('[x2-drive] bot não ficou saudável a tempo — parando aqui. Rode de novo mais tarde (com --so ou --limite).');
+      break;
+    }
+    try {
+      const bufferPdf = await _baixarPdfFabricante(opcao.value, { baseUrl: BASE_URL, apiToken: config.apiToken });
+      const envio = await _enviarPdfParaDrive(drive, config.pastaId, nome, bufferPdf);
+      resultado.enviados.push(envio);
+      console.log(`[x2-drive] ${nome}.pdf — ${envio.acao} no Drive.`);
+    } catch (e) {
+      resultado.erros.push({ fabricante: nome, erro: e.message });
+      console.error(`[x2-drive] falha ao subir PDF de "${nome}":`, e.message);
+    }
+    if (pausaSegundos > 0) await new Promise((r) => setTimeout(r, pausaSegundos * 1000));
+  }
+  return resultado;
+}
+
+// Ping leve no bot: precisa responder em até 3 s. Tenta até 10x, esperando 30 s entre elas.
+async function _aguardarBotSaudavel(baseUrl, apiToken) {
+  for (let i = 0; i < 10; i++) {
+    const t0 = Date.now();
+    try {
+      const r = await fetch(`${baseUrl}/api/catalogo/fabricantes-completo`, { headers: { Authorization: `Bearer ${apiToken}` }, signal: AbortSignal.timeout(3000) });
+      if (r.ok && Date.now() - t0 < 3000) return true;
+    } catch { /* lento ou fora do ar */ }
+    console.log('[x2-drive] bot ocupado — aguardando 30 s antes de continuar...');
+    await new Promise((res) => setTimeout(res, 30000));
+  }
+  return false;
+}
+
+module.exports = { rodarUploadDrive, rodarUploadTodosMecanica, rodarUploadTodosFabricantes };
 
 // ─── CLI direto (2026-09-22): `node scripts/x2-drive-lancamentos.js
 // --todos-mecanica` — pro usuário rodar o reenvio manual sem precisar do
@@ -297,7 +395,24 @@ module.exports = { rodarUploadDrive, rodarUploadTodosMecanica };
 // (rodarUploadDrive só é chamado pelo encadeamento automático em server.js).
 if (require.main === module) {
   const args = process.argv.slice(2);
-  if (args.includes('--todos-mecanica')) {
+  if (args.includes('--verificar')) {
+    // Só confere a configuração (não envia nada ao Drive nem imprime segredos).
+    const c = _configDriveOuMotivo();
+    console.log(c.ok ? 'Drive configurado: API_TOKEN, credenciais Google, pasta e token OAuth encontrados.' : `Drive NÃO configurado: ${c.motivo}`);
+    process.exitCode = c.ok ? 0 : 1;
+  } else if (args.includes('--todos')) {
+    const arg = (n) => (args.find((a) => a.startsWith(`--${n}=`)) || '').split('=').slice(1).join('=');
+    rodarUploadTodosFabricantes({
+      so: arg('so') ? arg('so').split(',') : null,
+      limite: Number(arg('limite')) || 0,
+      pausaSegundos: arg('pausa') !== '' ? Number(arg('pausa')) : 20,
+    })
+      .then((r) => {
+        console.log(`\n=== Resumo === Enviados: ${r.enviados.length} de ${r.fabricantes.length}`);
+        if (r.erros.length) { r.erros.forEach((e) => console.log(`  - ${e.fabricante || '?'}: ${e.erro}`)); process.exitCode = 1; }
+      })
+      .catch((e) => { console.error('Erro no reenvio completo:', e.message); process.exitCode = 1; });
+  } else if (args.includes('--todos-mecanica')) {
     rodarUploadTodosMecanica()
       .then((resultado) => {
         console.log('\n=== Resumo ===');
@@ -313,6 +428,6 @@ if (require.main === module) {
         process.exitCode = 1;
       });
   } else {
-    console.log('Uso: node scripts/x2-drive-lancamentos.js --todos-mecanica');
+    console.log('Uso: node scripts/x2-drive-lancamentos.js --verificar | --todos [--so=A,B] [--limite=N] [--pausa=SEG] | --todos-mecanica');
   }
 }

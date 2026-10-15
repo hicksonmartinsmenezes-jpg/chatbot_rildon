@@ -63,6 +63,40 @@ const lancamentosX2 = require('../x2-lancamentos-scraper');
 // (require tardio), então isso aqui não quebra se a dependência ainda não
 // foi instalada e ninguém configurou o Drive ainda.
 const driveLancamentos = require('../x2-drive-lancamentos');
+const { aguardarTarefaComTimeout } = require('./aguardar-tarefa');
+
+// Auditoria 2026-09-30: falha de rotina, Drive ou estoque parado só ia pro
+// log do console. Agora avisa por WhatsApp (best-effort, nunca lança erro;
+// no máximo 1 aviso igual a cada 6 h pra não spammar).
+const ALERTAS_INFO = {
+  'cadeia-sync': { titulo: 'Lançamentos: cadastro falhou', acao: 'Rode "Cadastrar produtos" no painel e depois as fotos. Fotos e Drive não foram executados.' },
+  'cadeia-fotos': { titulo: 'Lançamentos: fotos falharam', acao: 'Rode "Atualizar fotos" no painel e clique em "Catálogo de Produtos" quando pedir. O Drive não foi atualizado.' },
+  'drive': { titulo: 'Drive: PDF não atualizado', acao: 'Confira o Drive (token OAuth) e rode: node scripts\\x2-drive-lancamentos.js --verificar' },
+  'drive-sem-fabricante': { nivel: 'aviso', titulo: 'Drive: lançamentos sem fabricante', acao: 'Cadastre o fabricante desses códigos no catálogo para eles entrarem no PDF.' },
+  'secao-nao-mapeada': { nivel: 'aviso', titulo: 'Lançamentos fora do catálogo', acao: 'A Seção desses códigos não está mapeada. Me envie a Seção para eu incluir.' },
+  'estoque-parado': { titulo: 'Estoque/preço desatualizado', acao: 'Confira se o Painel X2 está aberto e rode "Exportar estoque".' },
+  'estoque-sem': { titulo: 'Estoque nunca importado', acao: 'Rode "Exportar estoque" no Painel X2.' },
+  'acao': { titulo: 'Rotina do Painel X2 falhou', acao: 'Abra o painel, veja o log da rotina e rode de novo.' },
+};
+const _alertasRecentes = new Map();
+async function alertarFalhaX2(chave, mensagem) {
+  try {
+    const agora = Date.now();
+    if (agora - (_alertasRecentes.get(chave) || 0) < 6 * 60 * 60 * 1000) return;
+    _alertasRecentes.set(chave, agora);
+    const { enviarAlertaWhatsApp, formatarAlerta } = require('../x2-whatsapp-alerta');
+    try { require('../relatorio-mensal').registrarAlertaEnviado(mensagem); } catch { /* best-effort */ }
+    const info = ALERTAS_INFO[chave] || ALERTAS_INFO[String(chave).split('-').slice(0, 2).join('-')] || ALERTAS_INFO[String(chave).split('-')[0]] || {};
+    await enviarAlertaWhatsApp(formatarAlerta({
+      nivel: info.nivel || 'erro',
+      titulo: info.titulo || 'Painel X2 — atenção',
+      linhas: [mensagem],
+      acao: info.acao || 'Abra o Painel X2 (http://127.0.0.1:4123) e confira o log da última execução.',
+    }));
+  } catch (e) {
+    console.error('[x2-painel] não consegui enviar alerta WhatsApp:', e.message);
+  }
+}
 const qualidadeApenasCadastrados = require('./qualidade-apenas-cadastrados');
 const { listarEntradas } = require('../../src/utils/zip-reader');
 const rotinasStore = require('./rotinas');
@@ -151,42 +185,29 @@ function confirmarFactory() {
 // visível na aba Fotos) e o usuário nunca viu/clicou nele porque estava
 // noutra aba (ex: Estoque) — o `execucao.rodando` fica true PARA SEMPRE
 // nesse caso, travando qualquer ação nova até reiniciar o servidor. Duas
-// redes de segurança:
-//   1) TIMEOUT_MAXIMO_MS abaixo: nenhuma ação roda pra sempre, mesmo que
-//      trave em algum ponto sem confirmação pendente (ex: Playwright preso
-//      numa página que nunca responde).
-//   2) /api/cancelar (rota nova): libera a trava manualmente a qualquer
-//      momento, sem precisar reiniciar o processo inteiro.
+// O timeout solicita cancelamento cooperativo depois de 20 minutos. Ele nao
+// interrompe chamadas Playwright que nao aceitam cancelamento: o lock fica
+// ativo ate a Promise original encerrar, mesmo que isso exija intervencao
+// externa se o navegador tiver travado de forma irrecuperavel.
 const TIMEOUT_MAXIMO_MS = 20 * 60 * 1000; // 20 minutos — generoso (rodar todas as seções de fotos pode demorar), mas finito.
 
 function cancelarExecucaoAtual(motivo) {
   if (!execucao || !execucao.rodando) return false;
-  // BUG REAL corrigido (2026-08-13, usuário relatou "mesmo com Cancelado
-  // ainda está baixando fotos"): antes, essa função só rejeitava a Promise
-  // de confirmação (quando havia uma pendente) OU só destravava a UI (sem
-  // confirmação pendente) — nos dois casos, se o script já estava DENTRO de
-  // um loop item-a-item (ex: baixando fotos de uma seção de 1751 produtos),
-  // ele continuava rodando sozinho em segundo plano, só que o painel dizia
-  // "Cancelado". Marcar `execucao.cancelado = true` aqui, sempre, dá aos
-  // loops longos (ver `deveParar` em rodarAcao abaixo, checado a cada item
-  // em x2-fotos-scraper.js/x2-catalogo-sync.js) uma forma de perguntar "o
-  // usuário já cancelou?" e parar de verdade em poucos segundos.
+  // Marca o pedido de cancelamento para que os loops item-a-item parem. Se
+  // Playwright estiver numa operação não cancelável, o lock continua ativo
+  // até a Promise da execução terminar.
   execucao.cancelado = true;
+  execucao.erro = motivo;
   if (execucao.aguardando && execucao.aguardando.rejeitador) {
-    // Rejeita a Promise que `confirmar()` estava esperando — a função que
-    // deu await nisso (dentro de rodarMuitasSecoes/sync.rodar/etc.) recebe
-    // o erro e cai no catch/finally de rodarAcao normalmente, liberando
-    // tudo do jeito certo (browser fechado etc.), não só "esquece" o estado.
-    execucao.aguardando.rejeitador(new Error(motivo));
+    // Remove a confirmação antes de rejeitar para impedir que /api/confirmar
+    // resolva a mesma espera durante a propagação do cancelamento.
+    const pendente = execucao.aguardando;
+    execucao.aguardando = null;
+    pendente.rejeitador(new Error(motivo));
+    transmitir();
   } else {
-    // Sem confirmação pendente pra rejeitar (ex: travou no meio de uma
-    // chamada do Playwright que nunca resolve) — não dá pra interromper a
-    // Promise em voo com segurança, então só libera a TRAVA (deixa novas
-    // ações rodarem). Best-effort: a janela do Chrome da execução anterior
-    // pode continuar aberta sozinha em segundo plano; fechar manualmente se
-    // aparecer na barra de tarefas.
-    execucao.erro = motivo;
-    execucao.rodando = false;
+    // Sem confirmação pendente, Playwright pode não aceitar cancelamento
+    // imediato. Mantenha o lock até a Promise real terminar.
     execucao.aguardando = null;
     transmitir();
   }
@@ -221,7 +242,8 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
   // próprio X2, não login). Agora `opcoes.automatico` (mandado pelo
   // frontend) também liga o modo automático, não só origemRotina.
   const modoAutomatico = !!origemRotina || !!opcoes.automatico;
-  execucao = { tipo, terminal: new TerminalVirtual(), rodando: true, aguardando: null, erro: null, origemRotina: origemRotina || null, rotulo: rotulo || null, cancelado: false };
+  const execucaoLocal = { tipo, terminal: new TerminalVirtual(), rodando: true, aguardando: null, erro: null, origemRotina: origemRotina || null, rotulo: rotulo || null, cancelado: false };
+  execucao = execucaoLocal;
   transmitir();
 
   // PEDIDO DO USUÁRIO (2026-09-08): "quando utilizar a ferramenta Lançamentos
@@ -243,7 +265,7 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
 
   // Passado pra dentro dos loops item-a-item de x2-fotos-scraper.js e
   // x2-catalogo-sync.js — ver comentário em cancelarExecucaoAtual().
-  const deveParar = () => !!(execucao && execucao.cancelado);
+  const deveParar = () => execucaoLocal.cancelado;
 
   // Redireciona console.log/console.error/process.stdout.write pro terminal
   // virtual ENQUANTO a ação roda — os scripts originais (x2-fotos-scraper.js,
@@ -251,7 +273,7 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
   const origWrite = process.stdout.write.bind(process.stdout);
   const origErrorWrite = process.stderr.write.bind(process.stderr);
   const capturar = (texto) => {
-    execucao.terminal.escrever(texto);
+    execucaoLocal.terminal.escrever(texto);
     transmitir();
     return true;
   };
@@ -259,7 +281,7 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
   process.stderr.write = capturar;
 
   if (modoAutomatico) {
-    execucao.terminal.escrever('▶ Rotina automática — sem clique humano: tentando login automático + abrir a tela sozinho (ver comentários em x2-fotos-scraper.js/x2-catalogo-sync.js, essa parte ainda não foi validada ao vivo).\n');
+    execucaoLocal.terminal.escrever('▶ Rotina automática — sem clique humano: tentando login automático + abrir a tela sozinho (ver comentários em x2-fotos-scraper.js/x2-catalogo-sync.js, essa parte ainda não foi validada ao vivo).\n');
   }
 
   try {
@@ -275,6 +297,10 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
           limit: opcoes.limit || null,
           channel: 'chrome',
           retrySemFoto: !!opcoes.retrySemFoto,
+          // Rotina automática de fotos (sem lista de códigos) renova aos poucos as fotos
+          // com mais de X2_RENOVAR_FOTOS_DIAS dias (padrão 60), até 300 por seção/execução.
+          renovarAposDias: opcoes.renovarAposDias || ((origemRotina && !(opcoes.codigosEspecificos && opcoes.codigosEspecificos.length)) ? (Number(process.env.X2_RENOVAR_FOTOS_DIAS) || 60) : undefined),
+          renovarLimite: opcoes.renovarLimite || undefined,
           reiniciar: !!opcoes.reiniciar,
           confirmar: modoAutomatico ? undefined : confirmarFactory(),
           modoAutomatico,
@@ -300,7 +326,8 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
         console.log('\n▶ Publicando (montando zip) as seções que já ficaram 100% completas...');
         for (const slug of opcoes.secoes) {
           try {
-            await montarZipFinal(slug);
+            // Rodada restrita a códigos (Lançamentos): zip parcial preserva as fotos já publicadas.
+            await montarZipFinal(slug, { parcial: !!(opcoes.codigosEspecificos && opcoes.codigosEspecificos.length) });
           } catch (e) {
             console.error(`Erro ao montar zip de "${slug}": ${e.message}`);
           }
@@ -415,6 +442,7 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
           const { slugs, naoMapeados } = lancamentosX2.mapearSecoesTocadas(snapshotLancamentos.produtos);
           if (naoMapeados.length) {
             console.log(`\n⚠ ${naoMapeados.length} lançamento(s) com Seção não reconhecida (fica só no Excel, sem cadastro/foto automático): ${naoMapeados.map((n) => n.codigo).join(', ')}`);
+            alertarFalhaX2('secao-nao-mapeada', `${naoMapeados.length} lançamento(s) com Seção não reconhecida ficaram fora do catálogo: ${naoMapeados.slice(0, 10).map((n) => n.codigo).join(', ')}`);
           }
           if (slugs.length) {
             console.log(`\n▶ ${slugs.length} Seção(ões) com lançamento novo — cadastro de ficha + fotos serão disparados automaticamente em seguida: ${slugs.join(', ')}`);
@@ -427,28 +455,28 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
       }
     })();
 
-    let timeoutId;
-    const timeoutPromise = new Promise((_, reject) => {
-      timeoutId = setTimeout(() => {
-        reject(new Error(`Passou de ${Math.round(TIMEOUT_MAXIMO_MS / 60000)} minutos sem terminar — travei a rede de segurança em vez de deixar "rodando" pra sempre. Se uma janela do Chrome da execução anterior ainda estiver aberta, pode fechar manualmente.`));
-      }, TIMEOUT_MAXIMO_MS);
+    await aguardarTarefaComTimeout(tarefa, {
+      timeoutMs: TIMEOUT_MAXIMO_MS,
+      aoTimeout: () => cancelarExecucaoAtual('timeout'),
+      criarErroTimeout: () => new Error(
+        `Passou de ${Math.round(TIMEOUT_MAXIMO_MS / 60000)} minutos sem terminar; cancelamento solicitado. O lock permanece ate a tarefa Playwright encerrar.`,
+      ),
     });
-    try {
-      await Promise.race([tarefa, timeoutPromise]);
-    } finally {
-      clearTimeout(timeoutId);
-    }
+    if (execucaoLocal.cancelado) throw new Error(execucaoLocal.erro || 'Execucao cancelada.');
 
     if (origemRotina) rotinasStore.registrarExecucao(origemRotina, { resultado: 'sucesso' });
   } catch (e) {
-    execucao.erro = e.message;
-    execucao.terminal.escrever(`\n❌ Erro: ${e.message}\n`);
+    execucaoLocal.erro = e.message;
+    execucaoLocal.terminal.escrever(`\n❌ Erro: ${e.message}\n`);
     if (origemRotina) rotinasStore.registrarExecucao(origemRotina, { resultado: 'erro', erro: e.message });
+    if (origemRotina || (opcoes && opcoes.automatico)) {
+      alertarFalhaX2(`acao-${tipo}`, `a rotina "${rotulo || tipo}" falhou: ${String(e.message).slice(0, 300)}`);
+    }
   } finally {
     process.stdout.write = origWrite;
     process.stderr.write = origErrorWrite;
-    execucao.rodando = false;
-    execucao.aguardando = null;
+    execucaoLocal.rodando = false;
+    execucaoLocal.aguardando = null;
     transmitir();
   }
 
@@ -459,7 +487,7 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
   // terminar. `execucao` ainda aponta pra essa execução que acabou de
   // terminar — `execucao.cancelado` reflete se ELA foi cancelada; se foi,
   // não faz sentido continuar disparando cadastro/foto por trás.
-  if (slugsAutoCaptura && slugsAutoCaptura.length && !execucao.cancelado) {
+  if (slugsAutoCaptura && slugsAutoCaptura.length && !execucaoLocal.cancelado) {
     const secoesParaAutoCaptura = slugsAutoCaptura;
     // PEDIDO DO USUÁRIO (2026-09-11): cadastro e fotos agora restritos aos
     // códigos exatos do lançamento (ver comentário na declaração de
@@ -475,8 +503,13 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
         // terminar (baixar só reatribui a variável quando chamado a
         // seguir) — se o usuário cancelou o cadastro de ficha, não faz
         // sentido continuar sozinho pro download de fotos.
-        if (execucao && execucao.cancelado) {
+        if (execucaoLocal.cancelado) {
           console.log('[x2-painel] cadastro de ficha cancelado — pulando download de fotos automático.');
+          return null;
+        }
+        if (execucaoLocal.erro) {
+          console.log('[x2-painel] cadastro de ficha FALHOU — pulando fotos e PDF/Drive para não subir catálogo incompleto.');
+          alertarFalhaX2('cadeia-sync', `Lançamentos: o cadastro dos ${codigosParaAutoCaptura.length} código(s) novos falhou (${String(execucaoLocal.erro).slice(0, 200)}). Fotos e Drive NÃO foram executados.`);
           return null;
         }
         return rodarAcao('baixar', { secoes: secoesParaAutoCaptura, codigosEspecificos: codigosParaAutoCaptura, automatico: true }, { rotulo: 'Fotos Lançamentos' });
@@ -495,7 +528,57 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
           console.log('[x2-painel] download de fotos cancelado — pulando geração/upload de PDF automático.');
           return null;
         }
-        return driveLancamentos.rodarUploadDrive(codigosParaAutoCaptura);
+        if (execucao && execucao.erro) {
+          console.log('[x2-painel] download de fotos FALHOU — pulando PDF/Drive para não subir catálogo sem as fotos novas.');
+          alertarFalhaX2('cadeia-fotos', `Lançamentos: o download das fotos dos códigos novos falhou (${String(execucao.erro).slice(0, 200)}). O PDF NÃO foi enviado ao Drive.`);
+          return null;
+        }
+        // Só os fabricantes dos códigos que entraram em Lançamentos nesta semana
+        // (decisão do usuário 2026-09-30: o reenvio completo é manual, via
+        // `node scripts/x2-drive-lancamentos.js --todos`, nunca automático).
+        return driveLancamentos.rodarUploadDrive(codigosParaAutoCaptura).then((alvo) => {
+          const erros = alvo.erros || [];
+          if (erros.length) {
+            const lista = erros.slice(0, 5).map((x) => `${x.fabricante || 'geral'}: ${String(x.erro).slice(0, 120)}`).join(' | ');
+            alertarFalhaX2('drive', `envio de PDFs ao Drive teve ${erros.length} falha(s). ${lista}`);
+          }
+          if (alvo.semFabricante && alvo.semFabricante.length) {
+            alertarFalhaX2('drive-sem-fabricante', `${alvo.semFabricante.length} código(s) de lançamento sem fabricante não foram ao Drive: ${alvo.semFabricante.slice(0, 10).join(', ')}`);
+          }
+          if (!erros.length) {
+            // Resumo de sucesso da semana — best-effort.
+            try {
+              const { enviarAlertaWhatsApp, formatarAlerta } = require('../x2-whatsapp-alerta');
+              const fabs = alvo.fabricantes || [];
+              enviarAlertaWhatsApp(formatarAlerta({
+                nivel: 'ok',
+                titulo: 'Lançamentos da semana concluídos',
+                linhas: [
+                  `Produtos novos: ${codigosParaAutoCaptura.length}`,
+                  `Seções atualizadas: ${secoesParaAutoCaptura.join(', ') || '—'}`,
+                  `PDFs atualizados no Drive: ${fabs.length}${fabs.length ? ` (${fabs.join(', ')})` : ''}`,
+                ],
+              })).catch(() => {});
+            } catch { /* best-effort */ }
+          }
+          // Export (Excel) da captura da semana, enviado ao WhatsApp de alertas
+          // logo depois do resumo — independe do Drive ter dado erro ou não.
+          setTimeout(() => {
+            try {
+              const lancDir = path.join(require('os').homedir(), '.x2-rildon-scraper', 'lancamentos-x2');
+              const ultimo = fs.readdirSync(lancDir)
+                .filter((f) => /^captura-.*\.xlsx$/.test(f))
+                .map((f) => ({ f, t: fs.statSync(path.join(lancDir, f)).mtimeMs }))
+                .sort((a, b) => b.t - a.t)[0];
+              if (ultimo) {
+                const periodo = ultimo.f.replace(/^captura-/, '').replace(/\.xlsx$/, '').replace('_a_', ' a ').replace(/-/g, '/');
+                require('../x2-whatsapp-alerta')
+                  .enviarDocumentoWhatsApp(path.join(lancDir, ultimo.f), `📋 Lançamentos da semana (${periodo})`)
+                  .catch(() => {});
+              }
+            } catch { /* best-effort */ }
+          }, 5000);
+        });
       })
       .catch((e) => {
         console.error('[x2-painel] erro na captura automática de foto/ficha/PDF pós-Lançamentos:', e.message);
@@ -957,8 +1040,8 @@ app.post('/api/confirmar', (req, res) => {
   res.json({ ok: true });
 });
 
-// 2026-08-07 — ver comentário em cancelarExecucaoAtual(). Libera a trava
-// "já tem uma ação rodando" manualmente, sem precisar reiniciar o servidor.
+// 2026-08-07 — ver comentário em cancelarExecucaoAtual(). Solicita o
+// cancelamento sem liberar o lock enquanto Playwright ainda estiver ativo.
 app.post('/api/cancelar', (req, res) => {
   const cancelou = cancelarExecucaoAtual('Cancelado manualmente pelo usuário.');
   if (!cancelou) {
@@ -1028,17 +1111,42 @@ app.post('/api/rotinas/:id/rodar-agora', (req, res) => {
 // manuais — ferramenta de uso solo, não faz sentido rodar 2 coisas juntas);
 // se mais de uma rotina "vencer" no mesmo minuto, as outras esperam a
 // próxima checagem (1 min depois, inofensivo pra esse tipo de tarefa).
+// 2026-10-14: antes, quando uma rotina vencia com outra ação rodando, o
+// agendador só saía calado — e como `ultimaExecucao` não era atualizada, a
+// mesma rotina vencia de novo no minuto seguinte, e no seguinte. O log do
+// servidor ficava com a mesma linha repetida minuto a minuto sem ninguém
+// entender por quê (visto ao vivo em 14/10 com "Atualização de
+// Estoque/Preço" enquanto a captura de fotos rodava). Agora o aviso sai uma
+// vez a cada 10 minutos e diz CLARAMENTE que foi adiada, e por causa de quê.
+const rotinaAdiadaAvisadaEm = new Map(); // id da rotina -> Date.now() do último aviso
+const INTERVALO_AVISO_ADIADA_MS = 10 * 60 * 1000;
+
 function checarRotinas() {
-  if (execucao && execucao.rodando) return;
   const agora = new Date();
   const pendente = rotinasStore.carregarRotinas().find((r) => rotinasStore.deveRodarAgora(r, agora));
   if (!pendente) return;
+
+  if (execucao && execucao.rodando) {
+    const ultimoAviso = rotinaAdiadaAvisadaEm.get(pendente.id) || 0;
+    if (Date.now() - ultimoAviso >= INTERVALO_AVISO_ADIADA_MS) {
+      rotinaAdiadaAvisadaEm.set(pendente.id, Date.now());
+      console.log(`[x2-painel] rotina "${pendente.nome}" venceu mas foi ADIADA — "${execucao.tipo}" ainda está rodando. Ela roda assim que liberar.`);
+    }
+    return;
+  }
+  rotinaAdiadaAvisadaEm.delete(pendente.id);
   // PEDIDO DO USUÁRIO (2026-09-11): rotina "a cada N horas" não tem
   // `horario` (fica null, ver rotinas.js) — log deixa claro qual dos dois
   // modelos de agendamento venceu.
   const quandoVenceu = pendente.frequencia === 'horas' ? `a cada ${pendente.intervaloHoras}h` : pendente.horario;
   console.log(`[x2-painel] rotina "${pendente.nome}" venceu (${quandoVenceu}) — disparando automaticamente...`);
   rodarAcao(pendente.tipo, { ...pendente.opcoes, secoes: pendente.secoes }, { origemRotina: pendente.id }).catch((e) => {
+    // 409 = outra ação começou entre a checagem acima e o disparo. Não é
+    // erro: a rotina continua vencida e tenta de novo na próxima checagem.
+    if (e && e.status === 409) {
+      console.log(`[x2-painel] rotina "${pendente.nome}" adiada — outra ação começou primeiro.`);
+      return;
+    }
     console.error(`[x2-painel] erro não tratado na rotina ${pendente.nome}:`, e.message);
   });
 }
@@ -1064,4 +1172,23 @@ server.listen(PORT, '127.0.0.1', () => {
   // janela minimizada, por exemplo), não só ser aberto uma vez.
   setInterval(checarRotinas, 60 * 1000);
   checarRotinas();
+
+  // Relatório mensal em PDF por WhatsApp (pedido 2026-09-30): último dia do
+  // mês às 20h (ou dia 1º às 8h se o painel estava fechado). Ver
+  // scripts/relatorio-mensal.js. Checa a cada 15 min; 1 envio por mês.
+  const relatorioMensal = require('../relatorio-mensal');
+  setInterval(() => relatorioMensal.verificarEEnviarSeDevido(), 15 * 60 * 1000);
+  setTimeout(() => relatorioMensal.verificarEEnviarSeDevido(), 60 * 1000);
+
+  // Vigia de estoque parado (auditoria 2026-09-30): se o CSV que alimenta
+  // preço/estoque do bot tem mais de 12 h, avisa por WhatsApp (1x a cada 6 h).
+  const CSV_ESTOQUE = path.join(__dirname, '..', '..', 'src', 'data', 'estoque-latest.csv');
+  setInterval(() => {
+    try {
+      const idadeH = (Date.now() - fs.statSync(CSV_ESTOQUE).mtimeMs) / 3600000;
+      if (idadeH > 12) alertarFalhaX2('estoque-parado', `o estoque/preço do bot não atualiza há ${Math.round(idadeH)} h (rotina de 5 h parada?). Confira se o Painel X2 está aberto.`);
+    } catch {
+      alertarFalhaX2('estoque-sem-csv', 'não achei src/data/estoque-latest.csv — estoque/preço nunca foi importado nesta máquina.');
+    }
+  }, 30 * 60 * 1000);
 });

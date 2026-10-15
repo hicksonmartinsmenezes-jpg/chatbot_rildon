@@ -35,6 +35,31 @@
  * comportamento/paridade (ex: "GM" e "Chevrolet" devolvem o mesmo total)
  * continuam válidos independente do tamanho do catálogo.
  */
+jest.mock("fs", () => {
+  const actual = jest.requireActual("fs");
+  return { ...actual, readdirSync: jest.fn(), readFileSync: jest.fn() };
+});
+
+const fs = require("fs");
+const FIXTURE = [
+  {
+    codigo: "GM1",
+    nome: "AMORTECEDOR DIANTEIRO TESTE",
+    secao: "AMORTECEDORES",
+    linha: "AMORTECEDOR",
+    ficha: { referencia: "REF-GM1", aplicacao: "GM Astra Hatch 1998 > 2011", equivalentesLista: [], referenciasCruzadas: {} },
+  },
+  {
+    codigo: "U1",
+    nome: "BUZINA UNIVERSAL TESTE",
+    secao: "BUZINAS",
+    linha: "BUZINA",
+    ficha: { referencia: "REF-U1", aplicacao: "UNIVERSAL", equivalentesLista: [], referenciasCruzadas: {} },
+  },
+];
+fs.readdirSync.mockReturnValue(["produtos-teste.json"]);
+fs.readFileSync.mockReturnValue(JSON.stringify(FIXTURE));
+
 const {
   buscarProdutosPainel,
   buscarPorVeiculo,

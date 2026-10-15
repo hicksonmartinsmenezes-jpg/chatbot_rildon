@@ -42,19 +42,75 @@ function garantirPasta() {
   fs.mkdirSync(WORK_DIR, { recursive: true });
 }
 
+// BUG REAL de PERDA DE DADOS corrigido em 2026-10-14 (auditoria do painel).
+// A combinação das duas funções abaixo destruía a configuração de rotinas sem
+// deixar rastro. A cadeia, reproduzida ao vivo:
+//   1) salvarRotinas usava fs.writeFileSync direto. writeFileSync TRUNCA o
+//      arquivo e depois escreve — uma queda no meio (máquina desligada no
+//      botão, pane de energia, processo morto) deixa um JSON cortado.
+//   2) carregarRotinas tinha `catch { return [] }`: o JSON cortado virava
+//      silenciosamente "nenhuma rotina cadastrada". O painel mostrava a lista
+//      vazia, sem nenhum aviso, e o agendador parava de rodar tudo.
+//   3) qualquer criação/edição/remoção seguinte chamava carregarRotinas()
+//      (recebia []), acrescentava o item novo e GRAVAVA EM CIMA — apagando de
+//      verdade, e para sempre, todas as rotinas que ainda estavam no arquivo
+//      cortado.
+// Correção, nas duas pontas:
+//   - gravação atômica: escreve num arquivo temporário ao lado e troca por
+//     rename (atômico no mesmo sistema de arquivos). O arquivo final nunca
+//     fica num estado meio-escrito, então o passo 1 deixa de existir. Mesmo
+//     padrão que x2-estoque-export.js já usa para publicar o CSV.
+//   - falha ruidosa: um arquivo ilegível não é mais tratado como "lista
+//     vazia". Ele é PRESERVADO com outro nome (nunca descartado, para dar
+//     chance de recuperar à mão) e o erro vai pro log em voz alta. Continua
+//     devolvendo [] para não derrubar o painel, mas agora o arquivo original
+//     já saiu da frente, então a gravação seguinte não sobrescreve nada.
 function carregarRotinas() {
   garantirPasta();
   if (!fs.existsSync(ROTINAS_PATH)) return [];
+  const bruto = fs.readFileSync(ROTINAS_PATH, 'utf8');
   try {
-    return JSON.parse(fs.readFileSync(ROTINAS_PATH, 'utf8'));
-  } catch {
+    const lista = JSON.parse(bruto);
+    // Um JSON válido que não seja uma lista (ex: `{}` ou `null`) também não
+    // serve — tratar como corrompido em vez de devolver algo inesperado para
+    // quem chama, que faz .find/.filter direto no retorno.
+    if (!Array.isArray(lista)) throw new Error('conteúdo não é uma lista de rotinas');
+    return lista;
+  } catch (e) {
+    const preservado = `${ROTINAS_PATH}.corrompido-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+    try {
+      fs.renameSync(ROTINAS_PATH, preservado);
+      console.error(
+        `[x2-painel] rotinas.json ILEGÍVEL (${e.message}). O arquivo foi preservado em ${preservado} ` +
+        'e NÃO foi descartado — dá pra recuperar as rotinas à mão a partir dele. O painel vai abrir ' +
+        'com a lista vazia até isso ser resolvido.'
+      );
+    } catch (erroAoPreservar) {
+      // Não conseguiu nem renomear (permissão, arquivo em uso). Melhor avisar
+      // e seguir com lista vazia do que derrubar o painel — mas aqui a
+      // gravação seguinte AINDA pode sobrescrever, então o aviso é mais forte.
+      console.error(
+        `[x2-painel] rotinas.json ILEGÍVEL (${e.message}) e não consegui preservá-lo ` +
+        `(${erroAoPreservar.message}). NÃO crie nem edite rotinas antes de salvar uma cópia ` +
+        `de ${ROTINAS_PATH} à mão, ou a configuração atual será sobrescrita.`
+      );
+    }
     return [];
   }
 }
 
 function salvarRotinas(lista) {
   garantirPasta();
-  fs.writeFileSync(ROTINAS_PATH, JSON.stringify(lista, null, 2));
+  // Nome do temporário com pid + aleatório: duas instâncias do painel abertas
+  // ao mesmo tempo não disputam o mesmo arquivo intermediário.
+  const temporario = `${ROTINAS_PATH}.tmp-${process.pid}-${crypto.randomBytes(4).toString('hex')}`;
+  try {
+    fs.writeFileSync(temporario, JSON.stringify(lista, null, 2));
+    fs.renameSync(temporario, ROTINAS_PATH);
+  } catch (e) {
+    try { fs.unlinkSync(temporario); } catch { /* já saiu do caminho */ }
+    throw e;
+  }
 }
 
 // "estoque", "painel-produtos", "diff-estoque" (2026-08-06 / 2026-08-10) e

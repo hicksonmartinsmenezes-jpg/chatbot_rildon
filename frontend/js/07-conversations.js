@@ -792,10 +792,13 @@ async function openConversation(userId, updateActive = true) {
   //     ainda não estava renderizado (via _renderedHistoryIds), sem tocar
   //     no que já foi carregado (inclusive páginas antigas já trazidas via
   //     "Carregar mensagens anteriores").
-  const isConversaDiferente = !eraMesmaConversaJaAberta || _historyState.userId !== userId;
+  // `renderizado`: só vale como "mesma conversa" se o 1º render completo já aconteceu. Sem isso, ao Assumir
+  // (clique + evento do socket quase juntos) a 2ª chamada achava que a conversa já estava na tela e só anexava
+  // mensagens por cima do conteúdo anterior (duplicando/misturando).
+  const isConversaDiferente = !eraMesmaConversaJaAberta || _historyState.userId !== userId || !_historyState.renderizado;
 
   if (isConversaDiferente) {
-    _historyState = { userId, page: 1, hasMore: false, loadingMore: false, topDay: null, bottomDay: null };
+    _historyState = { userId, page: 1, hasMore: false, loadingMore: false, topDay: null, bottomDay: null, renderizado: false };
     _renderedHistoryIds = new Set();
   }
 
@@ -823,6 +826,7 @@ async function openConversation(userId, updateActive = true) {
   if (isConversaDiferente) {
     if (!messages.length) {
       messagesBox.innerHTML = `<p class="empty chat-empty">Nenhuma mensagem encontrada.</p>`;
+      _historyState.renderizado = true;
       return;
     }
 
@@ -836,6 +840,7 @@ async function openConversation(userId, updateActive = true) {
       : "";
 
     messagesBox.innerHTML = loadOlderBtnHtml + html.join("");
+    _historyState.renderizado = true;
     // BUG REAL (2026-09-03, pedido do usuário: "meus arquivos de mídia não
     // estão sendo carregados"): renderMediaBubble() usa <img loading="lazy">
     // pra foto do cliente — todo <img loading="lazy"> nasce com opacity:0
@@ -898,24 +903,6 @@ function closeMobileChat() {
   selectedConversationUser = null;
 }
 
-// ─── Devolver atendimento ao bot ─────────────────────────────────────────────
-async function releaseToBot(userId) {
-  try {
-    const res = await apiFetch(`${BASE}/api/messages/humanmode/release`, {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ userId })
-    });
-    if (!res?.ok) throw new Error("falhou");
-    humanModeUsers.delete(userId);
-    showToast("🤖 Bot reativado para este cliente.");
-    await loadConversations();
-    if (selectedConversationUser) openConversation(selectedConversationUser);
-  } catch (_) {
-    showToast("❌ Não consegui devolver ao bot.");
-  }
-}
-
 // ─── Ações de ticket na conversa ─────────────────────────────────────────────
 function bindConversationHeaderDelegation() {
   const header = document.getElementById("chat-window-header");
@@ -934,7 +921,6 @@ function bindConversationHeaderDelegation() {
     if (action === "transferir" && ticketId) return transferirTicketConv(ticketId);
     if (action === "fechar" && ticketId) return fecharTicketConv(ticketId);
     if (action === "reabrir" && userId) return reabrirTicketConv(userId);
-    if (action === "release-bot" && userId) return releaseToBot(userId);
   });
 }
 

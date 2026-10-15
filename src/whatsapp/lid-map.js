@@ -15,27 +15,70 @@ function normalizeJid(value) {
   return digits ? `${digits}@s.whatsapp.net` : raw;
 }
 
-function setLidMapping(lid, jid, source = "") {
-  if (!lid || !jid) return;
+// 2026-10-09 (auditoria de performance): esta função é chamada EM LOOP por
+// processContacts, e o WhatsApp manda a lista INTEIRA de contatos a cada
+// conexão/reconexão. Com 2.000 contatos, a versão anterior disparava até
+// 2.000 `pool.query` simultâneas (num pool de 20!) e 2.000 `logger.info`
+// síncronos — era o segundo maior travamento do event loop e a origem direta
+// do "[authSession] Connection terminated due to connection timeout": o
+// authSession do painel entrava na fila atrás de 2.000 INSERTs de lid_map.
+//
+// Agora o chamador em lote passa { persist: false } e usa persistLidMappings()
+// no fim, que grava tudo em poucos UPSERTs. Chamadas avulsas (uma mensagem
+// nova trazendo um LID desconhecido) continuam persistindo na hora, como antes.
+//
+// Retorna `true` quando o mapeamento MUDOU (pra o chamador em lote saber o que
+// precisa gravar); antes não retornava nada.
+function setLidMapping(lid, jid, source = "", { persist = true, log = true } = {}) {
+  if (!lid || !jid) return false;
 
   const lidKey = normalizeJid(lid);
   const jidKey = normalizeJid(jid);
 
-  if (!lidKey.endsWith("@lid") || !jidKey.endsWith("@s.whatsapp.net")) return;
+  if (!lidKey.endsWith("@lid") || !jidKey.endsWith("@s.whatsapp.net")) return false;
 
   const changed = lidToJid[lidKey] !== jidKey;
   lidToJid[lidKey] = jidKey;
   jidToLid[jidKey] = lidKey;
 
-  if (!changed) return;
+  if (!changed) return false;
 
-  logger.info(`[lidToJid] ${lidKey} → ${jidKey}${source ? ` (via ${source})` : ""}`);
+  if (log) logger.info(`[lidToJid] ${lidKey} → ${jidKey}${source ? ` (via ${source})` : ""}`);
 
-  pool.query(
-    `INSERT INTO lid_map (lid, jid, updated_at) VALUES ($1, $2, NOW())
-     ON CONFLICT (lid) DO UPDATE SET jid = EXCLUDED.jid, updated_at = NOW()`,
-    [lidKey, jidKey]
-  ).catch(err => logger.warn(`[lidToJid] persistência falhou: ${err.message}`));
+  if (persist) {
+    pool.query(
+      `INSERT INTO lid_map (lid, jid, updated_at) VALUES ($1, $2, NOW())
+       ON CONFLICT (lid) DO UPDATE SET jid = EXCLUDED.jid, updated_at = NOW()`,
+      [lidKey, jidKey]
+    ).catch(err => logger.warn(`[lidToJid] persistência falhou: ${err.message}`));
+  }
+
+  return true;
+}
+
+// Grava vários mapeamentos em poucos UPSERTs, em vez de um por contato.
+// Usado por processContacts (config/whatsapp.js) no processamento em lote da
+// lista de contatos. Aguarda cada lote — assim o pool nunca recebe mais de uma
+// query nossa por vez e o resto do sistema continua conseguindo conexão.
+async function persistLidMappings(pares) {
+  if (!Array.isArray(pares) || !pares.length) return;
+
+  const TAM_LOTE = 500;
+  for (let i = 0; i < pares.length; i += TAM_LOTE) {
+    const fatia = pares.slice(i, i + TAM_LOTE);
+    const valores = fatia.map((_, j) => `($${j * 2 + 1}, $${j * 2 + 2}, NOW())`).join(", ");
+    const params  = fatia.flatMap(([l, j]) => [l, j]);
+
+    try {
+      await pool.query(
+        `INSERT INTO lid_map (lid, jid, updated_at) VALUES ${valores}
+         ON CONFLICT (lid) DO UPDATE SET jid = EXCLUDED.jid, updated_at = NOW()`,
+        params
+      );
+    } catch (err) {
+      logger.warn(`[lidToJid] persistência em lote falhou (${fatia.length} itens): ${err.message}`);
+    }
+  }
 }
 
 async function carregarLidMap() {
@@ -119,6 +162,7 @@ function getLidMapStats() {
 module.exports = {
   normalizeJid,
   setLidMapping,
+  persistLidMappings,
   carregarLidMap,
   resolveLid,
   resolveJidToLid,

@@ -442,6 +442,34 @@ function temMultiplasFotos(codigoProduto) {
 }
 
 /**
+ * "Este produto tem pelo menos UMA foto visível?" — só consulta o índice em
+ * memória, sem ler nenhum byte de disco.
+ *
+ * 2026-10-09 (auditoria de performance — o maior travamento da exportação):
+ * o filtro do Catálogo Completo usava `listarFotos(codigo).length > 0`, com o
+ * comentário de que listarFotos "é metadados só, barato". Não era: listarFotos
+ * chama _reordenarFotos, que para TODO produto com 2+ fotos extrai os bytes de
+ * cada foto (openSync + readSync + inflateRawSync no zip) só pra ler as
+ * dimensões e decidir a ordem. Num fabricante de 1000 produtos, com ~1/3 deles
+ * tendo 2+ fotos, isso eram ~900 aberturas de arquivo e inflates SÍNCRONOS
+ * dentro de um único .filter(), antes mesmo dos headers HTTP — com o event
+ * loop 100% travado e sem nenhuma cessão possível. Era aqui que o WhatsApp caía
+ * logo depois do clique em "exportar", antes do download sequer começar.
+ *
+ * Esta função faz a mesma pergunta olhando só o índice, como temMultiplasFotos
+ * logo acima. Mesma ressalva dela: não garante que o arquivo abre, só que ele
+ * está indexado e não está oculto — suficiente para um filtro.
+ */
+function temAlgumaFoto(codigoProduto) {
+  const idx = _garantirIndice();
+  const codigo = String(codigoProduto);
+  const bruta = (idx.get(codigo) || []).concat(_listaManual(codigo));
+  if (!bruta.length) return false;
+  const setOcultas = _garantirOcultas().get(codigo) || new Set();
+  return bruta.some(item => !setOcultas.has(path.basename(item.entrada.name)));
+}
+
+/**
  * Oculta (oculta=true) ou restaura (oculta=false) uma foto do produto.
  * Nunca deixa ocultar a ÚLTIMA foto visível (trava contra o produto ficar
  * sem NENHUMA foto por acidente). Se a foto ocultada era a preferida
@@ -629,4 +657,4 @@ function adicionarFotoManual(codigoProduto, buffer) {
   return listarFotos(codigo, { incluirOcultas: true });
 }
 
-module.exports = { listarFotos, obterFoto, obterFotoPorNome, definirFotoPreferida, ocultarFoto, recarregarIndice, obterVersaoFotos, temMultiplasFotos, adicionarFotoManual };
+module.exports = { listarFotos, obterFoto, obterFotoPorNome, definirFotoPreferida, ocultarFoto, recarregarIndice, obterVersaoFotos, temMultiplasFotos, temAlgumaFoto, adicionarFotoManual };

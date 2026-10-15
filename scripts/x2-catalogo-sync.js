@@ -85,11 +85,15 @@ require('dotenv').config({ path: path.join(__dirname, '../.env') });
 const PROJECT_ROOT = path.join(__dirname, '..');
 const CATALOGO_DIR = path.join(PROJECT_ROOT, 'src', 'config', 'catalogo-x2');
 
-// Reusa o MESMO perfil de Chrome (e portanto o mesmo login já salvo) do
-// script de fotos — não faz sentido logar duas vezes em ferramentas
-// irmãs. Fora do OneDrive de propósito (ver x2-fotos-scraper.js).
+// Perfil próprio (semeado com o login já salvo do perfil antigo na 1ª vez)
+// — ver scripts/x2-perfil-chrome.js. Antes reusava o mesmo perfil do script
+// de fotos, o que impedia as duas tarefas de rodarem ao mesmo tempo.
+// Fora do OneDrive de propósito (ver x2-fotos-scraper.js).
 const WORK_DIR = path.join(os.homedir(), '.x2-rildon-scraper');
-const PROFILE_DIR = path.join(WORK_DIR, 'chrome-profile');
+// 2026-10-14: perfil por tipo de tarefa — ver scripts/x2-perfil-chrome.js.
+// Antes todos compartilhavam 'chrome-profile', e duas tarefas simultaneas
+// derrubavam uma a outra ("Target page, context or browser has been closed").
+const PROFILE_DIR = require('./x2-perfil-chrome').perfilChrome('catalogo');
 
 const LOGIN_URL = 'https://sistemas7.xprocess.com.br/seguranca/www/login_form.jsp';
 
@@ -221,6 +225,16 @@ async function garantirTelaCatalogoAberta(context, { confirmar, modoAutomatico }
 
     for (const p of context.pages()) {
       if (await telaTemFormulario(p)) return p;
+    }
+    // Dá tempo pra um clique humano (se o menu automático não chegou lá).
+    const esperaMin = Number(process.env.X2_ESPERA_CLIQUE_MIN) || 10;
+    console.log(`⏳ A tela "Compras > Catálogo de Produtos" não abriu sozinha. Abra-a manualmente no Chrome; espero até ${esperaMin} min...`);
+    const limite = Date.now() + esperaMin * 60 * 1000;
+    while (Date.now() < limite) {
+      await new Promise((r) => setTimeout(r, 2000));
+      for (const p of context.pages()) {
+        if (await telaTemFormulario(p).catch(() => false)) return p;
+      }
     }
     throw new Error('Modo automático: cliquei pelo menu (☰ > Compras > Catálogo de Produtos) mas o formulário não apareceu — precisa de uma sessão supervisionada pra confirmar/ajustar os seletores usados na navegação.');
   }
@@ -700,19 +714,40 @@ async function sincronizarPorCodigos(page, codigos, { dryRun, deveParar } = {}) 
     const codigosExistentes = new Set(existentes.map((p) => p.codigo));
     const paraAdicionar = produtosNovos.filter((p) => !codigosExistentes.has(p.codigo));
 
-    if (!paraAdicionar.length) continue;
+    // Auditoria 2026-09-30: produto que já existe no JSON nunca era atualizado.
+    // Agora nome/barras/linha/descrição vindos do X2 sobrescrevem os antigos
+    // (a `ficha` e demais campos do bot são preservados).
+    const porCodigo = new Map(produtosNovos.map((p) => [p.codigo, p]));
+    let atualizados = 0;
+    const existentesAtualizados = existentes.map((antigo) => {
+      const novo = porCodigo.get(antigo.codigo);
+      if (!novo) return antigo;
+      const mudou = ['nome', 'barras', 'linha'].some((k) => novo[k] && novo[k] !== antigo[k])
+        || (novo.descricaoDetalhada && novo.descricaoDetalhada !== antigo.descricaoDetalhada);
+      if (!mudou) return antigo;
+      atualizados++;
+      return {
+        ...antigo,
+        nome: novo.nome || antigo.nome,
+        barras: novo.barras || antigo.barras,
+        linha: novo.linha || antigo.linha,
+        descricaoDetalhada: novo.descricaoDetalhada || antigo.descricaoDetalhada || null,
+      };
+    });
+
+    if (!paraAdicionar.length && !atualizados) continue;
 
     if (dryRun) {
-      console.log(`(--dry-run: +${paraAdicionar.length} produto(s) seriam adicionados a ${slug}.json)`);
+      console.log(`(--dry-run: +${paraAdicionar.length} novo(s), ${atualizados} atualizado(s) em ${slug}.json)`);
     } else {
       const backupPath = `${jsonPath}.bak-${Date.now()}`;
       fs.copyFileSync(jsonPath, backupPath);
-      const listaFinal = [...existentes, ...paraAdicionar];
+      const listaFinal = [...existentesAtualizados, ...paraAdicionar];
       fs.writeFileSync(jsonPath, JSON.stringify(listaFinal, null, 2));
       console.log(`Backup: ${backupPath}`);
-      console.log(`Gravado: ${jsonPath} agora tem ${listaFinal.length} produtos (+${paraAdicionar.length}).`);
+      console.log(`Gravado: ${jsonPath} agora tem ${listaFinal.length} produtos (+${paraAdicionar.length} novo(s), ${atualizados} atualizado(s)).`);
     }
-    gravados.push({ slug, adicionados: paraAdicionar.length });
+    gravados.push({ slug, adicionados: paraAdicionar.length, atualizados });
   }
 
   return { gravados, naoEncontrados, semSecaoReconhecida };
@@ -844,7 +879,7 @@ async function rodarDiffEstoque({ caminhoCsv, channel, dryRun, confirmar, modoAu
     for (const g of resultado.gravados) console.log(`${g.slug}: +${g.adicionados} produto(s)`);
     if (resultado.naoEncontrados.length) console.log(`Não encontrados no X2: ${resultado.naoEncontrados.join(', ')}`);
     if (resultado.semSecaoReconhecida.length) console.log(`Seção não reconhecida (precisa checar manualmente): ${resultado.semSecaoReconhecida.map((s) => s.codigo).join(', ')}`);
-    const totalAdicionado = resultado.gravados.reduce((a, g) => a + g.adicionados, 0);
+    const totalAdicionado = resultado.gravados.reduce((a, g) => a + g.adicionados + (g.atualizados || 0), 0);
     if (totalAdicionado && !dryRun) {
       console.log('\nLembre de rodar o x2-fotos-scraper.js pra esses códigos novos ganharem foto.');
       await _forcarReloadCatalogo();

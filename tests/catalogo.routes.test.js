@@ -42,6 +42,8 @@ jest.mock("../src/services/catalogo-fotos.service", () => ({
   // em cada item da resposta — default false (produto com 1 foto só, o caso
   // comum) pra não quebrar os testes que não têm opinião sobre isso.
   temMultiplasFotos: jest.fn(() => false),
+  // Upload response includes the cache-busting photo version.
+  obterVersaoFotos: jest.fn(() => 1),
   // 2026-09-08 (nova função "adicionar foto"): usado por adicionarFotoHandler.
   adicionarFotoManual: jest.fn(),
   // 2026-10-09: filtro "só produto com foto" da exportação passou a usar esta

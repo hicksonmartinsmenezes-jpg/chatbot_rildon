@@ -89,7 +89,8 @@ function installFakePool(state) {
       // Reativação (userRepository.reactivate) — usuário existente
       // (ativo=false) é atualizado em vez de inserido de novo, já que
       // "usuario" tem UNIQUE NOT NULL.
-      const u = state.users.find(x => x.id === params[6]);
+      // reactivate() recebe permissions como $7 e o id como $8.
+      const u = state.users.find(x => x.id === params[7]);
       if (!u) return { rows: [] };
       u.nome = params[0]; u.senha = params[1]; u.perfil = params[2];
       u.sector = params[3]; u.numero = params[4]; u.foto = params[5];

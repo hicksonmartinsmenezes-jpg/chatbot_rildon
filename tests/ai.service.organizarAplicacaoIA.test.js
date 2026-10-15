@@ -25,7 +25,20 @@ describe("ai.service — organizarAplicacaoIA", () => {
   afterEach(() => {
     process.env = { ...ORIGINAL_ENV };
     global.fetch = originalFetch;
+    jest.restoreAllMocks();
   });
+
+  // A fila de organizarAplicacaoIA respeita intervalos reais por provedor
+  // (6,5 s para Gemini). Nos testes de fallback, avançamos o relógio entre
+  // consultas para manter a verificação de roteamento rápida e offline.
+  function avancarRelogioEntreRequisicoes() {
+    const agoraReal = Date.now;
+    let agoraFalso = agoraReal();
+    jest.spyOn(Date, "now").mockImplementation(() => {
+      agoraFalso += 10_000;
+      return agoraFalso;
+    });
+  }
 
   // undefined (não null) de propósito nesses 3 casos abaixo — "não tentou
   // de verdade" precisa ficar RETRYABLE, não virar falha permanente no
@@ -127,6 +140,7 @@ describe("ai.service — organizarAplicacaoIA", () => {
   // PROVIDER_NAME diretamente e nunca _aplicacaoProviderOverride, então é
   // estruturalmente impossível essa troca vazar pro chat).
   test("sem crédito na Anthropic + Gemini configurado → troca sozinho pra Gemini e retorna o resultado", async () => {
+    avancarRelogioEntreRequisicoes();
     process.env.ANTHROPIC_API_KEY = "sk-ant-teste";
     const { organizarAplicacaoIA } = loadAiService({ provider: "anthropic", geminiKey: "gemini-chave-teste" });
 
@@ -150,6 +164,7 @@ describe("ai.service — organizarAplicacaoIA", () => {
   });
 
   test("fallback pra Gemini fica ativo pro PRÓXIMO texto também (não tenta Anthropic de novo)", async () => {
+    avancarRelogioEntreRequisicoes();
     process.env.ANTHROPIC_API_KEY = "sk-ant-teste";
     const { organizarAplicacaoIA } = loadAiService({ provider: "anthropic", geminiKey: "gemini-chave-teste" });
 

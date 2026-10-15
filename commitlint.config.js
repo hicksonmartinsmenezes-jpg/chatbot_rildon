@@ -24,5 +24,9 @@ module.exports = {
     // "catálogo:") — mantém a convenção real em vez de forçar lower-case.
     "type-case": [0],
     "header-max-length": [2, "always", 100],
+    // Corpo do commit costuma ter URL, lista e trecho de log que passam de
+    // 100 colunas; o limite so travava PR valido (falhou em #33 e #17). O
+    // cabecalho continua limitado pela regra acima.
+    "body-max-line-length": [0],
   },
 };

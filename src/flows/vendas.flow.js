@@ -27,7 +27,18 @@ async function _criarTicketVendas(dados) {
 // finalizarComTicket em session.service.js — corrige o bug de perguntas
 // de acompanhamento tipo "quando?" perderem contexto).
 async function _finalizarOrcamento(userId, session, veiculo, produtoTexto) {
-  const veiculoPrefix = veiculo && veiculo !== "Não informado" ? `Veículo: ${veiculo} | ` : "";
+  // BUG CORRIGIDO (Issue #15): quando a peça foi reconhecida por FOTO (visão,
+  // sem legenda), não há extração separada de veículo/peça — o mesmo texto
+  // completo (ex: "Injetor de combustível Magneti Marelli compatível com
+  // Volkswagen Gol 1996 1.8 Atlanta") é gravado em veiculoSugerido E
+  // produtoSugerido (ver whatsapp.js, bloco de foto sem legenda) só pra
+  // evitar reperguntar o veículo que acabou de ser exibido ao cliente. Sem
+  // esse check, a descrição do ticket duplicava a mesma frase 2x ("Veículo:
+  // X | Produto: X"). No fluxo normal de texto, veiculo/produto vêm de
+  // extrações distintas da IA e nunca são idênticos, então isso não afeta
+  // o caminho já existente.
+  const veiculoPrefix = veiculo && veiculo !== "Não informado" && veiculo !== produtoTexto
+    ? `Veículo: ${veiculo} | ` : "";
   const descricao      = `${veiculoPrefix}Produto: ${produtoTexto}`;
 
   const ticket = await _criarTicketVendas({

@@ -1041,42 +1041,6 @@
     el('top-tabs').querySelector('[data-top-tab="fotos"]').click();
   });
 
-  // PEDIDO DO USUÁRIO (2026-09-22): "preciso subir todos mecanica
-  // novamente" — depois da correção do bug de estilo (catálogos
-  // "- Mecânica" de fabricantes que não fossem PERFECT saíam no layout
-  // errado, "elétrica"), reenvia os PDFs corrigidos pra todos os
-  // fabricantes com opção "- Mecânica" de uma vez. Não usa "Execução"/SSE
-  // (POST síncrono em server.js, GET.../api/drive/reenviar-mecanica não
-  // toca X2/Puppeteer) — mesmo padrão de loading/toast do handler de
-  // "modal-produtos-tbody" acima (linha ~404), só sem modal.
-  document.addEventListener('click', async (ev) => {
-    const btn = ev.target.closest('[data-action="drive-reenviar-mecanica"]');
-    if (!btn) return;
-    btn.disabled = true;
-    const textoOriginal = btn.textContent;
-    btn.textContent = 'Reenviando...';
-    try {
-      const res = await fetch('/api/drive/reenviar-mecanica', { method: 'POST' });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        mostrarToast(data.error || 'Erro ao reenviar catálogos Mecânica ao Drive.', 'erro');
-        return;
-      }
-      const nEnviados = (data.enviados || []).length;
-      const nErros = (data.erros || []).length;
-      if (nErros > 0) {
-        mostrarToast(`${nEnviados} catálogo(s) Mecânica reenviado(s), ${nErros} com erro — veja o console do servidor.`, 'aviso');
-      } else {
-        mostrarToast(`${nEnviados} catálogo(s) Mecânica reenviado(s) ao Drive com sucesso.`);
-      }
-    } catch (e) {
-      mostrarToast('Erro ao reenviar catálogos Mecânica ao Drive.', 'erro');
-    } finally {
-      btn.disabled = false;
-      btn.textContent = textoOriginal;
-    }
-  });
-
   // ─── Diff Estoque (2026-08-10) — "com a lista csv que eu extraio, não
   // seria mais fácil capturar códigos novos por lá e depois rastreá-los com
   // o sync": em vez de rodar Sync com as 26 seções marcadas (caro, foi o

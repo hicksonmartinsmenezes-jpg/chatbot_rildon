@@ -199,21 +199,24 @@
 
                 <div id="sync-modo-secoes-campos">
                   <p class="aviso-inline" id="sync-aviso-selecao" style="display:none;">⚠️ Marque pelo menos 1 seção na lista à esquerda antes de clicar em "Cadastrar produtos novos".</p>
-                  <label><input type="checkbox" id="opt-dry-run" checked> Só simular — mostra o que encontraria, sem gravar nada ainda</label>
-                  <label><input type="checkbox" id="opt-remover-desativados" checked> Se um código não aparecer mais no X2, apagar ele do catálogo (provável produto descontinuado)</label>
-                  <label><input type="checkbox" id="opt-forcar-remocao"> Apagar mesmo se sumir muita coisa de uma vez de uma seção só</label>
-                  <p class="hint-sub">Por padrão, se mais de 30% dos produtos de uma seção "sumirem" numa busca só, o painel NÃO apaga automaticamente — provavelmente é falha na busca, não descontinuação de verdade. Só marque isso se tiver certeza que é uma remoção em massa real.</p>
+                  <label><input type="checkbox" id="opt-dry-run" checked> Só simular (não grava nada, apenas mostra o que encontraria)</label>
+                  <details class="opcoes-avancadas">
+                    <summary>Opções avançadas</summary>
+                    <label><input type="checkbox" id="opt-remover-desativados" checked> Apagar do catálogo códigos que sumiram do X2 (provável descontinuado)</label>
+                    <label><input type="checkbox" id="opt-forcar-remocao"> Apagar mesmo se sumir muita coisa de uma seção só</label>
+                    <p class="hint-sub">Por segurança, se mais de 30% dos produtos de uma seção sumirem numa busca só, nada é apagado — provavelmente foi falha na busca. Só marque a opção acima se tiver certeza de que é remoção em massa real.</p>
+                  </details>
                   <button class="primary-blue full" data-action="sync">Cadastrar produtos novos</button>
                 </div>
 
                 <div id="sync-modo-lancamentos-campos" style="display:none;">
-                  <p class="descricao" style="margin:0 0 12px;">Compara os códigos do último CSV de estoque baixado com os 26 arquivos do Catálogo e busca no X2 SÓ os que faltam (1 busca por código, sem escanear seção inteira nenhuma) — mais leve, ideal pra pegar só os lançamentos recentes. Não depende de nenhuma seção marcada à esquerda.</p>
+                  <p class="descricao" style="margin:0 0 12px;">Busca no X2 só os códigos do último CSV de estoque que ainda não estão no Catálogo. Mais leve: ideal para lançamentos recentes. Não usa as seções marcadas à esquerda.</p>
                   <label class="form-field">Qual CSV usar
                     <select class="search-input diff-estoque-csv-select">
                       <option value="">Mais recente (automático)</option>
                     </select>
                   </label>
-                  <label><input type="checkbox" class="diff-estoque-dry-run-check" checked> Só mostrar (--dry-run, não grava nada)</label>
+                  <label><input type="checkbox" class="diff-estoque-dry-run-check" checked> Só simular (não grava nada)</label>
                   <button class="primary-blue full" data-action="diff-estoque-rodar">Buscar lançamentos e cadastrar</button>
                 </div>
               </div>
@@ -242,28 +245,6 @@
                   </select>
                 </label>
                 <button class="primary-blue full" data-action="estoque-baixar-agora">Baixar CSV agora</button>
-              </div>
-            </div>
-
-            <!-- PEDIDO DO USUÁRIO (2026-09-22): reenviar TODOS os catálogos
-                 "- Mecânica" ao Drive de uma vez (correção de estilo que
-                 antes saía errado pra qualquer fabricante que não fosse
-                 PERFECT). Ação rápida de 1 clique — não abre Chrome nem
-                 mexe no X2, só bot + Drive, por isso não usa a aba
-                 "Execução" (POST síncrono, ver server.js
-                 /api/drive/reenviar-mecanica). -->
-            <div class="acao-rapida" data-acao-rapida="drive-mecanica">
-              <div class="acao-rapida-linha" data-tab="drive-mecanica">
-                <div class="acao-rapida-icone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 17l4-4 4 4"/><path d="M12 21V13"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 4 16.29"/></svg></div>
-                <div class="acao-rapida-texto">
-                  <div class="acao-rapida-titulo">Reenviar Mecânica ao Drive</div>
-                  <div class="acao-rapida-sub">Gera de novo e sobe todos os catálogos "- Mecânica" (todos os fabricantes)</div>
-                </div>
-                <svg class="acao-rapida-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
-              </div>
-              <div class="acao-rapida-painel">
-                <p class="descricao" style="margin:0 0 12px;">Sem opções — busca a lista de fabricantes com catálogo "- Mecânica" (mesma do seletor de Catálogo Completo no painel do bot), gera o PDF de cada um já no layout certo e substitui o arquivo na pasta do Drive. Pode levar um tempinho (1 PDF por fabricante, em sequência).</p>
-                <button class="primary-blue full" data-action="drive-reenviar-mecanica">Reenviar agora</button>
               </div>
             </div>
           </div>
@@ -526,7 +507,7 @@
                   <option value="">Mais recente (automático)</option>
                 </select>
               </label>
-              <label><input type="checkbox" class="diff-estoque-dry-run-check" id="diff-estoque-dry-run" checked> Só mostrar (--dry-run, não grava nada)</label>
+              <label><input type="checkbox" class="diff-estoque-dry-run-check" id="diff-estoque-dry-run" checked> Só simular (não grava nada)</label>
               <button class="primary full" data-action="diff-estoque-rodar">Buscar códigos novos e sincronizar</button>
             </div>
           </div>

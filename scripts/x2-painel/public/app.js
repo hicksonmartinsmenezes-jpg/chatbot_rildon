@@ -484,7 +484,7 @@
   // ─── Estado de execução (via SSE) ──────────────────────────────────
   function aplicarBotoesDesabilitados() {
     document.querySelectorAll('[data-action]').forEach((b) => {
-      if (['baixar', 'sync'].includes(b.dataset.action)) b.disabled = rodando;
+      if (['baixar', 'sync', 'drive-enviar'].includes(b.dataset.action)) b.disabled = rodando;
     });
   }
 
@@ -667,7 +667,33 @@
     const item = linha.closest('.acao-rapida');
     const jaAberta = item && item.classList.contains('aberta');
     trocarAba(jaAberta ? null : linha.dataset.tab);
+    if (!jaAberta && linha.dataset.tab === 'drive-enviar') carregarFabricantesDrive();
   });
+
+  let fabricantesDriveCarregados = false;
+  async function carregarFabricantesDrive() {
+    const box = el('drive-fab-lista');
+    if (!box || fabricantesDriveCarregados) return;
+    box.textContent = 'Carregando…';
+    try {
+      const res = await fetch('/api/drive/fabricantes');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { box.textContent = data.error || 'Não consegui carregar a lista de fabricantes.'; return; }
+      box.textContent = '';
+      for (const f of data.fabricantes || []) {
+        const label = document.createElement('label');
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.value = f.nome;
+        label.appendChild(input);
+        label.appendChild(document.createTextNode(' ' + f.nome + (f.mecanica ? ' (Mecânica)' : '')));
+        box.appendChild(label);
+      }
+      fabricantesDriveCarregados = true;
+    } catch (e) {
+      box.textContent = 'Não consegui carregar a lista de fabricantes.';
+    }
+  }
 
   // PEDIDO DO USUÁRIO (2026-09-12): toggle "Seções marcadas" / "Apenas
   // lançamentos" dentro do acordeão "Cadastrar produtos" — troca qual
@@ -729,6 +755,28 @@
     // painel — ficou pra trás na reforma de Ações Rápidas em acordeão
     // (só "baixar"/"sync" foram migrados pro novo formato, esse aqui não).
     // Backend (tipo: 'zip' → montarZipFinal por seção) nunca mudou.
+    if (btn.dataset.action === 'drive-fab-todos' || btn.dataset.action === 'drive-fab-nenhum') {
+      const marcar = btn.dataset.action === 'drive-fab-todos';
+      document.querySelectorAll('#drive-fab-lista input[type="checkbox"]').forEach((c) => { c.checked = marcar; });
+      return;
+    }
+    if (btn.dataset.action === 'drive-enviar') {
+      const fabricantes = Array.from(document.querySelectorAll('#drive-fab-lista input:checked')).map((c) => c.value);
+      if (!fabricantes.length) { mostrarToast('Escolha pelo menos 1 fabricante.', 'aviso'); return; }
+      const dryRun = el('drive-enviar-dry-run').checked;
+      if (!dryRun && !confirm(`Gerar e enviar ${fabricantes.length} catálogo(s) ao Drive, substituindo os arquivos atuais. Confirma?`)) return;
+      fetch('/api/acao', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tipo: 'drive-enviar', opcoes: { fabricantes, dryRun } }),
+      }).then(async (res) => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          mostrarToast(data.error || 'Erro ao iniciar o envio.', 'erro');
+        }
+      });
+      return;
+    }
     if (btn.dataset.action === 'zip') {
       dispararAcao('zip', {});
       return;

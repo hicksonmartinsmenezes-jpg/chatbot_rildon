@@ -552,8 +552,33 @@ async function handleSatisfactionReply({ userId, message }) {
   return { ticket: atualizado, rating, response: agradecimento };
 }
 
+// Com o bot DESLIGADO (Configurações > Bot ativo = Desativado) o fluxo do bot
+// não roda e, portanto, ninguém criava ticket para cliente novo: as mensagens
+// ficavam só no histórico e o Dashboard/Atendimento mostravam tudo zerado.
+// Garante que exista um ticket ATIVO (aberto/em_andamento) para o cliente —
+// se já existe, não faz nada (não duplica nem mexe na descrição); se não,
+// cria um "aberto" para o atendente aparecer em Pendentes.
+async function garantirTicketPendente({ userId, customerName, message }) {
+  const candidatos = getProfilePhotoCandidates(userId);
+  const existentes = await ticketRepository.findByUserIds(candidatos.length ? candidatos : [userId]);
+  if (existentes.some(t => t.status === "aberto" || t.status === "em_andamento")) {
+    return { criado: false };
+  }
+  const trecho = String(message || "").replace(/\s+/g, " ").trim().slice(0, 200);
+  const ticket = await createTicket({
+    userId,
+    type: "atendente_humano",
+    sector: "atendimento",
+    customerName: customerName || "Não informado",
+    description: trecho ? `[Cliente escreveu com o bot desligado] ${trecho}` : "[Cliente escreveu com o bot desligado]"
+  });
+  if (ticket) emitEvent("ticket_atualizado", { ticket });
+  return { criado: !!ticket, ticket };
+}
+
 module.exports = {
   createTicket,
+  garantirTicketPendente,
   listTickets,
   updateTicketStatus,
   reopenTicketIfClosed,

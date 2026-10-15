@@ -153,6 +153,14 @@ function _formatarMin(min) {
   if (min < 60) return `${Math.round(min)} min`;
   const h = Math.floor(min / 60);
   const m = Math.round(min % 60);
+  // Varredura 2026-10-15: passando de um dia, "79h18" não é legível num
+  // relatório impresso — vira "3d 7h". Mesmo formato do painel ao vivo
+  // (metricsFormatarMin em 05-metrics.js).
+  if (h >= 24) {
+    const dias = Math.floor(h / 24);
+    const resto = h % 24;
+    return resto > 0 ? `${dias}d ${resto}h` : `${dias}d`;
+  }
   return m ? `${h}h${String(m).padStart(2, "0")}` : `${h}h`;
 }
 
@@ -276,7 +284,11 @@ function gerarPdfMetricas(data, destino) {
   // histórico) usa o mês escolhido; sem mesRef (mês corrente, comportamento
   // de sempre) usa o mês/ano de "agora", já que é esse o mês que
   // metrics.service.js usou pra calcular tudo quando nenhum mês é passado.
-  const nomeMesExibido = historico ? _nomeMes(data.mesRef) : `${MESES_PT[agora.getMonth()]}/${agora.getFullYear()}`;
+  // Varredura 2026-10-15: sem mesRef isto usava agora.getMonth(), que é o
+  // fuso do servidor (UTC no container) — nas últimas horas do último dia
+  // do mês o título saía com o mês seguinte. _mesAtualStr já resolve no
+  // fuso do negócio, igual ao resto do arquivo.
+  const nomeMesExibido = historico ? _nomeMes(data.mesRef) : _nomeMes(_mesAtualStr(agora));
   const subtitulo = historico ? `Métricas de ${nomeMesExibido}  •  gerado em ${geradoEm}` : `Gerado em ${geradoEm}`;
   // Pedido do usuário (2026-09-17): marcar quando a última barra do gráfico
   // "Atendimentos nos últimos 6 meses" é um mês AINDA EM ANDAMENTO — o mês
@@ -595,8 +607,13 @@ function gerarPdfMetricas(data, destino) {
     ["Horário de pico", data.horarioPico ? _formatarHora12(data.horarioPico.hora) : "sem dados", TEXTO,
       data.horarioPico ? { texto: `${data.horarioPico.total} atendimentos no mês`, bom: true } : null],
     ["Satisfação média", data.satisfacaoMedia != null ? `${Number(data.satisfacaoMedia).toFixed(1)} / 5` : "sem dados"],
-    ["TMA (Tempo Médio Atendimento)", _formatarMin(data.tendencia?.tempoResolucaoAtualMin), TEXTO, _tendenciaInfo(data.tendencia?.tempoResolucaoVariacaoPct, true, ROTULOS_TEMPO)],
-    ["TME (Tempo Médio 1ª Resposta)", _formatarMin(data.tendencia?.tempoRespostaAtualMin), TEXTO, _tendenciaInfo(data.tendencia?.tempoRespostaVariacaoPct, true, ROTULOS_TEMPO)],
+    // Varredura 2026-10-15: o valor em destaque passou a ser a MEDIANA
+    // (antes era a média, puxada por atendimentos que ficaram dias
+    // abertos). A média continua na tabela "Comparação com o mês
+    // anterior", e a cobertura ("N de M encerrados") está logo abaixo da
+    // grade de cards.
+    ["TMA (mediana por atendimento)", _formatarMin(data.tendencia?.tempoResolucaoMedianaMin), TEXTO, _tendenciaInfo(data.tendencia?.tempoResolucaoMedianaVariacaoPct, true, ROTULOS_TEMPO)],
+    ["TME (mediana até 1ª resposta)", _formatarMin(data.tendencia?.tempoRespostaMedianaMin), TEXTO, _tendenciaInfo(data.tendencia?.tempoRespostaMedianaVariacaoPct, true, ROTULOS_TEMPO)],
     ["Avaliações", data.satisfacaoTotalRespostas ?? 0],
     // Pedido do usuário (2026-09-17): "adicione Novos Contatos" — usa o
     // mesmo dado que a aba "Tempos" do painel ao vivo já expõe
@@ -609,7 +626,7 @@ function gerarPdfMetricas(data, destino) {
     // uma comparação boa/ruim) pra não repetir o erro já corrigido antes
     // (cards mostrando números de recortes de tempo diferentes lado a lado
     // sem deixar isso claro, ver 688 resolvidos vs 84 atendimentos).
-    ["Novos Contatos", data.novosContatosLeads ?? 0, TEXTO, { texto: "total acumulado", bom: null }]
+    ["Novos Contatos", data.novosContatosNoMes ?? 0, TEXTO, { texto: `${data.novosContatosLeads ?? 0} leads acumulados`, bom: null }]
   ];
   valores.forEach((v, i) => cartao(MARGIN + (i % CARDS_POR_LINHA) * (cardW + gap), cardsY + Math.floor(i / CARDS_POR_LINHA) * (cardH + gap), cardW, cardH, v[0], v[1], v[2] || TEXTO, v[3] || null));
 
@@ -617,7 +634,24 @@ function gerarPdfMetricas(data, destino) {
   // cards mudar (adicionar/remover um), a grade se reajusta sozinha sem
   // sobrar nem faltar espaço antes do próximo bloco.
   const linhasCards = Math.ceil(valores.length / CARDS_POR_LINHA);
-  const blocoY = cardsY + linhasCards * (cardH + gap) + 12;
+  // Varredura 2026-10-15: sem esta linha o relatório mostrava TMA/TME com
+  // uma casa decimal sobre uma base incompleta (metade dos tickets não tem
+  // data de fechamento gravada; só parte tem data de assunção) sem avisar
+  // quem lê.
+  const cob = data.tendencia?.cobertura || {};
+  let blocoY = cardsY + linhasCards * (cardH + gap) + 12;
+  if (cob.ticketsNoMes != null) {
+    const partes = [
+      `TMA calculado sobre ${cob.tmaAmostra ?? 0} atendimento(s) encerrado(s) no mês` +
+        (cob.tmaComFechamentoGravado != null && cob.tmaAmostra
+          ? ` (${cob.tmaComFechamentoGravado} com data de fechamento gravada)`
+          : ""),
+      `TME sobre ${cob.tmeAmostra ?? 0} atendimento(s) assumidos por um atendente`
+    ];
+    doc.fillColor(SEC).font("Helvetica-Oblique").fontSize(7.2)
+      .text(partes.join("  •  "), MARGIN, blocoY - 6, { width: W });
+    blocoY += 8;
+  }
   const colW = (W - gap) / 2;
 
   // Pedido do usuário (2026-09-16): "deixe comparações com mes anterior de
@@ -635,15 +669,19 @@ function gerarPdfMetricas(data, destino) {
   const compFim = tabela(MARGIN, blocoY + 27, colW, ["Métrica", "Este mês", "Mês anterior", "Variação"], [0.36, 0.20, 0.24, 0.20], [
     ["Atendimentos", data.mensal ?? 0, data.tendencia?.totalMesAnterior ?? 0, data.tendencia?.totalVariacaoPct != null ? `${data.tendencia.totalVariacaoPct > 0 ? "+" : ""}${data.tendencia.totalVariacaoPct}%` : "—"],
     ["Taxa de resolução", `${data.tendencia?.taxaResolucaoAtual ?? 0}%`, `${data.tendencia?.taxaResolucaoMesAnterior ?? 0}%`, data.tendencia?.taxaResolucaoVariacaoPontos != null ? `${data.tendencia.taxaResolucaoVariacaoPontos > 0 ? "+" : ""}${data.tendencia.taxaResolucaoVariacaoPontos}pp` : "—"],
-    ["TMA (Tempo Médio Atendimento)", _formatarMin(data.tendencia?.tempoResolucaoAtualMin), _formatarMin(data.tendencia?.tempoResolucaoAnteriorMin), data.tendencia?.tempoResolucaoVariacaoPct != null ? `${data.tendencia.tempoResolucaoVariacaoPct > 0 ? "+" : ""}${data.tendencia.tempoResolucaoVariacaoPct}%` : "—"],
-    ["TME (Tempo Médio 1ª Resposta)", _formatarMin(data.tendencia?.tempoRespostaAtualMin), _formatarMin(data.tendencia?.tempoRespostaAnteriorMin), data.tendencia?.tempoRespostaVariacaoPct != null ? `${data.tendencia.tempoRespostaVariacaoPct > 0 ? "+" : ""}${data.tendencia.tempoRespostaVariacaoPct}%` : "—"],
+    ["TMA (mediana)", _formatarMin(data.tendencia?.tempoResolucaoMedianaMin), _formatarMin(data.tendencia?.tempoResolucaoMedianaAnteriorMin), data.tendencia?.tempoResolucaoMedianaVariacaoPct != null ? `${data.tendencia.tempoResolucaoMedianaVariacaoPct > 0 ? "+" : ""}${data.tendencia.tempoResolucaoMedianaVariacaoPct}%` : "—"],
+    ["TMA (média)", _formatarMin(data.tendencia?.tempoResolucaoAtualMin), _formatarMin(data.tendencia?.tempoResolucaoAnteriorMin), data.tendencia?.tempoResolucaoVariacaoPct != null ? `${data.tendencia.tempoResolucaoVariacaoPct > 0 ? "+" : ""}${data.tendencia.tempoResolucaoVariacaoPct}%` : "—"],
+    ["TME (mediana)", _formatarMin(data.tendencia?.tempoRespostaMedianaMin), _formatarMin(data.tendencia?.tempoRespostaMedianaAnteriorMin), data.tendencia?.tempoRespostaMedianaVariacaoPct != null ? `${data.tendencia.tempoRespostaMedianaVariacaoPct > 0 ? "+" : ""}${data.tendencia.tempoRespostaMedianaVariacaoPct}%` : "—"],
+    ["TME (média)", _formatarMin(data.tendencia?.tempoRespostaAtualMin), _formatarMin(data.tendencia?.tempoRespostaAnteriorMin), data.tendencia?.tempoRespostaVariacaoPct != null ? `${data.tendencia.tempoRespostaVariacaoPct > 0 ? "+" : ""}${data.tendencia.tempoRespostaVariacaoPct}%` : "—"],
     ["Avaliações", data.tendencia?.avaliacoesAtual ?? 0, data.tendencia?.avaliacoesMesAnterior ?? 0, data.tendencia?.avaliacoesVariacaoPct != null ? `${data.tendencia.avaliacoesVariacaoPct > 0 ? "+" : ""}${data.tendencia.avaliacoesVariacaoPct}%` : "—"]
   ], {
     align: ["left", "right", "right", "right"],
     coresUltimaCol: [
       _corTendencia(data.tendencia?.totalVariacaoPct),
       _corTendencia(data.tendencia?.taxaResolucaoVariacaoPontos),
+      _corTendencia(data.tendencia?.tempoResolucaoMedianaVariacaoPct, true),
       _corTendencia(data.tendencia?.tempoResolucaoVariacaoPct, true),
+      _corTendencia(data.tendencia?.tempoRespostaMedianaVariacaoPct, true),
       _corTendencia(data.tendencia?.tempoRespostaVariacaoPct, true),
       _corTendencia(data.tendencia?.avaliacoesVariacaoPct)
     ]
@@ -657,10 +695,17 @@ function gerarPdfMetricas(data, destino) {
   // do relatório (já tinha saído do painel ao vivo antes, ver histórico).
   // "Atendentes" ocupa a largura toda agora que não divide mais a linha com
   // a tabela de Setor.
-  const baixoY = Math.max(compFim, blocoY + 27 + 20 + 5 * 18) + 12;
+  const baixoY = Math.max(compFim, blocoY + 27 + 20 + 7 * 18) + 12;
   faixa("Atendentes", MARGIN, baixoY, W);
   if (historico) {
-    tabela(MARGIN, baixoY + 27, W, ["Atendente", "Mês", "Histórico", "Em atendimento agora"], [0.46, 0.18, 0.18, 0.18], (data.atendentes || []).map(a => [a.nome, a.atendidosMes, a.totalAtendidos, a.emAtendimento ?? 0]), { align: ["left", "right", "right", "right"], fonte: 8 });
+    // Varredura 2026-10-15: "Em atendimento agora" é estado do momento da
+    // exportação — não faz sentido num relatório de mês fechado. Sai daqui
+    // (continua no painel ao vivo).
+    // Quem não atendeu nada no mês nem tem histórico só ocuparia linha no
+    // relatório impresso (no painel ao vivo continuam aparecendo, ali serve
+    // pra ver quem está ocioso).
+    const comMovimento = (data.atendentes || []).filter(a => (a.atendidosMes || 0) > 0 || (a.totalAtendidos || 0) > 0);
+    tabela(MARGIN, baixoY + 27, W, ["Atendente", "Atendimentos no mês", "Histórico"], [0.52, 0.24, 0.24], comMovimento.map(a => [a.nome, a.atendidosMes, a.totalAtendidos]), { align: ["left", "right", "right"], fonte: 8 });
   } else {
     tabela(MARGIN, baixoY + 27, W, ["Atendente", "Hoje", "7 dias", "Mês", "Histórico", "Em atendimento agora"], [0.34, 0.12, 0.12, 0.12, 0.15, 0.15], (data.atendentes || []).map(a => [a.nome, a.atendidosHoje, a.atendidosSemana, a.atendidosMes, a.totalAtendidos, a.emAtendimento ?? 0]), { align: ["left", "right", "right", "right", "right", "right"], fonte: 7.8 });
   }
@@ -678,7 +723,10 @@ function gerarPdfMetricas(data, destino) {
   const satFim = tabela(MARGIN, TOP + 27, W, ["Atendente", "Média", "Avaliações"], [0.58, 0.21, 0.21], sat.map(([nome, v]) => [nome, `${Number(v.media || 0).toFixed(1)} / 5`, v.total]), { align: ["left", "right", "right"] });
 
   const feedbackY = satFim + 16;
-  faixa("O que os clientes disseram (notas 1–2, mais recentes)", MARGIN, feedbackY, W);
+  const totalFeedbacks = (data.feedbacksNegativos || []).length;
+  faixa(totalFeedbacks > 15
+    ? `O que os clientes disseram (notas 1–2) — 15 de ${totalFeedbacks} mais recentes`
+    : "O que os clientes disseram (notas 1–2, mais recentes)", MARGIN, feedbackY, W);
   const feedbacks = (data.feedbacksNegativos || []).slice(0, 15);
   const ty = feedbackY + 27;
   const cols = [0.16, 0.20, 0.09, 0.55];

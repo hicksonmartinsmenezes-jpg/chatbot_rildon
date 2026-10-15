@@ -635,7 +635,7 @@ async function getTicketDashboard(req, res) {
       pool.query(`
         SELECT COUNT(*)::int AS total
         FROM tickets
-        WHERE DATE(created_at AT TIME ZONE $1) = CURRENT_DATE
+        WHERE DATE(created_at AT TIME ZONE $1) = (NOW() AT TIME ZONE $1)::date
       `, [TZ])
     ]);
 

@@ -56,12 +56,27 @@ function metricsFormatarMin(min) {
   if (min < 60) return `${Math.round(min)} min`;
   const horas = Math.floor(min / 60);
   const resto = Math.round(min % 60);
+  // Varredura 2026-10-15: acima de um dia, "79h18" não diz nada pra quem
+  // lê o relatório — vira "3d 7h".
+  if (horas >= 24) {
+    const dias = Math.floor(horas / 24);
+    const h = horas % 24;
+    return h > 0 ? `${dias}d ${h}h` : `${dias}d`;
+  }
   return resto > 0 ? `${horas}h${String(resto).padStart(2, "0")}` : `${horas}h`;
 }
 
 // Pedido do usuário (2026-07-31): indicador de tendência vs mês anterior nos
 // cards de KPI. `invertido=true` pra métricas onde SUBIR é ruim (tempo de
 // resolução/resposta) — nessas, uma seta pra cima vem em vermelho, não verde.
+// Varredura 2026-10-15: linha pequena embaixo dos cards de tempo dizendo
+// sobre quantos atendimentos o número foi calculado — sem isso o painel
+// mostra um valor preciso em cima de uma base incompleta.
+function metricsCoberturaHtml(amostra, universo, rotulo) {
+  if (amostra == null || !universo) return "";
+  return `<span class="metric-card-trend is-neutral">${amostra} de ${universo} ${rotulo}</span>`;
+}
+
 function metricTrendHtml(pct, invertido = false) {
   if (pct == null) return "";
   if (pct === 0) {
@@ -150,15 +165,34 @@ async function loadMetricsCharts() {
     const totalTrendEl = document.getElementById("metric-total-trend");
     if (totalTrendEl) totalTrendEl.innerHTML = metricTrendHtml(t.totalVariacaoPct);
 
+    // Varredura 2026-10-15: o valor em destaque passou a ser a MEDIANA. A
+    // média era puxada por atendimentos que ficaram dias abertos (setembro:
+    // TMA médio de 4d22h, com 143 tickets acima de 24h) e não representava
+    // o atendimento normal. A média continua visível no título do card, e a
+    // cobertura (quantos atendimentos entraram na conta) vai logo abaixo —
+    // metade dos tickets não tem data de fechamento gravada.
+    const cob = t.cobertura || {};
     const tempoResolucaoEl = document.getElementById("metric-tempo-resolucao");
-    if (tempoResolucaoEl) tempoResolucaoEl.textContent = metricsFormatarMin(t.tempoResolucaoAtualMin);
+    if (tempoResolucaoEl) {
+      tempoResolucaoEl.textContent = metricsFormatarMin(t.tempoResolucaoMedianaMin);
+      tempoResolucaoEl.title = `Mediana. Média: ${metricsFormatarMin(t.tempoResolucaoAtualMin)}`;
+    }
     const tempoResolucaoTrendEl = document.getElementById("metric-tempo-resolucao-trend");
-    if (tempoResolucaoTrendEl) tempoResolucaoTrendEl.innerHTML = metricTrendHtml(t.tempoResolucaoVariacaoPct, true);
+    if (tempoResolucaoTrendEl) {
+      tempoResolucaoTrendEl.innerHTML = metricTrendHtml(t.tempoResolucaoMedianaVariacaoPct, true)
+        + metricsCoberturaHtml(cob.tmaAmostra, cob.ticketsNoMes, "encerrados");
+    }
 
     const tempoRespostaEl = document.getElementById("metric-tempo-resposta");
-    if (tempoRespostaEl) tempoRespostaEl.textContent = metricsFormatarMin(t.tempoRespostaAtualMin);
+    if (tempoRespostaEl) {
+      tempoRespostaEl.textContent = metricsFormatarMin(t.tempoRespostaMedianaMin);
+      tempoRespostaEl.title = `Mediana. Média: ${metricsFormatarMin(t.tempoRespostaAtualMin)}`;
+    }
     const tempoRespostaTrendEl = document.getElementById("metric-tempo-resposta-trend");
-    if (tempoRespostaTrendEl) tempoRespostaTrendEl.innerHTML = metricTrendHtml(t.tempoRespostaVariacaoPct, true);
+    if (tempoRespostaTrendEl) {
+      tempoRespostaTrendEl.innerHTML = metricTrendHtml(t.tempoRespostaMedianaVariacaoPct, true)
+        + metricsCoberturaHtml(cob.tmeAmostra, cob.ticketsNoMes, "assumidos");
+    }
 
     // Pedido do usuário (2026-08-05): "Total Atendimentos" nessa aba usava
     // data.total (desde sempre) — número diferente do "Total de Atendimentos"
@@ -171,8 +205,13 @@ async function loadMetricsCharts() {
     // escolher a tag 'Leads' no lugar de created_at). Demanda Ativa fica
     // sempre 0 (não existe fluxo de ticket iniciado pelo atendente ainda).
     animateMetric(document.getElementById("metric-tempos-total"),      data.mensal);
-    animateMetric(document.getElementById("metric-tempos-pendentes"),  data.pendentes);
-    animateMetric(document.getElementById("metric-tempos-novos-contatos"), data.novosContatosLeads);
+    animateMetric(document.getElementById("metric-tempos-pendentes"),  data.pendentesAgora ?? data.pendentes);
+    // Varredura 2026-10-15: o card mostrava os contatos com tag "Leads"
+    // acumulados desde sempre (346) debaixo do rótulo "Novos Contatos".
+    // Agora mostra os contatos criados NO MÊS; o acumulado foi pro título.
+    const novosContatosEl = document.getElementById("metric-tempos-novos-contatos");
+    animateMetric(novosContatosEl, data.novosContatosNoMes ?? 0);
+    if (novosContatosEl) novosContatosEl.title = `${data.novosContatosLeads ?? 0} contatos com a tag "Leads" no total (acumulado)`;
 
     // Pedido do usuário: pesquisa de satisfação ao fechar atendimento —
     // média geral (card) + quebra por atendente (tabela), pra supervisor
@@ -230,6 +269,7 @@ async function loadMetricsCharts() {
     // os dados e deixa o seletor de período (hoje/7 dias/mês/total) escolher
     // qual coluna ordena/exibe, sem precisar recarregar do backend de novo.
     window._metricsAtendentes = data.atendentes || [];
+    metricsAtualizarBotoesPeriodo();
     renderMetricsAtendentesTable(window._metricsAtendentesPeriodo || "total");
 
     // ── Gráfico por horário (bar) — pedido do usuário, no lugar do antigo
@@ -373,6 +413,25 @@ function renderMetricsAtendentesTable(periodo) {
         `;
       }).join("")
     : `<tr><td colspan="4" class="metric-satisfaction-empty">${search ? "Nenhum atendente encontrado." : "Nenhum atendente cadastrado."}</td></tr>`;
+}
+
+// Varredura 2026-10-15: "Hoje" e "7 dias" são janelas rolantes a partir de
+// agora (NOW() - 7 days no backend) — não têm como respeitar um mês
+// passado escolhido no seletor. Em vez de mostrar número do mês errado,
+// esses dois botões ficam desabilitados quando o relatório é de um mês
+// fechado, e a tabela cai pro recorte do próprio mês.
+function metricsAtualizarBotoesPeriodo() {
+  const mesFechado = !!window._metricsMesSelecionado;
+  document.querySelectorAll("#metric-atendentes-periodo .metric-periodo-btn").forEach(btn => {
+    const rolante = btn.dataset.periodo === "hoje" || btn.dataset.periodo === "semana";
+    btn.disabled = mesFechado && rolante;
+    btn.title = (mesFechado && rolante)
+      ? "Só disponível no mês corrente — este relatório é de um mês fechado."
+      : "";
+  });
+  if (mesFechado && ["hoje", "semana"].includes(window._metricsAtendentesPeriodo)) {
+    setMetricsAtendentesPeriodo("mes");
+  }
 }
 
 function setMetricsAtendentesPeriodo(periodo) {

@@ -228,7 +228,10 @@ function installFakePool(state) {
       return { rows: [] };
     }
 
-    if (/WHERE DATE\(created_at AT TIME ZONE \$1\) = CURRENT_DATE/.test(sql)) {
+    // Varredura 2026-10-15: os dois lados da comparação passaram a ser
+    // convertidos pro fuso do negócio (CURRENT_DATE era o fuso do servidor,
+    // UTC no container — das 21h à meia-noite o "hoje" virava o dia seguinte).
+    if (/WHERE DATE\(created_at AT TIME ZONE \$1\) = \(NOW\(\) AT TIME ZONE \$1\)::date/.test(sql)) {
       return { rows: [{ total: 0 }] };
     }
 

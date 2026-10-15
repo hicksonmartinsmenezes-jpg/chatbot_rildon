@@ -103,3 +103,6 @@ Claude outputs/
 # Dados pessoais de contatos ficam somente no ambiente local
 /contatos/*
 !/contatos/README.md
+
+# Configuracao local do Maestri (nao versionar)
+.maestri/

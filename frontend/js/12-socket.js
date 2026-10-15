@@ -202,6 +202,37 @@ if (typeof io !== "undefined") {
 
   socket.on("users_updated", data => {
     document.dispatchEvent(new CustomEvent("rildon:users-updated", { detail: data || {} }));
+
+    // Se a alteração foi feita no usuário desta própria sessão, atualiza as
+    // permissões imediatamente. Antes, o servidor já salvava no banco, mas
+    // esta tela continuava usando o objeto do login antigo em memória.
+    const updated = data?.user;
+    const current = typeof getCurrentUser === "function" ? getCurrentUser() : null;
+    if (!updated || !current || String(updated.id) !== String(current.id)) return;
+
+    const refreshedUser = { ...current, ...updated, permissions: updated.permissions || {} };
+    if (typeof setCurrentUser === "function") setCurrentUser(refreshedUser);
+    try {
+      localStorage.setItem(
+        `profile_${refreshedUser.usuario || refreshedUser.id}`,
+        JSON.stringify(refreshedUser)
+      );
+    } catch (_) {}
+
+    if (typeof applyUserPermissions === "function") applyUserPermissions();
+
+    // Se a permissão da tela atual foi retirada, volta imediatamente para
+    // o Dashboard (quando disponível), sem deixar a tela antiga aberta.
+    if (
+      typeof hasUserScreenPermission === "function" &&
+      typeof currentTab !== "undefined" &&
+      currentTab !== "dashboard" &&
+      !hasUserScreenPermission(currentTab)
+    ) {
+      switchTab("dashboard");
+    }
+
+    showToast("🔄 Suas permissões foram atualizadas.");
   });
 
   // Atualizações administrativas em tempo real
@@ -268,6 +299,15 @@ function _scheduleConvReload(userId) {
 socket.on("nova_mensagem", (data) => {
   // Valida estrutura mínima
   if (!data?.userId || typeof data.userId !== "string") return;
+
+  // Pedido do usuário (2026-09-21): usuário sem a tela "Atendimentos"
+  // liberada (permissions.conversations, ver 09-users.js/11-profile.js —
+  // agora dá pra tirar essa tela de qualquer perfil, não só do atendente
+  // padrão) não deve receber NADA relacionado a conversa — nem badge, nem
+  // som, nem toast, nem notificação do SO. O evento chega pro socket de
+  // TODO mundo logado (não é filtrado no servidor por tela), então o corte
+  // tem que ser aqui, antes de qualquer efeito colateral.
+  if (typeof hasUserScreenPermission === "function" && !hasUserScreenPermission("conversations")) return;
 
   // O backend emite esse evento DUAS vezes para a mesma mensagem do cliente:
   // 1) ao chegar (response: null) e 2) depois do bot/IA processar (response

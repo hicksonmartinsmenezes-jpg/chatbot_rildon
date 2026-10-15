@@ -42,19 +42,75 @@ function garantirPasta() {
   fs.mkdirSync(WORK_DIR, { recursive: true });
 }
 
+// BUG REAL de PERDA DE DADOS corrigido em 2026-10-14 (auditoria do painel).
+// A combinação das duas funções abaixo destruía a configuração de rotinas sem
+// deixar rastro. A cadeia, reproduzida ao vivo:
+//   1) salvarRotinas usava fs.writeFileSync direto. writeFileSync TRUNCA o
+//      arquivo e depois escreve — uma queda no meio (máquina desligada no
+//      botão, pane de energia, processo morto) deixa um JSON cortado.
+//   2) carregarRotinas tinha `catch { return [] }`: o JSON cortado virava
+//      silenciosamente "nenhuma rotina cadastrada". O painel mostrava a lista
+//      vazia, sem nenhum aviso, e o agendador parava de rodar tudo.
+//   3) qualquer criação/edição/remoção seguinte chamava carregarRotinas()
+//      (recebia []), acrescentava o item novo e GRAVAVA EM CIMA — apagando de
+//      verdade, e para sempre, todas as rotinas que ainda estavam no arquivo
+//      cortado.
+// Correção, nas duas pontas:
+//   - gravação atômica: escreve num arquivo temporário ao lado e troca por
+//     rename (atômico no mesmo sistema de arquivos). O arquivo final nunca
+//     fica num estado meio-escrito, então o passo 1 deixa de existir. Mesmo
+//     padrão que x2-estoque-export.js já usa para publicar o CSV.
+//   - falha ruidosa: um arquivo ilegível não é mais tratado como "lista
+//     vazia". Ele é PRESERVADO com outro nome (nunca descartado, para dar
+//     chance de recuperar à mão) e o erro vai pro log em voz alta. Continua
+//     devolvendo [] para não derrubar o painel, mas agora o arquivo original
+//     já saiu da frente, então a gravação seguinte não sobrescreve nada.
 function carregarRotinas() {
   garantirPasta();
   if (!fs.existsSync(ROTINAS_PATH)) return [];
+  const bruto = fs.readFileSync(ROTINAS_PATH, 'utf8');
   try {
-    return JSON.parse(fs.readFileSync(ROTINAS_PATH, 'utf8'));
-  } catch {
+    const lista = JSON.parse(bruto);
+    // Um JSON válido que não seja uma lista (ex: `{}` ou `null`) também não
+    // serve — tratar como corrompido em vez de devolver algo inesperado para
+    // quem chama, que faz .find/.filter direto no retorno.
+    if (!Array.isArray(lista)) throw new Error('conteúdo não é uma lista de rotinas');
+    return lista;
+  } catch (e) {
+    const preservado = `${ROTINAS_PATH}.corrompido-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+    try {
+      fs.renameSync(ROTINAS_PATH, preservado);
+      console.error(
+        `[x2-painel] rotinas.json ILEGÍVEL (${e.message}). O arquivo foi preservado em ${preservado} ` +
+        'e NÃO foi descartado — dá pra recuperar as rotinas à mão a partir dele. O painel vai abrir ' +
+        'com a lista vazia até isso ser resolvido.'
+      );
+    } catch (erroAoPreservar) {
+      // Não conseguiu nem renomear (permissão, arquivo em uso). Melhor avisar
+      // e seguir com lista vazia do que derrubar o painel — mas aqui a
+      // gravação seguinte AINDA pode sobrescrever, então o aviso é mais forte.
+      console.error(
+        `[x2-painel] rotinas.json ILEGÍVEL (${e.message}) e não consegui preservá-lo ` +
+        `(${erroAoPreservar.message}). NÃO crie nem edite rotinas antes de salvar uma cópia ` +
+        `de ${ROTINAS_PATH} à mão, ou a configuração atual será sobrescrita.`
+      );
+    }
     return [];
   }
 }
 
 function salvarRotinas(lista) {
   garantirPasta();
-  fs.writeFileSync(ROTINAS_PATH, JSON.stringify(lista, null, 2));
+  // Nome do temporário com pid + aleatório: duas instâncias do painel abertas
+  // ao mesmo tempo não disputam o mesmo arquivo intermediário.
+  const temporario = `${ROTINAS_PATH}.tmp-${process.pid}-${crypto.randomBytes(4).toString('hex')}`;
+  try {
+    fs.writeFileSync(temporario, JSON.stringify(lista, null, 2));
+    fs.renameSync(temporario, ROTINAS_PATH);
+  } catch (e) {
+    try { fs.unlinkSync(temporario); } catch { /* já saiu do caminho */ }
+    throw e;
+  }
 }
 
 // "estoque", "painel-produtos", "diff-estoque" (2026-08-06 / 2026-08-10) e
@@ -65,13 +121,33 @@ const TIPOS_SEM_SECOES = ['estoque', 'painel-produtos', 'diff-estoque', 'cortes-
 
 const TIPOS_VALIDOS = ['baixar', 'sync', 'estoque', 'painel-produtos', 'diff-estoque', 'cortes-produtos', 'produtos-parados', 'lancamentos-x2'];
 
+// PEDIDO DO USUÁRIO (2026-09-11): "a proposta de exportar relatorio csv é
+// capturar preços e estoque atualizados de 5 em 5 horas" — até aqui só
+// existia "diaria"/"semanal" (hora fixa do relógio). "horas" é uma
+// frequência nova, genérica (qualquer tipo de rotina pode usar, não só
+// Estoque): roda de novo sempre que passar `intervaloHoras` horas desde a
+// ÚLTIMA execução — sem hora fixa, sem `diaSemana`. Modelo mais simples e
+// mais robusto a reinício do computador/painel do que tentar alinhar num
+// horário de relógio: se o painel ficou fechado além do intervalo, a rotina
+// dispara assim que checar de novo, em vez de esperar até a próxima "hora
+// cheia" programada.
+const FREQUENCIAS_VALIDAS = ['diaria', 'semanal', 'horas'];
+const INTERVALO_HORAS_MAXIMO = 168; // 1 semana — além disso, "semanal" já resolve melhor.
+
 function validarRotina(dados) {
   const erros = [];
   if (!dados.nome || !String(dados.nome).trim()) erros.push('nome é obrigatório.');
   if (!TIPOS_VALIDOS.includes(dados.tipo)) erros.push(`tipo precisa ser um de: ${TIPOS_VALIDOS.join(', ')}.`);
   if (!TIPOS_SEM_SECOES.includes(dados.tipo) && (!Array.isArray(dados.secoes) || !dados.secoes.length)) erros.push('secoes precisa ser uma lista não vazia.');
-  if (!['diaria', 'semanal'].includes(dados.frequencia)) erros.push('frequencia precisa ser "diaria" ou "semanal".');
-  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(dados.horario || '')) erros.push('horario precisa estar no formato HH:MM (24h).');
+  if (!FREQUENCIAS_VALIDAS.includes(dados.frequencia)) erros.push(`frequencia precisa ser um de: ${FREQUENCIAS_VALIDAS.join(', ')}.`);
+  if (dados.frequencia === 'horas') {
+    const n = Number(dados.intervaloHoras);
+    if (!Number.isInteger(n) || n < 1 || n > INTERVALO_HORAS_MAXIMO) {
+      erros.push(`intervaloHoras precisa ser um número inteiro entre 1 e ${INTERVALO_HORAS_MAXIMO}.`);
+    }
+  } else if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(dados.horario || '')) {
+    erros.push('horario precisa estar no formato HH:MM (24h).');
+  }
   if (dados.frequencia === 'semanal' && (dados.diaSemana === undefined || dados.diaSemana === null || Number(dados.diaSemana) < 0 || Number(dados.diaSemana) > 6)) {
     erros.push('diaSemana (0=domingo..6=sábado) é obrigatório pra frequência semanal.');
   }
@@ -89,8 +165,9 @@ function criarRotina(dados) {
     secoes: dados.secoes || [],
     opcoes: dados.opcoes || {},
     frequencia: dados.frequencia,
-    horario: dados.horario,
+    horario: dados.frequencia === 'horas' ? null : dados.horario,
     diaSemana: dados.frequencia === 'semanal' ? Number(dados.diaSemana) : null,
+    intervaloHoras: dados.frequencia === 'horas' ? Number(dados.intervaloHoras) : null,
     ativa: dados.ativa !== false,
     criadaEm: new Date().toISOString(),
     ultimaExecucao: null,
@@ -110,7 +187,7 @@ function atualizarRotina(id, mudancas) {
   const idx = lista.findIndex((r) => r.id === id);
   if (idx === -1) throw Object.assign(new Error('Rotina não encontrada.'), { status: 404 });
   const proposta = { ...lista[idx], ...mudancas };
-  const tocouAgendamento = ['nome', 'tipo', 'secoes', 'frequencia', 'horario', 'diaSemana'].some((campo) => mudancas[campo] !== undefined);
+  const tocouAgendamento = ['nome', 'tipo', 'secoes', 'frequencia', 'horario', 'diaSemana', 'intervaloHoras'].some((campo) => mudancas[campo] !== undefined);
   if (tocouAgendamento) {
     const erros = validarRotina(proposta);
     if (erros.length) throw Object.assign(new Error(erros.join(' ')), { status: 400 });
@@ -141,6 +218,13 @@ function registrarExecucao(id, { resultado, erro }) {
 // pra testar sem depender do relógio real do sistema. ─────────────────────
 
 function proximaExecucao(rotina, agora = new Date()) {
+  // "horas" não tem hora fixa — a próxima é sempre "última execução +
+  // intervaloHoras" (ou agora mesmo, se nunca rodou ainda).
+  if (rotina.frequencia === 'horas') {
+    if (!rotina.ultimaExecucao) return new Date(agora);
+    return new Date(new Date(rotina.ultimaExecucao).getTime() + rotina.intervaloHoras * 60 * 60 * 1000);
+  }
+
   const [h, m] = rotina.horario.split(':').map(Number);
   const candidato = new Date(agora);
   candidato.setHours(h, m, 0, 0);
@@ -165,6 +249,16 @@ function proximaExecucao(rotina, agora = new Date()) {
 // religar, em vez de esperar o próximo dia).
 function deveRodarAgora(rotina, agora = new Date()) {
   if (!rotina.ativa) return false;
+
+  // "horas": não olha pra relógio nenhum — só "já passou intervaloHoras
+  // desde a última vez?" (ou "nunca rodou ainda" → roda assim que a rotina
+  // for checada pela 1ª vez depois de criada/ativada).
+  if (rotina.frequencia === 'horas') {
+    if (!rotina.ultimaExecucao) return true;
+    const decorridoMs = agora.getTime() - new Date(rotina.ultimaExecucao).getTime();
+    return decorridoMs >= rotina.intervaloHoras * 60 * 60 * 1000;
+  }
+
   if (rotina.frequencia === 'semanal' && agora.getDay() !== Number(rotina.diaSemana)) return false;
 
   const [h, m] = rotina.horario.split(':').map(Number);
@@ -182,6 +276,8 @@ module.exports = {
   ROTINAS_PATH,
   TIPOS_VALIDOS,
   TIPOS_SEM_SECOES,
+  FREQUENCIAS_VALIDAS,
+  INTERVALO_HORAS_MAXIMO,
   carregarRotinas,
   salvarRotinas,
   validarRotina,

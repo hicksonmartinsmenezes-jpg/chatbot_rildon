@@ -84,8 +84,42 @@ async function buscarSessao(token) {
 }
 
 async function removerSessao(token) {
+  _sessaoCache.delete(token);
   await pool.query(`DELETE FROM auth_sessions WHERE token = $1`, [token]);
 }
+
+// ---------------------------------------------------------------------------
+// Cache de sessão em memória
+//
+// 2026-10-09 (auditoria de performance): authSession roda em TODA requisição
+// /api e fazia SEMPRE duas queries — o SELECT em auth_sessions e o SELECT de
+// revalidação em users. Com o painel aberto em várias abas fazendo polling de
+// status, isso eram centenas de queries por minuto só para dizer "sim, essa
+// sessão continua válida", competindo por um pool de 20 conexões com o
+// pipeline de mensagens do WhatsApp. Quando o pool saturava, o próprio
+// authSession estourava com "Connection terminated due to connection timeout"
+// — exatamente a linha que aparecia no log do usuário.
+//
+// TTL curto (15s por padrão) mantém a revalidação de ativo/perfil/permissões
+// praticamente em tempo real: desativar um usuário continua derrubando o
+// acesso dele em no máximo 15 segundos, e as operações que já invalidavam
+// sessão na hora (logout, exclusão, troca de senha) chamam removerSessao /
+// invalidarCacheSessao, que limpam o cache imediatamente.
+// ---------------------------------------------------------------------------
+const SESSAO_CACHE_TTL = Number(process.env.SESSION_CACHE_TTL_MS || 15000);
+const _sessaoCache = new Map();   // token -> { user, expiresAt, at }
+
+function invalidarCacheSessao(token = null) {
+  if (token) _sessaoCache.delete(token);
+  else _sessaoCache.clear();
+}
+
+setInterval(() => {
+  const agora = Date.now();
+  for (const [k, v] of _sessaoCache) {
+    if (agora - v.at > SESSAO_CACHE_TTL || v.expiresAt <= agora) _sessaoCache.delete(k);
+  }
+}, 30000).unref();
 
 async function limparSessoesExpiradas() {
   await pool.query(`DELETE FROM auth_sessions WHERE expires_at < $1`, [Date.now()]);
@@ -110,7 +144,8 @@ function toSessionUser(user) {
     sector: user.sector || "geral",
     numero: user.numero || "",
     foto: user.foto || "",
-    totpEnabled: !!user.totpEnabled
+    totpEnabled: !!user.totpEnabled,
+    permissions: user.permissions || {}
   };
 }
 
@@ -129,15 +164,58 @@ async function abrirSessao(res, user, extra = {}) {
   return res.json({ user, expiresIn: SESSION_MS, ...extra });
 }
 
+// ─── Bloqueio temporário por conta (varredura 2026-09-30) ─────────────────────
+// Senha é PIN de 4 dígitos (decisão do usuário), então o limite por IP não basta:
+// vários IPs poderiam testar as 10.000 combinações. Após 5 erros seguidos na
+// mesma conta, bloqueia novos logins dela por 15 min. Em memória (zera ao
+// reiniciar o servidor) — suficiente para conter tentativa automatizada.
+const LOGIN_MAX_FALHAS = Number(process.env.LOGIN_MAX_FAILURES) || 5;
+const LOGIN_BLOQUEIO_MS = (Number(process.env.LOGIN_LOCK_MINUTES) || 15) * 60 * 1000;
+const _falhasLogin = new Map(); // usuario -> { count, until }
+
+function _chaveLogin(usuario) {
+  return String(usuario || "").trim().toLowerCase().slice(0, 100);
+}
+function _bloqueadoAte(usuario) {
+  const e = _falhasLogin.get(_chaveLogin(usuario));
+  if (e?.until && e.until > Date.now()) return e.until;
+  return 0;
+}
+function _registrarFalhaLogin(usuario) {
+  const k = _chaveLogin(usuario);
+  if (!k) return;
+  const e = _falhasLogin.get(k) || { count: 0, until: 0 };
+  if (e.until && e.until <= Date.now()) { e.count = 0; e.until = 0; }
+  e.count += 1;
+  if (e.count >= LOGIN_MAX_FALHAS) e.until = Date.now() + LOGIN_BLOQUEIO_MS;
+  _falhasLogin.set(k, e);
+}
+setInterval(() => {
+  const agora = Date.now();
+  for (const [k, e] of _falhasLogin) {
+    if ((e.until && e.until <= agora) || _falhasLogin.size > 5000) _falhasLogin.delete(k);
+  }
+}, 10 * 60 * 1000).unref();
+
 // ─── POST /api/auth/login ─────────────────────────────────────────────────────
 router.post("/auth/login", async (req, res) => {
   try {
     const { usuario, senha } = req.body || {};
+
+    const bloqueadoAte = _bloqueadoAte(usuario);
+    if (bloqueadoAte) {
+      const min = Math.max(1, Math.ceil((bloqueadoAte - Date.now()) / 60000));
+      return res.status(429).json({ error: `Conta temporariamente bloqueada por excesso de tentativas. Tente novamente em ${min} min.` });
+    }
+
     const user = await validateUser(usuario, senha);
 
     if (!user) {
+      _registrarFalhaLogin(usuario);
       return res.status(401).json({ error: "Usuário ou senha inválidos." });
     }
+
+    _falhasLogin.delete(_chaveLogin(usuario));
 
     // 2FA ativo: não abre sessão ainda — exige um segundo passo com o código.
     const fullUser = await userRepository.findById(user.id);
@@ -354,9 +432,19 @@ async function authSession(req, res, next) {
       }
     }
 
+    // Acerto no cache: devolve sem tocar no banco. Ver comentário em
+    // _sessaoCache — é o que tira ~95% das queries deste middleware, que roda
+    // em toda requisição /api.
+    const emCache = _sessaoCache.get(provided);
+    if (emCache && Date.now() - emCache.at < SESSAO_CACHE_TTL && emCache.expiresAt > Date.now()) {
+      req.user = emCache.user;
+      return next();
+    }
+
     const session = await buscarSessao(provided);
 
     if (!session) {
+      _sessaoCache.delete(provided);
       res.clearCookie(COOKIE_NAME, { path: "/" });
       return res.status(401).json({ error: "Sessão inválida ou expirada. Faça login novamente." });
     }
@@ -364,7 +452,7 @@ async function authSession(req, res, next) {
     // Revalida se o usuário ainda está ativo no banco (detecta desativação/promoção em tempo real)
     if (session.user?.id && session.user.id !== "api") {
       const dbUser = await pool.query(
-        `SELECT id, ativo, perfil FROM users WHERE id = $1 LIMIT 1`,
+        `SELECT id, ativo, perfil, permissions FROM users WHERE id = $1 LIMIT 1`,
         [session.user.id]
       );
       const row = dbUser.rows[0];
@@ -377,6 +465,7 @@ async function authSession(req, res, next) {
       if (row.perfil !== session.user.perfil) {
         session.user.perfil = row.perfil;
       }
+      session.user.permissions = row.permissions || {};
     }
 
     // Renova sessão apenas quando restar menos de 10 min (evita escrita a cada req)
@@ -386,6 +475,12 @@ async function authSession(req, res, next) {
       await salvarSessao(provided, { user: session.user, expiresAt: newExpiry });
       res.cookie(COOKIE_NAME, provided, COOKIE_OPTIONS);
     }
+
+    _sessaoCache.set(provided, {
+      user:      session.user,
+      expiresAt: session.expiresAt,
+      at:        Date.now()
+    });
 
     req.user = session.user;
     return next();
@@ -412,6 +507,58 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+// ─── Acesso por tela (permite override de qualquer tela pra qualquer perfil) ──
+// Pedido do usuário (2026-09-19): até aqui, Chatbot/Configurações (e
+// Campanhas/Métricas fora do teto do perfil) ficavam bloqueadas pra
+// atendente/supervisor mesmo marcando o checkbox em "Acesso às telas" —
+// o checkbox só existia no frontend (09-users.js), mas as rotas por trás
+// continuavam presas em requireAdmin/requireRole, que olham só pro
+// `perfil`, nunca pro `permissions` individual do usuário. Isso tornava a
+// UI enganosa: marcar a tela "funcionava" (salvava no banco), só que a API
+// respondia 403 do mesmo jeito.
+//
+// PROFILE_DEFAULT_SCREENS espelha exatamente PROFILE_SCREEN_ACCESS
+// (user.service.js) e DEFAULT_SCREEN_PERMISSIONS (frontend/js/09-users.js)
+// — as 3 cópias precisam ficar em sincronia; é a mesma duplicação de 3
+// lugares já aceita no resto do projeto pra essa feature (ver comentário
+// em normalizeScreenPermissions), não vale abstrair pra um módulo
+// compartilhado só por isso (evitar overengineering, CLAUDE.md) porque
+// frontend/backend não compartilham módulo hoje.
+const PROFILE_DEFAULT_SCREENS = {
+  atendente: new Set(["dashboard", "conversations", "history", "contacts", "catalogo"]),
+  supervisor: new Set(["dashboard", "conversations", "history", "contacts", "catalogo", "channels", "metrics"])
+};
+
+// Perfil sugere um padrão (PROFILE_DEFAULT_SCREENS acima), mas a permissão
+// individual (users.permissions, migration 027) sempre pode sobrepor — tanto
+// pra LIBERAR uma tela fora do padrão do perfil (o pedido de hoje) quanto
+// pra RETIRAR uma tela que o perfil teria por padrão (comportamento que já
+// existia). Usuários antigos (antes de 2026-09-18) têm permissions='{}' —
+// por isso o fallback pro padrão do perfil quando a chave está ausente é
+// obrigatório, senão todo supervisor/admin antigo perderia acesso de
+// uma hora pra outra ao trocar requireAdmin/requireRole por esta função.
+function hasScreenAccess(user, screenId) {
+  if (!user) return false;
+  if (user.perfil === "admin") return true;
+  const permissions = user.permissions || {};
+  if (typeof permissions[screenId] === "boolean") return permissions[screenId];
+  const defaultSet = PROFILE_DEFAULT_SCREENS[user.perfil] || PROFILE_DEFAULT_SCREENS.atendente;
+  return defaultSet.has(screenId);
+}
+
+// requireScreenAccess("settings") — ou requireScreenAccess("chatbot",
+// "settings") quando a mesma rota atende duas telas do menu (ex:
+// settingsRoutes é usado tanto pela aba Chatbot quanto pela aba
+// Configurações — ver comentário em app.js). Passa se o usuário tiver
+// acesso a QUALQUER uma das telas informadas.
+function requireScreenAccess(...screenIds) {
+  return (req, res, next) => {
+    if (!req.user) return res.status(401).json({ error: "Sessão inválida." });
+    if (screenIds.some(id => hasScreenAccess(req.user, id))) return next();
+    return res.status(403).json({ error: "Acesso negado para este perfil." });
+  };
+}
+
 // Limpeza de sessões expiradas a cada 5 min.
 // unref(): não deve ser o único motivo do processo continuar rodando (não
 // atrapalha shutdown gracioso) — e evita que testes/scripts que só fazem
@@ -425,4 +572,4 @@ setInterval(async () => {
   try { await twoFactorService.limparDesafiosExpirados(); } catch (_) {}
 }, 5 * 60 * 1000).unref();
 
-module.exports = { router, authSession, requireAdmin, requireRole, buscarSessao };
+module.exports = { router, authSession, requireAdmin, requireRole, requireScreenAccess, buscarSessao, invalidarCacheSessao };

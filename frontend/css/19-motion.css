@@ -200,6 +200,38 @@ img[loading="lazy"].is-loaded {
   opacity: 1;
 }
 
+/* ─── Pop de valor mudado (badges/cards numéricos) ─────────────
+   Issue #14: Pendentes/Em andamento, contador de não lidas e os cards
+   do Dashboard trocavam de valor sem nenhum feedback visual. Ação de
+   alta frequência (a cada novo atendimento) → Frequency Gate: só
+   escala, curto, sem opacity/blur. Disparado via setTextPop()
+   (01-utils.js), que só aplica a classe quando o valor realmente
+   muda — não em todo polling/re-render com o mesmo número. */
+@keyframes motionValuePop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+.value-pop {
+  animation: motionValuePop .28s var(--ease-out);
+}
+
+/* ─── Entrada de mensagem nova (chat aberto) ────────────────────
+   Issue #14: bolha de mensagem aparecia instantânea, sem transição.
+   Alta frequência (a cada mensagem trocada) → Frequency Gate: fade +
+   slide bem curto, nunca opacity 0→1 sozinho (ficaria "sumido" demais
+   numa lista já cheia de bolhas). Classe aplicada só nas bolhas
+   realmente novas de uma conversa já aberta (07-conversations.js,
+   openConversation) — reabrir/trocar de conversa não anima a lista
+   inteira. */
+@keyframes motionMsgEnter {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.msg-enter {
+  animation: motionMsgEnter var(--dur-enter) var(--ease-out) both;
+}
+
 /* ─── Overlays com saída animada (modal genérico, dropdowns) ───
    Complementa o .hidden (display:none instantâneo): a classe
    .closing roda a animação de saída antes do JS aplicar .hidden. */
@@ -232,7 +264,9 @@ img[loading="lazy"].is-loaded {
   .skeleton-row::after,
   .btn-loading-spinner,
   .motion-overlay-in,
-  .motion-overlay-out {
+  .motion-overlay-out,
+  .value-pop,
+  .msg-enter {
     animation: none !important;
   }
 }

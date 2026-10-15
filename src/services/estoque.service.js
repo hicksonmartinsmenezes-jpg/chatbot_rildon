@@ -204,6 +204,19 @@ async function importarCsv(caminhoArquivo) {
     for (let i = 0; i < registros.length; i += TAMANHO_LOTE) {
       await _upsertLote(client, registros.slice(i, i + TAMANHO_LOTE));
     }
+    // Auditoria 2026-09-30: código que some do CSV mantinha a última
+    // quantidade para sempre. Zera a quantidade de quem não veio neste CSV
+    // (o upsert acima carimba NOW() nos que vieram; NOW() é fixo na transação).
+    // Trava: só se o CSV cobrir >= 80% dos produtos já cadastrados, pra um
+    // export parcial ("Apenas sem estoque", falha no relatório) não zerar tudo.
+    const { rows: [cont] } = await client.query('SELECT COUNT(*)::int AS n FROM estoque_produtos WHERE atualizado_em < NOW()');
+    const { rows: [tot] } = await client.query('SELECT COUNT(*)::int AS n FROM estoque_produtos');
+    if (tot.n > 0 && registros.length >= tot.n * 0.8 && cont.n > 0) {
+      const r = await client.query('UPDATE estoque_produtos SET qtd_estoque = 0 WHERE atualizado_em < NOW() AND qtd_estoque <> 0');
+      if (r.rowCount) logger.info(`[estoque.service] ${r.rowCount} produto(s) ausentes do CSV tiveram a quantidade zerada`);
+    } else if (cont.n > 0) {
+      logger.warn(`[estoque.service] CSV cobre só ${registros.length} de ${tot.n} produtos — quantidades de ausentes NÃO foram zeradas (export parcial?)`);
+    }
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK');

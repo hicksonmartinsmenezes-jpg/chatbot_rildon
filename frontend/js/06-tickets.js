@@ -30,7 +30,11 @@ async function _loadTicketsCore(silent = false) {
 
     updateStats(data.stats, data.tickets || [], data.liveStats, data.todayStats, data.encerradosHoje);
 
-    if (!firstLoadTickets && data.total > lastTicketTotal) showNewTicketAlert();
+    // Mesmo corte do nova_mensagem (12-socket.js) — usuário sem a tela
+    // "Atendimentos" não deve receber alerta de novo atendimento (pedido
+    // do usuário, 2026-09-21).
+    const podeVerAtendimentos = typeof hasUserScreenPermission !== "function" || hasUserScreenPermission("conversations");
+    if (!firstLoadTickets && data.total > lastTicketTotal && podeVerAtendimentos) showNewTicketAlert();
 
     lastTicketTotal  = data.total;
     firstLoadTickets = false;
@@ -118,11 +122,14 @@ function updateStats(stats, tickets = [], liveStats = null, todayStats = null, e
   // num dia e fechado no seguinte.
   const encerrados = encerradosHoje ?? ((hojeBase.resolvido ?? 0) + (hojeBase.cancelado ?? 0));
 
-  setText("stat-total",    total);
-  setText("stat-aberto",   aberto);    // Pendentes = aberto (todos, sem filtro de data)
-  setText("stat-andamento",andamento); // Ativos    = em_andamento (todos)
+  // setTextPop (Issue #14): pop de escala quando o valor muda de verdade —
+  // esses 4 cards atualizam sozinhos em tempo real (polling/socket), sem
+  // esse feedback o usuário não notava quando um número novo chegava.
+  setTextPop("stat-total",    total);
+  setTextPop("stat-aberto",   aberto);    // Pendentes = aberto (todos, sem filtro de data)
+  setTextPop("stat-andamento",andamento); // Ativos    = em_andamento (todos)
   setText("stat-resolvido",resolvido);
-  setText("stat-encerrados",encerrados);  // Encerrados = fechados (closed_at) HOJE
+  setTextPop("stat-encerrados",encerrados);  // Encerrados = fechados (closed_at) HOJE
   setText("stat-contatos", new Set((tickets || []).map(t => t.userId)).size);
 
   setText("op-aberto",    aberto);

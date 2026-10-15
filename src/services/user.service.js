@@ -8,6 +8,45 @@ const userRepository =
 
 const SALT_ROUNDS = 10;
 
+// Lista canônica das telas do menu — espelha PANEL_SCREEN_PERMISSIONS em
+// frontend/js/09-users.js (mesmos 9 ids). Cada perfil sugere um conjunto
+// PADRÃO de telas (PROFILE_SCREEN_ACCESS abaixo), mas a permissão
+// individual sempre pode sobrepor em qualquer direção — LIBERAR uma tela
+// fora do padrão do perfil (pedido do usuário, 2026-09-19: "não consigo dar
+// permissão... mesmo que seja atendente ou supervisor") ou RETIRAR uma tela
+// que o perfil teria por padrão (comportamento que já existia antes).
+const ALL_SCREEN_IDS = [
+  "dashboard", "conversations", "history", "contacts", "catalogo",
+  "channels", "metrics", "chatbot", "settings"
+];
+
+// "Padrão" de cada perfil quando a tela não foi definida explicitamente em
+// `permissions` — usado só como fallback, nunca mais como teto. admin não
+// tem entrada aqui de propósito (normalizeScreenPermissions trata perfil
+// "admin" à parte, sempre liberando tudo).
+const PROFILE_SCREEN_ACCESS = {
+  atendente: new Set(["dashboard", "conversations", "history", "contacts", "catalogo"]),
+  supervisor: new Set(["dashboard", "conversations", "history", "contacts", "catalogo", "channels", "metrics"])
+};
+
+function normalizeScreenPermissions(perfil, permissions = {}) {
+  if (perfil === "admin") {
+    // admin sempre tem acesso total — não faz sentido restringir a única
+    // conta que administra o resto (evita o risco de autoexclusão
+    // acidental do próprio painel).
+    return Object.fromEntries(ALL_SCREEN_IDS.map(screen => [screen, true]));
+  }
+
+  const defaultSet = PROFILE_SCREEN_ACCESS[perfil] || PROFILE_SCREEN_ACCESS.atendente;
+  const normalized = {};
+  for (const screen of ALL_SCREEN_IDS) {
+    normalized[screen] = permissions[screen] === undefined
+      ? defaultSet.has(screen)
+      : permissions[screen] === true;
+  }
+  return normalized;
+}
+
 async function getUsers(options = {}) {
   return userRepository.findAll(options);
 }
@@ -53,7 +92,8 @@ async function validateUser(usuario, senha) {
     foto: user.foto || "",
     // Só o flag booleano — nunca o segredo/backup codes. Necessário no
     // cliente pra decidir "Ativar 2FA" vs "Desativar 2FA" no perfil.
-    totpEnabled: !!user.totpEnabled
+    totpEnabled: !!user.totpEnabled,
+    permissions: user.permissions || {}
   };
 }
 
@@ -93,7 +133,8 @@ async function createUser(data) {
       perfil: data.perfil || "atendente",
       sector: data.sector || "geral",
       numero: data.numero || "",
-      foto: data.foto || ""
+      foto: data.foto || "",
+      permissions: normalizeScreenPermissions(data.perfil || "atendente", data.permissions || {})
     });
 
     // Mesmo bug do branch de usuário novo abaixo — numero/foto ficavam de
@@ -107,6 +148,7 @@ async function createUser(data) {
       numero: reactivated.numero || "",
       foto: reactivated.foto || "",
       ativo: reactivated.ativo,
+      permissions: reactivated.permissions || {},
       reactivated: true
     };
   }
@@ -124,6 +166,8 @@ async function createUser(data) {
       data.numero || "",
     foto:
       data.foto || "",
+    permissions:
+      normalizeScreenPermissions(data.perfil || "atendente", data.permissions || {}),
     ativo:
       data.ativo !== undefined ? data.ativo : true
   };
@@ -149,7 +193,8 @@ async function createUser(data) {
     sector: created.sector,
     numero: created.numero || "",
     foto: created.foto || "",
-    ativo: created.ativo
+    ativo: created.ativo,
+    permissions: created.permissions || {}
   };
 }
 
@@ -263,7 +308,31 @@ async function updateUserProfile(
       updated.foto || "",
     ativo:
       updated.ativo,
-    totpEnabled: !!updated.totpEnabled
+    totpEnabled: !!updated.totpEnabled,
+    permissions: updated.permissions || {}
+  };
+}
+
+async function updateUserPermissions(id, permissions) {
+  const current = await userRepository.findById(id);
+  if (!current) throw new Error("Usuário não encontrado.");
+
+  const normalizedInput = permissions && typeof permissions === "object" && !Array.isArray(permissions)
+    ? permissions
+    : {};
+  const normalized = normalizeScreenPermissions(current.perfil, normalizedInput);
+  const updated = await userRepository.updatePermissions(id, normalized);
+  if (!updated) throw new Error("Usuário não encontrado.");
+  return {
+    id: updated.id,
+    nome: updated.nome,
+    usuario: updated.usuario,
+    perfil: updated.perfil,
+    sector: updated.sector || "geral",
+    numero: updated.numero || "",
+    foto: updated.foto || "",
+    ativo: updated.ativo,
+    permissions: updated.permissions || {}
   };
 }
 
@@ -310,5 +379,6 @@ module.exports = {
   createUser,
   updateUserProfile,
   updateUserPassword,
+  updateUserPermissions,
   deactivateUser
 };

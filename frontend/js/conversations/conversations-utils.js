@@ -55,6 +55,23 @@ function lastMessage(userId) {
 let _openConvSeq = 0;
 let _openConvAbort = null;
 
+// ─── Paginação do histórico de chat (pedido do usuário, 2026-09-23):
+// "relatorios [na verdade histórico de chat] não precisa aparecer
+// exatamente todos em uma página só, pode ficar divididos... para evitar
+// trava". Antes, abrir uma conversa buscava e renderizava até 500
+// mensagens de uma vez (ver openConversation em 07-conversations.js) —
+// travava o navegador em conversas antigas/longas. Agora só a página mais
+// recente (HISTORY_PAGE_SIZE) é buscada/renderizada ao abrir; o resto só
+// entra sob demanda (botão "Carregar mensagens anteriores" no topo do
+// chat). Estado de paginação é por conversa aberta — resetado sempre que
+// uma conversa DIFERENTE é aberta (ver openConversation).
+const HISTORY_PAGE_SIZE = 50;
+let _historyState = { userId: null, page: 1, hasMore: true, loadingMore: false, topDay: null, bottomDay: null };
+// ids (item.id do histórico) já renderizados na conversa aberta — evita
+// duplicar mensagem ao mesclar a página mais recente de novo (chega
+// mensagem nova via socket) com o que já está no DOM.
+let _renderedHistoryIds = new Set();
+
 function renderMessageStatus(status) {
   switch (status) {
     case "read":      return `<i class="fa-solid fa-check-double" style="color:#53bdeb"></i>`;

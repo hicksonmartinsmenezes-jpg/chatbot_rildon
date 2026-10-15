@@ -43,6 +43,29 @@ const path = require("path");
 // nesse caso obterEstoque() devolve null e o produto aparece normalmente,
 // só sem o badge.
 const estoqueService = require("./estoque.service");
+// PEDIDO DO USUÁRIO (2026-09-04, referência do concorrente KKI Vendas):
+// anexa a versão já reorganizada pela IA (ver organizarAplicacaoIA em
+// ai.service.js) quando já estiver em CACHE — melhora a tabela de aplicação
+// do modal de detalhe (formato mais uniforme "FABRICANTE: modelos" que o
+// texto cru do X2) sem custar nada (só leitura, síncrona, de um Map em
+// memória). Nunca dispara chamada de IA nova aqui — isso só acontece nos
+// fluxos de PDF, de propósito, pra não gastar crédito a cada busca do painel.
+//
+// Require ADIADO (não no topo do arquivo): catalogo-aplicacao-ia.service.js
+// exige ai.service.js, que por sua vez exige ESTE arquivo
+// (buscarPorCodigoOriginal/buscarPorVeiculo/buscarPorNomeProduto) — um
+// require direto aqui no topo cria dependência circular de verdade, e se
+// catalogo-x2.service.js for o primeiro módulo carregado na cadeia de boot,
+// ai.service.js pega um module.exports ainda vazio (undefined nas 3
+// funções). Adiar o require pra dentro da função só resolve na 1ª chamada
+// real (depois que todo o boot já terminou), sem esse risco.
+let _obterAplicacaoOrganizadaCache = null;
+function _aplicacaoOrganizadaCache(texto) {
+  if (!_obterAplicacaoOrganizadaCache) {
+    _obterAplicacaoOrganizadaCache = require("./catalogo-aplicacao-ia.service").obterAplicacaoOrganizadaCache;
+  }
+  return _obterAplicacaoOrganizadaCache(texto);
+}
 
 const DIR_CATALOGO = path.join(__dirname, "../config/catalogo-x2");
 
@@ -96,8 +119,40 @@ let totalProdutosIndexados = 0;
 // interno, ex: nome de carro "KADET T - CORSA - ASTRA") não dá pra confiar
 // no parsing — produto fica sem fabricante identificado, mas continua
 // aparecendo normalmente em qualquer busca por veículo/categoria.
+// Preenchido em _carregarIndices (pré-varredura) antes de indexar.
+let fabricantesParaFallback = new Set();
+let _fallbackFabricanteContagem = 0;
+const FABRICANTE_MIN_PARA_FALLBACK = 20;
+
 function _extrairFabricante(nome) {
-  const partes = String(nome || "").split(" - ");
+  // BUG REAL achado 2026-09-01 (testando import do Catálogo Promocional com
+  // arquivo real do usuário, "Wega Estoque.xlsx"): produto "ELEMENTO
+  // FILTRANTE DE CABINE PEUGEOT 207/ 206/ HOGGAR- WEGA - AKX35157" (código
+  // 123621) tem "WEGA" bem ali no nome, mas caía em "Sem fabricante
+  // identificado" — o separador " - " (espaço-hífen-espaço) que o parsing
+  // exige tinha um typo de cadastro no X2 (falta espaço ANTES do hífen:
+  // "HOGGAR- WEGA" em vez de "HOGGAR - WEGA"), então o split(" - ") virava
+  // 2 blocos em vez de 3. Escaneando o catálogo inteiro (23.475 produtos,
+  // 2026-09-01) esse mesmo padrão de typo afeta 207 produtos reais
+  // (fabricantes válidos como FRONTEC/TIGER/SEG/BOSCH/GAUSS/IKRO ficando
+  // ocultos) — zero regressão nos que já tinham fabricante certo. Fix:
+  // normaliza o hífen "colado" ANTES de splitar — só insere espaço quando o
+  // hífen já tem espaço DEPOIS mas não ANTES. Nunca mexe em hífen de código
+  // composto (ex: "AKX1445-2", "FAP4054/2"), que não têm espaço nenhum ao
+  // redor — continuam sem fabricante identificado, como já era o caso.
+  const normalizado = String(nome || "").replace(/(?<=\S)-(?=\s)/g, " -");
+  const partes = normalizado.split(" - ");
+  if (partes.length === 2) {
+    // Padrão "<descrição> - ZEN 24131" (sem o 2º hífen): o fabricante é a
+    // 1ª palavra da referência, MAS só quando ela já é um fabricante conhecido
+    // (visto em 20+ produtos no padrão de 3 blocos) — ver _carregarIndices.
+    const primeira = partes[1].trim().split(/\s+/)[0].toUpperCase();
+    if (primeira && fabricantesParaFallback.has(primeira)) {
+      _fallbackFabricanteContagem++;
+      return primeira;
+    }
+    return null;
+  }
   if (partes.length !== 3) return null;
   return partes[1].trim();
 }
@@ -124,6 +179,54 @@ function _normalizarFabricante(bruto) {
   if (!limpo || RUIDO_FABRICANTE_RE.test(limpo)) return null;
   const upper = limpo.toUpperCase();
   return FABRICANTE_ALIASES[upper] || upper;
+}
+
+// PEDIDO DO USUÁRIO (2026-09-04): "algumas aplicações podem aparecer também
+// nas descrições" — vários produtos sem `ficha.aplicacao` preenchida têm a
+// marca do veículo/máquina compatível já citada no PRÓPRIO NOME (ex: "FILTRO
+// DE OLEO FORD FIESTA 1.6 96/02"), mas ficavam 100% fora de busca por
+// veículo e caíam em "Outras Aplicações" no Catálogo Completo por causa
+// disso. Esta lista NÃO foi inventada à mão — foi extraída escaneando os
+// textos de `ficha.aplicacao` REAIS já cadastrados em todo o catálogo
+// (~14.183 produtos com aplicação preenchida), pegando o token antes do
+// primeiro ":" de cada segmento separado por ";" (ex: "FORD: FIESTA 1.6
+// 96/02;" -> "FORD") e contando frequência — só entrou marca com 2+
+// ocorrências reais no catálogo, e depois de filtrar manualmente ruído de
+// regex (palavras genéricas tipo "ALTERNADOR", "DIVERSOS", "VEICULOS
+// IMPORTADOS" que também caem nesse formato mas não são marca nenhuma).
+// Guarda só PALAVRA INTEIRA (não substring) pelo mesmo motivo documentado
+// acima em GRUPOS_ALIAS_MARCA (GOL/GOLF) — comparação é sempre contra
+// _normalizar(nome).split(" "), nunca .includes() de string crua.
+const MARCAS_VEICULO_CONHECIDAS = new Set([
+  "FORD", "FIAT", "VW", "GM", "MERCEDES", "RENAULT", "VOLKSWAGEN", "VOLKSWAGEM",
+  "CHEVROLET", "TOYOTA", "HYUNDAI", "AUDI", "AGRALE", "CITROEN", "CASE",
+  "VOLVO", "SCANIA", "HONDA", "IVECO", "MITSUBISHI", "NISSAN", "KIA",
+  "CATERPILLAR", "SEAT", "CUMMINS", "CHERY", "PEUGEOT", "MB", "MBB", "BMW",
+  "CHRYSLER", "MAXION", "VALMET", "OPEL", "DEUTZ", "DEERE", "ATLAS", "COPCO",
+  "BOBCAT", "DAEWOO", "EATON", "GURGEL", "MF", "MWM", "PORSCHE", "HYSTER",
+  "ISUZU", "KOMATSU", "CLARK", "VALTRA", "DAIHATSU", "AGCO", "JEEP", "SUZUKI",
+  "ROVER", "DODGE", "SSANGYONG", "SKODA", "LIFAN", "MAFERSA", "PERKINS",
+  "LEXUS", "MAZDA", "DAF", "INFINITI", "BELL", "CARRIER", "JCB", "FARYMANN",
+  "JAC", "BOMAG", "TEREX", "MAN", "EFFA", "BOSCH", "FREIGHTLINER", "VAUXHALL",
+  "LADA", "TROLLER", "JAGUAR", "ALFA", "ROMEO", "WILLYS", "HOLLAND", "MASSEY",
+  "FERGUSON", "ASIA", "ACURA",
+]);
+
+function _contemMarcaConhecida(nomeNormalizado) {
+  if (!nomeNormalizado) return false;
+  for (const palavra of nomeNormalizado.split(" ")) {
+    if (MARCAS_VEICULO_CONHECIDAS.has(palavra)) return true;
+  }
+  return false;
+}
+
+// PEDIDO DO USUÁRIO (2026-09-04, referência do concorrente KKI Vendas): a
+// aba "Critérios de Pesquisa" do painel ganhou um campo "Montadora" com
+// sugestões — em vez de inventar uma lista à parte, reaproveita a MESMA
+// MARCAS_VEICULO_CONHECIDAS já validada contra dado real do catálogo (ver
+// comentário acima). Ordenada pra exibição no <datalist> do frontend.
+function listarMarcasVeiculoConhecidas() {
+  return [...MARCAS_VEICULO_CONHECIDAS].sort((a, b) => a.localeCompare(b, "pt-BR"));
 }
 
 function _indexarProduto(p) {
@@ -177,6 +280,14 @@ function _indexarProduto(p) {
     codigo: p.codigo, nome: p.nome, secao: p.secao, linha: p.linha,
     referencia: ficha.referencia || null, fabricante,
     equivalentes, referenciasCruzadas,
+    // BUG REAL corrigido 2026-09-04 (usuário reportou aba "Especificação
+    // Técnica" do modal sempre vazia, mesmo com dado real no X2 — ex:
+    // AMPERIMETRO 30.304-12M tem "3. Dados Técnicos: 50A TAMANHO: 52MM" no
+    // X2): ficha.dadosTecnicos nunca tinha sido incluído em `base`, então
+    // nenhuma busca (buscarPorCodigo/buscarPorNomePainel/buscarProdutosPainel)
+    // devolvia esse campo pro painel — a aba estava com um texto FIXO de
+    // "sem dados" no frontend, não checava dado nenhum de verdade.
+    dadosTecnicos: ficha.dadosTecnicos || null,
     // Código de barras (pedido do usuário, 2026-07-30): usado no cabeçalho
     // do painel "Ver referências", que reproduz o mesmo cartão visual da
     // tela "Equivalentes" do X2 (Código Produto / Código Barras / Código
@@ -218,7 +329,17 @@ function _indexarProduto(p) {
   // do " - " (o código de verdade); o texto completo continua guardado em
   // `referencia` pra exibição, sem mudança.
   if (ficha.referencia) {
-    const refCodigoParte = ficha.referencia.includes(" - ") ? ficha.referencia.split(" - ")[0] : ficha.referencia;
+    // BUG REAL achado 2026-09-01 testando import de preço com "Wega
+    // Estoque.xlsx" real (FCD0721/FCD0727 sumindo de busca por código e do
+    // Catálogo Promocional): mesmo typo de digitação do X2 já corrigido em
+    // _extrairFabricante — hífen sem espaço antes ("FCD-0721- WEGA",
+    // "FCD0727- WEGA" em vez de "FCD0721 - WEGA"/"FCD0727 - WEGA") fazia
+    // `.includes(" - ")` falhar, então refCodigoParte ficava com o "- WEGA"
+    // grudado e _normalizarCodigo produzia "FCD0721WEGA"/"FCD0727WEGA" —
+    // nunca batendo com o código "FCD0721"/"FCD0727" do arquivo de preço.
+    // Normaliza o hífen ANTES de checar/splitar em " - ", mesma técnica.
+    const referenciaNormalizada = ficha.referencia.replace(/(?<=\S)-(?=\s)/g, " -");
+    const refCodigoParte = referenciaNormalizada.includes(" - ") ? referenciaNormalizada.split(" - ")[0] : referenciaNormalizada;
     const refNorm = _normalizarCodigo(refCodigoParte);
     if (refNorm.length >= 4 && !referenciaIndex.has(refNorm)) {
       referenciaIndex.set(refNorm, base);
@@ -247,6 +368,29 @@ function _indexarProduto(p) {
       ) {
         referenciaIndex.set(semPrefixo, base);
       }
+    }
+  }
+
+  // Pedido do usuário (2026-09-05, bug real): "M01.010 tem foto no X2...
+  // porém no catálogo não aparece" — produto 126619 (marca "12M",
+  // "TERMOMETRO DA AGUA... - 12M - M01.010"): o campo "Referência" do X2 pra
+  // esse produto vem formatado como "01.010 - 12M" (número primeiro, marca
+  // depois — indexado acima), mas o MESMO produto embute o código como
+  // "M01.010" (letra da marca colada no número) na 3ª parte do próprio
+  // nome — X2 usa as duas grafias pro mesmo produto de forma inconsistente
+  // (confirmado: não é erro de extração nosso, os dois valores vêm assim
+  // do próprio scrape). Sem isso, buscar EXATAMENTE como o produto aparece
+  // escrito no X2/na foto baixada ("M01.010") não achava nada — nem
+  // buscarPorCodigo nem buscarPorCodigoOriginal resolviam pro código
+  // interno 126619. Indexa a 3ª parte do nome (mesmo split de 3 blocos
+  // usado por _extrairFabricante) como alias de referência também, só
+  // quando parece um código de verdade e não colide com outra referência
+  // já cadastrada — mesmo critério de tamanho/dígito já usado acima.
+  const partesNomeParaRef = String(p.nome || "").replace(/(?<=\S)-(?=\s)/g, " -").split(" - ");
+  if (partesNomeParaRef.length === 3) {
+    const refDoNomeNorm = _normalizarCodigo(partesNomeParaRef[2]);
+    if (refDoNomeNorm.length >= 4 && /\d/.test(refDoNomeNorm) && !referenciaIndex.has(refDoNomeNorm)) {
+      referenciaIndex.set(refDoNomeNorm, base);
     }
   }
 
@@ -299,6 +443,27 @@ function _indexarProduto(p) {
     };
     produtosComAplicacao.push(item);
     todosProdutos.push(item);
+  } else if (_contemMarcaConhecida(nomeNormalizado)) {
+    // Fallback (pedido do usuário, 2026-09-04): sem `ficha.aplicacao`, mas o
+    // NOME do produto já cita uma marca de veículo/máquina conhecida (ver
+    // MARCAS_VEICULO_CONHECIDAS acima) — usa o próprio nome como texto de
+    // aplicação, com o MESMO tratamento do bloco acima (palavras/faixa de
+    // ano), pra passar a valer tanto na busca por veículo do painel quanto
+    // no agrupamento por marca do Catálogo Completo/organizarAplicacaoIA
+    // (antes caía direto em "Outras Aplicações", mesmo já tendo a marca
+    // escrita ali no nome).
+    const aplicacaoNormalizada = nomeNormalizado;
+    const aplicacaoPalavras = new Set(aplicacaoNormalizada.split(" "));
+    item = {
+      ...base,
+      aplicacao: p.nome,
+      aplicacaoNormalizada,
+      aplicacaoPalavras,
+      faixasAno: _extrairFaixasDeAno(p.nome),
+      universal: false,
+    };
+    produtosComAplicacao.push(item);
+    todosProdutos.push(item);
   } else {
     // Sem texto de aplicação — ainda entra em todosProdutos (pra aparecer
     // na navegação por Seção/Linha), só não em produtosComAplicacao (não
@@ -332,9 +497,23 @@ function _extrairFaixasDeAno(texto) {
   return faixas;
 }
 
-function _anoCompativel(faixas, anoBuscado) {
-  if (!anoBuscado || !faixas || !faixas.length) return false;
-  return faixas.some(f => anoBuscado >= f.inicio && (f.fim === null || anoBuscado <= f.fim));
+// PEDIDO DO USUÁRIO (2026-09-04, referência KKI Vendas): campo único "Ano"
+// virou "Ano Inicial"/"Ano Final" (faixa) no painel — estende a assinatura
+// pra aceitar uma faixa buscada, checando INTERSEÇÃO com a faixa do produto
+// em vez de um ano exato. Quando só `anoInicio` é passado (uso antigo,
+// buscarPorNomePainel/rotas legadas), `anoFim` cai pro mesmo valor e o
+// resultado é IDÊNTICO ao comportamento anterior — mesma matemática, só
+// que anoBuscado passa a se chamar anoInicio===anoFim. Continua sendo
+// critério de RANKING, nunca de exclusão (mesma decisão documentada acima
+// em buscarProdutosPainel: produto sem ano cadastrado nunca é cortado).
+function _anoCompativel(faixas, anoInicio, anoFim = null) {
+  const buscaInicio = anoInicio || anoFim;
+  const buscaFim = anoFim || anoInicio;
+  if (!buscaInicio || !faixas || !faixas.length) return false;
+  return faixas.some(f => {
+    const fimFaixa = f.fim === null ? Infinity : f.fim;
+    return buscaInicio <= fimFaixa && buscaFim >= f.inicio;
+  });
 }
 
 function _tokens(texto) {
@@ -376,7 +555,113 @@ function _tokenBateAplicacao(token, aplicacaoPalavras) {
 // Arquivos em catalogo-x2/ que NÃO são catálogo de produto (mapeamentos
 // auxiliares usados por outro serviço) — ver comentário longo em
 // _indexarProduto sobre o bug real que isso causou em 2026-08-13.
-const ARQUIVOS_NAO_PRODUTO = new Set(["cod-fornecedor.json"]);
+// BUG REAL corrigido em 2026-08-27: aplicacao-ia-cache.json (Issue #23,
+// cache de texto de "aplicação" já organizado pela IA — ver
+// catalogo-aplicacao-ia.service.js) mora no MESMO diretório mas é um
+// objeto hash→texto, não um array de produtos. Assim que o arquivo passou
+// a existir de verdade (1º export real do Catálogo Completo que cacheou
+// algo), _carregarIndices tentava iterar esse objeto com `for...of` e
+// derrubava o boot inteiro do bot com "TypeError: data is not iterable" —
+// mesma classe de bug do cod-fornecedor.json em 2026-08-13, mesmo fix.
+// 2026-09-02: fotos-preferencias.json (Catálogo — trocar foto principal
+// manualmente, catalogo-fotos.service.js) entrou na lista pelo MESMO motivo
+// dos dois de cima — mora no mesmo diretório, é um objeto código→nome de
+// arquivo, não array de produtos. Reproduzido ao vivo: assim que o
+// atendente usa a troca de foto pela 1ª vez, o arquivo passa a existir e a
+// PRÓXIMA vez que o índice de produtos for (re)carregado (reiniciar o bot,
+// ou POST /catalogo/produtos/recarregar) quebra com "TypeError: data is not
+// iterable", igual aconteceu com os outros dois — o catálogo INTEIRO para
+// de carregar, não só a foto.
+// fotos-ocultas.json (2026-09-02, feature de ocultar foto) adicionado aqui
+// de propósito — mesmo bug real já corrigido pra fotos-preferencias.json:
+// esse loop varre TODO .json da pasta catalogo-x2/ achando que é um arquivo
+// de produtos; qualquer JSON novo de config/estado que caia nessa mesma
+// pasta tem que entrar nessa lista, senão quebra o catálogo inteiro.
+const ARQUIVOS_NAO_PRODUTO = new Set(["cod-fornecedor.json", "aplicacao-ia-cache.json", "fotos-preferencias.json", "fotos-ocultas.json", "categoria-correcoes.json"]);
+
+// PEDIDO DO USUÁRIO (2026-09-05, achado investigando M02051/M02038 sob a
+// Linha errada "AMPERÍMETRO"): em vez de escrever um script de reparo
+// cirúrgico cada vez que o X2 cadastra um produto na categoria errada
+// (aconteceu de verdade, confirmado ao vivo contra o X2 — ver
+// scripts/repair-linha-manometro-em-amperimetro.js), o atendente corrige
+// direto no painel. Mesmo padrão NÃO-DESTRUTIVO já usado pra foto
+// preferida/oculta (ver definirFotoPreferida/ocultarFoto em
+// catalogo-fotos.service.js): a correção fica só num JSON à parte
+// (categoria-correcoes.json), nunca sobrescreve o dado bruto do X2 nos
+// arquivos de Seção — sobrevive a recarregar índice, a reinício do bot, e
+// (diferente de editar o JSON de produto direto) sobrevive também ao caso
+// raro de um código sumir e reentrar num resync futuro (x2-catalogo-sync.js
+// nunca mexe em produto já existente, mas se o código for removido e depois
+// recadastrado como "novo", uma edição direta no arquivo de produto se
+// perderia; a correção aqui não, porque é indexada pelo próprio código).
+// Escopo v1 (decisão do usuário): só o campo `linha` — não `secao` nem
+// nenhum campo de `ficha` (aplicação/dadosTecnicos/equivalentes), que não
+// têm fonte confiável pra corrigir sem risco (ver aviso em
+// x2-catalogo-sync.js sobre dado errado em aplicação ser pior que não ter
+// ficha nenhuma).
+const CORRECOES_CATEGORIA_PATH = path.join(DIR_CATALOGO, "categoria-correcoes.json");
+
+let correcoesCategoria = null; // Map<codigo, { linha }> — lazy, carregado do disco na 1ª chamada.
+
+function _garantirCorrecoesCategoria() {
+  if (correcoesCategoria) return correcoesCategoria;
+  correcoesCategoria = new Map();
+  try {
+    const bruto = JSON.parse(fs.readFileSync(CORRECOES_CATEGORIA_PATH, "utf8"));
+    for (const [codigo, correcao] of Object.entries(bruto)) {
+      if (correcao && correcao.linha) correcoesCategoria.set(String(codigo), { linha: String(correcao.linha) });
+    }
+  } catch (e) {
+    if (e.code !== "ENOENT") {
+      console.error("[catalogo-x2.service] falha ao ler categoria-correcoes.json:", e.message);
+    }
+  }
+  return correcoesCategoria;
+}
+
+function _salvarCorrecoesCategoria() {
+  const obj = Object.fromEntries(correcoesCategoria);
+  fs.writeFileSync(CORRECOES_CATEGORIA_PATH, JSON.stringify(obj, null, 2) + "\n", "utf8");
+}
+
+// BUG REAL achado 2026-09-04 (usuário reportou produto após produto com
+// aplicação/produtos similares vazios no modal do Catálogo "mesmo tendo tudo
+// no sistema"): o MESMO código de produto aparece cadastrado em mais de um
+// arquivo de seção — normalmente uma cópia "de casa" com `ficha` completa
+// (aplicação/equivalentes/dados técnicos parseados) e uma cópia fantasma
+// (mesmo nome, seção errada, `ficha: null`) sobrando em outro arquivo depois
+// de alguma reorganização de seção no X2. Confirmado num scan completo dos 26
+// arquivos: 7.702 códigos duplicados desse jeito — quase metade do catálogo.
+// _carregarIndices() lia os arquivos em ORDEM ALFABÉTICA e cada _indexarProduto
+// sobrescrevia produtosPorCodigoIndex sem checar nada — então sempre que a
+// cópia vazia estava num arquivo que carregava DEPOIS da cópia boa (ordem
+// alfabética, não tem nada a ver com qual é "mais nova"), ela apagava a boa
+// da memória. Não é cache desatualizado — é bug de indexação, incondicional a
+// reload/restart. Confirmado também que nos 7.702 casos reais NUNCA existem
+// duas cópias com ficha preenchida ao mesmo tempo pro mesmo código — ou seja,
+// escolher "a que tem ficha com conteúdo" nunca é ambíguo.
+function _fichaTemConteudo(ficha) {
+  if (!ficha || typeof ficha !== "object") return false;
+  return Object.values(ficha).some(v => {
+    if (v === null || v === undefined || v === "") return false;
+    if (Array.isArray(v)) return v.length > 0;
+    if (typeof v === "object") return Object.keys(v).length > 0;
+    return true;
+  });
+}
+
+// Decide qual das duas cópias (mesmo código, arquivos diferentes) vence:
+// prioriza ter `nome` (registro de produto de verdade — ver guarda em
+// _indexarProduto) e, entre duas com nome, prioriza a que tem ficha com
+// conteúdo. Em qualquer empate mantém a primeira encontrada (estável,
+// determinístico) — só troca quando a nova é estritamente melhor.
+function _melhorRegistroDuplicado(atual, novo) {
+  if (!atual) return novo;
+  if (!atual.nome && novo.nome) return novo;
+  if (atual.nome && !novo.nome) return atual;
+  if (!_fichaTemConteudo(atual.ficha) && _fichaTemConteudo(novo.ficha)) return novo;
+  return atual;
+}
 
 function _carregarIndices() {
   let arquivos;
@@ -388,6 +673,12 @@ function _carregarIndices() {
     return;
   }
 
+  // Pré-varre TODOS os arquivos antes de indexar de verdade, resolvendo
+  // duplicatas de código entre arquivos (ver comentário acima) — só depois
+  // chama _indexarProduto uma vez por código, já com o melhor registro
+  // escolhido, em vez de indexar tudo em ordem de arquivo e deixar o último
+  // sobrescrever cegamente.
+  const melhorPorCodigo = new Map();
   for (const arquivo of arquivos) {
     let data;
     try {
@@ -396,14 +687,45 @@ function _carregarIndices() {
       console.error(`[catalogo-x2.service] falha ao ler ${arquivo}:`, e.message);
       continue;
     }
-    for (const p of data) _indexarProduto(p);
+    for (const p of data) {
+      if (!p || !p.codigo) continue;
+      melhorPorCodigo.set(p.codigo, _melhorRegistroDuplicado(melhorPorCodigo.get(p.codigo), p));
+    }
+  }
+
+  // Aplica correções manuais de categoria (ver comentário de
+  // CORRECOES_CATEGORIA_PATH acima) ANTES de indexar — assim a Linha
+  // corrigida propaga sozinha pra todo mundo que lê `p.linha`/`item.linha`
+  // depois (busca por veículo/nome/código, Catálogo Completo, índice do
+  // PDF, dropdown de Linhas), sem precisar duplicar a lógica em cada lugar.
+  const correcoes = _garantirCorrecoesCategoria();
+
+  // Fabricantes "conhecidos" = os que aparecem em 20+ produtos no padrão de
+  // 3 blocos. Servem só pro fallback de nomes "<descrição> - ZEN 24131".
+  const contagem3 = new Map();
+  for (const p of melhorPorCodigo.values()) {
+    const partes = String(p.nome || "").replace(/(?<=\S)-(?=\s)/g, " -").split(" - ");
+    if (partes.length !== 3) continue;
+    const f = _normalizarFabricante(partes[1].trim());
+    if (f) contagem3.set(f, (contagem3.get(f) || 0) + 1);
+  }
+  fabricantesParaFallback = new Set(
+    [...contagem3].filter(([f, n]) => n >= FABRICANTE_MIN_PARA_FALLBACK && !/\s/.test(f)).map(([f]) => f)
+  );
+  _fallbackFabricanteContagem = 0;
+
+  for (const p of melhorPorCodigo.values()) {
+    const correcao = correcoes.get(String(p.codigo));
+    if (correcao) p.linha = correcao.linha;
+    _indexarProduto(p);
   }
 
   console.log(
     `[catalogo-x2.service] índice pronto: ${totalProdutosIndexados} produtos, ` +
     `${equivalenteIndex.size} códigos equivalentes, ${produtosComAplicacao.length} com aplicação/veículo ` +
     `(${todosProdutos.length - produtosComAplicacao.length} sem aplicação, navegáveis só por Seção/Linha), ` +
-    `${fabricanteCount.size} fabricantes distintos identificados.`
+    `${fabricanteCount.size} fabricantes distintos identificados ` +
+    `(${_fallbackFabricanteContagem} deles pelo padrão "descrição - FAB referência").`
   );
 }
 
@@ -413,6 +735,15 @@ function _carregarIndices() {
 // sem esconder marcas reais pequenas da loja.
 const FABRICANTE_MIN_OCORRENCIAS = 5;
 let fabricantesDisponiveis = [];
+
+// "MECÂNICA" é uma das 26 seções oficiais do X2 (ver SECOES em
+// x2-fotos-scraper.js — junto de ALTERNADOR, BUZINAS, COMPONENTES
+// ELÉTRICOS etc.). Pedido do usuário (2026-09-03): um fabricante como
+// PERFECT pode ter peças cadastradas em "MECÂNICA" E em outras seções
+// (as "elétricas", no vocabulário do usuário) ao mesmo tempo — usada por
+// listarFabricantesCatalogoCompleto/buscarProdutosPainel (tipoCompleto)
+// pra separar os dois em catálogos diferentes.
+const SECAO_MECANICA_NORM = _normalizar("MECÂNICA");
 
 // Palavras que vêm dos nomes das 26 seções (ex: "motor", "partida",
 // "alternador", "injecao", "eletronica") — nunca servem de sinal de
@@ -461,9 +792,178 @@ function recarregarIndices() {
 
 recarregarIndices();
 
+// ─── Correção manual de categoria (Linha) — pedido do usuário 2026-09-05 ──
+// Ver comentário de CORRECOES_CATEGORIA_PATH acima pro porquê do overlay em
+// vez de editar o JSON de produto direto.
+
+/**
+ * Lista, pra cada Seção conhecida, as Linhas já existentes nela — usado
+ * pelo dropdown "editar categoria" do painel (escolher uma Linha existente
+ * evita criar "MANÔMETRO DO ÓLEO" e "MANOMETRO DO OLEO" como duas Linhas
+ * parecidas por erro de digitação; digitar uma Linha nova continua livre).
+ * Computado sob demanda (não fica em cache) — só é chamado quando o
+ * atendente abre o formulário de edição, não em toda busca do painel.
+ *
+ * NOME DE PROPÓSITO DIFERENTE de `listarLinhasPorSecao` (catalogo.service.js
+ * — dropdown dependente Seção→Linha da busca do painel, recebe 1 `secao` e
+ * devolve só as linhas dela, vindo das ~397 linhas genéricas cadastradas à
+ * mão, não deste catálogo X2). Nomes parecidos de propósito, serviços
+ * diferentes — não confundir/importar um pelo outro.
+ */
+function listarLinhasParaEdicaoCategoria() {
+  const porSecao = new Map();
+  for (const p of todosProdutos) {
+    if (!p.secao || !p.linha) continue;
+    if (!porSecao.has(p.secao)) porSecao.set(p.secao, new Set());
+    porSecao.get(p.secao).add(p.linha);
+  }
+  return [...porSecao.entries()]
+    .map(([secao, linhas]) => ({ secao, linhas: [...linhas].sort((a, b) => a.localeCompare(b, "pt-BR")) }))
+    .sort((a, b) => a.secao.localeCompare(b.secao, "pt-BR"));
+}
+
+/**
+ * Corrige a Linha de um produto (código interno da loja) — persiste em
+ * categoria-correcoes.json e recarrega os índices na hora pra já valer na
+ * busca/Catálogo Completo seguintes, sem precisar de reinício. Lança erro
+ * "de negócio" (código não encontrado / linha vazia) — o controller trata
+ * como 400, não 500. `novaLinha` vazia/null REMOVE a correção (volta a
+ * mostrar o valor original do X2).
+ */
+function definirLinhaProduto(codigo, novaLinha) {
+  const norm = _normalizarCodigo(codigo);
+  const produto = produtosPorCodigoIndex.get(norm);
+  if (!produto) {
+    throw new Error(`Código "${codigo}" não encontrado no catálogo.`);
+  }
+
+  const linhaLimpa = String(novaLinha || "").trim();
+  const correcoes = _garantirCorrecoesCategoria();
+
+  if (!linhaLimpa) {
+    correcoes.delete(produto.codigo);
+  } else {
+    correcoes.set(produto.codigo, { linha: linhaLimpa });
+  }
+  _salvarCorrecoesCategoria();
+  recarregarIndices();
+
+  const atualizado = produtosPorCodigoIndex.get(norm);
+  return atualizado || null;
+}
+
 // ─── Fabricante da peça (Task #250-252, pedido do usuário em 2026-07-23) ──
 function listarFabricantes() {
   return fabricantesDisponiveis;
+}
+
+// Pedido do usuário (2026-09-03): "temos a divisão de peças cadastradas
+// como mecânica para esses catálogos [...] preciso que faça a separação
+// das que são elétricas e mecânicas [...] quando eu for selecionar o
+// tipo de catálogo que eu queira preciso que tenha essa separação algo
+// como Perfect - Mecânica" — usada só pelo seletor da aba "Catálogo
+// Completo" (não pelo filtro comum de fabricante do painel, que continua
+// em listarFabricantes() sem separação). Cada fabricante vira 1 ou 2
+// "opções": se ele tem produto NA seção MECÂNICA e produto FORA dela ao
+// mesmo tempo, vira duas opções (uma pra cada tipo); se só tem um dos
+// dois, vira uma opção só — rotulada "- Mecânica" quando é esse o único
+// tipo (pra bater com o pedido "Perfect - Mecânica"), mas SEM rótulo
+// quando o único tipo é "fora de MECÂNICA" (a esmagadora maioria dos
+// fabricantes, que nunca teve nada em MECÂNICA — não faz sentido
+// rotular todo mundo de "- Elétrica" só por causa de alguns poucos que
+// têm as duas). `value` é o que o frontend devolve pra
+// /api/catalogo/buscar e /api/catalogo/exportar-pdf sem tradução
+// nenhuma — ver decodificarFabricanteCompleto, que entende o sufixo
+// "::mecanica"/"::eletrica".
+// Pedido do usuário (2026-09-05): "linha diversos não existe no nosso
+// sistema [como Linha] mas a subcategoria 'Diversos' nas aplicações
+// existe [...] pegue esses produtos com linhas diversos e coloque como se
+// fosse outro Fabricante em outro catalogo mesmos com produtos de outros
+// fabricantes [...] agrupe por marca de veículo [...] em catalogo
+// completo, deixe no selection a opção diversos" — X2 usa "DIVERSOS" como
+// Linha catch-all (peça sem categoria específica, ver produto real
+// código 126633 "PORCA CONEXAO... MBB/VALMET", linha="DIVERSOS", em
+// vários fabricantes/Seções diferentes). Em vez de cada fabricante exibir
+// sua fatia de "Diversos" misturada com as Linhas de verdade dele (onde
+// vira ruído — não é uma Linha informativa), essa pseudo-opção agrega
+// TODOS os produtos linha="DIVERSOS" da base inteira (cruzando
+// fabricante) num catálogo à parte, reaproveitando a mesma tela/seletor
+// de sempre — ver buscarProdutosPainel (filtro por p.linha em vez de
+// p.fabricante quando fabricanteNorm==="DIVERSOS") e
+// gerarPdfCatalogoCompleto(agruparPorMarca=true) em catalogo-pdf.service.js
+// (agrupa por marca de veículo em vez de por Linha, já que aqui todo
+// mundo compartilha a mesma Linha catch-all — agrupar por ela seria
+// inútil).
+// BUG REAL achado em auditoria (2026-09-23): PSEUDO_FABRICANTE_DIVERSOS
+// usava o MESMO literal "DIVERSOS" tanto pra (a) identificar produtos cuja
+// Linha é "DIVERSOS" (catch-all de categoria, ver comentário acima) quanto
+// pra (b) ser o `value` do dropdown que o frontend manda de volta como
+// filtro de FABRICANTE. Só que existe um fabricante DE VERDADE cadastrado
+// no X2 chamado, coincidentemente, "DIVERSOS" — com produtos Mecânica E
+// Elétrica próprios (nada a ver com a Linha catch-all). Como
+// buscarProdutosPainel (abaixo) decide "é a pseudo-opção?" comparando
+// fabricanteNorm === PSEUDO_FABRICANTE_DIVERSOS, selecionar esse fabricante
+// real no dropdown ("DIVERSOS - Mecânica"/"DIVERSOS - Elétrica") caía
+// sempre no ramo da pseudo-opção — filtrando por p.linha="DIVERSOS" (nunca
+// visto nesses produtos) em vez de por p.fabricante="DIVERSOS" — resultado:
+// "DIVERSOS - Mecânica" sempre devolvia 0 produtos, e "DIVERSOS - Elétrica"
+// devolvia os produtos ERRADOS (os da pseudo-opção, não os do fabricante).
+// Fix: dois identificadores agora, cada um só usado pro seu próprio fim.
+// LINHA_DIVERSOS continua "DIVERSOS" (é o valor de verdade que existe em
+// p.linha, não pode mudar). PSEUDO_FABRICANTE_DIVERSOS vira um sentinel que
+// nenhum fabricante real jamais teria por acaso, eliminando a colisão —
+// muda só o `value` que o frontend recebe/devolve pra essa opção específica,
+// sem afetar em nada o fabricante real "DIVERSOS" nem o restante do fluxo
+// (rótulo exibido ao usuário continua "Diversos (todos os fabricantes)").
+const LINHA_DIVERSOS = "DIVERSOS";
+const PSEUDO_FABRICANTE_DIVERSOS = "__DIVERSOS_TODOS_FABRICANTES__";
+
+function listarFabricantesCatalogoCompleto() {
+  const porFabricante = new Map(); // fabricante -> { temMecanica, temOutras }
+  let temProdutoDiversos = false;
+  todosProdutos.forEach((p) => {
+    if (_normalizar(p.linha) === _normalizar(LINHA_DIVERSOS)) temProdutoDiversos = true;
+    if (!p.fabricante) return;
+    if (!porFabricante.has(p.fabricante)) porFabricante.set(p.fabricante, { temMecanica: false, temOutras: false });
+    const info = porFabricante.get(p.fabricante);
+    if (p.secao && _normalizar(p.secao) === SECAO_MECANICA_NORM) info.temMecanica = true;
+    else info.temOutras = true;
+  });
+
+  const opcoes = [];
+  fabricantesDisponiveis.forEach((fabricante) => {
+    const info = porFabricante.get(fabricante) || { temMecanica: false, temOutras: false };
+    if (info.temMecanica && info.temOutras) {
+      opcoes.push({ value: `${fabricante}::mecanica`, label: `${fabricante} - Mecânica` });
+      opcoes.push({ value: `${fabricante}::eletrica`, label: `${fabricante} - Elétrica` });
+    } else if (info.temMecanica) {
+      opcoes.push({ value: `${fabricante}::mecanica`, label: `${fabricante} - Mecânica` });
+    } else {
+      opcoes.push({ value: fabricante, label: fabricante });
+    }
+  });
+  // Sempre por último — pseudo-opção, não é um fabricante de verdade, não
+  // faz sentido intercalada em ordem alfabética com os fabricantes reais.
+  if (temProdutoDiversos) {
+    opcoes.push({ value: PSEUDO_FABRICANTE_DIVERSOS, label: "Diversos (todos os fabricantes)" });
+  }
+  return opcoes;
+}
+
+// Decodifica o `value` vindo do seletor da aba "Catálogo Completo" (ver
+// listarFabricantesCatalogoCompleto acima) — separa o nome do fabricante
+// de verdade do sufixo "::mecanica"/"::eletrica", se tiver algum. Usada
+// tanto por /api/catalogo/buscar (contagem antes de gerar) quanto por
+// /api/catalogo/exportar-pdf (geração de verdade), pra sempre concordarem
+// no mesmo total. "::" nunca ocorre num nome de fabricante de verdade
+// (vem sempre do dropdown, nunca de texto livre digitado), então essa
+// checagem não arrisca cortar um fabricante legítimo que tenha esses
+// caracteres por acaso.
+function decodificarFabricanteCompleto(valorBruto) {
+  const valor = String(valorBruto || "").trim();
+  const match = valor.match(/^(.*)::(mecanica|eletrica)$/);
+  if (!match) return { fabricante: valor, tipoCompleto: null };
+  return { fabricante: match[1], tipoCompleto: match[2] };
 }
 
 // ─── Busca direta por código de fabricante/referência/código interno
@@ -493,8 +993,14 @@ function _resolverEquivalente(codigoBruto) {
 }
 
 // Formato exposto ao frontend: { qtd, unidade, precoVarejo, precoAtacado }
-// ou null (sem dado de estoque pra esse código — a maioria dos ~17.400
-// produtos do catálogo, já que o Relatório de Estoque cobre só ~5.200).
+// ou null (sem dado de estoque pra esse código). Cobertura real (export
+// de 2026-09-05, ver src/data/estoque-latest.csv): 17.569 produtos, 100%
+// com preço — bem perto do catálogo inteiro. O "cobre só ~5.200 de
+// 17.400" documentado aqui antes vinha de um export truncado por um bug
+// no scraper (fixado 2026-08-10, ver scripts/x2-estoque-export.js) que
+// ninguém tinha revalidado com uma rodada nova até agora — não é mais
+// verdade, mas como é um export do dia (roda de novo periodicamente),
+// null continua sendo um caso real e esperado, não bug.
 // custoMedio fica de fora de propósito (preço de custo não deve aparecer
 // pro atendente na tela de venda).
 function _anexarEstoque(codigo) {
@@ -533,12 +1039,24 @@ function buscarPorCodigo(codigoBruto, { limite = 30 } = {}) {
   // real, onde código interno é sempre numérico e longo).
   if (!codigo) return [];
 
+  // ORDEM IMPORTA: Set preserva ordem de inserção, e resultado[0] é usado
+  // como "melhor match" em vários pontos (ex: _resolverProdutosPorCodigos
+  // no catalogo.controller.js). BUG REAL achado 2026-09-01 testando import
+  // de preços com arquivo real (Wega Estoque.xlsx): equivalente (OEM de
+  // OUTRO fabricante que só CITA este código como referência cruzada) era
+  // inserido ANTES do match exato da própria referência/código interno —
+  // então buscar "JFA0K14" (referência própria do produto Wega 123517)
+  // devolvia primeiro o produto 129168 (Filtros Brasil, EAFB114), que só
+  // lista JFA0K14 como equivalente OEM. Preço do arquivo caía certo (o
+  // valor buscado era o mesmo), mas o PRODUTO exibido/cadastrado ficava
+  // errado. Fix: match exato (código interno da loja ou referência própria
+  // do produto) sempre vem primeiro; equivalente/OEM só como fallback.
   const codigosInternos = new Set();
+  if (produtosPorCodigoIndex.has(codigo)) codigosInternos.add(codigo);
+  if (referenciaIndex.has(codigo)) codigosInternos.add(_normalizarCodigo(referenciaIndex.get(codigo).codigo));
   for (const item of (equivalenteIndex.get(codigo) || [])) {
     codigosInternos.add(_normalizarCodigo(item.codigo));
   }
-  if (referenciaIndex.has(codigo)) codigosInternos.add(_normalizarCodigo(referenciaIndex.get(codigo).codigo));
-  if (produtosPorCodigoIndex.has(codigo)) codigosInternos.add(codigo);
 
   const resultado = [];
   for (const cod of codigosInternos) {
@@ -552,6 +1070,7 @@ function buscarPorCodigo(codigoBruto, { limite = 30 } = {}) {
       referencia: item.referencia,
       fabricante: item.fabricante,
       aplicacao: item.aplicacao,
+      dadosTecnicos: item.dadosTecnicos || null,
       equivalentes: item.equivalentes || [],
       equivalentesDetalhados: _detalharEquivalentes(item.equivalentes),
       referenciasCruzadas: item.referenciasCruzadas || null,
@@ -804,6 +1323,7 @@ function buscarPorNomePainel(nomeBusca, { limite = 200 } = {}) {
     referencia: p.referencia,
     fabricante: p.fabricante,
     aplicacao: p.aplicacao,
+    dadosTecnicos: p.dadosTecnicos || null,
     equivalentes: p.equivalentes || [],
     equivalentesDetalhados: _detalharEquivalentes(p.equivalentes),
     referenciasCruzadas: p.referenciasCruzadas || null,
@@ -832,14 +1352,45 @@ function buscarPorNomePainel(nomeBusca, { limite = 200 } = {}) {
 // informados, marca funciona como reforço de ranking (marcaCompativel),
 // nunca como filtro de exclusão. Ano segue a mesma lógica (ver
 // _anoCompativel acima).
-function buscarProdutosPainel({ marca = "", modelo = "", ano = null, categoria = "", fabricante = "", limite = 200 } = {}) {
+//
+// `offset` (pedido do usuário, 2026-09-02): "Critérios de Pesquisa" cortava
+// em 200 sem jeito nenhum de ver o resto — atendente com busca ampla (ex:
+// só Seção, sem marca/modelo) perdia peça sem saber. `limite`+`offset`
+// dão paginação de verdade: o controller (buscarProdutosHandler) usa um
+// limite maior (400) e calcula offset a partir da página pedida — `total`
+// sempre reflete a contagem real (antes do corte), então o frontend sabe
+// quantas páginas existem.
+function buscarProdutosPainel({ marca = "", modelo = "", ano = null, anoInicio = null, anoFim = null, motor = "", categoria = "", fabricante = "", tipoCompleto = null, limite = 200, offset = 0 } = {}) {
   const marcaTokens  = _tokens(marca);
   const modeloTokens = _tokens(modelo);
-  const anoNum = ano ? Number(ano) : null;
+  // PEDIDO DO USUÁRIO (2026-09-04, referência KKI Vendas): campo único "Ano"
+  // do painel virou "Ano Inicial"/"Ano Final". `ano` continua aceito por
+  // compatibilidade (chamadores antigos/rotas que não migraram) — quando só
+  // ele vem preenchido, funciona como sempre funcionou (ano único).
+  const anoIni = anoInicio ? Number(anoInicio) : (ano ? Number(ano) : null);
+  const anoF   = anoFim ? Number(anoFim) : null;
+  // PEDIDO DO USUÁRIO (2026-09-04, referência KKI Vendas): campo novo
+  // "Motor" — filtro ADICIONAL (só entra em jogo quando preenchido), por
+  // substring (não palavra inteira) contra o texto de aplicação já
+  // normalizado, porque especificação de motor no texto real varia demais
+  // pra exigir token exato ("1.6 16V DOHC L4", "MPI - gasolina", "2.0 8V")
+  // — mesma lógica de tolerância já usada em buscarPorNomePainel.
+  const motorNorm = motor && String(motor).trim() ? _normalizar(motor) : null;
   const categoriaNorm = categoria && String(categoria).trim() ? _normalizar(categoria) : null;
   // Fabricante é filtro por igualdade exata (não substring) — vem sempre do
   // dropdown já normalizado por listarFabricantes(), não de texto livre.
   const fabricanteNorm = fabricante && String(fabricante).trim() ? String(fabricante).trim().toUpperCase() : null;
+  // Pedido do usuário (2026-09-03, aba "Catálogo Completo" — ver
+  // listarFabricantesCatalogoCompleto/decodificarFabricanteCompleto): filtro
+  // adicional por tipo dentro do fabricante já escolhido — "mecanica" só
+  // produto na seção MECÂNICA, "eletrica" só produto FORA dela. `null`
+  // (padrão) não filtra nada, mesmo comportamento de sempre pro resto do
+  // painel (busca normal, filtro comum de fabricante).
+  const filtroTipoCompleto = (p) => {
+    if (tipoCompleto === "mecanica") return !!p.secao && _normalizar(p.secao) === SECAO_MECANICA_NORM;
+    if (tipoCompleto === "eletrica") return !p.secao || _normalizar(p.secao) !== SECAO_MECANICA_NORM;
+    return true;
+  };
 
   // Modo NAVEGAÇÃO: nenhum veículo informado, só Seção/Linha e/ou Fabricante
   // — usado pelo dropdown do painel pra listar o catálogo inteiro daquela
@@ -860,14 +1411,33 @@ function buscarProdutosPainel({ marca = "", modelo = "", ano = null, categoria =
         const linhaNorm = _normalizar(p.linha);
         if (!secaoNorm.includes(categoriaNorm) && !linhaNorm.includes(categoriaNorm)) return false;
       }
-      if (fabricanteNorm && (!p.fabricante || p.fabricante.toUpperCase() !== fabricanteNorm)) return false;
+      if (fabricanteNorm === PSEUDO_FABRICANTE_DIVERSOS) {
+        // Pseudo-fabricante "Diversos" (ver listarFabricantesCatalogoCompleto):
+        // ignora p.fabricante de propósito — agrega por p.linha="DIVERSOS"
+        // cruzando TODOS os fabricantes, não só um.
+        if (_normalizar(p.linha) !== _normalizar(LINHA_DIVERSOS)) return false;
+      } else if (fabricanteNorm) {
+        if (!p.fabricante || p.fabricante.toUpperCase() !== fabricanteNorm) return false;
+        // Pedido do usuário (2026-09-05, follow-up): produto linha="DIVERSOS"
+        // some do Catálogo Completo NORMAL de cada fabricante — ele já saiu
+        // de lá e virou o catálogo à parte "Diversos" (pseudo-fabricante
+        // acima). Sem isso, o mesmo produto aparecia nos dois lugares (bug
+        // real reportado: card "126633 - PORCA CONEXAO... MBB" ainda surgia
+        // dentro do catálogo comum de um fabricante, como transição de Linha
+        // "DIVERSOS — MBB" no meio da página). Vale inclusive pro fabricante
+        // real "DIVERSOS" (ver comentário grande na constante acima) — seus
+        // próprios produtos linha="DIVERSOS", se algum dia existir algum,
+        // seguem a mesma regra de qualquer outro fabricante.
+        if (_normalizar(p.linha) === _normalizar(LINHA_DIVERSOS)) return false;
+      }
+      if (!filtroTipoCompleto(p)) return false;
       return true;
     });
 
     encontrados.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
 
     const total = encontrados.length;
-    const produtos = encontrados.slice(0, limite).map(p => ({
+    const produtos = encontrados.slice(offset, offset + limite).map(p => ({
       codigo: p.codigo,
       nome: p.nome,
       secao: p.secao,
@@ -875,6 +1445,8 @@ function buscarProdutosPainel({ marca = "", modelo = "", ano = null, categoria =
       referencia: p.referencia,
       fabricante: p.fabricante,
       aplicacao: p.aplicacao,
+      aplicacaoOrganizada: _aplicacaoOrganizadaCache(p.aplicacao),
+      dadosTecnicos: p.dadosTecnicos || null,
       equivalentes: p.equivalentes || [],
       equivalentesDetalhados: _detalharEquivalentes(p.equivalentes),
       referenciasCruzadas: p.referenciasCruzadas || null,
@@ -912,6 +1484,13 @@ function buscarProdutosPainel({ marca = "", modelo = "", ano = null, categoria =
       if (!secaoNorm.includes(categoriaNorm) && !linhaNorm.includes(categoriaNorm)) continue;
     }
     if (fabricanteNorm && (!p.fabricante || p.fabricante.toUpperCase() !== fabricanteNorm)) continue;
+    if (!filtroTipoCompleto(p)) continue;
+    // PEDIDO DO USUÁRIO (2026-09-04, referência KKI Vendas): filtro por
+    // Motor é EXCLUDENTE (diferente de marca/ano, que só ranqueiam) — só
+    // entra em jogo quando preenchido, e aí sim corta quem não bate, porque
+    // é um campo NOVO e opcional: quem não usar não muda em nada o
+    // comportamento de busca já validado antes.
+    if (motorNorm && !(p.aplicacaoNormalizada || "").includes(motorNorm)) continue;
 
     // _tokenBateAplicacao aceita sinônimos de marca conhecidos (GM/General
     // Motors/Chevrolet — ver GRUPOS_ALIAS_MARCA acima).
@@ -925,7 +1504,7 @@ function buscarProdutosPainel({ marca = "", modelo = "", ano = null, categoria =
     if (!universalRelevante && matchesObrigatorios < minMatches) continue;
 
     const marcaCompativel = marcaTokens.length ? marcaTokens.some(t => _tokenBateAplicacao(t, p.aplicacaoPalavras)) : false;
-    const anoCompativel = _anoCompativel(p.faixasAno, anoNum);
+    const anoCompativel = _anoCompativel(p.faixasAno, anoIni, anoF);
 
     encontrados.push({ p, matchesObrigatorios, marcaCompativel, anoCompativel });
   }
@@ -946,7 +1525,7 @@ function buscarProdutosPainel({ marca = "", modelo = "", ano = null, categoria =
   });
 
   const total = encontrados.length;
-  const produtos = encontrados.slice(0, limite).map(({ p, marcaCompativel, anoCompativel }) => ({
+  const produtos = encontrados.slice(offset, offset + limite).map(({ p, marcaCompativel, anoCompativel }) => ({
     codigo: p.codigo,
     nome: p.nome,
     secao: p.secao,
@@ -954,6 +1533,7 @@ function buscarProdutosPainel({ marca = "", modelo = "", ano = null, categoria =
     referencia: p.referencia,
     fabricante: p.fabricante,
     aplicacao: p.aplicacao,
+    aplicacaoOrganizada: _aplicacaoOrganizadaCache(p.aplicacao),
     equivalentes: p.equivalentes || [],
     equivalentesDetalhados: _detalharEquivalentes(p.equivalentes),
     referenciasCruzadas: p.referenciasCruzadas || null,
@@ -974,5 +1554,11 @@ module.exports = {
   buscarProdutosPainel,
   buscarPorCodigo,
   listarFabricantes,
+  listarFabricantesCatalogoCompleto,
+  listarMarcasVeiculoConhecidas,
+  decodificarFabricanteCompleto,
   recarregarIndices,
+  listarLinhasParaEdicaoCategoria,
+  definirLinhaProduto,
+  PSEUDO_FABRICANTE_DIVERSOS,
 };

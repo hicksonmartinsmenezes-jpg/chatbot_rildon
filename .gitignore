@@ -48,6 +48,10 @@ baileys_auth/
 *.session
 *.creds.json
 
+# Conta de serviço do Google (upload automático de catálogo pro Drive,
+# ver scripts/x2-drive-lancamentos.js e .env GOOGLE_DRIVE_CREDENCIAIS_PATH)
+credentials/
+
 # Build / cache / sistema operacional
 coverage/
 dist/
@@ -84,3 +88,18 @@ src/config/catalogo-x2/
 
 # Documentos/relatorios do projeto (nao sao codigo, organizados fora do repo)
 documentos-projeto/
+
+# Dumps de banco soltos na raiz do projeto (contem dados pessoais de clientes,
+# LGPD) e sessoes antigas do WhatsApp renomeadas. Regra restrita a raiz (/*.sql)
+# de proposito: NAO usar "*.sql" solto, senao migrations novas em
+# src/database/migrations/ deixam de ser detectadas pelo git.
+/*.sql
+auth_info*/
+
+# Saidas soltas de ferramentas/anotacoes locais (nao sao codigo)
+Claude outputs/
+*.restore-note
+
+# Dados pessoais de contatos ficam somente no ambiente local
+/contatos/*
+!/contatos/README.md

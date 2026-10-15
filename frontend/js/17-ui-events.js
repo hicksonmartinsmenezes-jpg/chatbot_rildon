@@ -18,9 +18,45 @@
     return action(...args);
   }
 
+  window.toggleUserMenu = function () {
+    const wrap = document.querySelector(".user-menu-wrap");
+    const menu = document.getElementById("user-menu-dropdown");
+    const trigger = wrap?.querySelector("[data-action=\"toggleUserMenu\"]");
+    if (!wrap || !menu || !trigger) return;
+    const open = menu.classList.toggle("hidden") === false;
+    trigger.setAttribute("aria-expanded", open ? "true" : "false");
+    wrap.classList.toggle("is-open", open);
+    const avatar = document.getElementById("top-user-avatar");
+    const menuAvatar = document.getElementById("user-menu-avatar");
+    const name = document.getElementById("top-user-name")?.textContent?.trim() || "Usuário";
+    if (document.getElementById("user-menu-name")) document.getElementById("user-menu-name").textContent = name;
+    if (document.getElementById("user-menu-status")) document.getElementById("user-menu-status").textContent = document.getElementById("status-badge")?.textContent?.trim() || "Conta ativa";
+    if (menuAvatar && avatar) menuAvatar.innerHTML = avatar.innerHTML;
+  };
+
+  document.addEventListener("click", (event) => {
+    if (event.target.closest(".user-menu-wrap")) return;
+    const menu = document.getElementById("user-menu-dropdown");
+    if (menu && !menu.classList.contains("hidden")) {
+      menu.classList.add("hidden");
+      document.querySelector('.avatar-wrap[data-action="toggleUserMenu"]')?.setAttribute("aria-expanded", "false");
+      document.querySelector(".user-menu-wrap")?.classList.remove("is-open");
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    const menu = document.getElementById("user-menu-dropdown");
+    if (menu && !menu.classList.contains("hidden")) {
+      menu.classList.add("hidden");
+      document.querySelector('.avatar-wrap[data-action="toggleUserMenu"]')?.setAttribute("aria-expanded", "false");
+      document.querySelector(".user-menu-wrap")?.classList.remove("is-open");
+    }
+  });
+
   const simpleClickActions = new Set([
     "togglePasswordVisibility",
-    "refreshAll",
+    "toggleUserMenu",
     "toggleTheme",
     "toggleNotifDropdown",
     "clearNotifications",
@@ -56,6 +92,10 @@
     "saveSettings",
     "backToSettingsHome",
     "createPanelUser",
+    "openUserPermissionsModal",
+    "closeUserPermissionsModal",
+    "saveUserPermissions",
+    "toggleAllUserPermissions",
     "resetSettings",
     "requestWaReconnect",
     "loadMetricsCharts",
@@ -76,19 +116,18 @@
     "catalogoMostrarAbaVeiculo",
     "catalogoMostrarAbaCodigo",
     "catalogoMostrarAbaNome",
-    // Feature: enviar arquivo (foto/vídeo/doc) + responder mensagem
-    // específica, igual WhatsApp (pedido do usuário, 2026-07-23).
+    "catalogoMostrarAbaCompleto",
+    "catalogoMostrarAbaPromocional",
     "openConversationFilePicker",
     "cancelMediaSelection",
     "cancelReplyTo",
-    // Toggle liga/desliga do bot, liberado para todos (2026-07-24)
     "toggleBotStatus",
-    // Tabela paginada "Evolução" em Métricas (2026-08-05)
     "metricsEvolucaoPagePrev",
     "metricsEvolucaoPageNext",
-    // Tabela paginada "Horários de Pico" em Métricas (2026-08-05)
     "metricsPicoPagePrev",
-    "metricsPicoPageNext"
+    "metricsPicoPageNext",
+    "historyPagePrev",
+    "historyPageNext"
   ]);
 
   document.addEventListener("submit", (event) => {
@@ -119,7 +158,7 @@
 
     if (action === "loadHistoryTrue") {
       event.preventDefault();
-      call("loadHistory", true);
+      call("loadHistoryFiltered");
       return;
     }
 
@@ -195,7 +234,7 @@
         call("loadTickets");
         break;
       case "loadHistoryTrue":
-        call("loadHistory", true);
+        call("loadHistoryFiltered");
         break;
       case "contactsFilterTag":
         call("contactsFilterTag", el.value);
@@ -227,6 +266,9 @@
       case "handleConversationFileInput":
         call("handleConversationFileInput", event);
         break;
+      case "metricsMesChange":
+        call("metricsMesChange", el.value);
+        break;
     }
   });
 
@@ -246,7 +288,7 @@
         call("autoResizeTextarea", el);
         break;
       case "loadHistoryTrue":
-        call("loadHistory", true);
+        call("loadHistoryFiltered");
         break;
       case "contactsSearch":
         call("contactsSearch", el.value);

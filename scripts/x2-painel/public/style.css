@@ -1,0 +1,647 @@
+/* scripts/x2-painel/public/style.css
+ *
+ * PEDIDO DO USUÁRIO (2026-09-11): "deixe mais organizado" — até aqui, todo
+ * o CSS do painel vivia inline dentro de <style> em index.html (~2000
+ * linhas de HTML+CSS+JS misturados no mesmo arquivo). Extraído sem
+ * NENHUMA mudança de conteúdo (só um copiar/colar programático, linha por
+ * linha) — todo seletor, variável e comentário abaixo é idêntico ao que
+ * já existia. index.html agora só referencia isto via
+ * <link rel="stylesheet" href="style.css">.
+ */
+
+  /* ══════════════════════════════════════════════════════════════
+     Redesign 2026-08-07 (v2) — minimalista, tema preto, sidebar de
+     ícones (referência escolhida pelo usuário: "Minimalista e Limpo").
+     Só a "pele" + a posição dos elementos de navegação mudou — todo
+     id/classe/data-attribute usado pelo JS abaixo permanece idêntico,
+     então nenhum comportamento foi tocado aqui.
+     ══════════════════════════════════════════════════════════════ */
+  :root {
+    --bg: #0a0a0c;
+    --sidebar-bg: #000000;
+    --surface: #131316;
+    --surface-2: #1c1c20;
+    --surface-3: #232327;
+    --border: #26262b;
+    --border-strong: #333338;
+    --text: #f2f2f4;
+    --text-2: #b4b4bc;
+    --muted: #75757e;
+    --green: #3ddc84;
+    --green-soft: rgba(61, 220, 132, .14);
+    --amber: #f5b942;
+    --amber-soft: rgba(245, 185, 66, .14);
+    --red: #ff6b6b;
+    --red-soft: rgba(255, 107, 107, .14);
+    --blue: #4d8dff;
+    --blue-soft: rgba(77, 141, 255, .14);
+    --purple: #a78bfa;
+    --purple-soft: rgba(167, 139, 250, .14);
+    --radius: 10px;
+    --radius-sm: 7px;
+    /* PEDIDO DO USUÁRIO (2026-09-12, mockup "CatálogoPro"): sidebar larga
+       com rótulo ao lado do ícone (não empilhado embaixo) — era 92px. */
+    --sidebar-w: 224px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+  }
+  h1 { font-size: 22px; font-weight: 700; letter-spacing: -.01em; margin: 0 0 4px; }
+  .subtitle { color: var(--muted); margin: 0 0 28px; font-size: 13.5px; max-width: 780px; line-height: 1.55; }
+
+  /* ─── Casca do app: sidebar + conteúdo ─────────────────────────── */
+  .app-shell { display: flex; min-height: 100vh; }
+  .sidebar {
+    width: var(--sidebar-w);
+    flex: none;
+    background: var(--sidebar-bg);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 20px 14px;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+  }
+  /* PEDIDO DO USUÁRIO (2026-09-12, mockup "CatálogoPro"): logo + nome do
+     painel lado a lado no topo da sidebar, em vez de só o quadrado "X2"
+     centralizado — mesma identidade (nunca trocamos pro nome do mockup),
+     só o layout do cabeçalho da sidebar. */
+  .sidebar-brand { display: flex; align-items: center; gap: 10px; padding: 0 4px; margin-bottom: 26px; }
+  .sidebar-logo {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 800; letter-spacing: -.02em;
+    color: var(--text);
+    flex: none;
+  }
+  .sidebar-brand-nome { font-size: 13.5px; font-weight: 800; letter-spacing: -.01em; color: var(--text); white-space: nowrap; }
+
+  .main-content { flex: 1; min-width: 0; padding: 34px 40px 56px; max-width: 1440px; }
+
+  /* ─── Cards base ──────────────────────────────────────────────── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 22px 24px;
+  }
+  .card h2 { font-size: 14.5px; font-weight: 700; margin: 0 0 16px; color: var(--text); display: flex; align-items: center; gap: 8px; }
+  .card h2 .contador { font-size: 11px; font-weight: 700; color: var(--text-2); background: var(--surface-2); padding: 2px 9px; border-radius: 6px; }
+
+  /* Separador de "2º grupo de cards" dentro de uma mesma aba (2026-09-11 —
+     Alertas WhatsApp passou a morar dentro de Estoque em vez de aba
+     própria). Mesma linguagem visual dos rótulos pequenos em maiúsculas já
+     usados no painel (ex: .stat-card .rotulo), só que como título de seção. */
+  .section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 28px 0 14px; padding-top: 20px; border-top: 1px solid var(--border); }
+
+  /* ─── Faixa de resumo (KPIs) ──────────────────────────────────── */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 14px;
+    margin-bottom: 24px;
+  }
+  .stats-row.cols-4 { grid-template-columns: repeat(4, 1fr); }
+  /* PEDIDO DO USUÁRIO (2026-09-12, mockup "CatálogoPro"): aba Catálogo
+     passou de 5 pra 6 cards de KPI (ver renderStats em app.js). */
+  .stats-row.cols-6 { grid-template-columns: repeat(6, 1fr); }
+  @media (max-width: 1180px) { .stats-row.cols-6 { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 620px) { .stats-row.cols-6 { grid-template-columns: repeat(2, 1fr); } }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    padding: 15px 16px;
+    transition: border-color .12s, background .12s;
+  }
+  .stat-card:hover { background: var(--surface-2); border-color: var(--border-strong); }
+  .stat-card .valor { font-size: 23px; font-weight: 800; line-height: 1.1; letter-spacing: -.01em; }
+  .stat-card .rotulo { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-top: 6px; font-weight: 600; }
+  .stat-card.alerta { border-left-color: var(--amber); }
+  .stat-card.alerta .valor { color: var(--amber); }
+  .stat-card.risco { border-left-color: var(--red); }
+  .stat-card.risco .valor { color: var(--red); }
+
+  /* Variante "rica" (2026-08-11, pedido do usuário — mockup de referência):
+     ícone colorido + barra de acento embaixo + subtexto contextual. Opt-in
+     via classe extra pra não mudar o visual dos stat-card simples de
+     outras abas (Rotinas etc.) que reusam a mesma base .stat-card. */
+  /* Cores por categoria (azul/roxo/verde/âmbar/vermelho) removidas a
+     pedido do usuário (2026-08-11) — ícone, barra de acento, borda e
+     número ficam neutros em cinza pra todos os cards, sem depender das
+     classes acento-N / alerta / risco (mantidas no HTML só pra não
+     reescrever o JS, mas sem efeito visual de cor aqui — por isso os
+     overrides abaixo repetem a mesma especificidade das regras base
+     .alerta / .risco pra vencer por ordem de declaração). */
+  .stat-card--rico { position: relative; overflow: hidden; padding-bottom: 18px; border-left-color: var(--border); text-align: center; }
+  .stat-card--rico::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--border-strong); }
+  .stat-card--rico.alerta, .stat-card--rico.risco { border-left-color: var(--border); }
+  .stat-card--rico.alerta .valor, .stat-card--rico.risco .valor { color: var(--text); }
+  .stat-icone { width: 34px; height: 34px; border-radius: 6px; display: flex; align-items: center; justify-content: center; margin: 0 0 9px; flex: none; background: var(--surface-2); color: var(--text-2); }
+  .stat-icone svg { width: 17px; height: 17px; }
+
+  /* PEDIDO DO USUÁRIO (2026-09-12, mockup "CatálogoPro"): barrinha de
+     progresso + "% do total" opcional dentro de um stat-card--rico (só nos
+     2 cards que têm uma proporção real de "total de produtos" pra mostrar
+     — Com foto baixada / Fotos pendentes, ver renderStats em app.js). */
+  .stat-progress { margin: 9px auto 0; width: 100%; height: 4px; background: var(--surface-3); border-radius: 999px; overflow: hidden; }
+  .stat-progress-fill { height: 100%; background: var(--green); border-radius: 999px; transition: width .25s ease; }
+  .stat-progress-fill--amber { background: var(--amber); }
+  .stat-sub { font-size: 10px; color: var(--muted); margin-top: 5px; font-weight: 600; }
+
+  /* ─── Layout principal: Seções (esq.) + Ação (dir.) ──────────── */
+  .layout { display: grid; grid-template-columns: 1.65fr 1fr; gap: 18px; align-items: start; margin-bottom: 18px; }
+  @media (max-width: 980px) { .layout { grid-template-columns: 1fr; } }
+
+  /* Coluna direita da aba Catálogo: Ação + Execução empilhados (pedido do
+     usuário 2026-08-11 — Execução ficava solta, largura cheia, embaixo do
+     grid inteiro; agora mora junto da Ação, no mesmo lugar em que se olha
+     depois de disparar uma ação). */
+  .coluna-direita { display: flex; flex-direction: column; gap: 18px; }
+
+  /* Barra compacta e horizontal (Lançamentos) — texto de status à esquerda,
+     campos De/Até (opcionais — em branco usa a última semana completa,
+     segunda a sábado) + botão à direita, centralizados na mesma linha. */
+  .lancamentos-filtro-barra { display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: center; justify-content: space-between; }
+  .lancamentos-filtro-campos { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+  .lancamentos-filtro-campos .form-field { display: flex; align-items: center; gap: 8px; margin-bottom: 0; width: auto; white-space: nowrap; }
+  .lancamentos-filtro-campos .form-field .search-input { width: 150px; }
+  .lancamentos-filtro-barra .primary { height: 38px; white-space: nowrap; }
+  .lancamentos-filtro-barra p.descricao { margin: 0; }
+  @media (max-width: 640px) { .lancamentos-filtro-barra { align-items: flex-start; } .lancamentos-filtro-campos .form-field { width: 100%; } .lancamentos-filtro-campos .form-field .search-input { width: 100%; } }
+
+  /* ─── Busca + chips de filtro ─────────────────────────────────── */
+  .search-input {
+    width: 100%;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 10px 13px;
+    font-size: 13px;
+    margin-bottom: 10px;
+    font-family: inherit;
+    transition: border-color .12s, background .12s;
+  }
+  .search-input::placeholder { color: var(--muted); }
+  .search-input:focus { outline: none; border-color: var(--border-strong); background: var(--surface-3);}
+  .filtro-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+  .chip {
+    padding: 6px 13px;
+    border-radius: 6px;
+    font-size: 11.5px;
+    font-weight: 700;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text-2);
+    cursor: pointer;
+    user-select: none;
+    transition: background .12s, border-color .12s, color .12s;
+  }
+  .chip:hover { border-color: var(--border-strong); color: var(--text); }
+  .chip.active { background: var(--surface-3); border-color: var(--text); color: #fff; }
+  /* PEDIDO DO USUÁRIO (2026-09-12): chips do modal de Produtos mostram
+     contagem real ao lado do rótulo (ex: "Completo 214") — número mais
+     apagado que o rótulo, sem virar outro badge colorido. */
+  .chip-contador { color: var(--muted); font-weight: 600; }
+  .chip.active .chip-contador { color: rgba(255,255,255,.7); }
+
+  .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+  .toolbar-sep { flex: 1; }
+
+  /* "Última atualização" alinhada com o título "Ação", à direita dele
+     (2026-08-11) — classe própria pra não mexer no .card h2 genérico
+     (usado em várias outras abas com layouts diferentes). Botão de
+     refresh manual removido a pedido do usuário (2026-08-11). */
+  .acao-header { justify-content: space-between; }
+  .catalogo-sync-hora { font-size: 11.5px; color: var(--muted); font-weight: 400; }
+  .link-csv { font-size: 12px; font-weight: 600; color: var(--blue); text-decoration: none; }
+  .link-csv:hover { text-decoration: underline; }
+
+  /* Checkbox com cor de destaque consistente em todo o painel. */
+  input[type="checkbox"] { accent-color: var(--blue); width: 15px; height: 15px; cursor: pointer; }
+
+  /* Paginação simples da tabela de Seções — mostra as N primeiras e deixa
+     expandir sob pedido, em vez de tabela rolável enorme sempre cheia. */
+  .tabela-rodape { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; font-size: 12px; color: var(--muted); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--muted); font-weight: 700; font-size: 11.5px; text-transform: uppercase; letter-spacing: .03em; padding: 9px 12px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--surface); cursor: help; }
+  td { padding: 10px 12px; border-bottom: 1px solid var(--border); color: var(--text-2); }
+  tr:hover td { background: var(--surface-2); }
+  tr.selecionada td { background: rgba(255,255,255,.06); }
+  tr.selecionada:hover td { background: rgba(255,255,255,.09); }
+  .table-wrap { max-height: 460px; overflow-y: auto; overflow-x: auto; border-radius: var(--radius-sm); }
+  .table-empty { padding: 34px 10px; text-align: center; color: var(--muted); font-size: 13px; }
+  .skeleton { color: var(--muted); font-size: 12.5px; padding: 10px 4px; }
+
+  .badge {
+    display: inline-block;
+    padding: 3px 9px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .badge-green { background: var(--green-soft); color: var(--green); }
+  .badge-amber { background: var(--amber-soft); color: var(--amber); }
+  .badge-red { background: var(--red-soft); color: var(--red); }
+  .badge-muted { background: var(--surface-3); color: var(--muted); }
+
+  /* PEDIDO DO USUÁRIO (2026-09-12): tabela de Seções (e o modal de Produtos)
+     tinham numeral dentro de pill colorido (badge-*) — pedido explícito pra
+     remover o fundo colorido e deixar mais limpo (mockup de referência usa
+     só texto/ponto colorido, sem caixinha preenchida). Classe nova, NÃO
+     mexe em .badge/.badge-* (ainda usadas em Rotinas/Qualidade Cadastral,
+     fora do escopo deste pedido). */
+  .valor-plano { font-weight: 700; font-size: 12.5px; white-space: nowrap; }
+  .valor-plano.v-verde { color: var(--green); }
+  .valor-plano.v-ambar { color: var(--amber); }
+  .valor-plano.v-vermelho { color: var(--red); }
+  .valor-plano.v-muted { color: var(--muted); font-weight: 600; }
+
+  .cell-slug { color: var(--muted); font-size: 10.5px; margin-top: 2px; }
+
+  /* PEDIDO DO USUÁRIO (2026-09-12, mockup "CatálogoPro"): pontinho colorido
+     antes do nome da Seção, leitura rápida de "saúde" da linha sem precisar
+     ler as 4 colunas de número — mesma ideia do dot de status do mockup,
+     só que sem substituir as colunas granulares (Processados/Publicados/
+     Erros/Suspeitas continuam, são mais úteis pra decidir o que rodar). */
+  .status-dot-mini { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 7px; flex: none; background: var(--muted); }
+  .status-dot-mini.ok { background: var(--green); }
+  .status-dot-mini.alerta { background: var(--amber); }
+  .status-dot-mini.risco { background: var(--red); }
+
+  /* ─── Botões ──────────────────────────────────────────────────── */
+  button {
+    font-family: inherit;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text);
+    padding: 9px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    transition: background .12s, border-color .12s, opacity .12s;
+  }
+  button:hover { background: var(--surface-3); border-color: var(--border-strong); }
+  button:disabled { opacity: .4; cursor: not-allowed;}
+  button.primary { background: #fff; border-color: #fff; color: #0a0a0c; }
+  button.primary:hover { background: #dcdce0; border-color: #dcdce0; }
+  button.primary-green { background: var(--green); border-color: var(--green); color: #06210f; }
+  button.primary-green:hover { background: #58e69c; border-color: #58e69c; }
+  button.primary-blue { background: var(--blue); border-color: var(--blue); color: #fff; }
+  button.primary-blue:hover { background: #3f7ae0; border-color: #3f7ae0; }
+  button.small { padding: 6px 11px; font-size: 12px; }
+  button.ghost { background: transparent; }
+  button.ghost:hover { background: var(--surface-2); }
+  button.full { width: 100%; margin-top: 6px; }
+
+  /* ─── Painel de Ação (abas) ───────────────────────────────────── */
+  .selecao-resumo {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    font-size: 12.5px;
+    color: var(--muted);
+    margin-bottom: 16px;
+  }
+  .selecao-resumo strong { color: var(--text); }
+
+  /* Ações Rápidas em formato acordeão (2026-09-12) — antes era abas
+     "pill" lado a lado com painel único trocando por baixo; mockup de
+     referência do usuário usa lista de linhas (ícone+título+subtítulo+
+     chevron) onde cada linha expande suas opções embaixo dela mesma. */
+  .acoes-rapidas { display: flex; flex-direction: column; gap: 8px; margin-bottom: 4px; }
+  .acao-rapida {
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    border-radius: 10px;
+    overflow: hidden;
+    transition: border-color .12s;
+  }
+  .acao-rapida.aberta { border-color: var(--border-strong); }
+  .acao-rapida-linha {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .acao-rapida-linha:hover { background: rgba(255,255,255,.03); }
+  .acao-rapida-icone {
+    flex: none;
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--surface-3, rgba(255,255,255,.06));
+    color: var(--text-2);
+  }
+  .acao-rapida.aberta .acao-rapida-icone { color: var(--blue); }
+  .acao-rapida-icone svg { width: 17px; height: 17px; }
+  .acao-rapida-texto { flex: 1; min-width: 0; }
+  .acao-rapida-titulo { font-size: 13px; font-weight: 700; color: var(--text); }
+  .acao-rapida-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .acao-rapida-chevron { flex: none; width: 16px; height: 16px; color: var(--muted); transition: transform .15s; }
+  .acao-rapida.aberta .acao-rapida-chevron { transform: rotate(90deg); color: var(--text-2); }
+
+  .acao-rapida-painel { display: none; padding: 4px 14px 16px; border-top: 1px solid var(--border); }
+  .acao-rapida.aberta .acao-rapida-painel { display: block; padding-top: 14px; }
+  p.descricao { color: var(--muted); font-size: 12.5px; margin: 0 0 12px; line-height: 1.55; }
+  .acao-rapida-painel label { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text-2); margin-bottom: 9px; cursor: pointer; }
+  .acao-rapida-painel input[type="number"] { width: 90px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text); border-radius: 7px; padding: 5px 9px; margin-left: auto; font-family: inherit; }
+
+  /* ─── Alertas (2026-08-10): lista curta de itens dentro do card, sem
+     depender de tabela — mesma paleta neutra do resto do painel. */
+  .lista-simples { list-style: none; margin: 0 0 14px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .lista-simples li { font-size: 12.5px; color: var(--text-2); border-bottom: 1px dashed var(--border); padding-bottom: 6px; }
+  .lista-simples li:last-child { border-bottom: none; padding-bottom: 0; }
+
+  /* ─── Qualidade Cadastral: 1 aba por divergência (2026-08-10) ──────
+     Visualmente igual ao .acao-tabs/.acao-painel de Fotos, mas com
+     classe PRÓPRIA de propósito: trocarAba() (Fotos) faz
+     querySelectorAll GLOBAL em .acao-tab/.acao-painel — reusar a mesma
+     classe faria trocar de aba em Fotos desativar essas abas também. */
+  .qualidade-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 18px; flex-wrap: wrap; }
+  .qualidade-tab {
+    padding: 9px 13px;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+    transition: color .12s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .qualidade-tab:hover { color: var(--text); }
+  .qualidade-tab.active { color: #fff; border-color: #fff; }
+  .qualidade-tab-contador { font-size: 10.5px; font-weight: 700; color: var(--text-2); background: var(--surface-2); padding: 2px 8px; border-radius: 999px; }
+  .qualidade-tab.active .qualidade-tab-contador { background: var(--surface-3); color: #fff; }
+  .qualidade-tab-erro .qualidade-tab-contador { background: var(--red-soft); color: var(--red); }
+
+  .qualidade-painel { display: none; }
+  .qualidade-painel.active { display: block; }
+
+  .qualidade-paginacao { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 12px; }
+  .qualidade-pagina-info { font-size: 12px; color: var(--muted); font-weight: 600; white-space: nowrap; }
+
+  /* ─── Execução (status + confirmação + log), unificado ────────── */
+  .status-line { font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 9px; font-weight: 500; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+  .status-line.rodando { color: var(--green); }
+  .status-line.rodando .status-dot { background: var(--green);}
+  .status-line.erro { color: var(--red); }
+  .status-line.erro .status-dot { background: var(--red); }
+  .status-line.concluido { color: var(--green); }
+  .status-line.concluido .status-dot { background: var(--green); }
+
+  .progresso-wrap { display: none; margin-top: 14px; }
+  .progresso-wrap.show { display: block; }
+  .progresso-bar-track { background: var(--surface-3); border-radius: 999px; height: 8px; overflow: hidden; }
+  .progresso-bar-fill { height: 100%; background: linear-gradient(90deg, #fff, #a9a9b2); border-radius: 999px; transition: width .25s ease; width: 0%; }
+  .progresso-label { font-size: 11.5px; color: var(--muted); margin-top: 6px; font-weight: 600; }
+
+  /* Estado "parado" do card Execução (2026-08-11) — some quando tem algo
+     rodando (JS troca pra display:none) pra não duplicar com status-line. */
+  .execucao-idle { margin-bottom: 16px; }
+  .execucao-idle-topo { display: flex; align-items: center; gap: 12px; }
+  .execucao-idle-icone { width: 38px; height: 38px; border-radius: 50%; background: var(--green-soft); color: var(--green); display: flex; align-items: center; justify-content: center; flex: none; }
+  .execucao-idle-icone svg { width: 19px; height: 19px; }
+  .execucao-idle-titulo { font-size: 13.5px; font-weight: 700; color: var(--text); }
+  .execucao-idle-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .execucao-resumo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 16px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; }
+  .execucao-resumo-grid .rotulo { display: block; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-weight: 700; margin-bottom: 4px; }
+  .execucao-resumo-grid strong { font-size: 13px; color: var(--text); font-weight: 700; }
+
+  .aguardando-banner {
+    display: none;
+    background: var(--amber-soft);
+    border: 1px solid rgba(245, 185, 66, .35);
+    border-radius: var(--radius-sm);
+    padding: 13px 15px;
+    margin: 14px 0;
+    align-items: center;
+    gap: 14px;
+  }
+  .aguardando-banner.show { display: flex; }
+  .aguardando-banner span { flex: 1; font-size: 13px; color: var(--amber); }
+
+  /* ─── Navegação (sidebar de ícones) ─────────────────────────────
+     .top-tabs / .top-tab mantêm o mesmo id/classe/data-attribute de
+     antes — só a posição (vertical, na sidebar) e a aparência (ícone)
+     mudaram. O clique continua funcionando igual (delegação por
+     .closest('.top-tab')). ──────────────────────────────────────── */
+  /* PEDIDO DO USUÁRIO (2026-09-12, mockup "CatálogoPro"): item de nav em
+     LINHA (ícone + rótulo lado a lado, alinhado à esquerda) em vez de
+     empilhado (ícone em cima, rótulo minúsculo embaixo) — cabe rótulo
+     completo agora que a sidebar é mais larga. Ativo vira um "pill" branco
+     sólido (mesmo contraste do mockup), não mais só uma borda lateral. */
+  .top-tabs { display: flex; flex-direction: column; gap: 2px; width: 100%; }
+  .top-tab {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 8px;
+    display: flex; flex-direction: row; align-items: center; justify-content: flex-start;
+    gap: 11px;
+    color: var(--text-2);
+    cursor: pointer;
+    transition: background .12s, color .12s;
+  }
+  .top-tab svg { width: 18px; height: 18px; flex: none; }
+  .top-tab-label { font-size: 13px; font-weight: 600; letter-spacing: normal; line-height: 1.2; text-align: left; white-space: nowrap; }
+  .top-tab:hover { background: var(--surface-2); color: var(--text); }
+  .top-tab.active { background: #fff; color: #0a0a0c; }
+  .top-tab.active .top-tab-label { font-weight: 700; }
+  .top-painel { display: none; }
+  .top-painel.active { display: block; }
+
+  /* PEDIDO DO USUÁRIO (2026-08-11, "vamos dar uma melhorada"): antes o
+     emoji ficava solto no início do texto corrido, sem separação visual —
+     um parágrafo denso de aviso parecia um bloco só, difícil de escanear
+     rápido. `.banner-icon` isola o emoji numa coluna própria (flex), o
+     texto some fica ao lado como bloco separado — mesma informação, mais
+     fácil de bater o olho e decidir se vale ler tudo. */
+  .aviso-banner {
+    background: var(--amber-soft);
+    border: 1px solid rgba(245, 185, 66, .35);
+    border-radius: var(--radius-sm);
+    padding: 13px 16px;
+    margin-bottom: 18px;
+    font-size: 12.5px;
+    color: var(--amber);
+    line-height: 1.55;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .aviso-banner .banner-icon, .info-banner .banner-icon { flex: none; font-size: 15px; line-height: 1.4; }
+  .aviso-banner .banner-texto, .info-banner .banner-texto { flex: 1; min-width: 0; }
+
+  /* 2026-08-10: alguns ".aviso-banner" eram só CONTEXTO (como um cálculo
+     funciona, uma limitação conhecida) sem nada de errado ou pendente —
+     ficavam em âmbar do mesmo jeito que um aviso de verdade (ex: ".env"
+     sem preencher), o que "cansa o olho" e faz o usuário aprender a
+     ignorar âmbar. `.info-banner` é a mesma caixa, mas neutra (cinza),
+     reservando âmbar só pro que precisa mesmo de atenção/ação. */
+  .info-banner {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 13px 16px;
+    margin-bottom: 18px;
+    font-size: 12.5px;
+    color: var(--text-2);
+    line-height: 1.55;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+
+  /* Aviso menor, pra dentro de um card (ex: "selecione uma seção antes") —
+     mesma cor de alerta do .aviso-banner, mas sem o padding grande. */
+  .aviso-inline {
+    background: var(--amber-soft);
+    border: 1px solid rgba(245, 185, 66, .35);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+    margin: 0 0 12px;
+    font-size: 12px;
+    color: var(--amber);
+    line-height: 1.5;
+  }
+
+  /* Texto de apoio menor, logo abaixo de um checkbox (.acao-painel label é
+     flex, então isso fica FORA do <label>, como parágrafo irmão — senão o
+     flex empurra o texto pra do lado em vez de embaixo). */
+  .hint-sub { margin: -5px 0 12px 24px; font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+
+  .form-field { display: block; font-size: 12.5px; color: var(--text-2); font-weight: 600; margin-bottom: 14px; }
+  .form-field > *:not(:first-child) { margin-top: 6px; font-weight: 400; }
+  select.search-input { cursor: pointer; }
+  select.search-input[multiple] { padding: 6px; }
+
+  .rotina-toggle { position: relative; display: inline-block; width: 34px; height: 19px; vertical-align: middle; }
+  .rotina-toggle input { opacity: 0; width: 0; height: 0; }
+  .rotina-toggle .slider { position: absolute; inset: 0; background: var(--surface-3); border: 1px solid var(--border-strong); border-radius: 999px; cursor: pointer; transition: background .15s; }
+  .rotina-toggle .slider::before { content: ''; position: absolute; width: 13px; height: 13px; left: 2px; top: 2px; background: #fff;border-radius: 50%; transition: transform .15s; }
+  .rotina-toggle input:checked + .slider { background: var(--green); border-color: var(--green); }
+  .rotina-toggle input:checked + .slider::before { transform: translateX(15px); background: #06210f; }
+
+  pre#log {
+    background: #000000;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 15px;
+    height: 280px;
+    overflow-y: auto;
+    font-family: 'Cascadia Code', Consolas, monospace;
+    font-size: 12.5px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: #d4d7e0;
+    margin-top: 14px;
+  }
+
+  /* ─── Modal de Produtos por Seção (2026-09-12, drill-down) ─────────── */
+  .tr-clicavel { cursor: pointer; }
+  /* PEDIDO DO USUÁRIO (2026-09-12): virou view inline no lugar de
+     #layout-secoes (não é mais modal/overlay por cima da tela) — botão
+     Voltar no topo troca de volta (ver abrirModalProdutos/fecharModalProdutos
+     em app.js). Nomes de classe "modal-produtos-*" ficaram (não é mais
+     modal, mas trocar tudo de nome não muda nenhum comportamento). */
+  .btn-voltar {
+    display: inline-flex; align-items: center; gap: 7px;
+    background: none; border: none; color: var(--text-2); font-size: 12.5px; font-weight: 700;
+    cursor: pointer; padding: 4px 0;
+  }
+  .btn-voltar:hover { color: var(--text); }
+  .btn-voltar svg { width: 15px; height: 15px; }
+  .modal-produtos-titulo-wrap { display: flex; align-items: flex-start; gap: 12px; }
+  .modal-produtos-icone {
+    flex: none; width: 34px; height: 34px; border-radius: 9px; margin-top: 1px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--surface-3); color: var(--text-2);
+  }
+  .modal-produtos-icone svg { width: 17px; height: 17px; }
+  .thumb-produto, .thumb-produto-vazio {
+    width: 38px; height: 38px; border-radius: 6px; object-fit: cover; flex: none;
+    background: var(--surface-3); border: 1px solid var(--border);
+  }
+  .thumb-produto-vazio { display: flex; align-items: center; justify-content: center; color: var(--muted); }
+  .thumb-produto-vazio svg { width: 16px; height: 16px; }
+  /* Coluna Ações (2026-09-12, redesign): ícone "ver foto ampliada" (só
+     quando existe foto real) + botão de texto existente lado a lado. */
+  .modal-produtos-acoes { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .icon-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 6px; flex: none;
+    border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2);
+    transition: border-color .12s, color .12s;
+  }
+  .icon-btn:hover { color: var(--text); border-color: var(--border-strong); }
+  .icon-btn svg { width: 14px; height: 14px; }
+  @media (max-width: 640px) { .modal-produtos { padding: 16px; } }
+
+  /* ─── Toasts (2026-09-12) ─────────────────────────────────────────
+     PEDIDO DO USUÁRIO ("vamos fazer mudanças de ui e ux"): substitui os
+     alert() nativos do navegador (feios, bloqueiam a thread, quebram o
+     visual cuidado do resto do painel) por uma notificação no mesmo
+     padrão visual já usado em .aviso-banner/.info-banner — cores neutras
+     pra info/aviso, vermelha só pra erro de verdade. Empilha no canto
+     inferior direito, some sozinho depois de alguns segundos (ver
+     mostrarToast() em app.js) ou no clique. */
+  .toast-container {
+    position: fixed;
+    bottom: 22px;
+    right: 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    z-index: 1000;
+    max-width: 380px;
+  }
+  .toast {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 13px 15px;
+    border-radius: var(--radius-sm);
+    font-size: 12.5px;
+    line-height: 1.5;
+    cursor: pointer;
+    background: var(--surface-2);
+    border: 1px solid var(--border-strong);
+    color: var(--text);
+    animation: toast-in .18s ease;
+  }
+  .toast.erro { background: var(--red-soft); border-color: rgba(255, 107, 107, .4); color: var(--red); }
+  .toast.aviso { background: var(--amber-soft); border-color: rgba(245, 185, 66, .4); color: var(--amber); }
+  .toast-icon { flex: none; font-size: 15px; line-height: 1.4; }
+  .toast-texto { flex: 1; min-width: 0; }
+  .toast.saindo { animation: toast-out .15s ease forwards; }
+  @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes toast-out { from { opacity: 1; } to { opacity: 0; transform: translateY(4px); } }

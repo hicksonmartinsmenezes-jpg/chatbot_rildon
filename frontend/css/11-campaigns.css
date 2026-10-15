@@ -179,7 +179,7 @@
   padding: 12px 14px;
   font-family: inherit;
   font-size: 13px;
-  transition: border-color .15s, box-shadow .15s;
+  transition: border-color .15s;
 }
 
 .campaign-form-card input[type="file"],
@@ -205,7 +205,6 @@
 .camp-modal-body input[type="text"]:focus,
 .camp-modal-body textarea:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(29,108,245,.14);
 }
 
 /* ─── Opções de público ──────────────────── */
@@ -1563,10 +1562,6 @@
   width: 260px;
   border-radius: 36px;
   border: 8px solid #1f2937;
-  box-shadow:
-    0 0 0 1px #374151,
-    0 20px 60px rgba(0,0,0,.7),
-    inset 0 0 0 1px rgba(255,255,255,.04);
   overflow: hidden;
   background: #111827;
   flex-shrink: 0;
@@ -1636,7 +1631,6 @@
   color: #fff;
   font-size: 14px;
   flex-shrink: 0;
-  box-shadow: 0 0 0 2px rgba(255,255,255,.15);
 }
 
 .camp-wa-contact { display: flex; flex-direction: column; flex: 1; min-width: 0; }
@@ -1672,10 +1666,9 @@
   border-radius: 10px 10px 2px 10px;
   padding: 7px 9px 5px;
   max-width: 92%;
-  box-shadow: 0 1px 3px rgba(0,0,0,.18);
   align-self: flex-end;
   position: relative;
-  transition: box-shadow .2s;
+  
 }
 
 /* rabinho da bolha */

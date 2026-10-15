@@ -44,7 +44,21 @@ const TZ = process.env.TZ_NEGOCIO || "America/Maceio";
 // Ver comentário no topo do arquivo. `$2` (mesParam) é a string "YYYY-MM-01"
 // do mês escolhido, ou NULL quando nenhum foi passado (mês corrente e
 // janela de "últimos 30 dias", preservando o comportamento de sempre).
-async function _resolverLimites(mesParam) {
+async function _resolverLimites(mesParam, deParam = null, ateParam = null) {
+  // Pedido do usuário (2026-10-15): relatório de um intervalo livre, não só
+  // de mês fechado. Com `de`/`ate`, o "período anterior" da comparação passa
+  // a ser o intervalo imediatamente anterior, do mesmo tamanho em dias.
+  if (deParam && ateParam) {
+    const { rows } = await pool.query(`
+      SELECT
+        ($2::date AT TIME ZONE $1) AS mes_inicio,
+        (($3::date + INTERVAL '1 day') AT TIME ZONE $1) AS mes_fim,
+        (($2::date - (($3::date - $2::date) + 1)) AT TIME ZONE $1) AS mes_anterior_inicio,
+        ($2::date AT TIME ZONE $1) AS janela_inicio,
+        (($3::date + INTERVAL '1 day') AT TIME ZONE $1) AS janela_fim
+    `, [TZ, deParam, ateParam]);
+    return rows[0];
+  }
   const { rows } = await pool.query(`
     SELECT
       (DATE_TRUNC('month', COALESCE($2::date, (NOW() AT TIME ZONE $1)::date)) AT TIME ZONE $1) AS mes_inicio,
@@ -62,15 +76,25 @@ async function _resolverLimites(mesParam) {
  * @param {string|null} mesRef "YYYY-MM" opcional — ver comentário no topo do
  *   arquivo. Sem isso, comportamento idêntico ao de sempre (mês corrente).
  */
-async function buscarMetricas(mesRef = null) {
-  const mesParam = mesRef && /^\d{4}-\d{2}$/.test(mesRef) ? `${mesRef}-01` : null;
+async function buscarMetricas(opcoes = null) {
+  // Aceita tanto buscarMetricas("2026-09") (como sempre) quanto
+  // buscarMetricas({ mes, de, ate }) — o intervalo livre é novo (2026-10-15).
+  const { mes: mesRef = null, de = null, ate = null } =
+    typeof opcoes === "string" || opcoes == null ? { mes: opcoes } : opcoes;
+  const dataValida = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
+  const intervalo = dataValida(de) && dataValida(ate) && de <= ate ? { de, ate } : null;
+  const mesParam = !intervalo && mesRef && /^\d{4}-\d{2}$/.test(mesRef) ? `${mesRef}-01` : null;
   const {
     mes_inicio: mesInicio,
     mes_fim: mesFim,
     mes_anterior_inicio: mesAnteriorInicio,
     janela_inicio: janelaInicio,
     janela_fim: janelaFim
-  } = await _resolverLimites(mesParam);
+  } = await _resolverLimites(mesParam, intervalo?.de, intervalo?.ate);
+
+  // Metas de SLA — configuráveis por .env, com padrão conservador.
+  const SLA_RESPOSTA_MIN = Number(process.env.SLA_PRIMEIRA_RESPOSTA_MIN || 15);
+  const SLA_RESOLUCAO_HORAS = Number(process.env.SLA_RESOLUCAO_HORAS || 24);
   const [
     summaryRes,
     estadoAtualRes,
@@ -85,7 +109,9 @@ async function buscarMetricas(mesRef = null) {
     setorRes,
     leadsRes,
     porMesRes,
-    temposRes
+    temposRes,
+    mensagensRes,
+    mensagensDiaRes
   ] = await Promise.all([
     // BUG CORRIGIDO (varredura 2026-10-15): este SELECT não tinha WHERE
     // nenhum — total/abertos/resolvidos/cancelados/taxaResolucao saíam
@@ -387,9 +413,49 @@ async function buscarMetricas(mesRef = null) {
         ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY resp_min) FILTER (
           WHERE assumed_at IS NOT NULL AND assumed_at >= $3 AND assumed_at < $1)::numeric, 1) AS tme_mediana_anterior_min,
         COUNT(*) FILTER (WHERE assumed_at IS NOT NULL AND assumed_at >= $1 AND assumed_at < $2)::int AS tme_amostra,
-        COUNT(*) FILTER (WHERE created_at >= $1 AND created_at < $2)::int AS tickets_no_mes
+        COUNT(*) FILTER (WHERE created_at >= $1 AND created_at < $2)::int AS tickets_no_mes,
+        -- Pedido do usuário (2026-10-15): metas de SLA no relatório.
+        COUNT(*) FILTER (
+          WHERE assumed_at IS NOT NULL AND assumed_at >= $1 AND assumed_at < $2
+            AND resp_min <= $4
+        )::int AS sla_resposta_dentro,
+        COUNT(*) FILTER (
+          WHERE status IN ('resolvido','cancelado') AND fim >= $1 AND fim < $2
+            AND dur_min <= ($5 * 60)
+        )::int AS sla_resolucao_dentro
       FROM base
-    `, [mesInicio, mesFim, mesAnteriorInicio])
+    `, [mesInicio, mesFim, mesAnteriorInicio, SLA_RESPOSTA_MIN, SLA_RESOLUCAO_HORAS]),
+
+    // Pedido do usuário (2026-10-15): volume de mensagens no relatório. Com
+    // o bot desligado quase nada vira ticket, então o histórico de mensagens
+    // é o retrato mais fiel do movimento real do atendimento.
+    pool.query(`
+      SELECT
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE message IS NOT NULL)::int AS recebidas,
+        COUNT(*) FILTER (WHERE response IS NOT NULL)::int AS enviadas,
+        COUNT(DISTINCT user_id)::int AS clientes
+      FROM history
+      WHERE created_at >= $1 AND created_at < $2
+    `, [mesInicio, mesFim]),
+
+    pool.query(`
+      SELECT
+        TO_CHAR(d, 'DD/MM/YYYY') AS dia,
+        COALESCE(h.total, 0)::int AS total
+      FROM generate_series(
+             ($2::timestamptz AT TIME ZONE $1)::date,
+             (($3::timestamptz AT TIME ZONE $1) - INTERVAL '1 day')::date,
+             INTERVAL '1 day'
+           ) AS d
+      LEFT JOIN (
+        SELECT DATE(created_at AT TIME ZONE $1) AS dia, COUNT(*)::int AS total
+        FROM history
+        WHERE created_at >= $2 AND created_at < $3
+        GROUP BY 1
+      ) h ON h.dia = d::date
+      ORDER BY d ASC
+    `, [TZ, janelaInicio, janelaFim])
   ]);
 
   const s = summaryRes.rows[0];
@@ -493,6 +559,27 @@ async function buscarMetricas(mesRef = null) {
       tmeAmostra: tempos.tme_amostra
     }
   };
+  const pct = (parte, total) => (total > 0 ? Math.round((parte / total) * 100) : null);
+  const sla = {
+    metaRespostaMin: SLA_RESPOSTA_MIN,
+    metaResolucaoHoras: SLA_RESOLUCAO_HORAS,
+    respostaDentro: tempos.sla_resposta_dentro,
+    respostaTotal: tempos.tme_amostra,
+    respostaPct: pct(tempos.sla_resposta_dentro, tempos.tme_amostra),
+    resolucaoDentro: tempos.sla_resolucao_dentro,
+    resolucaoTotal: tempos.tma_amostra,
+    resolucaoPct: pct(tempos.sla_resolucao_dentro, tempos.tma_amostra)
+  };
+  const m = mensagensRes.rows[0] || {};
+  const mensagensPorDia = {};
+  for (const row of mensagensDiaRes.rows) mensagensPorDia[row.dia] = row.total;
+  const mensagens = {
+    total: m.total || 0,
+    recebidas: m.recebidas || 0,
+    enviadas: m.enviadas || 0,
+    clientes: m.clientes || 0,
+    porDia: mensagensPorDia
+  };
   return {
     total,
     mensal: s.mensal,
@@ -520,10 +607,57 @@ async function buscarMetricas(mesRef = null) {
     distribuicaoNotas,
     feedbacksNegativos: feedbacksNegativosRes.rows,
     tendencia,
+    sla,
+    mensagens,
+    periodo: intervalo
+      ? { de: intervalo.de, ate: intervalo.ate, rotuloComparacao: "período anterior" }
+      : { de: null, ate: null, rotuloComparacao: "mês anterior" },
     novosContatosLeads: leadsRes.rows[0]?.leads_acumulado || 0,
     novosContatosNoMes: leadsRes.rows[0]?.novos_no_mes || 0,
     mesRef: mesParam ? mesRef : null
   };
 }
 
-module.exports = { buscarMetricas };
+/**
+ * Lista os atendimentos do período, linha a linha — base da exportação em
+ * CSV (pedido do usuário 2026-10-15: "levar os atendimentos pra planilha").
+ * Aceita o mesmo recorte de buscarMetricas e um filtro opcional por atendente.
+ */
+async function listarAtendimentosDoPeriodo({ mes = null, de = null, ate = null, atendente = null } = {}) {
+  const dataValida = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
+  const intervalo = dataValida(de) && dataValida(ate) && de <= ate ? { de, ate } : null;
+  const mesParam = !intervalo && mes && /^\d{4}-\d{2}$/.test(mes) ? `${mes}-01` : null;
+  const { mes_inicio: inicio, mes_fim: fim } = await _resolverLimites(mesParam, intervalo?.de, intervalo?.ate);
+
+  const valores = [inicio, fim, TZ];
+  let filtroAtendente = "";
+  if (atendente) {
+    valores.push(atendente);
+    filtroAtendente = `AND t.assigned_to = $${valores.length}::uuid`;
+  }
+  const { rows } = await pool.query(`
+    SELECT
+      t.protocolo,
+      t.customer_name AS cliente,
+      t.user_id AS contato,
+      t.type AS tipo,
+      t.sector AS setor,
+      t.status,
+      COALESCE(u.nome, t.assigned_to_name, '') AS atendente,
+      TO_CHAR(t.created_at AT TIME ZONE $3, 'DD/MM/YYYY HH24:MI') AS aberto_em,
+      TO_CHAR(t.assumed_at AT TIME ZONE $3, 'DD/MM/YYYY HH24:MI') AS assumido_em,
+      TO_CHAR(t.closed_at AT TIME ZONE $3, 'DD/MM/YYYY HH24:MI') AS fechado_em,
+      ROUND((EXTRACT(EPOCH FROM (t.assumed_at - t.created_at)) / 60)::numeric, 1) AS espera_min,
+      ROUND((EXTRACT(EPOCH FROM (COALESCE(t.closed_at, t.updated_at) - t.created_at)) / 60)::numeric, 1) AS duracao_min,
+      t.satisfaction_rating AS nota,
+      t.satisfaction_feedback AS comentario
+    FROM tickets t
+    LEFT JOIN users u ON u.id = t.assigned_to
+    WHERE t.created_at >= $1 AND t.created_at < $2
+    ${filtroAtendente}
+    ORDER BY t.created_at ASC
+  `, valores);
+  return rows;
+}
+
+module.exports = { buscarMetricas, listarAtendimentosDoPeriodo };

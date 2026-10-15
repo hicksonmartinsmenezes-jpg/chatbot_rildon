@@ -277,6 +277,12 @@ function gerarPdfMetricas(data, destino) {
   doc.pipe(destino);
 
   const historico = !!data.mesRef;
+  // Pedido do usuário (2026-10-15): relatório de intervalo livre, não só de
+  // mês fechado. Quando vem período, título/subtítulo e a coluna de
+  // comparação falam em "período", não em "mês".
+  const periodo = data.periodo && data.periodo.de && data.periodo.ate ? data.periodo : null;
+  const _dataBR = (iso) => String(iso).split("-").reverse().join("/");
+  const rotuloComparacao = periodo ? "Período anterior" : "Mês anterior";
   const agora = new Date();
   const geradoEm = agora.toLocaleDateString("pt-BR") + " " + agora.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   // Pedido do usuário (2026-09-16): "resumo do mês deveria mostrar qual mês
@@ -288,8 +294,12 @@ function gerarPdfMetricas(data, destino) {
   // fuso do servidor (UTC no container) — nas últimas horas do último dia
   // do mês o título saía com o mês seguinte. _mesAtualStr já resolve no
   // fuso do negócio, igual ao resto do arquivo.
-  const nomeMesExibido = historico ? _nomeMes(data.mesRef) : _nomeMes(_mesAtualStr(agora));
-  const subtitulo = historico ? `Métricas de ${nomeMesExibido}  •  gerado em ${geradoEm}` : `Gerado em ${geradoEm}`;
+  const nomeMesExibido = periodo
+    ? `${_dataBR(periodo.de)} a ${_dataBR(periodo.ate)}`
+    : (historico ? _nomeMes(data.mesRef) : _nomeMes(_mesAtualStr(agora)));
+  const subtitulo = (historico || periodo)
+    ? `Métricas de ${nomeMesExibido}  •  gerado em ${geradoEm}`
+    : `Gerado em ${geradoEm}`;
   // Pedido do usuário (2026-09-17): marcar quando a última barra do gráfico
   // "Atendimentos nos últimos 6 meses" é um mês AINDA EM ANDAMENTO — o mês
   // do próprio relatório (data.mesRef, ou o corrente sem ele) é sempre a
@@ -626,7 +636,13 @@ function gerarPdfMetricas(data, destino) {
     // uma comparação boa/ruim) pra não repetir o erro já corrigido antes
     // (cards mostrando números de recortes de tempo diferentes lado a lado
     // sem deixar isso claro, ver 688 resolvidos vs 84 atendimentos).
-    ["Novos Contatos", data.novosContatosNoMes ?? 0, TEXTO, { texto: `${data.novosContatosLeads ?? 0} leads acumulados`, bom: null }]
+    ["Novos Contatos", data.novosContatosNoMes ?? 0, TEXTO, { texto: `${data.novosContatosLeads ?? 0} leads acumulados`, bom: null }],
+    // Pedido do usuário (2026-10-15): metas de SLA e volume de mensagens.
+    ["SLA 1ª resposta", data.sla?.respostaPct != null ? `${data.sla.respostaPct}%` : "sem dados",
+      data.sla?.respostaPct == null ? TEXTO : (data.sla.respostaPct >= 80 ? VERDE : VERMELHO),
+      data.sla ? { texto: `meta: ate ${data.sla.metaRespostaMin} min`, bom: null } : null],
+    ["Mensagens trocadas", (data.mensagens?.total ?? 0).toLocaleString("pt-BR"), TEXTO,
+      data.mensagens ? { texto: `${data.mensagens.clientes} cliente(s)`, bom: null } : null]
   ];
   valores.forEach((v, i) => cartao(MARGIN + (i % CARDS_POR_LINHA) * (cardW + gap), cardsY + Math.floor(i / CARDS_POR_LINHA) * (cardH + gap), cardW, cardH, v[0], v[1], v[2] || TEXTO, v[3] || null));
 
@@ -660,13 +676,13 @@ function gerarPdfMetricas(data, destino) {
   // "Variação" agora vem colorida (verde=bom, vermelho=ruim) e em negrito,
   // igual ao destaque que os cards de cima já ganharam — mesmo critério
   // "invertido" (tempo subir é ruim) de _corTendencia/_tendenciaInfo.
-  faixa("Comparação com o mês anterior", MARGIN, blocoY, colW);
+  faixa(periodo ? "Comparação com o período anterior" : "Comparação com o mês anterior", MARGIN, blocoY, colW);
   // Pedido do usuário (2026-09-17): "comparação ao mês anterior coloque
   // avaliações também" — nova linha usando tendencia.avaliacoesAtual/
   // avaliacoesMesAnterior/avaliacoesVariacaoPct (ver metrics.service.js,
   // reaproveita a mesma query de tendência das outras 4 linhas, só que
   // contando tickets com satisfaction_rating preenchido em vez de todos).
-  const compFim = tabela(MARGIN, blocoY + 27, colW, ["Métrica", "Este mês", "Mês anterior", "Variação"], [0.36, 0.20, 0.24, 0.20], [
+  const compFim = tabela(MARGIN, blocoY + 27, colW, ["Métrica", periodo ? "Período" : "Este mês", rotuloComparacao, "Variação"], [0.36, 0.20, 0.24, 0.20], [
     ["Atendimentos", data.mensal ?? 0, data.tendencia?.totalMesAnterior ?? 0, data.tendencia?.totalVariacaoPct != null ? `${data.tendencia.totalVariacaoPct > 0 ? "+" : ""}${data.tendencia.totalVariacaoPct}%` : "—"],
     ["Taxa de resolução", `${data.tendencia?.taxaResolucaoAtual ?? 0}%`, `${data.tendencia?.taxaResolucaoMesAnterior ?? 0}%`, data.tendencia?.taxaResolucaoVariacaoPontos != null ? `${data.tendencia.taxaResolucaoVariacaoPontos > 0 ? "+" : ""}${data.tendencia.taxaResolucaoVariacaoPontos}pp` : "—"],
     ["TMA (mediana)", _formatarMin(data.tendencia?.tempoResolucaoMedianaMin), _formatarMin(data.tendencia?.tempoResolucaoMedianaAnteriorMin), data.tendencia?.tempoResolucaoMedianaVariacaoPct != null ? `${data.tendencia.tempoResolucaoMedianaVariacaoPct > 0 ? "+" : ""}${data.tendencia.tempoResolucaoMedianaVariacaoPct}%` : "—"],
@@ -776,12 +792,15 @@ function gerarPdfMetricas(data, destino) {
   // Pedido do usuário (2026-09-17): sinalizar quando a última barra é um mês
   // ainda em andamento (ver mesEmAndamento, calculado lá em cima) — reserva
   // +11pt de altura só quando precisa da legenda embaixo do gráfico.
-  const graficoAltura = 22 + 34 + 140 + (mesEmAndamento ? 11 : 0);
+  const graficoAltura = periodo ? 0 : 22 + 34 + 140 + (mesEmAndamento ? 11 : 0);
   let graficoY = fy + 16;
-  if (graficoY + graficoAltura > doc.page.height - BOTTOM - 10) {
+  if (!periodo && graficoY + graficoAltura > doc.page.height - BOTTOM - 10) {
     pagina(3);
     graficoY = TOP;
   }
+  // Num relatório de intervalo livre o gráfico "últimos 6 meses" não
+  // corresponde ao recorte pedido — fica de fora.
+  if (!periodo) {
   faixa("Atendimentos nos últimos 6 meses", MARGIN, graficoY, W);
   const porMesesArr = data.porMeses || [];
   const dadosGrafico = porMesesArr.map((m, i) => {
@@ -792,6 +811,7 @@ function gerarPdfMetricas(data, destino) {
   if (mesEmAndamento) {
     doc.fillColor(SEC).font("Helvetica-Oblique").fontSize(7.5)
       .text("* mês em andamento — total parcial até o momento da exportação.", MARGIN + 12, graficoY + 34 + 140 + 1, { width: W - 24 });
+  }
   }
 
   doc.end();

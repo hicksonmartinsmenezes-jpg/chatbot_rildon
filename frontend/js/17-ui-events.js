@@ -63,6 +63,7 @@
     "openProfileModal",
     "logout",
     "loadTickets",
+    "metricsPeriodoChange",
     "loadConversations",
     "sendConversationMessage",
     "closeMobileChat",
@@ -268,6 +269,9 @@
         break;
       case "metricsMesChange":
         call("metricsMesChange", el.value);
+        break;
+      case "metricsPeriodoChange":
+        call("metricsPeriodoChange");
         break;
     }
   });

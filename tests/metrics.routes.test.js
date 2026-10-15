@@ -101,7 +101,8 @@ function installFakePool() {
           tma_mediana_min: "30.0", tma_mediana_anterior_min: "40.0",
           tma_amostra: 8, tma_com_fechamento: 6,
           tme_mediana_min: "4.0", tme_mediana_anterior_min: "5.0",
-          tme_amostra: 7, tickets_no_mes: 10
+          tme_amostra: 7, tickets_no_mes: 10,
+          sla_resposta_dentro: 6, sla_resolucao_dentro: 5
         }]
       };
     }
@@ -115,7 +116,7 @@ function installFakePool() {
     }
     // Varredura 2026-10-15: o "por dia" passou a usar generate_series pra
     // preencher os dias sem atendimento.
-    if (/generate_series/.test(sql)) {
+    if (/generate_series/.test(sql) && /FROM tickets/.test(sql)) {
       return { rows: [{ dia: "15/07/2026", total: 3 }, { dia: "16/07/2026", total: 0 }] };
     }
     if (/EXTRACT\(HOUR FROM created_at/.test(sql)) {
@@ -176,6 +177,13 @@ function installFakePool() {
     // Atendimentos por setor, últimos 30 dias (pedido do usuário, 2026-07-31).
     if (/GROUP BY sector/.test(sql)) {
       return { rows: [{ sector: "vendas", total: 6 }, { sector: null, total: 1 }] };
+    }
+    // Volume de mensagens (pedido do usuário, 2026-10-15).
+    if (/FROM history/.test(sql) && /generate_series/.test(sql)) {
+      return { rows: [{ dia: "15/07/2026", total: 12 }] };
+    }
+    if (/FROM history/.test(sql)) {
+      return { rows: [{ total: 120, recebidas: 70, enviadas: 50, clientes: 9 }] };
     }
     // Atendimentos por mês (gráfico de 6 meses do PDF, 2026-09-17). Antes
     // da varredura 2026-10-15 esta query caía no mesmo matcher do "por dia"

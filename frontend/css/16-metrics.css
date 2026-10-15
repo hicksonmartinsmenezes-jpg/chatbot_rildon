@@ -749,3 +749,31 @@ body.light-theme #tab-metrics .chart-card h3 { color: #0f172a; }
   .metric-card,
   .metrics-refresh-btn { transition: none; }
 }
+
+/* Período livre de datas no cabeçalho de Relatórios (2026-10-15) — fica ao
+   lado do seletor de mês; preencher as duas datas desabilita o seletor. */
+.metrics-periodo-livre {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted, #9aa4b2);
+  white-space: nowrap;
+}
+
+.metrics-periodo-livre input[type="date"] {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: inherit;
+  font: inherit;
+  padding: 6px 8px;
+}
+
+.metrics-periodo-livre input[type="date"]:hover { border-color: rgba(255, 255, 255, 0.22); }
+
+.metrics-export-mes-select:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Destaque do card de SLA (2026-10-15) — verde dentro da meta, vermelho fora. */
+#metric-sla-resposta.is-good { color: #22c55e; }
+#metric-sla-resposta.is-bad  { color: #ef4444; }

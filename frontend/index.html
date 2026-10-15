@@ -23,7 +23,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css">
   <!-- CSS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <link rel="stylesheet" href="dist/bundle.662534c76e.css">
+  <link rel="stylesheet" href="dist/bundle.fc054f10ce.css">
   <!-- CSS_BUNDLE_END -->
 <style>
     /* Centraliza colunas da tabela de histórico */
@@ -1741,11 +1741,25 @@ Como podemos ajudar você hoje?
          o input nativo renderiza feio/inconsistente entre navegadores;
          select dá controle total de estilo e já vem populado com os
          últimos 12 meses (ver _metricsPopularSeletorMes em 05-metrics.js). -->
+    <!-- Pedido do usuário (2026-10-15): intervalo livre de datas (antes só
+         dava pra escolher mês fechado) e exportação em planilha. Preencher
+         as DUAS datas manda ?de=&ate= e o seletor de mês fica de lado;
+         limpar qualquer uma volta pro recorte mensal. -->
     <div class="metrics-tabs-bar-actions">
       <select id="metrics-export-mes" class="metrics-export-mes-select" data-change-action="metricsMesChange" title="Mês exibido (Mês corrente = ao vivo)"></select>
+      <label class="metrics-periodo-livre" title="Período personalizado — preencha as duas datas">
+        <span>de</span>
+        <input type="date" id="metrics-de" data-change-action="metricsPeriodoChange">
+        <span>até</span>
+        <input type="date" id="metrics-ate" data-change-action="metricsPeriodoChange">
+      </label>
       <button type="button" class="metrics-export-btn" onclick="exportarMetricasPDF(this)">
         <i class="fa-solid fa-file-pdf"></i>
         <span>Exportar PDF</span>
+      </button>
+      <button type="button" class="metrics-export-btn" onclick="exportarAtendimentosCSV(this)" title="Baixa os atendimentos do período em planilha (abre no Excel)">
+        <i class="fa-solid fa-file-csv"></i>
+        <span>Exportar planilha</span>
       </button>
     </div>
   </div>
@@ -1848,6 +1862,21 @@ Como podemos ajudar você hoje?
       </article>
 
 
+
+      <!-- Pedido do usuário (2026-10-15): metas de SLA e volume de mensagens. -->
+      <article class="metric-card" data-accent="green">
+        <span class="metric-card-icon"><i class="fa-solid fa-gauge-high"></i></span>
+        <strong id="metric-sla-resposta">—</strong>
+        <span id="metric-sla-resposta-sub"></span>
+        <span class="metric-card-label">SLA 1ª resposta <i class="fa-solid fa-circle-info metric-card-info" title="Percentual de atendimentos assumidos dentro da meta de tempo (configurável em SLA_PRIMEIRA_RESPOSTA_MIN no .env)"></i></span>
+      </article>
+
+      <article class="metric-card" data-accent="blue">
+        <span class="metric-card-icon"><i class="fa-solid fa-comments"></i></span>
+        <strong id="metric-mensagens-total">0</strong>
+        <span id="metric-mensagens-sub"></span>
+        <span class="metric-card-label">Mensagens trocadas <i class="fa-solid fa-circle-info metric-card-info" title="Mensagens registradas no período (recebidas + enviadas). Com o bot desligado é o retrato mais fiel do movimento, já que quase nada vira ticket."></i></span>
+      </article>
 
       <article class="metric-card" data-accent="cyan">
         <span class="metric-card-icon"><i class="fa-solid fa-clock"></i></span>
@@ -2506,7 +2535,7 @@ Como podemos ajudar você hoje?
 
 
   <!-- JS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <script src="dist/bundle.19c237a949.js"></script>
+  <script src="dist/bundle.ff3a16a925.js"></script>
   <!-- JS_BUNDLE_END -->
   <script id="user-permissions-live-fix">
   (() => {

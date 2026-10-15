@@ -31,7 +31,7 @@ function mockPool() {
     if (tem("mes_anterior_inicio")) return { rows: [LIMITES] };
     if (tem("AS pendentes_agora")) return { rows: [{ pendentes_agora: 4, em_atendimento_agora: 2, tickets_no_banco: 806 }] };
     if (tem("AS mensal")) return { rows: [{ total: 195, abertos: 1, andamento: 0, resolvidos: 194, cancelados: 0, hoje: 3, mensal: 195 }] };
-    if (tem("generate_series")) return { rows: [{ dia: "01/09/2026", total: 2 }, { dia: "02/09/2026", total: 0 }] };
+    if (tem("generate_series") && tem("FROM tickets")) return { rows: [{ dia: "01/09/2026", total: 2 }, { dia: "02/09/2026", total: 0 }] };
     if (tem("EXTRACT(HOUR")) return { rows: [{ hora: 9, total: 5 }] };
     if (tem("WITH agg AS")) {
       return { rows: [
@@ -43,10 +43,13 @@ function mockPool() {
     if (tem("AS tma_mediana_min")) {
       return { rows: [{
         tma_mediana_min: "42.0", tma_mediana_anterior_min: "60.0", tma_amostra: 221, tma_com_fechamento: 195,
-        tme_mediana_min: "11.5", tme_mediana_anterior_min: "10.0", tme_amostra: 181, tickets_no_mes: 195
+        tme_mediana_min: "11.5", tme_mediana_anterior_min: "10.0", tme_amostra: 181, tickets_no_mes: 195,
+        sla_resposta_dentro: 150, sla_resolucao_dentro: 100
       }] };
     }
     if (tem("leads_acumulado")) return { rows: [{ leads_acumulado: 346, novos_no_mes: 12 }] };
+    if (tem("FROM history") && tem("generate_series")) return { rows: [{ dia: "01/09/2026", total: 40 }] };
+    if (tem("FROM history")) return { rows: [{ total: 1200, recebidas: 700, enviadas: 500, clientes: 85 }] };
     if (tem("GROUP BY t.assigned_to")) return { rows: [{ nome: "Rafael", media: "4.71", total: 49 }] };
     if (tem("AVG(satisfaction_rating)")) return { rows: [{ media: "4.77", total: 60 }] };
     if (tem("satisfaction_feedback IS NOT NULL")) return { rows: [] };
@@ -128,5 +131,32 @@ describe("buscarMetricas — varredura 2026-10-15", () => {
     const d = await buscarMetricas("2026-09");
     expect(d.novosContatosNoMes).toBe(12);
     expect(d.novosContatosLeads).toBe(346);
+  });
+});
+
+describe("buscarMetricas — SLA e volume de mensagens (2026-10-15)", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  test("SLA calcula o percentual dentro da meta", async () => {
+    mockPool();
+    const d = await buscarMetricas("2026-09");
+    expect(d.sla.respostaPct).toBe(Math.round((150 / 181) * 100));
+    expect(d.sla.resolucaoPct).toBe(Math.round((100 / 221) * 100));
+    expect(d.sla.metaRespostaMin).toBe(15);
+  });
+
+  test("volume de mensagens vem do histórico, com quebra por dia", async () => {
+    mockPool();
+    const d = await buscarMetricas("2026-09");
+    expect(d.mensagens.total).toBe(1200);
+    expect(d.mensagens.recebidas).toBe(700);
+    expect(d.mensagens.clientes).toBe(85);
+    expect(d.mensagens.porDia["01/09/2026"]).toBe(40);
+  });
+
+  test("intervalo livre marca o rótulo de comparação", async () => {
+    mockPool();
+    const d = await buscarMetricas({ de: "2026-09-01", ate: "2026-09-15" });
+    expect(d.periodo).toEqual({ de: "2026-09-01", ate: "2026-09-15", rotuloComparacao: "período anterior" });
   });
 });

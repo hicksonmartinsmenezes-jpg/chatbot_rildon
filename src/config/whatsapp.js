@@ -786,7 +786,24 @@ async function onMessagesUpsert({ messages, type }) {
 
         try {
           await enviarComRetry(sendTo, perguntaOrcamento);
-          await updateSession(userId, { aguardandoConfirmacaoOrcamento: true });
+          // BUG CORRIGIDO (Issue #15): quando a visão reconhece a peça, o
+          // texto já mostrado ao cliente ("Vi que é X!") nunca era salvo na
+          // sessão — só a flag aguardandoConfirmacaoOrcamento. Resultado:
+          // cliente confirma "sim" e o bot pergunta o veículo do zero (main.
+          // flow.js só pula essa pergunta quando session.veiculoSugerido já
+          // existe), mesmo tendo acabado de exibir o veículo exato. Não há
+          // extração separada de veículo/peça nesse caminho (diferente do
+          // texto/legenda, que passa pelo pipeline normal de IA) — grava o
+          // mesmo texto completo em ambos os campos; _finalizarOrcamento
+          // (vendas.flow.js) já evita duplicar a frase na descrição do
+          // ticket quando os dois campos vêm idênticos.
+          await updateSession(userId, {
+            aguardandoConfirmacaoOrcamento: true,
+            ...(descricaoReconhecida ? {
+              veiculoSugerido: descricaoReconhecida,
+              produtoSugerido: descricaoReconhecida,
+            } : {}),
+          });
         } catch (err) {
           logger.error(`Erro ao enviar pergunta de orçamento (foto sem legenda) para ${userId}: ${err.message}`);
         }

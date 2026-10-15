@@ -269,12 +269,14 @@ async function _loadConversationsCore(silent = false) {
     const emAndamento = Object.values(ticketsByUser).filter(t => t.status === "em_andamento").length;
     const badgeP = document.getElementById("badge-pendentes");
     const badgeA = document.getElementById("badge-em_andamento");
+    // setTextPop (Issue #14): pop de escala só quando o número muda de
+    // verdade (evita animar a cada poll silencioso com o mesmo valor).
     if (badgeP) {
-      badgeP.textContent = pendentes;
+      setTextPop("badge-pendentes", pendentes);
       badgeP.style.display = pendentes > 0 ? "" : "none";
     }
     if (badgeA) {
-      badgeA.textContent = emAndamento;
+      setTextPop("badge-em_andamento", emAndamento);
       badgeA.style.display = emAndamento > 0 ? "" : "none";
     }
 
@@ -876,6 +878,10 @@ async function openConversation(userId, updateActive = true) {
   wrapper.innerHTML = html.join("");
   const frag = document.createDocumentFragment();
   while (wrapper.firstChild) frag.appendChild(wrapper.firstChild);
+  // Feature (Issue #14): so chegam aqui mensagens NOVAS de uma conversa JA
+  // ABERTA (a conversa recem-aberta/trocada retorna antes, sem animar), entao
+  // so elas ganham a entrada suave (fade+slide) — nunca o historico inteiro.
+  frag.querySelectorAll(".bubble-row").forEach((row) => row.classList.add("msg-enter"));
   messagesBox.appendChild(frag);
 
   bindLazyImageFade(messagesBox);
@@ -1654,7 +1660,8 @@ function updateSidebarUnreadBadge() {
   if (!badge) return;
   const totalUnread = Object.values(unreadMessages).reduce((sum, v) => sum + Number(v || 0), 0);
   if (totalUnread > 0) {
-    badge.textContent = totalUnread > 99 ? "99+" : totalUnread;
+    // setTextPop (Issue #14): pop de escala só quando o valor muda de fato.
+    setTextPop("sidebar-unread-count", totalUnread > 99 ? "99+" : totalUnread);
     badge.classList.remove("hidden");
   } else {
     badge.textContent = "0";

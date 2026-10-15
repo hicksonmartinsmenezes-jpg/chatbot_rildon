@@ -63,7 +63,7 @@
 .sidebar a.active,
 .sidebar a.highlight {
   color: #fff;
-  background: #1d6cf522;
+  background: transparent;
 }
 
 .sidebar .label {

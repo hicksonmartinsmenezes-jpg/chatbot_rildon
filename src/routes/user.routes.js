@@ -178,6 +178,10 @@ router.delete("/users/:id", asyncHandler(async (req, res) => {
     `DELETE FROM auth_sessions WHERE user_data::jsonb->>'id' = $1`,
     [targetId]
   );
+  // 2026-10-09: authSession passou a ter cache em memória (TTL curto) — sem
+  // esta linha, o usuário desativado continuaria entrando até o TTL expirar.
+  // require() local: evita ciclo auth.routes <-> user.routes no carregamento.
+  require("./auth.routes").invalidarCacheSessao();
 
   await auditLog({
     user:    req.user,
@@ -218,6 +222,7 @@ router.patch("/users/:id/password", asyncHandler(async (req, res) => {
     `DELETE FROM auth_sessions WHERE user_data::jsonb->>'id' = $1`,
     [String(req.params.id)]
   );
+  require("./auth.routes").invalidarCacheSessao();   // ver nota em DELETE /users/:id
 
   await auditLog({
     user:    req.user,

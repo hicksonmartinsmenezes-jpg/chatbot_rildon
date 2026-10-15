@@ -26,7 +26,6 @@
 
 const fs = require('fs');
 const path = require('path');
-const readline = require('readline');
 
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
@@ -34,10 +33,14 @@ const CLIENT_ID     = process.env.GOOGLE_OAUTH_CLIENT_ID;
 const CLIENT_SECRET = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
 const TOKEN_PATH     = process.env.GOOGLE_DRIVE_OAUTH_TOKEN_PATH;
 
-// Redirect URI "out-of-band" — o Google mostra o código NA PRÓPRIA TELA em
-// vez de tentar redirecionar pra um servidor (não precisa subir servidor
-// local nem expor porta nenhuma pra essa autorização pontual).
-const REDIRECT_URI = 'urn:ietf:wg:oauth:2.0:oob';
+// Fluxo "loopback" (2026-09-30): o antigo "out-of-band" (urn:ietf:wg:oauth:2.0:oob)
+// foi descontinuado pelo Google e não funciona mais. Agora o Google redireciona
+// pra um servidor temporário em 127.0.0.1 (só durante esta autorização), que
+// captura o código sozinho — não precisa copiar/colar nada. Vale para clientes
+// OAuth do tipo "App para computador" (Desktop app).
+const http = require('http');
+const PORTA = Number(process.env.GOOGLE_OAUTH_LOOPBACK_PORT || 53682);
+const REDIRECT_URI = `http://127.0.0.1:${PORTA}`;
 const SCOPES = ['https://www.googleapis.com/auth/drive'];
 
 async function main() {
@@ -62,13 +65,24 @@ async function main() {
 
   console.log('\n1) Abra este link no navegador, faça login com a conta Google DONA da pasta do Drive, e autorize:\n');
   console.log(authUrl);
-  console.log('\n2) O Google vai mostrar um código na tela — copie e cole aqui embaixo.\n');
+  console.log(`\n2) Depois de autorizar, o Google volta pra ${REDIRECT_URI} e este script segue sozinho (aguardando até 5 min).\n`);
 
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  const code = await new Promise((resolve) => rl.question('Código: ', (answer) => { rl.close(); resolve(String(answer || '').trim()); }));
+  const code = await new Promise((resolve, reject) => {
+    const servidor = http.createServer((req, res) => {
+      const url = new URL(req.url, REDIRECT_URI);
+      const c = url.searchParams.get('code');
+      const erro = url.searchParams.get('error');
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(c ? '<h2>Autorizado! Pode fechar esta aba e voltar ao terminal.</h2>' : `<h2>Falhou: ${erro || 'sem código'}</h2>`);
+      if (c || erro) { servidor.close(); c ? resolve(c) : reject(new Error(erro)); }
+    });
+    servidor.on('error', reject);
+    servidor.listen(PORTA, '127.0.0.1');
+    setTimeout(() => { servidor.close(); reject(new Error('tempo esgotado (5 min) sem autorização')); }, 5 * 60 * 1000);
+  }).catch((e) => { console.error('❌ ' + e.message); process.exit(1); });
 
   if (!code) {
-    console.error('❌ Nenhum código informado.');
+    console.error('❌ Nenhum código recebido.');
     process.exit(1);
   }
 

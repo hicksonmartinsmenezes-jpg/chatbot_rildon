@@ -1,6 +1,9 @@
 const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, "../.env") });
 
+// Limita o flood de "Bad MAC"/"Session error" do libsignal (travava o painel).
+require("./utils/signal-log-guard").instalar();
+
 // ── Validação de variáveis de ambiente ───────────────────────────────────────
 // DEVE ser importado logo após o dotenv — aborta o processo se faltar algo crítico
 const env = require("./config/env");

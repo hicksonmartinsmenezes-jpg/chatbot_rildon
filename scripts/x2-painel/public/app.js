@@ -23,6 +23,14 @@
 
   function el(id) { return document.getElementById(id); }
 
+  // Escapa valores vindos do servidor/arquivos antes de interpolá-los em HTML.
+  // Use somente para conteúdo textual e atributos entre aspas.
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    })[char]);
+  }
+
   // ─── Toast (2026-09-12) ─────────────────────────────────────────────
   // PEDIDO DO USUÁRIO ("vamos fazer mudanças de ui e ux"): substitui os
   // alert() nativos (feios, bloqueiam a aba inteira até clicar OK, sem
@@ -156,13 +164,13 @@
       const badgePublicado = s.produtos === 0
         ? '<span class="valor-plano v-muted">sem dados</span>'
         : s.precisaZip
-          ? `<span class="valor-plano v-ambar">${s.publicados} → ${s.comFotoReal} prontas, precisa build-zip</span>`
-          : `<span class="valor-plano ${publicadoOk ? 'v-verde' : 'v-muted'}">${s.publicados}</span>`;
+          ? `<span class="valor-plano v-ambar">${escapeHtml(s.publicados)} → ${escapeHtml(s.comFotoReal)} prontas, precisa build-zip</span>`
+          : `<span class="valor-plano ${publicadoOk ? 'v-verde' : 'v-muted'}">${escapeHtml(s.publicados)}</span>`;
       const badgeErros = (s.erros || 0) > 0
-        ? `<span class="valor-plano v-vermelho">${s.erros}</span>`
+        ? `<span class="valor-plano v-vermelho">${escapeHtml(s.erros)}</span>`
         : '<span class="valor-plano v-muted">0</span>';
       const badgePequenas = s.pequenas > 0
-        ? `<span class="valor-plano v-vermelho">${s.pequenas} suspeita(s)</span>`
+        ? `<span class="valor-plano v-vermelho">${escapeHtml(s.pequenas)} suspeita(s)</span>`
         : '<span class="valor-plano v-muted">0</span>';
       // PEDIDO DO USUÁRIO (2026-09-12, mockup "CatálogoPro"): dot de status
       // rápido — vermelho se tem erro, âmbar se falta zip, verde se 100%
@@ -174,11 +182,11 @@
       // linha (fora do checkbox) abre o drill-down de Produtos dessa Seção
       // — ver listener em "tabela-secoes" mais abaixo e abrirModalProdutos().
       return `
-        <tr class="${selecionada ? 'selecionada' : ''} tr-clicavel" data-slug-linha="${s.slug}" title="Clique pra ver os produtos desta seção">
-          <td><input type="checkbox" data-slug="${s.slug}" ${selecionada ? 'checked' : ''}></td>
-          <td><span class="status-dot-mini ${corDot}"></span>${s.label}<div class="cell-slug">${s.slug}</div></td>
-          <td>${s.produtos}</td>
-          <td>${s.baixados}/${s.produtos}</td>
+        <tr class="${selecionada ? 'selecionada' : ''} tr-clicavel" data-slug-linha="${escapeHtml(s.slug)}" title="Clique pra ver os produtos desta seção">
+          <td><input type="checkbox" data-slug="${escapeHtml(s.slug)}" ${selecionada ? 'checked' : ''}></td>
+          <td><span class="status-dot-mini ${corDot}"></span>${escapeHtml(s.label)}<div class="cell-slug">${escapeHtml(s.slug)}</div></td>
+          <td>${escapeHtml(s.produtos)}</td>
+          <td>${escapeHtml(s.baixados)}/${escapeHtml(s.produtos)}</td>
           <td>${badgePublicado}</td>
           <td>${badgeErros}</td>
           <td>${badgePequenas}</td>
@@ -256,7 +264,7 @@
   function renderChipsModalProdutos() {
     const contagem = _contarPorStatusModal();
     el('modal-produtos-filtro-chips').innerHTML = FILTROS_STATUS_MODAL.map((f) => `
-      <span class="chip ${modalProdutosFiltroStatus === f.id ? 'active' : ''}" data-filtro-status-modal="${f.id}">${f.label} <span class="chip-contador">${contagem[f.id]}</span></span>
+      <span class="chip ${modalProdutosFiltroStatus === f.id ? 'active' : ''}" data-filtro-status-modal="${f.id}">${escapeHtml(f.label)} <span class="chip-contador">${contagem[f.id]}</span></span>
     `).join('');
   }
 
@@ -287,7 +295,7 @@
       tbody.innerHTML = pagina.map((p) => {
         const info = STATUS_PRODUTO_INFO[p.status] || STATUS_PRODUTO_INFO.pendente;
         const thumb = p.temThumb
-          ? `<img class="thumb-produto" src="/api/secoes/${modalProdutosSlug}/produtos/${encodeURIComponent(p.codigo)}/thumb" alt="">`
+          ? `<img class="thumb-produto" src="/api/secoes/${encodeURIComponent(modalProdutosSlug)}/produtos/${encodeURIComponent(p.codigo)}/thumb" alt="">`
           : `<div class="thumb-produto-vazio" title="Sem foto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5-9 9"/></svg></div>`;
         const rotuloAcao = p.status === 'ok' ? 'Reprocessar' : p.status === 'pendente' ? 'Baixar agora' : 'Tentar de novo';
         // Contagem real de arquivos baixados (não é "X de Y esperado" — não
@@ -295,23 +303,23 @@
         // fotos está abaixo do tamanho mínimo (fotoSuspeita, calculado no
         // backend com a mesma função já usada no agregado por seção).
         const fotosTexto = p.numFotos > 0
-          ? `${p.numFotos} foto${p.numFotos > 1 ? 's' : ''}`
+          ? `${escapeHtml(p.numFotos)} foto${p.numFotos > 1 ? 's' : ''}`
           : '—';
         const fotosSuspeitaMarca = p.fotoSuspeita
           ? ` <span class="status-dot-mini alerta" title="Alguma foto abaixo do tamanho mínimo"></span>`
           : '';
         const verFotoBtn = p.temThumb
-          ? `<a class="icon-btn" href="/api/secoes/${modalProdutosSlug}/produtos/${encodeURIComponent(p.codigo)}/thumb" target="_blank" rel="noopener" title="Ver foto ampliada"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg></a>`
+          ? `<a class="icon-btn" href="/api/secoes/${encodeURIComponent(modalProdutosSlug)}/produtos/${encodeURIComponent(p.codigo)}/thumb" target="_blank" rel="noopener" title="Ver foto ampliada"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg></a>`
           : '';
         return `
           <tr>
             <td>${thumb}</td>
-            <td>${p.codigo}</td>
-            <td>${p.nome || ''}</td>
-            <td>${p.linha || '—'}</td>
+            <td>${escapeHtml(p.codigo)}</td>
+            <td>${escapeHtml(p.nome)}</td>
+            <td>${escapeHtml(p.linha || '—')}</td>
             <td>${fotosTexto}${fotosSuspeitaMarca}</td>
             <td><span class="status-dot-mini ${info.dotClasse}"></span>${info.texto}</td>
-            <td class="modal-produtos-acoes">${verFotoBtn}<button class="small ghost" data-retentar-codigo="${p.codigo}">${rotuloAcao}</button></td>
+            <td class="modal-produtos-acoes">${verFotoBtn}<button class="small ghost" data-retentar-codigo="${escapeHtml(p.codigo)}">${rotuloAcao}</button></td>
           </tr>
         `;
       }).join('');
@@ -347,7 +355,7 @@
     el('produtos-secao-view').style.display = 'block';
 
     try {
-      const res = await fetch(`/api/secoes/${slug}/produtos`);
+      const res = await fetch(`/api/secoes/${encodeURIComponent(slug)}/produtos`);
       if (!res.ok) {
         // Antes mostrava sempre "Não achei essa seção." mesmo quando o erro
         // era outra coisa (ex: servidor não reiniciado após mudança no
@@ -363,7 +371,7 @@
       renderModalProdutos();
     } catch (err) {
       el('modal-produtos-subtitulo').textContent = '';
-      el('modal-produtos-tbody').innerHTML = `<tr><td colspan="7" class="table-empty">${err.message}</td></tr>`;
+      el('modal-produtos-tbody').innerHTML = `<tr><td colspan="7" class="table-empty">${escapeHtml(err.message)}</td></tr>`;
     }
   }
 
@@ -528,7 +536,7 @@
     clearTimeout(statusTimeoutId);
 
     if (payload.erro) {
-      statusEl.innerHTML = `<span class="status-dot"></span> Erro: ${payload.erro}`;
+      statusEl.innerHTML = `<span class="status-dot"></span> Erro: ${escapeHtml(payload.erro)}`;
       statusEl.className = 'status-line erro';
     } else if (rodando) {
       // Pedido do usuário (2026-09-11): o cadastro disparado automaticamente
@@ -537,7 +545,7 @@
       // em `payload.rotulo` (ver rodarAcao/transmitir em server.js) — em vez
       // do nome genérico "Sync" que o Sync manual (por seção) continua
       // usando.
-      statusEl.innerHTML = `<span class="status-dot"></span> Rodando: ${payload.rotulo || ROTULOS_TIPO_ACAO[payload.tipo] || payload.tipo}...`;
+      statusEl.innerHTML = `<span class="status-dot"></span> Rodando: ${escapeHtml(payload.rotulo || ROTULOS_TIPO_ACAO[payload.tipo] || payload.tipo)}...`;
       statusEl.className = 'status-line rodando';
     } else if (rodandoAnterior) {
       // Pedido do usuário (2026-08-06): dar um retorno visual claro quando
@@ -769,7 +777,7 @@
     // Fotos) — se o usuário for direto pra Rotinas antes disso, tenta de
     // novo a cada carregarRotinas() até secoes existir.
     if (secoesSelectPreenchido || !secoes.length) return;
-    el('rotina-secoes').innerHTML = secoes.map((s) => `<option value="${s.slug}">${s.label}</option>`).join('');
+    el('rotina-secoes').innerHTML = secoes.map((s) => `<option value="${escapeHtml(s.slug)}">${escapeHtml(s.label)}</option>`).join('');
     secoesSelectPreenchido = true;
   }
 
@@ -822,30 +830,30 @@
         ? `${labelsSecoes.slice(0, 2).join(', ')} +${labelsSecoes.length - 2}`
         : labelsSecoes.join(', ');
       const quando = r.frequencia === 'horas'
-        ? `A cada ${r.intervaloHoras}h`
+        ? `A cada ${escapeHtml(r.intervaloHoras)}h`
         : r.frequencia === 'semanal'
-          ? `${['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'][r.diaSemana]} às ${r.horario}`
-          : `Diária às ${r.horario}`;
+          ? `${escapeHtml(['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'][r.diaSemana] || '—')} às ${escapeHtml(r.horario)}`
+          : `Diária às ${escapeHtml(r.horario)}`;
       let resultadoBadge = '<span class="badge badge-muted">nunca rodou</span>';
-      if (r.ultimoResultado === 'sucesso') resultadoBadge = `<span class="badge badge-green" title="${formatarDataHora(r.ultimaExecucao)}">ok</span>`;
-      else if (r.ultimoResultado === 'erro') resultadoBadge = `<span class="badge badge-red" title="${(r.ultimoErro || '').replace(/"/g, '&quot;')}">erro</span>`;
+      if (r.ultimoResultado === 'sucesso') resultadoBadge = `<span class="badge badge-green" title="${escapeHtml(formatarDataHora(r.ultimaExecucao))}">ok</span>`;
+      else if (r.ultimoResultado === 'erro') resultadoBadge = `<span class="badge badge-red" title="${escapeHtml(r.ultimoErro)}">erro</span>`;
       return `
         <tr>
           <td>
             <label class="rotina-toggle">
-              <input type="checkbox" data-rotina-toggle="${r.id}" ${r.ativa ? 'checked' : ''}>
+              <input type="checkbox" data-rotina-toggle="${escapeHtml(r.id)}" ${r.ativa ? 'checked' : ''}>
               <span class="slider"></span>
             </label>
           </td>
-          <td>${r.nome}</td>
-          <td>${ROTULOS_TIPO_ACAO[r.tipo] || r.tipo}</td>
-          <td title="${labelsSecoes.join(', ')}">${r.tipo === 'estoque' ? (r.opcoes && r.opcoes.estoqueOpcao || 'Com e sem estoque') : r.tipo === 'painel-produtos' ? 'Divergências/Situação' : r.tipo === 'cortes-produtos' ? 'Perda por falta de estoque' : r.tipo === 'produtos-parados' ? 'Curva C sem venda' : r.tipo === 'lancamentos-x2' ? 'Primeira entrada da semana' : (secoesTexto || '—')}</td>
+          <td>${escapeHtml(r.nome)}</td>
+          <td>${escapeHtml(ROTULOS_TIPO_ACAO[r.tipo] || r.tipo)}</td>
+          <td title="${escapeHtml(labelsSecoes.join(', '))}">${escapeHtml(r.tipo === 'estoque' ? (r.opcoes && r.opcoes.estoqueOpcao || 'Com e sem estoque') : r.tipo === 'painel-produtos' ? 'Divergências/Situação' : r.tipo === 'cortes-produtos' ? 'Perda por falta de estoque' : r.tipo === 'produtos-parados' ? 'Curva C sem venda' : r.tipo === 'lancamentos-x2' ? 'Primeira entrada da semana' : (secoesTexto || '—'))}</td>
           <td>${quando}</td>
-          <td>${r.ativa ? formatarDataHora(r.proximaExecucao) : '—'}</td>
-          <td>${resultadoBadge} <span class="cell-slug">${formatarDataHora(r.ultimaExecucao)}</span></td>
+          <td>${escapeHtml(r.ativa ? formatarDataHora(r.proximaExecucao) : '—')}</td>
+          <td>${resultadoBadge} <span class="cell-slug">${escapeHtml(formatarDataHora(r.ultimaExecucao))}</span></td>
           <td style="white-space:nowrap;">
-            <button class="small" data-rotina-rodar="${r.id}">Testar agora</button>
-            <button class="small ghost" data-rotina-excluir="${r.id}">Excluir</button>
+            <button class="small" data-rotina-rodar="${escapeHtml(r.id)}">Testar agora</button>
+            <button class="small ghost" data-rotina-excluir="${escapeHtml(r.id)}">Excluir</button>
           </td>
         </tr>
       `;
@@ -979,9 +987,9 @@
     }
     tbody.innerHTML = exports.map((e) => `
       <tr>
-        <td>${e.nome}</td>
-        <td>${formatarBytes(e.bytes)}</td>
-        <td>${formatarDataHora(e.modificadoEm)}</td>
+        <td>${escapeHtml(e.nome)}</td>
+        <td>${escapeHtml(formatarBytes(e.bytes))}</td>
+        <td>${escapeHtml(formatarDataHora(e.modificadoEm))}</td>
         <td><a href="/estoque-files/${encodeURIComponent(e.nome)}" download>Baixar</a></td>
       </tr>
     `).join('');
@@ -998,7 +1006,7 @@
     document.querySelectorAll('.diff-estoque-csv-select').forEach((selectCsv) => {
       const valorAtual = selectCsv.value;
       selectCsv.innerHTML = '<option value="">Mais recente (automático)</option>' +
-        exports.map((e) => `<option value="${e.nome}">${e.nome} (${formatarBytes(e.bytes)})</option>`).join('');
+        exports.map((e) => `<option value="${escapeHtml(e.nome)}">${escapeHtml(e.nome)} (${formatarBytes(e.bytes)})</option>`).join('');
       if ([...selectCsv.options].some((o) => o.value === valorAtual)) selectCsv.value = valorAtual;
     });
   }
@@ -1141,8 +1149,8 @@
       tbody.innerHTML = lista.length
         ? lista.map((p) => `
           <tr>
-            <td>${p.codigo}</td>
-            <td>${p.descricaoComercial || p.descricaoCurta || '—'}</td>
+            <td>${escapeHtml(p.codigo)}</td>
+            <td>${escapeHtml(p.descricaoComercial || p.descricaoCurta || '—')}</td>
           </tr>
         `).join('')
         : '<tr><td colspan="2" class="table-empty">Nenhum produto com primeira entrada nesse período.</td></tr>';
@@ -1165,10 +1173,10 @@
         const { de, ate } = e.periodoRecebimento || {};
         return `
           <tr>
-            <td>${de || '—'} a ${ate || '—'}</td>
-            <td>${e.quantidade}</td>
-            <td>${formatarBytes(e.bytes)}</td>
-            <td>${formatarDataHora(e.capturadoEm)}</td>
+            <td>${escapeHtml(de || '—')} a ${escapeHtml(ate || '—')}</td>
+            <td>${escapeHtml(e.quantidade)}</td>
+            <td>${escapeHtml(formatarBytes(e.bytes))}</td>
+            <td>${escapeHtml(formatarDataHora(e.capturadoEm))}</td>
             <td><a href="/api/lancamentos-x2/xlsx/${encodeURIComponent(e.nomeBase)}" download>Baixar</a></td>
           </tr>
         `;
@@ -1226,27 +1234,27 @@
     if (!qualidadeAbaAtiva && tipos.length) qualidadeAbaAtiva = tipos[0].chave;
 
     el('qualidade-tabs').innerHTML = tipos.map((t) => `
-      <span class="qualidade-tab${t.chave === qualidadeAbaAtiva ? ' active' : ''}" data-qualidade-tab="${t.chave}">
-        ${t.labelBadge}
-        <span class="qualidade-tab-contador" id="qualidade-tab-contador-${t.chave}">…</span>
+      <span class="qualidade-tab${t.chave === qualidadeAbaAtiva ? ' active' : ''}" data-qualidade-tab="${escapeHtml(t.chave)}">
+        ${escapeHtml(t.labelBadge)}
+        <span class="qualidade-tab-contador" id="qualidade-tab-contador-${escapeHtml(t.chave)}">…</span>
       </span>
     `).join('');
 
     el('qualidade-paineis').innerHTML = tipos.map((t) => `
-      <div class="qualidade-painel${t.chave === qualidadeAbaAtiva ? ' active' : ''}" data-qualidade-painel="${t.chave}">
-        <input type="text" class="search-input" data-qualidade-busca="${t.chave}" placeholder="Buscar por código ou descrição...">
+      <div class="qualidade-painel${t.chave === qualidadeAbaAtiva ? ' active' : ''}" data-qualidade-painel="${escapeHtml(t.chave)}">
+        <input type="text" class="search-input" data-qualidade-busca="${escapeHtml(t.chave)}" placeholder="Buscar por código ou descrição...">
         <div class="table-wrap">
           <table>
-            <thead><tr id="qualidade-cabecalho-${t.chave}"></tr></thead>
-            <tbody id="qualidade-tabela-${t.chave}"><tr><td class="skeleton">Carregando...</td></tr></tbody>
+            <thead><tr id="qualidade-cabecalho-${escapeHtml(t.chave)}"></tr></thead>
+            <tbody id="qualidade-tabela-${escapeHtml(t.chave)}"><tr><td class="skeleton">Carregando...</td></tr></tbody>
           </table>
         </div>
         <div class="qualidade-paginacao">
-          <button class="small ghost" data-qualidade-pag="anterior" data-qualidade-chave="${t.chave}" id="qualidade-pag-anterior-${t.chave}">‹ Anterior</button>
-          <span class="qualidade-pagina-info" id="qualidade-pagina-info-${t.chave}"></span>
-          <button class="small ghost" data-qualidade-pag="proxima" data-qualidade-chave="${t.chave}" id="qualidade-pag-proxima-${t.chave}">Próxima ›</button>
+          <button class="small ghost" data-qualidade-pag="anterior" data-qualidade-chave="${escapeHtml(t.chave)}" id="qualidade-pag-anterior-${escapeHtml(t.chave)}">‹ Anterior</button>
+          <span class="qualidade-pagina-info" id="qualidade-pagina-info-${escapeHtml(t.chave)}"></span>
+          <button class="small ghost" data-qualidade-pag="proxima" data-qualidade-chave="${escapeHtml(t.chave)}" id="qualidade-pag-proxima-${escapeHtml(t.chave)}">Próxima ›</button>
         </div>
-        <p class="descricao" id="qualidade-info-${t.chave}" style="margin-top:10px;"></p>
+        <p class="descricao" id="qualidade-info-${escapeHtml(t.chave)}" style="margin-top:10px;"></p>
       </div>
     `).join('');
 
@@ -1306,7 +1314,7 @@
       tabContador.textContent = '—';
       tabContador.closest('.qualidade-tab').classList.add('qualidade-tab-erro');
       theadRow.innerHTML = '';
-      tbody.innerHTML = `<tr><td class="table-empty">${data.error || 'Nenhuma captura ainda.'}</td></tr>`;
+      tbody.innerHTML = `<tr><td class="table-empty">${escapeHtml(data.error || 'Nenhuma captura ainda.')}</td></tr>`;
       info.textContent = '';
       const btnAnterior = el(`qualidade-pag-anterior-${chave}`);
       const btnProxima = el(`qualidade-pag-proxima-${chave}`);
@@ -1322,7 +1330,7 @@
     qualidadeEstado[chave] = { filtro: '', pagina: 0 };
 
     tabContador.textContent = produtos.length.toLocaleString('pt-BR');
-    theadRow.innerHTML = headers.map((h) => `<th>${h || ''}</th>`).join('');
+    theadRow.innerHTML = headers.map((h) => `<th>${escapeHtml(h)}</th>`).join('');
     _renderTabelaQualidade(chave);
     info.textContent = data.capturadoEm
       ? `Capturado em ${formatarDataHora(data.capturadoEm)}${data.fonte === 'csv-estoque' ? ` — a partir do CSV "${data.csvUsado}".` : '.'}`
@@ -1349,7 +1357,7 @@
     } else {
       const inicio = estado.pagina * QUALIDADE_PAGINA_TAMANHO;
       const visiveis = filtrados.slice(inicio, inicio + QUALIDADE_PAGINA_TAMANHO);
-      tbody.innerHTML = visiveis.map((linha) => `<tr>${linha.map((c) => `<td>${c === null || c === undefined ? '' : c}</td>`).join('')}</tr>`).join('');
+      tbody.innerHTML = visiveis.map((linha) => `<tr>${linha.map((c) => `<td>${escapeHtml(c)}</td>`).join('')}</tr>`).join('');
     }
 
     const pagInfo = el(`qualidade-pagina-info-${chave}`);

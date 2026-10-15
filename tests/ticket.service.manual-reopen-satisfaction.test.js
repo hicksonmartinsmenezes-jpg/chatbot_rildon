@@ -21,6 +21,11 @@
 jest.mock("../src/repositories/ticket.repository", () => ({
   updateStatus: jest.fn(),
 }));
+jest.mock("../src/services/settings.service", () => ({
+  getSettings: jest.fn().mockResolvedValue({
+    atendimento: { tempoReaberturaSemPesquisa: 240 },
+  }),
+}));
 
 const ticketRepository = require("../src/repositories/ticket.repository");
 const { updateTicketStatus, foiReabertoManualmenteRecente } = require("../src/services/ticket.service");

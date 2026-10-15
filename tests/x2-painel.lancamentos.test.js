@@ -6,7 +6,7 @@
  */
 const path = require('path');
 const lancamentosPath = path.join('..', 'scripts', 'x2-painel', 'lancamentos.js');
-const { construirIndice, listarLancamentos } = require(lancamentosPath);
+const { construirIndice, listarLancamentos, metadadosDeSnapshotCompleto, csvConfereComMetadados, comCacheElegibilidade } = require(lancamentosPath);
 
 const CABECALHO =
   ' ;Cód. Fornecedor;Código;Descrição;NCM;CEST;CST ICMS;Cod. Barras;Custo Médio;' +
@@ -22,6 +22,30 @@ function csv(...codigos) {
 }
 
 describe('x2-painel/lancamentos: construirIndice', () => {
+  test('só considera snapshots com sidecar explícito completo', () => {
+    const meta = { validado: true, completo: true, estoqueOpcao: 'Com e sem estoque', capturadoEm: '2026-08-06T11:22:33.456Z' };
+    expect(metadadosDeSnapshotCompleto(undefined)).toBe(false);
+    expect(metadadosDeSnapshotCompleto({ ...meta, completo: false })).toBe(false);
+    expect(metadadosDeSnapshotCompleto({ ...meta, estoqueOpcao: 'Apenas sem estoque' })).toBe(false);
+    expect(metadadosDeSnapshotCompleto(meta)).toBe(true);
+  });
+
+  test('rejeita CSV truncado depois da publicação quando diverge das contagens no sidecar', () => {
+    const meta = { validado: true, completo: true, estoqueOpcao: 'Com e sem estoque', capturadoEm: '2026-08-06T11:22:33.456Z', linhasCsv: 10, linhasTabela: 10 };
+    expect(csvConfereComMetadados(csv('AAA'), meta)).toBe(false);
+    expect(csvConfereComMetadados(csv('AAA'), { ...meta, linhasCsv: 1, linhasTabela: 1 })).toBe(true);
+  });
+
+  test('reusa validação com assinatura idêntica e invalida quando assinatura muda', () => {
+    const chave = `cache-test-${Date.now()}`;
+    const avaliar = jest.fn(() => true);
+    expect(comCacheElegibilidade(chave, 'csv:size=100:mtime=1;meta=abc', avaliar)).toBe(true);
+    expect(comCacheElegibilidade(chave, 'csv:size=100:mtime=1;meta=abc', avaliar)).toBe(true);
+    expect(avaliar).toHaveBeenCalledTimes(1);
+    expect(comCacheElegibilidade(chave, 'csv:size=90:mtime=2;meta=def', avaliar)).toBe(true);
+    expect(avaliar).toHaveBeenCalledTimes(2);
+  });
+
   test('snapshot único vira a linha de base inteira (1ª aparição = data desse arquivo)', () => {
     const arquivos = [
       { nome: 'estoque-2026-08-06_08-00.csv', conteudo: csv('AAA', 'BBB') },
@@ -81,6 +105,14 @@ describe('x2-painel/lancamentos: construirIndice', () => {
     const produtos = construirIndice(arquivos);
     expect(produtos.AAA.descricao).toBe('PRODUTO TESTE');
     expect(produtos.AAA.precoVendaVarejo).toBe(20);
+  });
+
+  test('usa capturadoEm do sidecar para marcar a primeira aparição com precisão', () => {
+    const capturadoEm = '2026-08-06T11:22:33.456Z';
+    const produtos = construirIndice([
+      { nome: 'estoque-2026-08-06_11-22-run.csv', capturadoEm, conteudo: csv('AAA') },
+    ]);
+    expect(produtos.AAA.primeiraVez).toBe(capturadoEm);
   });
 });
 

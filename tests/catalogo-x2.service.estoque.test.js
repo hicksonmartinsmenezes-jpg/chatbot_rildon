@@ -9,8 +9,28 @@
 jest.mock('../src/services/estoque.service', () => ({
   obterEstoque: jest.fn(),
 }));
+jest.mock('fs', () => {
+  const actual = jest.requireActual('fs');
+  return { ...actual, readdirSync: jest.fn(), readFileSync: jest.fn() };
+});
 
 const estoqueService = require('../src/services/estoque.service');
+const fs = require('fs');
+const FIXTURE = [{
+  codigo: 'TEST-ESTOQUE-1',
+  nome: 'BUZINA UNIVERSAL TESTE',
+  secao: 'BUZINAS',
+  linha: 'BUZINA',
+  ficha: {
+    referencia: 'REF-EST-1',
+    aplicacao: 'UNIVERSAL',
+    equivalentesLista: [],
+    referenciasCruzadas: {},
+  },
+}];
+fs.readdirSync.mockReturnValue(['produtos-estoque-teste.json']);
+fs.readFileSync.mockReturnValue(JSON.stringify(FIXTURE));
+
 const catalogoX2 = require('../src/services/catalogo-x2.service');
 
 describe('catalogo-x2.service: campo estoque anexado', () => {
@@ -24,17 +44,17 @@ describe('catalogo-x2.service: campo estoque anexado', () => {
     });
 
     // código real do catálogo de teste (ver fixtures em src/config/catalogo-x2)
-    const [produto] = catalogoX2.buscarPorCodigo('116564');
+    const [produto] = catalogoX2.buscarPorCodigo('TEST-ESTOQUE-1');
     expect(produto).toBeDefined();
     expect(produto.estoque).toEqual({
       qtd: 10, unidade: 'PC', precoVarejo: 64.53, precoAtacado: 46.22,
     });
-    expect(estoqueService.obterEstoque).toHaveBeenCalledWith('116564');
+    expect(estoqueService.obterEstoque).toHaveBeenCalledWith('TEST-ESTOQUE-1');
   });
 
   test('buscarPorCodigo retorna estoque null quando não tem dado (sem quebrar)', () => {
     estoqueService.obterEstoque.mockReturnValue(null);
-    const [produto] = catalogoX2.buscarPorCodigo('116564');
+    const [produto] = catalogoX2.buscarPorCodigo('TEST-ESTOQUE-1');
     expect(produto).toBeDefined();
     expect(produto.estoque).toBeNull();
   });

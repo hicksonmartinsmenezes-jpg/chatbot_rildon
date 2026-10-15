@@ -84,8 +84,42 @@ async function buscarSessao(token) {
 }
 
 async function removerSessao(token) {
+  _sessaoCache.delete(token);
   await pool.query(`DELETE FROM auth_sessions WHERE token = $1`, [token]);
 }
+
+// ---------------------------------------------------------------------------
+// Cache de sessão em memória
+//
+// 2026-10-09 (auditoria de performance): authSession roda em TODA requisição
+// /api e fazia SEMPRE duas queries — o SELECT em auth_sessions e o SELECT de
+// revalidação em users. Com o painel aberto em várias abas fazendo polling de
+// status, isso eram centenas de queries por minuto só para dizer "sim, essa
+// sessão continua válida", competindo por um pool de 20 conexões com o
+// pipeline de mensagens do WhatsApp. Quando o pool saturava, o próprio
+// authSession estourava com "Connection terminated due to connection timeout"
+// — exatamente a linha que aparecia no log do usuário.
+//
+// TTL curto (15s por padrão) mantém a revalidação de ativo/perfil/permissões
+// praticamente em tempo real: desativar um usuário continua derrubando o
+// acesso dele em no máximo 15 segundos, e as operações que já invalidavam
+// sessão na hora (logout, exclusão, troca de senha) chamam removerSessao /
+// invalidarCacheSessao, que limpam o cache imediatamente.
+// ---------------------------------------------------------------------------
+const SESSAO_CACHE_TTL = Number(process.env.SESSION_CACHE_TTL_MS || 15000);
+const _sessaoCache = new Map();   // token -> { user, expiresAt, at }
+
+function invalidarCacheSessao(token = null) {
+  if (token) _sessaoCache.delete(token);
+  else _sessaoCache.clear();
+}
+
+setInterval(() => {
+  const agora = Date.now();
+  for (const [k, v] of _sessaoCache) {
+    if (agora - v.at > SESSAO_CACHE_TTL || v.expiresAt <= agora) _sessaoCache.delete(k);
+  }
+}, 30000).unref();
 
 async function limparSessoesExpiradas() {
   await pool.query(`DELETE FROM auth_sessions WHERE expires_at < $1`, [Date.now()]);
@@ -398,9 +432,19 @@ async function authSession(req, res, next) {
       }
     }
 
+    // Acerto no cache: devolve sem tocar no banco. Ver comentário em
+    // _sessaoCache — é o que tira ~95% das queries deste middleware, que roda
+    // em toda requisição /api.
+    const emCache = _sessaoCache.get(provided);
+    if (emCache && Date.now() - emCache.at < SESSAO_CACHE_TTL && emCache.expiresAt > Date.now()) {
+      req.user = emCache.user;
+      return next();
+    }
+
     const session = await buscarSessao(provided);
 
     if (!session) {
+      _sessaoCache.delete(provided);
       res.clearCookie(COOKIE_NAME, { path: "/" });
       return res.status(401).json({ error: "Sessão inválida ou expirada. Faça login novamente." });
     }
@@ -431,6 +475,12 @@ async function authSession(req, res, next) {
       await salvarSessao(provided, { user: session.user, expiresAt: newExpiry });
       res.cookie(COOKIE_NAME, provided, COOKIE_OPTIONS);
     }
+
+    _sessaoCache.set(provided, {
+      user:      session.user,
+      expiresAt: session.expiresAt,
+      at:        Date.now()
+    });
 
     req.user = session.user;
     return next();
@@ -522,4 +572,4 @@ setInterval(async () => {
   try { await twoFactorService.limparDesafiosExpirados(); } catch (_) {}
 }, 5 * 60 * 1000).unref();
 
-module.exports = { router, authSession, requireAdmin, requireRole, requireScreenAccess, buscarSessao };
+module.exports = { router, authSession, requireAdmin, requireRole, requireScreenAccess, buscarSessao, invalidarCacheSessao };

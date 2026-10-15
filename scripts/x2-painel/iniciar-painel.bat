@@ -12,5 +12,7 @@ REM instrucoes de registro no chat. Ele so entra na pasta do projeto e
 REM sobe o painel; se a janela fechar (ex: PC reiniciou), o Agendador abre
 REM de novo sozinho no proximo logon.
 
-cd /d "C:\Users\marke\OneDrive\Área de Trabalho\PROJETOS gitHUB\bot"
+REM Caminho relativo (2026-09-30): o antigo apontava pro PC "marke", que
+REM nao existe mais depois da migracao pro PC Administrator.
+cd /d "%~dp0..\.."
 call npm run x2-painel

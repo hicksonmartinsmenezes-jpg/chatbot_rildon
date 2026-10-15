@@ -18,7 +18,6 @@ Esta versão iniciou a separação dos arquivos maiores sem alterar a lógica pr
 
 Arquivos principais devem ficar menores e mais fáceis de ler. Funções puras e renderizações grandes devem ir para módulos auxiliares.
 
-
 ## v17 — Segunda etapa de separação
 
 Nesta etapa foram separados módulos auxiliares de baixo risco:
@@ -28,7 +27,6 @@ Nesta etapa foram separados módulos auxiliares de baixo risco:
 - `js/history/history-utils.js`: filtros, resumo e estados vazios do histórico.
 
 A regra mantida foi preservar as funções globais existentes para não quebrar o painel atual.
-
 
 ## v18 — Correção fina e separação adicional
 

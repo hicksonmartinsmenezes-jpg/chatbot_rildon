@@ -135,15 +135,35 @@ function metricsMesChange(value) {
   loadMetricsCharts();
 }
 
+// Pedido do usuário (2026-10-15): intervalo livre. Só vale com as DUAS
+// datas preenchidas e na ordem certa — caso contrário o recorte volta a ser
+// o mês do seletor, sem avisar nada (o <select> continua visível do lado).
+function metricsPeriodoAtual() {
+  const de = document.getElementById("metrics-de")?.value || "";
+  const ate = document.getElementById("metrics-ate")?.value || "";
+  return de && ate && de <= ate ? { de, ate } : null;
+}
+
+function metricsQueryPeriodo() {
+  const periodo = metricsPeriodoAtual();
+  if (periodo) return `?de=${encodeURIComponent(periodo.de)}&ate=${encodeURIComponent(periodo.ate)}`;
+  const mes = window._metricsMesSelecionado || "";
+  return mes ? `?mes=${encodeURIComponent(mes)}` : "";
+}
+
+function metricsPeriodoChange() {
+  const seletorMes = document.getElementById("metrics-export-mes");
+  if (seletorMes) seletorMes.disabled = !!metricsPeriodoAtual();
+  loadMetricsCharts();
+}
+
 async function loadMetricsCharts() {
   if (typeof Chart === "undefined") return;
 
   setMetricsLoading(true);
 
   try {
-    const mes = window._metricsMesSelecionado || "";
-    const qs  = mes ? `?mes=${encodeURIComponent(mes)}` : "";
-    const res = await apiFetch(`/api/metrics${qs}`);
+    const res = await apiFetch(`/api/metrics${metricsQueryPeriodo()}`);
     if (!res) return;
 
     const data = await res.json();
@@ -209,6 +229,29 @@ async function loadMetricsCharts() {
     // Varredura 2026-10-15: o card mostrava os contatos com tag "Leads"
     // acumulados desde sempre (346) debaixo do rótulo "Novos Contatos".
     // Agora mostra os contatos criados NO MÊS; o acumulado foi pro título.
+    // Pedido do usuário (2026-10-15): SLA e volume de mensagens.
+    const sla = data.sla || {};
+    const slaEl = document.getElementById("metric-sla-resposta");
+    if (slaEl) {
+      slaEl.textContent = sla.respostaPct != null ? `${sla.respostaPct}%` : "—";
+      slaEl.classList.toggle("is-good", sla.respostaPct != null && sla.respostaPct >= 80);
+      slaEl.classList.toggle("is-bad", sla.respostaPct != null && sla.respostaPct < 80);
+    }
+    const slaSubEl = document.getElementById("metric-sla-resposta-sub");
+    if (slaSubEl) {
+      slaSubEl.className = "metric-card-trend is-neutral";
+      slaSubEl.textContent = sla.metaRespostaMin
+        ? `${sla.respostaDentro ?? 0} de ${sla.respostaTotal ?? 0} em até ${sla.metaRespostaMin} min`
+        : "";
+    }
+    const msgs = data.mensagens || {};
+    animateMetric(document.getElementById("metric-mensagens-total"), msgs.total || 0);
+    const msgSubEl = document.getElementById("metric-mensagens-sub");
+    if (msgSubEl) {
+      msgSubEl.className = "metric-card-trend is-neutral";
+      msgSubEl.textContent = `${msgs.recebidas || 0} recebidas • ${msgs.enviadas || 0} enviadas • ${msgs.clientes || 0} clientes`;
+    }
+
     const novosContatosEl = document.getElementById("metric-tempos-novos-contatos");
     animateMetric(novosContatosEl, data.novosContatosNoMes ?? 0);
     if (novosContatosEl) novosContatosEl.title = `${data.novosContatosLeads ?? 0} contatos com a tag "Leads" no total (acumulado)`;
@@ -611,6 +654,51 @@ function switchMetricsTab(tab) {
 // #metrics-export-mes> — vazio (padrão) exporta o mês corrente, igual
 // sempre foi; um mês escolhido manda ?mes=YYYY-MM pro backend (ver
 // metrics.routes.js/metrics.service.js), que recalcula tudo pra aquele mês.
+// Pedido do usuário (2026-10-15): exportar os atendimentos em planilha.
+// Mesmo padrão do PDF (fetch + blob + download), só muda a rota/nome.
+function metricsRotuloPeriodo() {
+  const periodo = metricsPeriodoAtual();
+  if (periodo) return `${periodo.de}_a_${periodo.ate}`;
+  return window._metricsMesSelecionado || "mes-corrente";
+}
+
+async function metricsBaixarArquivo(rota, nomeArquivo, msgErro) {
+  const res = await fetch(rota, { credentials: "include" });
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    throw new Error(errBody.error || msgErro);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = nomeArquivo;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function exportarAtendimentosCSV(btnEl) {
+  const original = btnEl?.innerHTML;
+  if (btnEl) {
+    btnEl.disabled = true;
+    btnEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> <span>Gerando...</span>';
+  }
+  try {
+    await metricsBaixarArquivo(
+      `/api/metrics/exportar-csv${metricsQueryPeriodo()}`,
+      `atendimentos-${metricsRotuloPeriodo()}.csv`,
+      "Erro ao exportar os atendimentos."
+    );
+  } catch (err) {
+    showToast?.(err.message || "Erro ao exportar os atendimentos.", "error");
+  } finally {
+    if (btnEl) {
+      btnEl.disabled = false;
+      btnEl.innerHTML = original;
+    }
+  }
+}
+
 async function exportarMetricasPDF(btnEl) {
   const original = btnEl?.innerHTML;
   if (btnEl) {
@@ -619,20 +707,11 @@ async function exportarMetricasPDF(btnEl) {
   }
 
   try {
-    const mes = document.getElementById("metrics-export-mes")?.value || "";
-    const qs  = mes ? `?mes=${encodeURIComponent(mes)}` : "";
-    const res = await fetch(`/api/metrics/exportar-pdf${qs}`, { credentials: "include" });
-    if (!res.ok) {
-      const errBody = await res.json().catch(() => ({}));
-      throw new Error(errBody.error || "Erro ao gerar PDF de métricas.");
-    }
-    const blob = await res.blob();
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement("a");
-    a.href     = url;
-    a.download = `metricas-${mes || Date.now()}.pdf`;
-    a.click();
-    URL.revokeObjectURL(url);
+    await metricsBaixarArquivo(
+      `/api/metrics/exportar-pdf${metricsQueryPeriodo()}`,
+      `metricas-${metricsRotuloPeriodo()}.pdf`,
+      "Erro ao gerar PDF de métricas."
+    );
   } catch (err) {
     showToast?.(err.message || "Erro ao exportar métricas em PDF.", "error");
   } finally {

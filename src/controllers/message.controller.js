@@ -119,6 +119,21 @@ async function canUserAccessConversation(user, userId) {
   return ativos.some(t => canAccessTicket(user, t, { allowUnassigned: true }));
 }
 
+// Traduz o erro do envio no WhatsApp para um status HTTP + mensagem úteis.
+// Antes tudo virava "500 Erro ao enviar mensagem." sem detalhe — o alerta do
+// painel X2 mostrava só "HTTP 500" mesmo quando a causa era o WhatsApp
+// desconectado (QR) ou um número fora do WhatsApp.
+function traduzirErroEnvio(error, fallback) {
+  const msg = String(error?.message || "");
+  if (/não autenticado|não inicializado/i.test(msg)) {
+    return { status: 503, error: "WhatsApp desconectado — escaneie o QR Code no painel e tente de novo." };
+  }
+  if (/não está registrado no WhatsApp/i.test(msg)) {
+    return { status: 422, error: msg };
+  }
+  return { status: 500, error: fallback };
+}
+
 async function sendManualMessage(req, res) {
   try {
     const { userId, message, quotedMessageId } = req.body || {};
@@ -214,7 +229,8 @@ async function sendManualMessage(req, res) {
 
   } catch (error) {
     logger.error(`[sendManualMessage] ${error.message}`);
-    res.status(500).json({ error: "Erro ao enviar mensagem." });
+    const t = traduzirErroEnvio(error, "Erro ao enviar mensagem.");
+    res.status(t.status).json({ error: t.error });
   }
 }
 
@@ -334,7 +350,8 @@ async function sendMediaMessage(req, res) {
   } catch (error) {
     cleanupOnError();
     logger.error(`[sendMediaMessage] ${error.message}`);
-    res.status(500).json({ error: "Erro ao enviar arquivo." });
+    const t = traduzirErroEnvio(error, "Erro ao enviar arquivo.");
+    res.status(t.status).json({ error: t.error });
   }
 }
 

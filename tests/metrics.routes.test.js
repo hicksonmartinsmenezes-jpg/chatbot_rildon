@@ -89,6 +89,22 @@ function installFakePool() {
       };
     }
 
+    // Varredura 2026-10-15: fila atual virou query própria (pendentes/em
+    // atendimento agora não têm versão "do mês").
+    if (/AS pendentes_agora/.test(sql)) {
+      return { rows: [{ pendentes_agora: 2, em_atendimento_agora: 3, tickets_no_banco: 10 }] };
+    }
+    // Varredura 2026-10-15: mediana + cobertura de TMA/TME.
+    if (/AS tma_mediana_min/.test(sql)) {
+      return {
+        rows: [{
+          tma_mediana_min: "30.0", tma_mediana_anterior_min: "40.0",
+          tma_amostra: 8, tma_com_fechamento: 6,
+          tme_mediana_min: "4.0", tme_mediana_anterior_min: "5.0",
+          tme_amostra: 7, tickets_no_mes: 10
+        }]
+      };
+    }
     if (/COUNT\(\*\)::int\s+AS total/.test(sql) && /AS hoje/.test(sql)) {
       return {
         rows: [{
@@ -97,27 +113,31 @@ function installFakePool() {
         }]
       };
     }
-    if (/TO_CHAR\(created_at/.test(sql)) {
-      return { rows: [{ dia: "15/07/2026", total: 3 }] };
+    // Varredura 2026-10-15: o "por dia" passou a usar generate_series pra
+    // preencher os dias sem atendimento.
+    if (/generate_series/.test(sql)) {
+      return { rows: [{ dia: "15/07/2026", total: 3 }, { dia: "16/07/2026", total: 0 }] };
     }
     if (/EXTRACT\(HOUR FROM created_at/.test(sql)) {
       return { rows: [{ hora: 9, total: 2 }, { hora: 14, total: 7 }] };
     }
-    if (/FROM users u/.test(sql) && /LEFT JOIN tickets t/.test(sql)) {
+    // Varredura 2026-10-15: a contagem por atendente passou a sair dos
+    // TICKETS (WITH agg), não mais de users LEFT JOIN tickets.
+    if (/WITH agg AS/.test(sql)) {
       return {
         rows: [
           {
-            id: "u-1", nome: "Bruno", total_atendidos: 12, em_atendimento: 1,
-            atendidos_hoje: 2, atendidos_semana: 5, atendidos_mes: 12
+            id: "u-1", nome: "Bruno", sem_atendente: false, fora_do_cadastro: false, ativo: true,
+            total_atendidos: 12, em_atendimento: 1, atendidos_hoje: 2, atendidos_semana: 5, atendidos_mes: 12
           },
           {
-            id: "u-2", nome: "Ana", total_atendidos: 3, em_atendimento: 0,
-            atendidos_hoje: 0, atendidos_semana: 1, atendidos_mes: 3
+            id: "u-2", nome: "Ana", sem_atendente: false, fora_do_cadastro: false, ativo: true,
+            total_atendidos: 3, em_atendimento: 0, atendidos_hoje: 0, atendidos_semana: 1, atendidos_mes: 3
           },
         ]
       };
     }
-    if (/AVG\(satisfaction_rating\)/.test(sql) && /GROUP BY assigned_to_name/.test(sql)) {
+    if (/AVG\(t.satisfaction_rating\)/.test(sql) && /GROUP BY t.assigned_to/.test(sql)) {
       return { rows: [{ nome: "Bruno", media: "4.50", total: 2 }] };
     }
     if (/AVG\(satisfaction_rating\)/.test(sql)) {
@@ -157,9 +177,17 @@ function installFakePool() {
     if (/GROUP BY sector/.test(sql)) {
       return { rows: [{ sector: "vendas", total: 6 }, { sector: null, total: 1 }] };
     }
-    // Novos contatos/leads (pedido do usuário, 2026-08-05).
+    // Atendimentos por mês (gráfico de 6 meses do PDF, 2026-09-17). Antes
+    // da varredura 2026-10-15 esta query caía no mesmo matcher do "por dia"
+    // (/TO_CHAR\(created_at/); agora que o "por dia" usa generate_series,
+    // ela precisa do próprio.
+    if (/'YYYY-MM'/.test(sql)) {
+      return { rows: [{ mes: "2026-07", total: 10 }] };
+    }
+    // Novos contatos/leads (pedido do usuário, 2026-08-05; varredura
+    // 2026-10-15 separou "novos no mês" do acumulado de leads).
     if (/FROM contacts/.test(sql)) {
-      return { rows: [{ total: 4 }] };
+      return { rows: [{ leads_acumulado: 4, novos_no_mes: 2 }] };
     }
 
     throw new Error("Query não mapeada no mock de metrics.routes.test.js: " + sql);
@@ -230,14 +258,19 @@ describe("GET /api/metrics", () => {
     const res = await request(buildApp(SUPERVISOR)).get("/api/metrics");
 
     expect(res.status).toBe(200);
+    // Varredura 2026-10-15: cada linha ganhou semAtendente/foraDoCadastro/
+    // ativo — a tabela agora sai dos tickets e precisa diferenciar "quem
+    // atendeu mas não está mais no cadastro" de "ticket sem atendente".
     expect(res.body.atendentes).toEqual([
       {
         id: "u-1", nome: "Bruno", totalAtendidos: 12, emAtendimento: 1,
-        atendidosHoje: 2, atendidosSemana: 5, atendidosMes: 12
+        atendidosHoje: 2, atendidosSemana: 5, atendidosMes: 12,
+        semAtendente: false, foraDoCadastro: false, ativo: true
       },
       {
         id: "u-2", nome: "Ana", totalAtendidos: 3, emAtendimento: 0,
-        atendidosHoje: 0, atendidosSemana: 1, atendidosMes: 3
+        atendidosHoje: 0, atendidosSemana: 1, atendidosMes: 3,
+        semAtendente: false, foraDoCadastro: false, ativo: true
       },
     ]);
   });

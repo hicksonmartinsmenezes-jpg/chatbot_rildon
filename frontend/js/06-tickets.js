@@ -143,10 +143,20 @@ function updateStats(stats, tickets = [], liveStats = null, todayStats = null, e
 function renderExecutiveDashboard(tickets = [], stats = {}) {
   const lista = Array.isArray(tickets) ? tickets : [];
 
-  const hoje = new Date().toISOString().slice(0, 10);
+  // BUG CORRIGIDO (varredura 2026-10-15): comparava toISOString() (UTC)
+  // com a data do ticket em UTC — das 21h à meia-noite no horário local o
+  // "hoje" já era o dia seguinte e o card contava errado. Agora compara a
+  // data no fuso de quem está olhando.
+  const diaLocal = (valor) => {
+    const d = new Date(valor);
+    return Number.isNaN(d.getTime())
+      ? null
+      : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+  const hoje = diaLocal(new Date());
   const ticketsHoje = lista.filter(ticket => {
     const data = ticket.createdAt || ticket.created_at;
-    return data && String(data).slice(0, 10) === hoje;
+    return data && diaLocal(data) === hoje;
   }).length;
 
   setText("stat-hoje", ticketsHoje);

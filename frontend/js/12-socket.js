@@ -271,6 +271,18 @@ if (typeof io !== "undefined") {
   let _histReloadTimer   = null;
   let _ticketReloadTimer = null;
 
+// BUG CORRIGIDO (varredura 2026-10-15): com a aba Relatórios aberta, CADA
+// mensagem recebida disparava loadMetricsCharts() — 12 consultas SQL por
+// mensagem (em dia cheio, 200+ mensagens). A recarga de tickets já tinha
+// debounce de 400ms; a de métricas não tinha nenhum. Mesmo padrão aqui,
+// com janela maior porque o painel de métricas é bem mais pesado.
+let _metricsReloadTimer = null;
+function agendarRecargaMetricas() {
+  if (typeof loadMetricsCharts !== "function") return;
+  clearTimeout(_metricsReloadTimer);
+  _metricsReloadTimer = setTimeout(() => loadMetricsCharts(), 3000);
+}
+
 function _scheduleConvReload(userId) {
   clearTimeout(_convReloadTimer);
   _convReloadTimer = setTimeout(() => {
@@ -376,7 +388,7 @@ socket.on("nova_mensagem", (data) => {
   }
 
   if (currentTab === "metrics") {
-    loadMetricsCharts();
+    agendarRecargaMetricas();
   }
 
   if (!data.response && !isCurrentConversation) {
@@ -466,7 +478,7 @@ socket.on("typing", data => {
       _ticketReloadTimer = setTimeout(() => loadTickets(true), 400);
     }
 
-    if (currentTab === "metrics" && typeof loadMetricsCharts === "function") loadMetricsCharts();
+    if (currentTab === "metrics") agendarRecargaMetricas();
   });
 
   // Ver nota acima — mesmo problema, mas para "assumir" (pausa o bot) e

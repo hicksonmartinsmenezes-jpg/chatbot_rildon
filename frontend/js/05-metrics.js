@@ -171,8 +171,6 @@ async function loadMetricsCharts() {
     // escolher a tag 'Leads' no lugar de created_at). Demanda Ativa fica
     // sempre 0 (não existe fluxo de ticket iniciado pelo atendente ainda).
     animateMetric(document.getElementById("metric-tempos-total"),      data.mensal);
-    animateMetric(document.getElementById("metric-tempos-receptiva"),  data.mensal);
-    animateMetric(document.getElementById("metric-tempos-ativa"),      0);
     animateMetric(document.getElementById("metric-tempos-pendentes"),  data.pendentes);
     animateMetric(document.getElementById("metric-tempos-novos-contatos"), data.novosContatosLeads);
 

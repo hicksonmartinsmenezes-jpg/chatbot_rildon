@@ -4,22 +4,29 @@
 checkAuth();
 
 // Pré-preenche filtros de data com o dia atual e conecta auto-refresh
+// BUG CORRIGIDO (varredura 2026-10-15): os dois campos abriam preenchidos
+// com HOJE, e loadTickets manda isso pro backend — a lista de Atendimentos
+// vinha vazia e o Dashboard parecia zerado sempre que nenhum ticket tinha
+// sido criado no dia (com o bot desligado, isso virou o normal). Agora o
+// padrao e uma janela de 30 dias (inicio = hoje-29, fim = hoje), que mostra
+// movimento de verdade; o usuario continua livre pra trocar as datas.
+const DIAS_FILTRO_PADRAO = 30;
 (function initDateFilters() {
+  function iso(d) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
   const hoje = new Date();
-  const yyyy = hoje.getFullYear();
-  const mm   = String(hoje.getMonth() + 1).padStart(2, "0");
-  const dd   = String(hoje.getDate()).padStart(2, "0");
-  const hojeStr = `${yyyy}-${mm}-${dd}`;
+  const inicio = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() - (DIAS_FILTRO_PADRAO - 1));
 
   const startEl = document.getElementById("date-start");
   const endEl   = document.getElementById("date-end");
 
   if (startEl && !startEl.value) {
-    startEl.value = hojeStr;
+    startEl.value = iso(inicio);
     startEl.addEventListener("change", loadTickets);
   }
   if (endEl && !endEl.value) {
-    endEl.value = hojeStr;
+    endEl.value = iso(hoje);
     endEl.addEventListener("change", loadTickets);
   }
 })();

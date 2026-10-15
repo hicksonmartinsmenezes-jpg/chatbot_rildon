@@ -204,8 +204,8 @@ async function createTicket({
   return criado;
 }
 
-async function listTickets({ status, search, dateStart, dateEnd } = {}) {
-  return ticketRepository.findAll({ status, search, dateStart, dateEnd });
+async function listTickets({ status, search, dateStart, dateEnd, limit } = {}) {
+  return ticketRepository.findAll({ status, search, dateStart, dateEnd, limit });
 }
 
 // PEDIDO DO USUÁRIO (2026-07-27): "existem conversas que reabrem onde já

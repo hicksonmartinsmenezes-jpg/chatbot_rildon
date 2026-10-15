@@ -99,3 +99,7 @@ auth_info*/
 # Saidas soltas de ferramentas/anotacoes locais (nao sao codigo)
 Claude outputs/
 *.restore-note
+
+# Dados pessoais de contatos ficam somente no ambiente local
+/contatos/*
+!/contatos/README.md

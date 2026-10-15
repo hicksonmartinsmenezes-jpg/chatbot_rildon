@@ -10,6 +10,9 @@ jobs:
   test:
     name: Lint de sintaxe + testes
     runs-on: ubuntu-latest
+    # Teto de seguranca: um Jest travado (handle aberto) nao pode segurar o
+    # runner por 6h. A suite inteira leva poucos minutos.
+    timeout-minutes: 20
 
     # Jest (npm test) toca um Postgres real via src/database/postgres.js —
     # sem este serviço, "Testes (Jest)" falha sempre com ECONNREFUSED
@@ -81,7 +84,10 @@ jobs:
           npm run migrate
 
       - name: Testes (Jest) + coverage
-        run: npm run test:coverage
+        # --ci: nao grava snapshots novos; --forceExit: encerra mesmo com handle
+        # aberto (vazamento conhecido de timer/servidor em alguns testes);
+        # --verbose: mostra a ultima suite executada caso volte a travar.
+        run: npx jest --coverage --ci --forceExit --verbose --maxWorkers=2
 
       - name: Testes de fluxo conversacional (test-flow.js)
         run: npm run test:flow

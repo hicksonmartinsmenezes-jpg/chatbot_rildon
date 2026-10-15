@@ -22,10 +22,10 @@
 
 const { Writable } = require('stream');
 
-const obterFoto = jest.fn();
+const mockObterFoto = jest.fn();
 
 jest.mock('../src/services/catalogo-fotos.service', () => ({
-  obterFoto: (...args) => obterFoto(...args),
+  obterFoto: (...args) => mockObterFoto(...args),
   listarFotos: jest.fn(() => []),
   temMultiplasFotos: jest.fn(() => false),
   temAlgumaFoto: jest.fn(() => true),
@@ -97,8 +97,8 @@ afterAll(() => {
  * devolve o que foi realmente desenhado.
  */
 async function gerarCom(fotos) {
-  obterFoto.mockReset();
-  obterFoto.mockImplementation((codigo, indice) => fotos[indice] || null);
+  mockObterFoto.mockReset();
+  mockObterFoto.mockImplementation((codigo, indice) => fotos[indice] || null);
   limparCacheBboxFotos();
   desenhos = { imagens: [], semFoto: 0 };
 

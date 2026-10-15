@@ -57,6 +57,46 @@ const painelProdutosSnapshot = require('../x2-painel-produtos-snapshot');
 const cortesProdutos = require('../x2-cortes-produtos-scraper');
 const curvaAbcParados = require('../x2-curva-abc-parados-scraper');
 const lancamentosX2 = require('../x2-lancamentos-scraper');
+// PEDIDO DO USUÁRIO (2026-09-11): 3º elo do encadeamento pós-Lançamentos —
+// gerar PDF por fabricante e subir/atualizar no Drive (ver comentário no
+// topo de x2-drive-lancamentos.js). Só exige 'googleapis' dentro da função
+// (require tardio), então isso aqui não quebra se a dependência ainda não
+// foi instalada e ninguém configurou o Drive ainda.
+const driveLancamentos = require('../x2-drive-lancamentos');
+const { aguardarTarefaComTimeout } = require('./aguardar-tarefa');
+
+// Auditoria 2026-09-30: falha de rotina, Drive ou estoque parado só ia pro
+// log do console. Agora avisa por WhatsApp (best-effort, nunca lança erro;
+// no máximo 1 aviso igual a cada 6 h pra não spammar).
+const ALERTAS_INFO = {
+  'cadeia-sync': { titulo: 'Lançamentos: cadastro falhou', acao: 'Rode "Cadastrar produtos" no painel e depois as fotos. Fotos e Drive não foram executados.' },
+  'cadeia-fotos': { titulo: 'Lançamentos: fotos falharam', acao: 'Rode "Atualizar fotos" no painel e clique em "Catálogo de Produtos" quando pedir. O Drive não foi atualizado.' },
+  'drive': { titulo: 'Drive: PDF não atualizado', acao: 'Confira o Drive (token OAuth) e rode: node scripts\\x2-drive-lancamentos.js --verificar' },
+  'drive-sem-fabricante': { nivel: 'aviso', titulo: 'Drive: lançamentos sem fabricante', acao: 'Cadastre o fabricante desses códigos no catálogo para eles entrarem no PDF.' },
+  'secao-nao-mapeada': { nivel: 'aviso', titulo: 'Lançamentos fora do catálogo', acao: 'A Seção desses códigos não está mapeada. Me envie a Seção para eu incluir.' },
+  'estoque-parado': { titulo: 'Estoque/preço desatualizado', acao: 'Confira se o Painel X2 está aberto e rode "Exportar estoque".' },
+  'estoque-sem': { titulo: 'Estoque nunca importado', acao: 'Rode "Exportar estoque" no Painel X2.' },
+  'acao': { titulo: 'Rotina do Painel X2 falhou', acao: 'Abra o painel, veja o log da rotina e rode de novo.' },
+};
+const _alertasRecentes = new Map();
+async function alertarFalhaX2(chave, mensagem) {
+  try {
+    const agora = Date.now();
+    if (agora - (_alertasRecentes.get(chave) || 0) < 6 * 60 * 60 * 1000) return;
+    _alertasRecentes.set(chave, agora);
+    const { enviarAlertaWhatsApp, formatarAlerta } = require('../x2-whatsapp-alerta');
+    try { require('../relatorio-mensal').registrarAlertaEnviado(mensagem); } catch { /* best-effort */ }
+    const info = ALERTAS_INFO[chave] || ALERTAS_INFO[String(chave).split('-').slice(0, 2).join('-')] || ALERTAS_INFO[String(chave).split('-')[0]] || {};
+    await enviarAlertaWhatsApp(formatarAlerta({
+      nivel: info.nivel || 'erro',
+      titulo: info.titulo || 'Painel X2 — atenção',
+      linhas: [mensagem],
+      acao: info.acao || 'Abra o Painel X2 (http://127.0.0.1:4123) e confira o log da última execução.',
+    }));
+  } catch (e) {
+    console.error('[x2-painel] não consegui enviar alerta WhatsApp:', e.message);
+  }
+}
 const qualidadeApenasCadastrados = require('./qualidade-apenas-cadastrados');
 const { listarEntradas } = require('../../src/utils/zip-reader');
 const rotinasStore = require('./rotinas');
@@ -77,6 +117,10 @@ const {
   rodarMuitasSecoes,
   montarZipFinal,
   exportarFotosSoltas,
+  // PEDIDO DO USUÁRIO (2026-09-12, drill-down de Produtos por Seção +
+  // thumbnail): staging é onde a foto de verdade fica salva assim que o
+  // scraper baixa, antes de virar zip (ver comentário no topo do arquivo).
+  stagingSecaoDir,
 } = scraper;
 
 const FOTOS_DIR = path.join(CATALOGO_DIR, 'fotos');
@@ -119,6 +163,7 @@ function transmitir() {
   const payload = JSON.stringify({
     rodando: execucao.rodando,
     tipo: execucao.tipo,
+    rotulo: execucao.rotulo || null,
     texto: execucao.terminal.texto(),
     aguardando: execucao.aguardando ? execucao.aguardando.mensagem : null,
     erro: execucao.erro || null,
@@ -140,42 +185,29 @@ function confirmarFactory() {
 // visível na aba Fotos) e o usuário nunca viu/clicou nele porque estava
 // noutra aba (ex: Estoque) — o `execucao.rodando` fica true PARA SEMPRE
 // nesse caso, travando qualquer ação nova até reiniciar o servidor. Duas
-// redes de segurança:
-//   1) TIMEOUT_MAXIMO_MS abaixo: nenhuma ação roda pra sempre, mesmo que
-//      trave em algum ponto sem confirmação pendente (ex: Playwright preso
-//      numa página que nunca responde).
-//   2) /api/cancelar (rota nova): libera a trava manualmente a qualquer
-//      momento, sem precisar reiniciar o processo inteiro.
+// O timeout solicita cancelamento cooperativo depois de 20 minutos. Ele nao
+// interrompe chamadas Playwright que nao aceitam cancelamento: o lock fica
+// ativo ate a Promise original encerrar, mesmo que isso exija intervencao
+// externa se o navegador tiver travado de forma irrecuperavel.
 const TIMEOUT_MAXIMO_MS = 20 * 60 * 1000; // 20 minutos — generoso (rodar todas as seções de fotos pode demorar), mas finito.
 
 function cancelarExecucaoAtual(motivo) {
   if (!execucao || !execucao.rodando) return false;
-  // BUG REAL corrigido (2026-08-13, usuário relatou "mesmo com Cancelado
-  // ainda está baixando fotos"): antes, essa função só rejeitava a Promise
-  // de confirmação (quando havia uma pendente) OU só destravava a UI (sem
-  // confirmação pendente) — nos dois casos, se o script já estava DENTRO de
-  // um loop item-a-item (ex: baixando fotos de uma seção de 1751 produtos),
-  // ele continuava rodando sozinho em segundo plano, só que o painel dizia
-  // "Cancelado". Marcar `execucao.cancelado = true` aqui, sempre, dá aos
-  // loops longos (ver `deveParar` em rodarAcao abaixo, checado a cada item
-  // em x2-fotos-scraper.js/x2-catalogo-sync.js) uma forma de perguntar "o
-  // usuário já cancelou?" e parar de verdade em poucos segundos.
+  // Marca o pedido de cancelamento para que os loops item-a-item parem. Se
+  // Playwright estiver numa operação não cancelável, o lock continua ativo
+  // até a Promise da execução terminar.
   execucao.cancelado = true;
+  execucao.erro = motivo;
   if (execucao.aguardando && execucao.aguardando.rejeitador) {
-    // Rejeita a Promise que `confirmar()` estava esperando — a função que
-    // deu await nisso (dentro de rodarMuitasSecoes/sync.rodar/etc.) recebe
-    // o erro e cai no catch/finally de rodarAcao normalmente, liberando
-    // tudo do jeito certo (browser fechado etc.), não só "esquece" o estado.
-    execucao.aguardando.rejeitador(new Error(motivo));
+    // Remove a confirmação antes de rejeitar para impedir que /api/confirmar
+    // resolva a mesma espera durante a propagação do cancelamento.
+    const pendente = execucao.aguardando;
+    execucao.aguardando = null;
+    pendente.rejeitador(new Error(motivo));
+    transmitir();
   } else {
-    // Sem confirmação pendente pra rejeitar (ex: travou no meio de uma
-    // chamada do Playwright que nunca resolve) — não dá pra interromper a
-    // Promise em voo com segurança, então só libera a TRAVA (deixa novas
-    // ações rodarem). Best-effort: a janela do Chrome da execução anterior
-    // pode continuar aberta sozinha em segundo plano; fechar manualmente se
-    // aparecer na barra de tarefas.
-    execucao.erro = motivo;
-    execucao.rodando = false;
+    // Sem confirmação pendente, Playwright pode não aceitar cancelamento
+    // imediato. Mantenha o lock até a Promise real terminar.
     execucao.aguardando = null;
     transmitir();
   }
@@ -186,7 +218,15 @@ function cancelarExecucaoAtual(motivo) {
 // foi disparada pelo agendador (não por um clique na aba Fotos) — usado só
 // pra registrar o resultado de volta na rotina (ver checarRotinas) e pra
 // deixar isso visível no `execucao` transmitido por SSE.
-async function rodarAcao(tipo, opcoes, { origemRotina } = {}) {
+//
+// `rotulo` (pedido do usuário, 2026-09-11): nome amigável opcional pra essa
+// execução ESPECÍFICA, sobrepondo o nome genérico do `tipo` na tela ("Rodando:
+// ...", ver aplicarEstadoExecucao no frontend). Criado pro cadastro (tipo
+// "sync") disparado automaticamente depois de Lançamentos — o usuário pediu
+// que esse apareça como "Cadastro Lançamentos", só nesse caso, sem renomear
+// o "Sync" comum (cadastro manual por seção, botão "Cadastrar produtos
+// novos"), que continua "Sync" normalmente.
+async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
   if (execucao && execucao.rodando) {
     throw Object.assign(new Error('Já tem uma ação rodando.'), { status: 409 });
   }
@@ -202,12 +242,30 @@ async function rodarAcao(tipo, opcoes, { origemRotina } = {}) {
   // próprio X2, não login). Agora `opcoes.automatico` (mandado pelo
   // frontend) também liga o modo automático, não só origemRotina.
   const modoAutomatico = !!origemRotina || !!opcoes.automatico;
-  execucao = { tipo, terminal: new TerminalVirtual(), rodando: true, aguardando: null, erro: null, origemRotina: origemRotina || null, cancelado: false };
+  const execucaoLocal = { tipo, terminal: new TerminalVirtual(), rodando: true, aguardando: null, erro: null, origemRotina: origemRotina || null, rotulo: rotulo || null, cancelado: false };
+  execucao = execucaoLocal;
   transmitir();
+
+  // PEDIDO DO USUÁRIO (2026-09-08): "quando utilizar a ferramenta Lançamentos
+  // já faça a captura de foto e do produto no mesmo instante" — preenchido
+  // dentro do branch `tipo === 'lancamentos-x2'` abaixo, com as Seções que
+  // tiveram lançamento nessa captura (ver mapearSecoesTocadas em
+  // x2-lancamentos-scraper.js). Disparado DEPOIS do `finally` (fora deste
+  // try/catch), pra não segurar o lock de "Lançamentos" pelos minutos que
+  // sync+baixar levam — o usuário pediu que Lançamentos continue terminando
+  // rápido (só a lista) e a captura de foto/ficha rode depois, em segundo
+  // plano, como uma nova execução visível na aba Rotinas.
+  let slugsAutoCaptura = null;
+  // PEDIDO DO USUÁRIO (2026-09-11): junto com as Seções tocadas, guarda os
+  // CÓDIGOS exatos que tiveram lançamento — usados pra restringir tanto o
+  // cadastro (sincronizarPorCodigos, em vez de sync.rodar por seção
+  // inteira) quanto o download de fotos (codigosEspecificos em
+  // calcularFila) só a esses códigos.
+  let codigosAutoCaptura = null;
 
   // Passado pra dentro dos loops item-a-item de x2-fotos-scraper.js e
   // x2-catalogo-sync.js — ver comentário em cancelarExecucaoAtual().
-  const deveParar = () => !!(execucao && execucao.cancelado);
+  const deveParar = () => execucaoLocal.cancelado;
 
   // Redireciona console.log/console.error/process.stdout.write pro terminal
   // virtual ENQUANTO a ação roda — os scripts originais (x2-fotos-scraper.js,
@@ -215,7 +273,7 @@ async function rodarAcao(tipo, opcoes, { origemRotina } = {}) {
   const origWrite = process.stdout.write.bind(process.stdout);
   const origErrorWrite = process.stderr.write.bind(process.stderr);
   const capturar = (texto) => {
-    execucao.terminal.escrever(texto);
+    execucaoLocal.terminal.escrever(texto);
     transmitir();
     return true;
   };
@@ -223,7 +281,7 @@ async function rodarAcao(tipo, opcoes, { origemRotina } = {}) {
   process.stderr.write = capturar;
 
   if (modoAutomatico) {
-    execucao.terminal.escrever('▶ Rotina automática — sem clique humano: tentando login automático + abrir a tela sozinho (ver comentários em x2-fotos-scraper.js/x2-catalogo-sync.js, essa parte ainda não foi validada ao vivo).\n');
+    execucaoLocal.terminal.escrever('▶ Rotina automática — sem clique humano: tentando login automático + abrir a tela sozinho (ver comentários em x2-fotos-scraper.js/x2-catalogo-sync.js, essa parte ainda não foi validada ao vivo).\n');
   }
 
   try {
@@ -239,10 +297,20 @@ async function rodarAcao(tipo, opcoes, { origemRotina } = {}) {
           limit: opcoes.limit || null,
           channel: 'chrome',
           retrySemFoto: !!opcoes.retrySemFoto,
+          // Rotina automática de fotos (sem lista de códigos) renova aos poucos as fotos
+          // com mais de X2_RENOVAR_FOTOS_DIAS dias (padrão 60), até 300 por seção/execução.
+          renovarAposDias: opcoes.renovarAposDias || ((origemRotina && !(opcoes.codigosEspecificos && opcoes.codigosEspecificos.length)) ? (Number(process.env.X2_RENOVAR_FOTOS_DIAS) || 60) : undefined),
+          renovarLimite: opcoes.renovarLimite || undefined,
           reiniciar: !!opcoes.reiniciar,
           confirmar: modoAutomatico ? undefined : confirmarFactory(),
           modoAutomatico,
           deveParar,
+          // PEDIDO DO USUÁRIO (2026-09-11): quando vem do encadeamento
+          // pós-Lançamentos, restringe a fila de fotos só aos códigos que
+          // tiveram lançamento — ver calcularFila/codigosEspecificos em
+          // x2-fotos-scraper.js. Uso manual do painel nunca manda isso
+          // (fica undefined), então continua baixando a seção toda como hoje.
+          codigosEspecificos: opcoes.codigosEspecificos || undefined,
         });
         // PEDIDO DO USUÁRIO (2026-08-11): "achei que quando eu clicasse em
         // atualizar fotos ele já baixasse e lançasse automaticamente no
@@ -258,21 +326,39 @@ async function rodarAcao(tipo, opcoes, { origemRotina } = {}) {
         console.log('\n▶ Publicando (montando zip) as seções que já ficaram 100% completas...');
         for (const slug of opcoes.secoes) {
           try {
-            await montarZipFinal(slug);
+            // Rodada restrita a códigos (Lançamentos): zip parcial preserva as fotos já publicadas.
+            await montarZipFinal(slug, { parcial: !!(opcoes.codigosEspecificos && opcoes.codigosEspecificos.length) });
           } catch (e) {
             console.error(`Erro ao montar zip de "${slug}": ${e.message}`);
           }
         }
       } else if (tipo === 'sync') {
-        await sync.rodar(opcoes.secoes, {
-          channel: 'chrome',
-          dryRun: !!opcoes.dryRun,
-          semRemover: !!opcoes.semRemover,
-          forcarRemocao: !!opcoes.forcarRemocao,
-          confirmar: modoAutomatico ? undefined : confirmarFactory(),
-          modoAutomatico,
-          deveParar,
-        });
+        if (opcoes.codigos && opcoes.codigos.length) {
+          // PEDIDO DO USUÁRIO (2026-09-11): cadastro por LISTA DE CÓDIGOS
+          // pontual, não por seção inteira — usado pelo encadeamento
+          // automático pós-Lançamentos (ver mais abaixo), que já sabe
+          // exatamente quais códigos tiveram lançamento naquela semana.
+          // Mesma função já usada e testada no fluxo manual "Diff Estoque"
+          // (sincronizarPorCodigos, via o wrapper rodarPorCodigos) — só
+          // muda de onde vem a lista de códigos.
+          await sync.rodarPorCodigos(opcoes.codigos, {
+            channel: 'chrome',
+            dryRun: !!opcoes.dryRun,
+            confirmar: modoAutomatico ? undefined : confirmarFactory(),
+            modoAutomatico,
+            deveParar,
+          });
+        } else {
+          await sync.rodar(opcoes.secoes, {
+            channel: 'chrome',
+            dryRun: !!opcoes.dryRun,
+            semRemover: !!opcoes.semRemover,
+            forcarRemocao: !!opcoes.forcarRemocao,
+            confirmar: modoAutomatico ? undefined : confirmarFactory(),
+            modoAutomatico,
+            deveParar,
+          });
+        }
       } else if (tipo === 'zip') {
         for (const slug of opcoes.secoes) await montarZipFinal(slug);
       } else if (tipo === 'exportar') {
@@ -342,41 +428,161 @@ async function rodarAcao(tipo, opcoes, { origemRotina } = {}) {
         // verdade (☰ > Compras > Catálogo de Produtos, filtro "Apenas
         // produtos com primeira entrada"). Ver x2-lancamentos-scraper.js
         // pros seletores confirmados ao vivo.
-        await lancamentosX2.rodar({
+        const snapshotLancamentos = await lancamentosX2.rodar({
           channel: 'chrome',
           confirmar: modoAutomatico ? undefined : confirmarFactory(),
           modoAutomatico,
           dataInicioRecebimento: opcoes.dataInicioRecebimento || undefined,
           dataFimRecebimento: opcoes.dataFimRecebimento || undefined,
         });
+
+        if (opcoes.semAutoCaptura) {
+          console.log('\n(--semAutoCaptura: pulando cadastro+foto automático desta captura.)');
+        } else if (snapshotLancamentos && snapshotLancamentos.produtos.length) {
+          const { slugs, naoMapeados } = lancamentosX2.mapearSecoesTocadas(snapshotLancamentos.produtos);
+          if (naoMapeados.length) {
+            console.log(`\n⚠ ${naoMapeados.length} lançamento(s) com Seção não reconhecida (fica só no Excel, sem cadastro/foto automático): ${naoMapeados.map((n) => n.codigo).join(', ')}`);
+            alertarFalhaX2('secao-nao-mapeada', `${naoMapeados.length} lançamento(s) com Seção não reconhecida ficaram fora do catálogo: ${naoMapeados.slice(0, 10).map((n) => n.codigo).join(', ')}`);
+          }
+          if (slugs.length) {
+            console.log(`\n▶ ${slugs.length} Seção(ões) com lançamento novo — cadastro de ficha + fotos serão disparados automaticamente em seguida: ${slugs.join(', ')}`);
+            slugsAutoCaptura = slugs;
+            codigosAutoCaptura = snapshotLancamentos.produtos.map((p) => p.codigo);
+          }
+        }
       } else {
         throw new Error(`Ação desconhecida: ${tipo}`);
       }
     })();
 
-    let timeoutId;
-    const timeoutPromise = new Promise((_, reject) => {
-      timeoutId = setTimeout(() => {
-        reject(new Error(`Passou de ${Math.round(TIMEOUT_MAXIMO_MS / 60000)} minutos sem terminar — travei a rede de segurança em vez de deixar "rodando" pra sempre. Se uma janela do Chrome da execução anterior ainda estiver aberta, pode fechar manualmente.`));
-      }, TIMEOUT_MAXIMO_MS);
+    await aguardarTarefaComTimeout(tarefa, {
+      timeoutMs: TIMEOUT_MAXIMO_MS,
+      aoTimeout: () => cancelarExecucaoAtual('timeout'),
+      criarErroTimeout: () => new Error(
+        `Passou de ${Math.round(TIMEOUT_MAXIMO_MS / 60000)} minutos sem terminar; cancelamento solicitado. O lock permanece ate a tarefa Playwright encerrar.`,
+      ),
     });
-    try {
-      await Promise.race([tarefa, timeoutPromise]);
-    } finally {
-      clearTimeout(timeoutId);
-    }
+    if (execucaoLocal.cancelado) throw new Error(execucaoLocal.erro || 'Execucao cancelada.');
 
     if (origemRotina) rotinasStore.registrarExecucao(origemRotina, { resultado: 'sucesso' });
   } catch (e) {
-    execucao.erro = e.message;
-    execucao.terminal.escrever(`\n❌ Erro: ${e.message}\n`);
+    execucaoLocal.erro = e.message;
+    execucaoLocal.terminal.escrever(`\n❌ Erro: ${e.message}\n`);
     if (origemRotina) rotinasStore.registrarExecucao(origemRotina, { resultado: 'erro', erro: e.message });
+    if (origemRotina || (opcoes && opcoes.automatico)) {
+      alertarFalhaX2(`acao-${tipo}`, `a rotina "${rotulo || tipo}" falhou: ${String(e.message).slice(0, 300)}`);
+    }
   } finally {
     process.stdout.write = origWrite;
     process.stderr.write = origErrorWrite;
-    execucao.rodando = false;
-    execucao.aguardando = null;
+    execucaoLocal.rodando = false;
+    execucaoLocal.aguardando = null;
     transmitir();
+  }
+
+  // Encadeamento automático pós-Lançamentos (ver comentário lá em cima, na
+  // declaração de `slugsAutoCaptura`) — só depois do `finally`, com o lock
+  // já liberado, pra virar uma execução NOVA e independente (visível na aba
+  // Rotinas), não uma extensão da execução de "Lançamentos" que acabou de
+  // terminar. `execucao` ainda aponta pra essa execução que acabou de
+  // terminar — `execucao.cancelado` reflete se ELA foi cancelada; se foi,
+  // não faz sentido continuar disparando cadastro/foto por trás.
+  if (slugsAutoCaptura && slugsAutoCaptura.length && !execucaoLocal.cancelado) {
+    const secoesParaAutoCaptura = slugsAutoCaptura;
+    // PEDIDO DO USUÁRIO (2026-09-11): cadastro e fotos agora restritos aos
+    // códigos exatos do lançamento (ver comentário na declaração de
+    // codigosAutoCaptura acima) — `secoesParaAutoCaptura` continua servindo
+    // só pra decidir EM QUAIS seções vale a pena procurar foto (o cadastro
+    // por código já resolve sozinho a seção certa de cada produto, ver
+    // sincronizarPorCodigos em x2-catalogo-sync.js).
+    const codigosParaAutoCaptura = codigosAutoCaptura || [];
+    console.log(`[x2-painel] Lançamentos: disparando cadastro de ficha + fotos automaticamente para ${codigosParaAutoCaptura.length} código(s): ${secoesParaAutoCaptura.join(', ')}`);
+    rodarAcao('sync', { codigos: codigosParaAutoCaptura, automatico: true }, { rotulo: 'Cadastro Lançamentos' })
+      .then(() => {
+        // `execucao` ainda aponta pra execução do "sync" que acabou de
+        // terminar (baixar só reatribui a variável quando chamado a
+        // seguir) — se o usuário cancelou o cadastro de ficha, não faz
+        // sentido continuar sozinho pro download de fotos.
+        if (execucaoLocal.cancelado) {
+          console.log('[x2-painel] cadastro de ficha cancelado — pulando download de fotos automático.');
+          return null;
+        }
+        if (execucaoLocal.erro) {
+          console.log('[x2-painel] cadastro de ficha FALHOU — pulando fotos e PDF/Drive para não subir catálogo incompleto.');
+          alertarFalhaX2('cadeia-sync', `Lançamentos: o cadastro dos ${codigosParaAutoCaptura.length} código(s) novos falhou (${String(execucaoLocal.erro).slice(0, 200)}). Fotos e Drive NÃO foram executados.`);
+          return null;
+        }
+        return rodarAcao('baixar', { secoes: secoesParaAutoCaptura, codigosEspecificos: codigosParaAutoCaptura, automatico: true }, { rotulo: 'Fotos Lançamentos' });
+      })
+      .then((fotosRodou) => {
+        // 3º elo (PEDIDO DO USUÁRIO, 2026-09-11): "pretendo automatizar a
+        // geração dos pdf e subir automaticamente para o drive" — só depois
+        // que ficha (sync) E fotos terminaram, gera 1 PDF por fabricante
+        // tocado e sobe/atualiza na pasta única do Drive. Não passa por
+        // rodarAcao() (não é uma execução "Baixar/Sync" visível na mesma
+        // aba, é upload em segundo plano) — best-effort: se GOOGLE_DRIVE_*
+        // não estiver configurado ainda, só loga e segue (ver guard no
+        // topo de x2-drive-lancamentos.js).
+        if (fotosRodou === null) return null; // cadastro foi cancelado, nem chegou a baixar foto
+        if (execucao && execucao.cancelado) {
+          console.log('[x2-painel] download de fotos cancelado — pulando geração/upload de PDF automático.');
+          return null;
+        }
+        if (execucao && execucao.erro) {
+          console.log('[x2-painel] download de fotos FALHOU — pulando PDF/Drive para não subir catálogo sem as fotos novas.');
+          alertarFalhaX2('cadeia-fotos', `Lançamentos: o download das fotos dos códigos novos falhou (${String(execucao.erro).slice(0, 200)}). O PDF NÃO foi enviado ao Drive.`);
+          return null;
+        }
+        // Só os fabricantes dos códigos que entraram em Lançamentos nesta semana
+        // (decisão do usuário 2026-09-30: o reenvio completo é manual, via
+        // `node scripts/x2-drive-lancamentos.js --todos`, nunca automático).
+        return driveLancamentos.rodarUploadDrive(codigosParaAutoCaptura).then((alvo) => {
+          const erros = alvo.erros || [];
+          if (erros.length) {
+            const lista = erros.slice(0, 5).map((x) => `${x.fabricante || 'geral'}: ${String(x.erro).slice(0, 120)}`).join(' | ');
+            alertarFalhaX2('drive', `envio de PDFs ao Drive teve ${erros.length} falha(s). ${lista}`);
+          }
+          if (alvo.semFabricante && alvo.semFabricante.length) {
+            alertarFalhaX2('drive-sem-fabricante', `${alvo.semFabricante.length} código(s) de lançamento sem fabricante não foram ao Drive: ${alvo.semFabricante.slice(0, 10).join(', ')}`);
+          }
+          if (!erros.length) {
+            // Resumo de sucesso da semana — best-effort.
+            try {
+              const { enviarAlertaWhatsApp, formatarAlerta } = require('../x2-whatsapp-alerta');
+              const fabs = alvo.fabricantes || [];
+              enviarAlertaWhatsApp(formatarAlerta({
+                nivel: 'ok',
+                titulo: 'Lançamentos da semana concluídos',
+                linhas: [
+                  `Produtos novos: ${codigosParaAutoCaptura.length}`,
+                  `Seções atualizadas: ${secoesParaAutoCaptura.join(', ') || '—'}`,
+                  `PDFs atualizados no Drive: ${fabs.length}${fabs.length ? ` (${fabs.join(', ')})` : ''}`,
+                ],
+              })).catch(() => {});
+            } catch { /* best-effort */ }
+          }
+          // Export (Excel) da captura da semana, enviado ao WhatsApp de alertas
+          // logo depois do resumo — independe do Drive ter dado erro ou não.
+          setTimeout(() => {
+            try {
+              const lancDir = path.join(require('os').homedir(), '.x2-rildon-scraper', 'lancamentos-x2');
+              const ultimo = fs.readdirSync(lancDir)
+                .filter((f) => /^captura-.*\.xlsx$/.test(f))
+                .map((f) => ({ f, t: fs.statSync(path.join(lancDir, f)).mtimeMs }))
+                .sort((a, b) => b.t - a.t)[0];
+              if (ultimo) {
+                const periodo = ultimo.f.replace(/^captura-/, '').replace(/\.xlsx$/, '').replace('_a_', ' a ').replace(/-/g, '/');
+                require('../x2-whatsapp-alerta')
+                  .enviarDocumentoWhatsApp(path.join(lancDir, ultimo.f), `📋 Lançamentos da semana (${periodo})`)
+                  .catch(() => {});
+              }
+            } catch { /* best-effort */ }
+          }, 5000);
+        });
+      })
+      .catch((e) => {
+        console.error('[x2-painel] erro na captura automática de foto/ficha/PDF pós-Lançamentos:', e.message);
+      });
   }
 }
 
@@ -416,14 +622,41 @@ function totalProdutosUnicos() {
 function statusSecoes() {
   return Object.entries(SECOES).map(([slug, label]) => {
     let produtos = 0;
+    let codigosAtuais = null;
     try {
-      produtos = JSON.parse(fs.readFileSync(path.join(CATALOGO_DIR, `${slug}.json`), 'utf8')).length;
+      const produtosJson = JSON.parse(fs.readFileSync(path.join(CATALOGO_DIR, `${slug}.json`), 'utf8'));
+      produtos = produtosJson.length;
+      codigosAtuais = new Set(produtosJson.map((p) => String(p.codigo)));
     } catch { /* json não encontrado ainda */ }
 
     const progresso = carregarProgresso(slug);
-    const entradas = Object.values(progresso);
+    // BUG REAL corrigido (2026-09-12, investigando "Montar zip não aplica" —
+    // usuário via "precisa build-zip" preso mesmo depois de rodar o build
+    // com sucesso): progresso[slug].json acumula entradas de rodadas
+    // passadas que não necessariamente batem 1:1 com os códigos ATUAIS do
+    // catalogo.json da seção (produto reclassificado pra outra seção,
+    // duplicidade de paginação já corrigida em BUZINAS, etc — daí a coluna
+    // "Processados" já aparecer tipo "1517/1213", mais processado que o
+    // total de produtos). Antes este bloco contava TODAS as entradas do
+    // progresso.json sem checar se o código ainda pertence à seção, e
+    // montarZipFinal() (x2-fotos-scraper.js) só considera os códigos do
+    // catalogo.json atual — resultado: comFotoReal ficava sempre maior que
+    // o que o zip real podia conter, "precisaZip" nunca virava false e o
+    // badge "precisa build-zip" ficava preso pra sempre, mesmo com o build
+    // rodando certinho. Fix: só conta progresso de códigos que ainda estão
+    // no catalogo.json da seção, igual o filtro que montarZipFinal já usa.
+    const entradas = codigosAtuais
+      ? Object.entries(progresso).filter(([codigo]) => codigosAtuais.has(codigo)).map(([, v]) => v)
+      : Object.values(progresso);
     const baixados = entradas.length;
     const comFotoReal = entradas.filter((e) => e.status === 'ok').length;
+    // PEDIDO DO USUÁRIO (2026-09-12, "vamos fazer mudanças de ui e ux"):
+    // antes não tinha nenhum jeito de ver, seção por seção, quantos itens
+    // ficaram com status "erro" sem rodar o log bruto de uma execução —
+    // foi assim que os 1209 erros de MECÂNICA (69%!) só foram percebidos
+    // numa sessão de teste ao vivo, bem depois. Agora vira coluna/badge/
+    // filtro na tabela de Seções (ver index.html/app.js).
+    const erros = entradas.filter((e) => e.status === 'erro').length;
     const pequenas = entradas.filter((e) => fotosSuspeitas(e.detalhes).length > 0).length;
     const publicados = contarPublicados(slug);
 
@@ -433,6 +666,7 @@ function statusSecoes() {
       produtos,
       baixados,
       comFotoReal,
+      erros,
       pequenas,
       publicados,
       // "Publicado" (visível no Catálogo do painel do bot) só bate com
@@ -458,6 +692,102 @@ app.get('/api/status', (req, res) => {
       erro: execucao.erro,
     } : null,
   });
+});
+
+// ─── Produtos por Seção — drill-down (2026-09-12, mockup "CatálogoPro") ──
+// Pedido do usuário: em vez de listar 19 mil produtos soltos, a tabela de
+// Produtos só aparece ao clicar numa Seção específica — carrega só os
+// produtos DAQUELA seção (no máximo ~3.000, seção MOTOR DE PARTIDA, a
+// maior). Mistura o `<slug>.json` (dado de catálogo: código/nome/linha)
+// com o checkpoint de progresso do scraper (status: ok/sem_foto/
+// placeholder/erro/pendente — "pendente" é código que ainda nem foi
+// tentado) — mesmas duas fontes que statusSecoes() já lê, só que por
+// produto em vez de agregado.
+function _extensaoImagem(nome) {
+  const ext = path.extname(String(nome || '')).toLowerCase();
+  if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+  if (ext === '.png') return 'image/png';
+  if (ext === '.gif') return 'image/gif';
+  if (ext === '.webp') return 'image/webp';
+  return null;
+}
+
+app.get('/api/secoes/:slug/produtos', (req, res) => {
+  const { slug } = req.params;
+  const label = SECOES[slug];
+  if (!label) return res.status(404).json({ error: 'Seção não encontrada.' });
+
+  let produtosJson = [];
+  try {
+    produtosJson = JSON.parse(fs.readFileSync(path.join(CATALOGO_DIR, `${slug}.json`), 'utf8'));
+  } catch { /* json não encontrado ainda — seção sem extração (ex: consumo) */ }
+
+  const progresso = carregarProgresso(slug);
+  const produtos = produtosJson.map((p) => {
+    const st = progresso[String(p.codigo)];
+    return {
+      codigo: p.codigo,
+      nome: p.nome,
+      linha: p.linha || null,
+      // "pendente" = ainda não passou pelo scraper nenhuma vez (não confundir
+      // com "sem_foto" — esse já foi tentado e o X2 não tinha foto real).
+      status: st ? st.status : 'pendente',
+      temThumb: !!(st && st.status === 'ok' && st.arquivos && st.arquivos.length),
+      // PEDIDO DO USUÁRIO (2026-09-12, redesign modal): contagem real de
+      // arquivos baixados por produto (não é "X de Y esperado" — não temos
+      // esse total do X2, só o que foi de fato baixado) + se alguma dessas
+      // fotos está abaixo de LARGURA_MINIMA_AVISO (mesma função já usada
+      // no agregado por seção, aqui aplicada por produto).
+      numFotos: st && st.arquivos ? st.arquivos.length : 0,
+      fotoSuspeita: !!(st && fotosSuspeitas(st.detalhes).length > 0),
+    };
+  });
+
+  res.json({ slug, label, produtos });
+});
+
+app.get('/api/secoes/:slug/produtos/:codigo/thumb', (req, res) => {
+  const { slug, codigo } = req.params;
+  if (!SECOES[slug]) return res.status(404).end();
+  const progresso = carregarProgresso(slug);
+  const st = progresso[codigo];
+  const nomeArquivo = st && st.arquivos && st.arquivos[0];
+  if (!nomeArquivo) return res.status(404).end();
+  const caminho = path.join(stagingSecaoDir(slug), codigo, nomeArquivo);
+  const mime = _extensaoImagem(nomeArquivo);
+  if (!mime || !fs.existsSync(caminho)) return res.status(404).end();
+  res.setHeader('Content-Type', mime);
+  res.setHeader('Cache-Control', 'private, max-age=3600');
+  fs.createReadStream(caminho).pipe(res);
+});
+
+// ─── Busca global de produtos (2026-09-12, mockup "CatálogoPro") — varre
+// os JSONs das 27 seções (mesmo padrão de totalProdutosUnicos()) por código
+// OU nome, sem precisar abrir a Seção primeiro. Cap de 30 resultados: é
+// busca de "achar rápido", não relatório — se vier muita coisa, a pessoa
+// afina o termo.
+app.get('/api/produtos/buscar', (req, res) => {
+  const termoBruto = String(req.query.q || '').trim();
+  if (termoBruto.length < 2) return res.json({ resultados: [] });
+  const termo = termoBruto.toLowerCase();
+
+  const resultados = [];
+  for (const [slug, label] of Object.entries(SECOES)) {
+    if (resultados.length >= 30) break;
+    let produtosJson;
+    try {
+      produtosJson = JSON.parse(fs.readFileSync(path.join(CATALOGO_DIR, `${slug}.json`), 'utf8'));
+    } catch { continue; }
+    for (const p of produtosJson) {
+      if (resultados.length >= 30) break;
+      const bateCodigo = String(p.codigo).toLowerCase().includes(termo);
+      const bateNome = String(p.nome || '').toLowerCase().includes(termo);
+      if (bateCodigo || bateNome) {
+        resultados.push({ codigo: p.codigo, nome: p.nome, secaoSlug: slug, secaoLabel: label });
+      }
+    }
+  }
+  res.json({ resultados });
 });
 
 // ─── Estoque (2026-08-06) — só lista/serve os CSVs já baixados por
@@ -539,7 +869,31 @@ app.get('/api/lancamentos-x2/xlsx/:nomeBase', async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="${nomeBase}.xlsx"`);
     res.send(Buffer.from(buffer));
   } catch (e) {
-    res.status(500).json({ error: `Erro ao gerar planilha: ${e.message}` });
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+// PEDIDO DO USUÁRIO (2026-09-22): reenviar manualmente TODOS os catálogos
+// "- Mecânica" ao Drive — depois de corrigir o bug que fazia esses PDFs
+// saírem no estilo elétrica (ver Issue/PR de hoje sobre
+// _estiloCatalogoCompleto), os arquivos já subidos antes do fix ficaram
+// com o layout errado na pasta do Drive; precisam ser gerados/enviados de
+// novo com o estilo certo. Ação rápida SEM passar por rodarAcao()/SSE — só
+// chama o bot e o Drive, não abre Chrome nem mexe no X2 (mesmo espírito de
+// "leve" do reenvio automático pós-Lançamentos), então um JSON síncrono já
+// basta, sem precisar da aba "Execução". Ver
+// x2-drive-lancamentos.js/rodarUploadTodosMecanica().
+app.post('/api/drive/reenviar-mecanica', async (req, res) => {
+  try {
+    const resultado = await driveLancamentos.rodarUploadTodosMecanica();
+    if (!resultado.enviados.length && !resultado.erros.length && !resultado.fabricantes.length) {
+      // config ausente (API_TOKEN/OAuth/pasta) — rodarUploadTodosMecanica já
+      // logou o motivo específico no console do servidor.
+      return res.status(400).json({ error: 'Upload pro Drive não está configurado — confira o .env (ver console do servidor pro motivo exato).' });
+    }
+    res.json(resultado);
+  } catch (e) {
+    res.status(500).json({ error: `Erro ao reenviar catálogos Mecânica ao Drive: ${e.message}` });
   }
 });
 
@@ -686,8 +1040,8 @@ app.post('/api/confirmar', (req, res) => {
   res.json({ ok: true });
 });
 
-// 2026-08-07 — ver comentário em cancelarExecucaoAtual(). Libera a trava
-// "já tem uma ação rodando" manualmente, sem precisar reiniciar o servidor.
+// 2026-08-07 — ver comentário em cancelarExecucaoAtual(). Solicita o
+// cancelamento sem liberar o lock enquanto Playwright ainda estiver ativo.
 app.post('/api/cancelar', (req, res) => {
   const cancelou = cancelarExecucaoAtual('Cancelado manualmente pelo usuário.');
   if (!cancelou) {
@@ -757,13 +1111,42 @@ app.post('/api/rotinas/:id/rodar-agora', (req, res) => {
 // manuais — ferramenta de uso solo, não faz sentido rodar 2 coisas juntas);
 // se mais de uma rotina "vencer" no mesmo minuto, as outras esperam a
 // próxima checagem (1 min depois, inofensivo pra esse tipo de tarefa).
+// 2026-10-14: antes, quando uma rotina vencia com outra ação rodando, o
+// agendador só saía calado — e como `ultimaExecucao` não era atualizada, a
+// mesma rotina vencia de novo no minuto seguinte, e no seguinte. O log do
+// servidor ficava com a mesma linha repetida minuto a minuto sem ninguém
+// entender por quê (visto ao vivo em 14/10 com "Atualização de
+// Estoque/Preço" enquanto a captura de fotos rodava). Agora o aviso sai uma
+// vez a cada 10 minutos e diz CLARAMENTE que foi adiada, e por causa de quê.
+const rotinaAdiadaAvisadaEm = new Map(); // id da rotina -> Date.now() do último aviso
+const INTERVALO_AVISO_ADIADA_MS = 10 * 60 * 1000;
+
 function checarRotinas() {
-  if (execucao && execucao.rodando) return;
   const agora = new Date();
   const pendente = rotinasStore.carregarRotinas().find((r) => rotinasStore.deveRodarAgora(r, agora));
   if (!pendente) return;
-  console.log(`[x2-painel] rotina "${pendente.nome}" venceu (${pendente.horario}) — disparando automaticamente...`);
+
+  if (execucao && execucao.rodando) {
+    const ultimoAviso = rotinaAdiadaAvisadaEm.get(pendente.id) || 0;
+    if (Date.now() - ultimoAviso >= INTERVALO_AVISO_ADIADA_MS) {
+      rotinaAdiadaAvisadaEm.set(pendente.id, Date.now());
+      console.log(`[x2-painel] rotina "${pendente.nome}" venceu mas foi ADIADA — "${execucao.tipo}" ainda está rodando. Ela roda assim que liberar.`);
+    }
+    return;
+  }
+  rotinaAdiadaAvisadaEm.delete(pendente.id);
+  // PEDIDO DO USUÁRIO (2026-09-11): rotina "a cada N horas" não tem
+  // `horario` (fica null, ver rotinas.js) — log deixa claro qual dos dois
+  // modelos de agendamento venceu.
+  const quandoVenceu = pendente.frequencia === 'horas' ? `a cada ${pendente.intervaloHoras}h` : pendente.horario;
+  console.log(`[x2-painel] rotina "${pendente.nome}" venceu (${quandoVenceu}) — disparando automaticamente...`);
   rodarAcao(pendente.tipo, { ...pendente.opcoes, secoes: pendente.secoes }, { origemRotina: pendente.id }).catch((e) => {
+    // 409 = outra ação começou entre a checagem acima e o disparo. Não é
+    // erro: a rotina continua vencida e tenta de novo na próxima checagem.
+    if (e && e.status === 409) {
+      console.log(`[x2-painel] rotina "${pendente.nome}" adiada — outra ação começou primeiro.`);
+      return;
+    }
     console.error(`[x2-painel] erro não tratado na rotina ${pendente.nome}:`, e.message);
   });
 }
@@ -789,4 +1172,23 @@ server.listen(PORT, '127.0.0.1', () => {
   // janela minimizada, por exemplo), não só ser aberto uma vez.
   setInterval(checarRotinas, 60 * 1000);
   checarRotinas();
+
+  // Relatório mensal em PDF por WhatsApp (pedido 2026-09-30): último dia do
+  // mês às 20h (ou dia 1º às 8h se o painel estava fechado). Ver
+  // scripts/relatorio-mensal.js. Checa a cada 15 min; 1 envio por mês.
+  const relatorioMensal = require('../relatorio-mensal');
+  setInterval(() => relatorioMensal.verificarEEnviarSeDevido(), 15 * 60 * 1000);
+  setTimeout(() => relatorioMensal.verificarEEnviarSeDevido(), 60 * 1000);
+
+  // Vigia de estoque parado (auditoria 2026-09-30): se o CSV que alimenta
+  // preço/estoque do bot tem mais de 12 h, avisa por WhatsApp (1x a cada 6 h).
+  const CSV_ESTOQUE = path.join(__dirname, '..', '..', 'src', 'data', 'estoque-latest.csv');
+  setInterval(() => {
+    try {
+      const idadeH = (Date.now() - fs.statSync(CSV_ESTOQUE).mtimeMs) / 3600000;
+      if (idadeH > 12) alertarFalhaX2('estoque-parado', `o estoque/preço do bot não atualiza há ${Math.round(idadeH)} h (rotina de 5 h parada?). Confira se o Painel X2 está aberto.`);
+    } catch {
+      alertarFalhaX2('estoque-sem-csv', 'não achei src/data/estoque-latest.csv — estoque/preço nunca foi importado nesta máquina.');
+    }
+  }, 30 * 60 * 1000);
 });

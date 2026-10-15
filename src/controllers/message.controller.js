@@ -6,9 +6,71 @@ const humanMode       = require("../services/humanMode.service");
 const logger          = require("../utils/logger");
 const fs              = require("fs");
 const ticketRepository = require("../repositories/ticket.repository");
+const { createTicket, updateTicketStatus, assignTicket } = require("../services/ticket.service");
 const { canAccessTicket, isPrivileged, canUseFullConversationPanel } = require("../utils/access-control");
 const { getProfilePhotoCandidates } = require("../whatsapp/lid-map");
 const { buscarNomeContatoReal } = require("../whatsapp/contacts");
+
+// PEDIDO DO USUÁRIO (2026-09-23, "observe nem foi fechado hoje e ele ja esta
+// definido como resolvido"): reportado com uma conversa real onde o cliente
+// perguntava sobre produtos e o atendente já respondia manualmente ("tô
+// terminando um atendimento, ok"), mas o ticket mais recente desse cliente
+// continuava "resolvido". Causa raiz: sendManualMessage (abaixo) só chamava
+// humanMode.ativar() — nunca criava/reabria/atribuía ticket nenhum. Isso é
+// intencional pra reabertura AUTOMÁTICA (reopenTicketIfClosed em
+// ticket.service.js só reabre dentro de uma janela de tempo — fora dela,
+// espera o cliente "pedir algo de verdade" pra um ticket novo nascer pelo
+// fluxo do bot, ver comentário lá), mas quando um ATENDENTE intervém
+// manualmente antes desse fluxo criar o ticket (como aconteceu aqui), a
+// conversa passa a ser 100% humana sem NENHUM ticket refletindo isso — o
+// painel mostra "resolvido" para um atendimento que está, na prática,
+// acontecendo agora. Esta função garante que existe um ticket ABERTO e
+// atribuído a quem está respondendo, reaproveitando a mesma lógica de
+// reabertura/atribuição já usada pelos botões "Iniciar Atendimento"/
+// "Reabrir" (ticket.controller.js) — sem duplicar a lógica de satisfação/
+// saudação, que updateTicketStatus já cobre. Best-effort: nunca deve
+// impedir o envio da mensagem em si (chamada depois que ela já foi enviada).
+async function _ensureTicketForManualReply(userId, user, contactName) {
+  try {
+    const candidatos = getProfilePhotoCandidates(userId);
+    const tickets = await ticketRepository.findByUserIds(candidatos.length ? candidatos : [userId]);
+    const ativo = tickets.find(t => t.status === "aberto" || t.status === "em_andamento");
+
+    if (ativo) {
+      // Já existe atendimento ativo — só assume se ainda não tiver atendente
+      // (não "rouba" cliente de outro atendente, mesma regra do resto do
+      // painel — ver canUserAccessConversation/assign no repository).
+      if (!ativo.assignedTo) {
+        const atribuido = await assignTicket(ativo.id, user);
+        if (atribuido && !atribuido.notFound && !atribuido.alreadyAssigned) {
+          emitEvent("ticket_atualizado", { ticket: atribuido });
+        }
+      }
+      return;
+    }
+
+    const latest = tickets[0]; // já ordenado DESC (ver ticketRepository.findByUserIds)
+    let ticket;
+    if (latest && (latest.status === "resolvido" || latest.status === "cancelado")) {
+      ticket = await updateTicketStatus(latest.id, "aberto", { ticketAtual: latest });
+    } else {
+      ticket = await createTicket({
+        userId,
+        type: "atendente_humano",
+        sector: "atendimento",
+        customerName: contactName || "Não informado",
+        description: "[Atendimento iniciado manualmente pelo painel]"
+      });
+    }
+    if (!ticket) return;
+
+    const atribuido = await assignTicket(ticket.id, user);
+    const ticketFinal = (atribuido && !atribuido.notFound && !atribuido.alreadyAssigned) ? atribuido : ticket;
+    emitEvent("ticket_atualizado", { ticket: ticketFinal });
+  } catch (err) {
+    logger.warn(`[_ensureTicketForManualReply] ${err.message}`);
+  }
+}
 
 // "Responder mensagem específica" (reply/quote, igual WhatsApp) — busca o
 // texto da mensagem citada pra (a) montar o objeto "quoted" que o Baileys
@@ -103,6 +165,13 @@ async function sendManualMessage(req, res) {
     try {
       contactName = (await buscarNomeContatoReal(userId)) || "";
     } catch (_) {}
+
+    // Ver comentário em _ensureTicketForManualReply acima — garante que o
+    // ticket reflete que este cliente está em atendimento humano agora.
+    // Best-effort (nunca lança) — roda antes de salvar/emitir o histórico
+    // pra qualquer socket "ticket_atualizado" já chegar coerente com o
+    // "nova_mensagem" que vem logo em seguida.
+    await _ensureTicketForManualReply(userId, req.user, contactName);
 
     // Salva histórico separado do envio — falha aqui não afeta a resposta ao frontend
     let historyItem = null;

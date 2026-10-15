@@ -9,9 +9,10 @@
 jest.mock("../src/services/history.service", () => ({
   listHistory: jest.fn(),
   listHistoryGrouped: jest.fn(),
+  getHistoryGroupedSummary: jest.fn(),
 }));
 
-const { listHistoryGrouped } = require("../src/services/history.service");
+const { listHistoryGrouped, getHistoryGroupedSummary } = require("../src/services/history.service");
 const { getHistoryGroupedHandler } = require("../src/controllers/history.controller");
 
 function mockRes() {
@@ -24,9 +25,15 @@ function mockRes() {
 describe("history.controller — getHistoryGroupedHandler", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    getHistoryGroupedSummary.mockResolvedValue({
+      totalClientes: 1,
+      totalRegistros: 3,
+      hoje: 0,
+      comResposta: 2,
+    });
   });
 
-  test("repassa q/from/to e aplica limite padrão de 500 quando não informado", async () => {
+  test("repassa q/from/to e aplica limite padrão de 40 quando não informado", async () => {
     listHistoryGrouped.mockResolvedValue([{ userId: "u1", count: 3 }]);
     const req = { query: {} };
     const res = mockRes();
@@ -34,9 +41,19 @@ describe("history.controller — getHistoryGroupedHandler", () => {
     await getHistoryGroupedHandler(req, res);
 
     expect(listHistoryGrouped).toHaveBeenCalledWith(
-      expect.objectContaining({ limit: 500, offset: 0 })
+      expect.objectContaining({ limit: 40, offset: 0 })
     );
-    expect(res.json).toHaveBeenCalledWith({ count: 1, data: [{ userId: "u1", count: 3 }] });
+    expect(getHistoryGroupedSummary).toHaveBeenCalledWith({
+      q: undefined, from: undefined, to: undefined, horaInicio: undefined, horaFim: undefined,
+    });
+    expect(res.json).toHaveBeenCalledWith({
+      page: 1,
+      limit: 40,
+      total: 1,
+      count: 1,
+      data: [{ userId: "u1", count: 3 }],
+      summary: { totalClientes: 1, totalRegistros: 3, hoje: 0, comResposta: 2 },
+    });
   });
 
   test("respeita limit customizado, mas nunca deixa passar de 2000 (teto de segurança)", async () => {
@@ -47,6 +64,7 @@ describe("history.controller — getHistoryGroupedHandler", () => {
     await getHistoryGroupedHandler(req, res);
 
     expect(listHistoryGrouped).toHaveBeenCalledWith(expect.objectContaining({ limit: 2000 }));
+    expect(res.json.mock.calls[0][0]).toMatchObject({ limit: 2000 });
   });
 
   test("repassa filtros de busca e data ao service", async () => {
@@ -59,16 +77,26 @@ describe("history.controller — getHistoryGroupedHandler", () => {
     expect(listHistoryGrouped).toHaveBeenCalledWith(
       expect.objectContaining({ q: "audi", from: "2026-07-01", to: "2026-07-17" })
     );
+    expect(getHistoryGroupedSummary).toHaveBeenCalledWith(expect.objectContaining({
+      q: "audi", from: "2026-07-01", to: "2026-07-17",
+    }));
   });
 
   test("erro no service não derruba a rota — responde 500 com lista vazia", async () => {
-    listHistoryGrouped.mockRejectedValue(new Error("db offline"));
+    getHistoryGroupedSummary.mockRejectedValue(new Error("db offline"));
     const req = { query: {} };
     const res = mockRes();
 
     await getHistoryGroupedHandler(req, res);
 
     expect(res.status).toHaveBeenCalledWith(500);
-    expect(res.json).toHaveBeenCalledWith({ count: 0, data: [] });
+    expect(res.json).toHaveBeenCalledWith({
+      page: 1,
+      limit: 40,
+      total: 0,
+      count: 0,
+      data: [],
+      summary: { totalClientes: 0, totalRegistros: 0, hoje: 0, comResposta: 0 },
+    });
   });
 });

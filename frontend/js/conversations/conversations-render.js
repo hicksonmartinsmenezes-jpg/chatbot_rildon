@@ -71,12 +71,5 @@ function buildConversationActionButtons(userId, ticket, humanModeSet = new Set()
     `;
   }
 
-  if (humanModeSet.has(userId)) {
-    html += `
-      <button type="button" class="conv-action-btn conv-btn-refresh" data-conv-action="release-bot" data-user-id="${user}" title="Reativar o bot para este cliente">
-        <i class="fa-solid fa-robot"></i> Devolver ao bot
-      </button>`;
-  }
-
   return html;
 }

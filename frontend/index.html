@@ -23,7 +23,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css">
   <!-- CSS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <link rel="stylesheet" href="dist/bundle.c82a9b1369.css">
+  <link rel="stylesheet" href="dist/bundle.484c41719d.css">
   <!-- CSS_BUNDLE_END -->
 <style>
     /* Centraliza colunas da tabela de histórico */
@@ -138,11 +138,6 @@
       <span class="label">Histórico</span>
     </a>
 
-    <a href="#" data-tab="leads" style="display:none;" aria-hidden="true">
-      <i class="fa-solid fa-list"></i>
-      <span class="label">Gestão de Lead</span>
-    </a>
-
     <a href="#" data-tab="contacts">
       <i class="fa-solid fa-address-book"></i>
       <span class="label">Contatos</span>
@@ -196,10 +191,6 @@
       </div>
 
       <div class="top-actions">
-        <button type="button" class="icon-btn" title="Atualizar" data-action="refreshAll">
-          <i class="fa-solid fa-arrows-rotate"></i>
-        </button>
-
         <!-- Liga/desliga o bot — liberado para qualquer atendente logado
              (pedido do usuário, 2026-07-24). Backend: /api/bot-status. -->
         <button type="button" class="icon-btn" id="bot-toggle-btn" title="Bot: carregando..." data-action="toggleBotStatus">
@@ -229,30 +220,29 @@
           </div>
         </div>
 
-       <div class="avatar-wrap" data-action="openProfileModal" role="button" tabindex="0">
-
-      <div
-        class="avatar"
-        id="top-user-avatar"
-      >
-        R
-      </div>
-
-      <div class="avatar-text">
-
-        <strong id="top-user-name">
-          Admin
-        </strong>
-        
-            <span id="status-badge" class="badge badge-off">● Offline</span>
+        <div class="user-menu-wrap">
+          <button type="button" class="avatar-wrap" data-action="toggleUserMenu" aria-expanded="false" aria-haspopup="true" aria-label="Abrir menu do usuário">
+            <div class="avatar" id="top-user-avatar">R</div>
+          </button>
+          <div id="user-menu-dropdown" class="user-menu-dropdown hidden" role="menu">
+            <div class="user-menu-header">
+              <div class="user-menu-avatar" id="user-menu-avatar">R</div>
+              <div>
+                <strong id="user-menu-name">Admin</strong>
+                <span id="user-menu-status">Conta ativa</span>
+              </div>
+            </div>
+            <div class="user-menu-divider"></div>
+            <button type="button" class="user-menu-item" data-action="openProfileModal">
+              <i class="fa-solid fa-user"></i>
+              <span><strong>Meu perfil</strong><small>Dados pessoais e segurança</small></span>
+            </button>
+            <button type="button" class="user-menu-item user-menu-danger" data-action="logout">
+              <i class="fa-solid fa-right-from-bracket"></i>
+              <span><strong>Sair</strong><small>Encerrar sessão</small></span>
+            </button>
           </div>
-          <i class="fa-solid fa-chevron-down"></i>
         </div>
-
-        <button type="button" class="logout-btn" data-action="logout">
-          <i class="fa-solid fa-right-from-bracket"></i>
-          Sair
-        </button>
       </div>
     </header>
 
@@ -558,6 +548,23 @@
         </section>
 
         <div id="history-container" class="history-timeline"></div>
+
+        <!-- Paginação (pedido do usuário, 2026-09-23: "distribua 1-2-3 igual
+             contatos") — mesmas classes do rodapé de Contatos (.contacts-footer/
+             .contacts-pagination/.ct-page-btn/.ct-page-info), reaproveitadas
+             aqui sem duplicar CSS. -->
+        <div class="contacts-footer">
+          <span class="contacts-showing" id="history-showing">0 clientes</span>
+          <div class="contacts-pagination">
+            <button type="button" class="ct-page-btn" id="history-prev" data-action="historyPagePrev" disabled>
+              <i class="fa-solid fa-chevron-left"></i>
+            </button>
+            <span class="ct-page-info" id="history-page-info">1 / 1</span>
+            <button type="button" class="ct-page-btn" id="history-next" data-action="historyPageNext" disabled>
+              <i class="fa-solid fa-chevron-right"></i>
+            </button>
+          </div>
+        </div>
       </section>
 
       <!-- Páginas futuras -->
@@ -1441,14 +1448,21 @@ Como podemos ajudar você hoje?
                 <option value="admin">Administrador</option>
               </select>
 
-              <label>Setor</label>
-              <select id="user-sector">
-                <option value="geral">Geral</option>
-                <option value="vendas">Vendas</option>
-                <option value="financeiro">Financeiro</option>
-                <option value="suporte">Suporte</option>
-                <option value="garantia">Garantia</option>
-              </select>
+              <div class="user-permissions-field">
+                <div class="user-permissions-header">
+                  <div>
+                    <strong>Acesso às telas</strong>
+                    <span>Escolha somente o que este usuário precisa acessar.</span>
+                  </div>
+                  <button type="button" class="user-permissions-all" data-action="toggleAllUserPermissions" data-target="user-permissions-list">
+                    Selecionar todas
+                  </button>
+                </div>
+                <div id="user-permissions-list" class="user-permissions-grid"></div>
+                <small id="user-permissions-hint" class="user-permissions-hint">
+                  As opções são sugeridas de acordo com o perfil e podem ser ajustadas.
+                </small>
+              </div>
 
               <button type="button" class="btn-save-settings" data-action="createPanelUser">
                 <i class="fa-solid fa-user-plus"></i>
@@ -1461,6 +1475,29 @@ Como podemos ajudar você hoje?
               <div id="users-list"></div>
             </div>
           </div>
+
+
+        <div id="user-permissions-modal" class="user-permissions-modal hidden" data-backdrop-action="closeUserPermissionsModal">
+          <div class="user-permissions-dialog">
+            <div class="user-permissions-dialog-header">
+              <div>
+                <span class="user-permissions-dialog-kicker">PERMISSÕES</span>
+                <h3 id="user-permissions-modal-title">Acesso às telas</h3>
+                <p id="user-permissions-modal-subtitle"></p>
+              </div>
+              <button type="button" data-action="closeUserPermissionsModal" aria-label="Fechar">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+            <div id="edit-user-permissions-list" class="user-permissions-grid"></div>
+            <div class="user-permissions-dialog-footer">
+              <button type="button" class="btn-refresh" data-action="closeUserPermissionsModal">Cancelar</button>
+              <button type="button" class="btn-save-settings" data-action="saveUserPermissions">
+                <i class="fa-solid fa-check"></i> Salvar permissões
+              </button>
+            </div>
+          </div>
+        </div>
 
           <div class="settings-card settings-detail-card" data-settings-panel="empresa">
             <div class="settings-card-title">
@@ -1512,7 +1549,7 @@ Como podemos ajudar você hoje?
               <textarea id="set-transfer-message" placeholder="Mensagem enviada quando o cliente pede atendente"></textarea>
 
               <label>Tempo para reaproveitar o atendimento ao voltar a falar (minutos)</label>
-              <input id="set-reopen-window-minutes" type="number" min="1" step="1" placeholder="60">
+              <input id="set-reopen-window-minutes" type="number" min="1" step="1" placeholder="240">
               <p class="settings-field-hint">Dentro desse tempo após fechar, o cliente que mandar mensagem de novo continua no MESMO ticket/protocolo (sem repetir saudação do atendente nem pesquisa de satisfação). Depois desse tempo, uma mensagem nova abre um ticket novo do zero.</p>
             </div>
           </div>
@@ -1700,16 +1737,32 @@ Como podemos ajudar você hoje?
        Geral" (pedido do usuário, 2026-08-05: "separe isso em uma aba
        também"). -->
   <div class="metrics-tabs-bar" role="tablist">
-    <button type="button" class="metrics-tab-btn active" data-metrics-tab="geral" data-action="switchMetricsTab" data-value="geral">Visão Geral</button>
-    <button type="button" class="metrics-tab-btn" data-metrics-tab="usuario" data-action="switchMetricsTab" data-value="usuario">Por Usuário</button>
-    <button type="button" class="metrics-tab-btn" data-metrics-tab="tempos" data-action="switchMetricsTab" data-value="tempos">Tempos</button>
-    <button type="button" class="metrics-tab-btn" data-metrics-tab="evolucao" data-action="switchMetricsTab" data-value="evolucao">Evolução</button>
-    <button type="button" class="metrics-tab-btn" data-metrics-tab="pico" data-action="switchMetricsTab" data-value="pico">Horários de Pico</button>
-    <button type="button" class="metrics-tab-btn" data-metrics-tab="satisfacao" data-action="switchMetricsTab" data-value="satisfacao">Pesquisa de Satisfação</button>
-    <button type="button" class="metrics-export-btn" onclick="exportarMetricasPDF(this)">
-      <i class="fa-solid fa-file-pdf"></i>
-      <span>Exportar PDF</span>
-    </button>
+    <div class="metrics-tabs-bar-tabs">
+      <button type="button" class="metrics-tab-btn active" data-metrics-tab="geral" data-action="switchMetricsTab" data-value="geral">Visão Geral</button>
+      <button type="button" class="metrics-tab-btn" data-metrics-tab="usuario" data-action="switchMetricsTab" data-value="usuario">Por Usuário</button>
+      <button type="button" class="metrics-tab-btn" data-metrics-tab="tempos" data-action="switchMetricsTab" data-value="tempos">Tempos</button>
+      <button type="button" class="metrics-tab-btn" data-metrics-tab="evolucao" data-action="switchMetricsTab" data-value="evolucao">Evolução</button>
+      <button type="button" class="metrics-tab-btn" data-metrics-tab="pico" data-action="switchMetricsTab" data-value="pico">Horários de Pico</button>
+      <button type="button" class="metrics-tab-btn" data-metrics-tab="satisfacao" data-action="switchMetricsTab" data-value="satisfacao">Pesquisa de Satisfação</button>
+    </div>
+    <!-- Pedido do usuário (2026-09-16): "quero apenas exportar métricas do
+         mês anterior não tenho opção disso" — seletor de mês ao lado do
+         botão Exportar PDF. "Mês corrente" (value="") = comportamento de
+         sempre (cards ao vivo + PDF do mês atual); escolher um mês passado
+         recarrega os cards com esse mês (loadMetricsCharts em 05-metrics.js,
+         GET /api/metrics?mes=) e manda o mesmo mês pro PDF
+         (exportarMetricasPDF). Trocado de <input type="month"> pra <select>
+         (pedido do usuário 2026-09-16: "melhore o script e css da data") —
+         o input nativo renderiza feio/inconsistente entre navegadores;
+         select dá controle total de estilo e já vem populado com os
+         últimos 12 meses (ver _metricsPopularSeletorMes em 05-metrics.js). -->
+    <div class="metrics-tabs-bar-actions">
+      <select id="metrics-export-mes" class="metrics-export-mes-select" data-change-action="metricsMesChange" title="Mês exibido (Mês corrente = ao vivo)"></select>
+      <button type="button" class="metrics-export-btn" onclick="exportarMetricasPDF(this)">
+        <i class="fa-solid fa-file-pdf"></i>
+        <span>Exportar PDF</span>
+      </button>
+    </div>
   </div>
 
   <!-- Aba: Visão Geral -->
@@ -1753,7 +1806,7 @@ Como podemos ajudar você hoje?
       <article class="chart-card chart-wide">
         <header class="chart-card-head">
           <span class="chart-card-icon"><i class="fa-solid fa-users"></i></span>
-          <h3>Atendentes <i class="fa-solid fa-circle-info metric-card-info" title="Quem está online agora, quem tem atendimento em andamento e quanto cada um atendeu no período escolhido"></i></h3>
+          <h3>Atendentes <i class="fa-solid fa-circle-info metric-card-info" title="Quem está online agora, quem tem atendimento em andamento e quanto cada um atendeu no período escolhido. Não inclui tickets sem atendente atribuído nem de usuários inativos/admin — por isso a soma desta tabela pode ficar abaixo do total de Atendimentos."></i></h3>
           <div class="metric-periodo-seletor" id="metric-atendentes-periodo">
             <button type="button" class="metric-periodo-btn" data-periodo="hoje" onclick="setMetricsAtendentesPeriodo('hoje')">Hoje</button>
             <button type="button" class="metric-periodo-btn" data-periodo="semana" onclick="setMetricsAtendentesPeriodo('semana')">7 dias</button>
@@ -2012,6 +2065,12 @@ Como podemos ajudar você hoje?
       <span class="catalogo-erp-tab" data-action="catalogoMostrarAbaNome" id="catalogo-tab-nome">
         <i class="fa-solid fa-font"></i> Busca por Nome
       </span>
+      <span class="catalogo-erp-tab" data-action="catalogoMostrarAbaCompleto" id="catalogo-tab-completo">
+        <i class="fa-solid fa-file-pdf"></i> Catálogo Completo
+      </span>
+      <span class="catalogo-erp-tab" data-action="catalogoMostrarAbaPromocional" id="catalogo-tab-promocional">
+        <i class="fa-solid fa-tags"></i> Catálogo Promocional
+      </span>
     </div>
 
     <form id="catalogo-form" class="catalogo-erp-body" data-submit-action="buscarCatalogo">
@@ -2024,8 +2083,9 @@ Como podemos ajudar você hoje?
           </div>
 
           <div class="catalogo-erp-row">
-            <label for="catalogo-marca"><i class="fa-solid fa-industry"></i> Fabricante</label>
-            <input type="text" id="catalogo-marca" autocomplete="off">
+            <label for="catalogo-marca"><i class="fa-solid fa-flag"></i> Montadora</label>
+            <input type="text" id="catalogo-marca" list="catalogo-montadoras-list" autocomplete="off" placeholder="Ex: Ford, Fiat, Volvo...">
+            <datalist id="catalogo-montadoras-list"></datalist>
           </div>
 
           <div class="catalogo-erp-row">
@@ -2033,9 +2093,20 @@ Como podemos ajudar você hoje?
             <input type="text" id="catalogo-modelo" autocomplete="off">
           </div>
 
+          <div class="catalogo-erp-row catalogo-erp-row-split">
+            <div class="catalogo-erp-row-split-item">
+              <label for="catalogo-ano-inicio"><i class="fa-solid fa-calendar-days"></i> Ano Inicial</label>
+              <input type="number" id="catalogo-ano-inicio" min="1950" autocomplete="off">
+            </div>
+            <div class="catalogo-erp-row-split-item">
+              <label for="catalogo-ano-fim">Ano Final</label>
+              <input type="number" id="catalogo-ano-fim" min="1950" autocomplete="off">
+            </div>
+          </div>
+
           <div class="catalogo-erp-row">
-            <label for="catalogo-ano"><i class="fa-solid fa-calendar-days"></i> Ano</label>
-            <input type="number" id="catalogo-ano" min="1950" autocomplete="off">
+            <label for="catalogo-motor"><i class="fa-solid fa-gears"></i> Motor</label>
+            <input type="text" id="catalogo-motor" autocomplete="off" placeholder="Ex: 1.6 16V, MPI, Diesel...">
           </div>
         </div>
 
@@ -2126,6 +2197,155 @@ Como podemos ajudar você hoje?
       </div>
     </form>
 
+    <div id="catalogo-form-completo" class="catalogo-erp-body hidden">
+      <div class="catalogo-erp-box catalogo-erp-box-codigo">
+        <div class="catalogo-box-header">
+          <span class="catalogo-box-icon catalogo-box-icon-blue"><i class="fa-solid fa-industry"></i></span>
+          <span class="catalogo-box-title">Catálogo Completo por Fabricante</span>
+        </div>
+
+        <div class="catalogo-erp-row">
+          <label for="catalogo-fabricante-completo"><i class="fa-solid fa-industry"></i> Fabricante</label>
+          <select id="catalogo-fabricante-completo" onchange="onCatalogoFabricanteCompletoChange()">
+            <option value="">Selecione um fabricante...</option>
+          </select>
+        </div>
+
+        <p id="catalogo-completo-contagem" class="catalogo-completo-contagem hidden"></p>
+      </div>
+
+      <div class="catalogo-erp-actions">
+        <button type="button" class="catalogo-erp-search-btn" id="catalogo-completo-gerar-btn" onclick="gerarCatalogoCompletoPDF(this)" disabled>
+          <i class="fa-solid fa-file-pdf"></i> Gerar catálogo completo (PDF)
+        </button>
+      </div>
+
+      <!-- Pré-visualização automática (Issue #22, pedido do usuário 2026-08-26):
+           aparece sozinha assim que um fabricante é selecionado, sem precisar
+           clicar em "Gerar" — ver onCatalogoFabricanteCompletoChange em
+           18-catalogo.js. -->
+      <div id="catalogo-completo-preview" class="catalogo-completo-preview hidden">
+        <div class="catalogo-completo-preview-header">
+          <i class="fa-solid fa-eye"></i> Pré-visualização
+        </div>
+        <p id="catalogo-completo-preview-status" class="catalogo-completo-preview-status hidden"></p>
+        <iframe id="catalogo-completo-preview-frame" class="catalogo-completo-preview-frame" title="Pré-visualização do catálogo completo"></iframe>
+      </div>
+    </div>
+
+    <!-- Aba "Catálogo Promocional" (nova função, pedido do usuário 2026-08-29):
+         mesma funcionalidade do Catálogo Completo (foto + aplicação + índice
+         por Linha), mas pra uma LISTA SELECIONADA de produtos (em vez de "todo
+         fabricante") e com preço promocional por card, vindo de um CSV que o
+         próprio usuário sobe. Não usa #catalogo-resultados (mesmo padrão da
+         aba Catálogo Completo) — tem sua própria mini-busca+lista aqui dentro. -->
+    <div id="catalogo-form-promocional" class="catalogo-erp-body hidden">
+      <!-- 2026-08-31 (pedido do usuário: "o catalogo promocional poderá ser
+           por linha ou por fabricante") — escolhe o critério de agrupamento
+           E a arte de cabeçalho/rodapé usada no PDF (ver `modo` em
+           gerarPdfCatalogoPromocional/_catalogoPromoModoAtual). "Linha" é o
+           padrão de sempre (pode misturar fabricantes dentro da mesma
+           Linha); "Fabricante" agrupa tudo por marca (ex.: Gauss, Perfect),
+           cada uma na sua própria página. -->
+      <div class="catalogo-erp-box catalogo-promo-modo-box">
+        <div class="catalogo-box-header">
+          <span class="catalogo-box-icon catalogo-box-icon-blue"><i class="fa-solid fa-layer-group"></i></span>
+          <span class="catalogo-box-title">Agrupar catálogo por</span>
+        </div>
+        <div class="catalogo-promo-modo-opcoes">
+          <label class="catalogo-promo-modo-opcao">
+            <input type="radio" name="catalogo-promo-modo" value="linha" checked>
+            Linha <span class="catalogo-promo-modo-exemplo">(ex.: Alternadores — pode ter vários fabricantes)</span>
+          </label>
+          <label class="catalogo-promo-modo-opcao">
+            <input type="radio" name="catalogo-promo-modo" value="fabricante">
+            Fabricante <span class="catalogo-promo-modo-exemplo">(ex.: Gauss, Perfect — 1 fabricante por página)</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Rework UI/UX (pedido do usuário, 2026-08-29): busca+CSV empilhados
+           na coluna esquerda, Selecionados na coluna direita, reusando a
+           mesma grid .catalogo-erp-cols já usada em Critérios de Pesquisa. -->
+      <div class="catalogo-erp-cols">
+        <div class="catalogo-erp-col">
+          <div class="catalogo-erp-box">
+            <div class="catalogo-box-header">
+              <span class="catalogo-box-icon catalogo-box-icon-blue"><i class="fa-solid fa-magnifying-glass"></i></span>
+              <span class="catalogo-box-title">Adicionar Produtos à Lista</span>
+            </div>
+
+            <form class="catalogo-erp-row catalogo-promo-busca-row" data-submit-action="catalogoPromoBuscar">
+              <label for="catalogo-promo-busca"><i class="fa-solid fa-hashtag"></i> Nome ou código</label>
+              <input type="text" id="catalogo-promo-busca" autocomplete="off" placeholder="Ex: correia dentada, ou I321">
+              <button type="submit" class="catalogo-erp-search-btn catalogo-promo-busca-btn">
+                <i class="fa-solid fa-magnifying-glass"></i> Buscar
+              </button>
+            </form>
+
+            <div id="catalogo-promo-resultados" class="catalogo-promo-resultados"></div>
+          </div>
+
+          <div class="catalogo-erp-box">
+            <div class="catalogo-box-header">
+              <span class="catalogo-box-icon catalogo-box-icon-blue"><i class="fa-solid fa-file-csv"></i></span>
+              <span class="catalogo-box-title">Preços Promocionais (opcional)</span>
+              <span class="catalogo-erp-optional">Opcional</span>
+            </div>
+
+            <div class="catalogo-erp-row">
+              <label for="catalogo-promo-csv"><i class="fa-solid fa-upload"></i> Arquivo CSV ou Excel</label>
+              <input type="file" id="catalogo-promo-csv" accept=".csv,text/csv,.xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+            </div>
+            <p class="catalogo-promo-csv-hint">
+              Aceita <code>.csv</code>, <code>.xls</code> ou <code>.xlsx</code> (planilha antiga
+              precisa ser salva como .xlsx). Colunas obrigatórias: <code>codigo</code> e
+              <code>preco</code> (ex: <code>111430,99.90</code>).
+              Produto sem preço no arquivo sai no catálogo sem o selo de preço.
+            </p>
+            <p id="catalogo-promo-csv-status" class="catalogo-promo-csv-status hidden"></p>
+          </div>
+        </div>
+
+        <div class="catalogo-erp-col">
+          <div class="catalogo-erp-box">
+            <div class="catalogo-box-header">
+              <span class="catalogo-box-icon catalogo-box-icon-green"><i class="fa-solid fa-list-check"></i></span>
+              <span class="catalogo-box-title">Produtos Selecionados</span>
+              <span id="catalogo-promo-contagem" class="catalogo-erp-optional">0 selecionados</span>
+            </div>
+
+            <div id="catalogo-promo-selecionados" class="catalogo-promo-selecionados">
+              <p class="catalogo-promo-vazio">Nenhum produto selecionado ainda — busque acima e clique em "Adicionar".</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="catalogo-erp-actions">
+        <button type="button" class="catalogo-erp-search-btn" id="catalogo-promo-gerar-btn" onclick="gerarCatalogoPromocionalPDF(this)" disabled>
+          <i class="fa-solid fa-file-pdf"></i> Gerar catálogo promocional (PDF)
+        </button>
+        <button type="button" class="catalogo-erp-clear-btn" onclick="catalogoPromoLimparSelecao()">
+          <i class="fa-solid fa-rotate-left"></i> Limpar Seleção
+        </button>
+      </div>
+
+      <!-- Pré-visualização automática (pedido do usuário, 2026-08-29,
+           "se possível") — mesmo padrão do Catálogo Completo, mas
+           debounced (~1.2s após cada mudança na seleção/CSV) pra não
+           disparar uma geração de PDF (com chamadas de IA pra aplicação)
+           a cada clique de Adicionar/Remover — ver
+           _agendarPreviewCatalogoPromocional em 18-catalogo.js. -->
+      <div id="catalogo-promo-preview" class="catalogo-completo-preview hidden">
+        <div class="catalogo-completo-preview-header">
+          <i class="fa-solid fa-eye"></i> Pré-visualização
+        </div>
+        <p id="catalogo-promo-preview-status" class="catalogo-completo-preview-status hidden"></p>
+        <iframe id="catalogo-promo-preview-frame" class="catalogo-completo-preview-frame" title="Pré-visualização do catálogo promocional"></iframe>
+      </div>
+    </div>
+
   </div>
 
   <section id="catalogo-resultados" class="catalogo-resultados" aria-live="polite">
@@ -2168,40 +2388,74 @@ Como podemos ajudar você hoje?
      aria-modal="true"
      aria-labelledby="profile-modal-title">
   <div class="chat-box profile-box">
-    <div class="chat-header">
-      <h3 id="profile-modal-title">Meu Perfil</h3>
-      <button type="button" data-action="closeProfileModal" aria-label="Fechar perfil">
+    <div class="profile-modal-header">
+      <div>
+        <span class="profile-kicker">CONTA</span>
+        <h3 id="profile-modal-title">Meu Perfil</h3>
+        <p>Atualize seus dados e mantenha sua conta protegida.</p>
+      </div>
+      <button type="button" class="profile-close-btn" data-action="closeProfileModal" aria-label="Fechar perfil">
         <i class="fa-solid fa-xmark"></i>
       </button>
     </div>
 
-    <div class="profile-photo-area">
-      <img id="profile-photo-preview" src="android-chrome-512x512.png" alt="Foto do perfil">
+    <div class="profile-identity">
+      <div class="profile-photo-column">
+        <div class="profile-photo-frame">
+          <img id="profile-photo-preview" src="android-chrome-512x512.png" alt="Foto do perfil">
+        </div>
+        <label class="profile-photo-btn" for="profile-photo">
+          <i class="fa-solid fa-camera"></i>
+          Alterar foto
+        </label>
+        <input id="profile-photo" type="file" accept="image/*" data-change-action="previewProfilePhoto">
+        <small>JPG, PNG ou WEBP</small>
+      </div>
 
-      <input
-        id="profile-photo"
-        type="file"
-        accept="image/*"
-        data-change-action="previewProfilePhoto"
-      >
+      <div class="profile-data-column">
+        <div class="profile-section-heading">
+          <span class="profile-section-icon"><i class="fa-solid fa-user"></i></span>
+          <div>
+            <strong>Dados pessoais</strong>
+            <span>Informações usadas no seu perfil</span>
+          </div>
+        </div>
+
+        <div class="profile-fields-grid">
+          <div class="profile-field">
+            <label for="profile-name">Nome</label>
+            <input id="profile-name" type="text" placeholder="Seu nome">
+          </div>
+          <div class="profile-field">
+            <label for="profile-phone">Número</label>
+            <input id="profile-phone" type="tel" placeholder="(79) 99999-9999" autocomplete="tel">
+          </div>
+        </div>
+
+        <button type="button" class="send-btn profile-save-btn" data-action="saveProfile">
+          <i class="fa-solid fa-check"></i>
+          Salvar alterações
+        </button>
+      </div>
     </div>
 
-    <label>Nome</label>
-    <input id="profile-name" type="text" placeholder="Seu nome">
-
-    <label>Número</label>
-    <input id="profile-phone" type="tel" placeholder="(79) 99999-9999" autocomplete="tel">
-
-    <button type="button" class="send-btn" data-action="saveProfile">
-      Salvar perfil
-    </button>
-
     <div class="profile-security-section">
-      <label>Autenticação de dois fatores (2FA)</label>
-      <div id="twofa-status-line" class="twofa-status-line">Carregando status...</div>
-      <button type="button" id="twofa-action-btn" class="send-btn twofa-secondary-btn" data-action="startTwoFactorSetup">
-        Gerenciar 2FA
-      </button>
+      <div class="profile-section-heading">
+        <span class="profile-section-icon security"><i class="fa-solid fa-shield-halved"></i></span>
+        <div>
+          <strong>Segurança da conta</strong>
+          <span>Proteja o acesso ao painel com autenticação em dois fatores</span>
+        </div>
+      </div>
+      <div class="profile-security-card">
+        <div>
+          <strong>Autenticação de dois fatores</strong>
+          <div id="twofa-status-line" class="twofa-status-line">Carregando status...</div>
+        </div>
+        <button type="button" id="twofa-action-btn" class="twofa-secondary-btn" data-action="startTwoFactorSetup">
+          Gerenciar 2FA
+        </button>
+      </div>
     </div>
   </div>
 </div>
@@ -2258,10 +2512,92 @@ Como podemos ajudar você hoje?
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1"></script>
+  <style id="user-permissions-live-fix">
+    .user-permissions-field{display:block!important;grid-column:1/-1!important;margin:14px 0!important;padding:16px!important;border:1px solid var(--border,#334155)!important;border-radius:12px!important;background:var(--panel-2,#111827)!important}
+    .user-permissions-header{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:12px!important;margin-bottom:12px!important}
+    .user-permissions-header strong{font-size:14px!important}.user-permissions-header span{display:block!important;margin-top:3px!important;font-size:11px!important;color:var(--text-muted,#94a3b8)!important}
+    .user-permissions-all{padding:7px 10px!important;border:1px solid var(--border,#334155)!important;border-radius:8px!important;background:transparent!important;color:var(--primary,#3b82f6)!important;font-weight:700!important;cursor:pointer!important}
+    .user-permissions-grid{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:8px!important}
+    .user-permission-option{display:flex!important;align-items:center!important;gap:9px!important;min-height:58px!important;padding:10px!important;border:1px solid var(--border,#334155)!important;border-radius:10px!important;background:var(--panel,#0f172a)!important;cursor:pointer!important}
+    .user-permission-option.is-selected{border-color:var(--primary,#3b82f6)!important;background:rgba(59,130,246,.10)!important}
+    .user-permission-option input{position:absolute!important;opacity:0!important}
+    .user-permission-check{display:grid!important;place-items:center!important;width:18px!important;height:18px!important;border:1px solid #64748b!important;border-radius:5px!important;color:transparent!important}
+    .user-permission-option.is-selected .user-permission-check{background:var(--primary,#3b82f6)!important;border-color:var(--primary,#3b82f6)!important;color:#fff!important}
+    .user-permission-icon{display:grid!important;place-items:center!important;width:30px!important;height:30px!important;border-radius:8px!important;background:rgba(255,255,255,.05)!important;color:#94a3b8!important}
+    .user-permission-option.is-selected .user-permission-icon{color:#60a5fa!important}
+    .user-permission-copy strong,.user-permission-copy small{display:block!important}.user-permission-copy strong{font-size:12px!important}.user-permission-copy small{font-size:10px!important;color:#7d8a9a!important}
+    @media(max-width:800px){.user-permissions-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}}@media(max-width:620px){.user-permissions-grid{grid-template-columns:1fr!important}}
+  </style>
+
 
   <!-- JS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <script src="dist/bundle.8f1b831975.js"></script>
+  <script src="dist/bundle.8aba2e90a7.js"></script>
   <!-- JS_BUNDLE_END -->
+  <script id="user-permissions-live-fix">
+  (() => {
+    const baseScreens = [
+      ["dashboard","Dashboard","fa-desktop"],["conversations","Atendimentos","fa-headset"],
+      ["history","Histórico","fa-clock-rotate-left"],["contacts","Contatos","fa-address-book"],
+      ["catalogo","Catálogo","fa-book"],["channels","Campanhas","fa-bullhorn"],
+      ["metrics","Métricas","fa-chart-line"],["chatbot","Chatbot","fa-robot"],["settings","Configurações","fa-gear"]
+    ];
+
+    function discoverScreens() {
+      const found = [...baseScreens];
+      const known = new Set(found.map(s => s[0]));
+
+      document.querySelectorAll(".sidebar [data-tab]").forEach(el => {
+        const id = String(el.dataset.tab || "").trim();
+        if (!id || known.has(id)) return;
+
+        const label = el.querySelector(".label")?.textContent?.trim()
+          || el.textContent?.trim()
+          || id;
+        const icon = el.querySelector("i")?.className?.split(/\s+/)
+          .find(cls => cls.startsWith("fa-")) || "fa-circle";
+
+        found.push([id, label.replace(/\s+/g, " "), icon]);
+        known.add(id);
+      });
+
+      // Compatibilidade com bundle antigo: adiciona a nova tela ao mesmo
+      // array usado pelas funções reais de criar/editar/salvar permissões.
+      if (typeof PANEL_SCREEN_PERMISSIONS !== "undefined") {
+        const existing = new Set(PANEL_SCREEN_PERMISSIONS.map(s => s.id));
+        found.forEach(([id, label, icon]) => {
+          if (existing.has(id)) return;
+          const el = document.querySelector('.sidebar [data-tab="' + CSS.escape(id) + '"]');
+          PANEL_SCREEN_PERMISSIONS.push({
+            id,
+            label,
+            icon,
+            group: el?.classList.contains("admin-only")
+              ? "Administração"
+              : el?.classList.contains("supervisor-only")
+                ? "Gestão"
+                : "Painel"
+          });
+        });
+      }
+
+      return found;
+    }
+
+    function refresh() {
+      discoverScreens();
+      const role = document.getElementById("user-role")?.value || "atendente";
+      if (typeof renderUserPermissionChecklist === "function") {
+        renderUserPermissionChecklist("user-permissions-list", role);
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      refresh();
+      document.getElementById("user-role")?.addEventListener("change", refresh);
+    });
+  })();
+  </script>
+
 
 
 </body>

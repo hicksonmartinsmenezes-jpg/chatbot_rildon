@@ -3,6 +3,8 @@ const logger            = require("../utils/logger");
 const { emitEvent }     = require("../services/socket.service");
 const {
   setLidMapping,
+  persistLidMappings,
+  normalizeJid,
   carregarLidMap,
   resolveLid,
   resolveJidToLid,
@@ -32,6 +34,7 @@ const { scheduleFragment } = require("../services/messageFragment.service");
 const {
   default: makeWASocket,
   useMultiFileAuthState,
+  makeCacheableSignalKeyStore,
   DisconnectReason,
   fetchLatestBaileysVersion,
   downloadMediaMessage
@@ -41,6 +44,13 @@ const qrcode = require("qrcode-terminal");
 const pino   = require("pino");
 const path   = require("path");
 const fs     = require("fs");
+
+// Logger que a Baileys espera (interface pino: trace/debug/info/warn/error +
+// .child). Antes era criado inline em cada chamada — e em downloadMediaMessage
+// passávamos o NOSSO logger, que não tem .debug/.child: a Baileys chama
+// `logger.info({ key }, "...")` com objeto, e nosso info(msg) produzia
+// "[object Object]". Um único pino compartilhado resolve os dois casos.
+const baileysLogger = pino({ level: "fatal" });
 
 // Estado da conexão — antes eram 8 variáveis `let` soltas no topo do módulo,
 // lidas/escritas por closure em todos os handlers abaixo. Consolidadas aqui
@@ -54,10 +64,20 @@ const conn = {
   cachedConfig:        null,
   lastConfigCheck:     0,
   messageHandler:      null, // processMessage — guardado para reconexões forçadas
-  lastQr:              null  // último QR pendente (até conectar) — permite buscar via API
+  lastQr:              null, // último QR pendente (até conectar) — permite buscar via API
+  ownNumber:           null, // dígitos do próprio número (sem @s.whatsapp.net) — usado pelo watchdog
+  watchdogFails:       0     // falhas consecutivas da checagem ativa do watchdog (ver watchdogTick)
 };
 
 const MAX_RECONNECT_DELAY_MS = 30_000;
+// PEDIDO DO USUÁRIO (2026-09-23): "as vezes meu whatsapp cai e fica uma queda
+// fantasma onde eu so consigo saber porque mais nenhuma notificação chega" —
+// ver watchdogTick() mais abaixo para o diagnóstico completo (o painel só
+// detectava desconexão via evento passivo do Baileys, que pode nunca disparar
+// numa queda de rede "silenciosa").
+const WATCHDOG_INTERVAL_MS = 90_000; // intervalo entre checagens ativas
+const WATCHDOG_TIMEOUT_MS  = 15_000; // timeout de cada checagem individual
+const WATCHDOG_MAX_FAILS   = 2;      // falhas seguidas exigidas antes de forçar reconexão (~3min no total)
 const MESSAGE_PROCESSING_TIMEOUT_MS = Number(process.env.BOT_MESSAGE_TIMEOUT_MS || 45_000);
 const BOT_PROCESSING_FALLBACK =
   process.env.BOT_PROCESSING_FALLBACK ||
@@ -143,18 +163,54 @@ async function enviarComRetry(userId, response) {
 // passar `conn` como parâmetro), mas fica para uma refatoração futura
 // dedicada, já que essa extração por si só não muda comportamento nenhum.
 
-function processContacts(contacts, source) {
-  logger.info(`[${source}] ${contacts.length} contatos`);
-  for (const c of contacts) {
+// 2026-10-09 (auditoria de performance — um dos travamentos que derrubavam
+// o bot): o WhatsApp manda a lista INTEIRA de contatos em `contacts.set` a
+// cada conexão E a cada reconexão. A versão anterior percorria tudo de forma
+// síncrona chamando setLidMapping, que por contato novo fazia um
+// `logger.info` (na época, appendFileSync bloqueante) + um `pool.query` SEM
+// await. Com 2.000 contatos: 2.000 escritas síncronas em disco num laço sem
+// nenhuma cessão do event loop, e até 2.000 queries concorrentes num pool de
+// 20 — com `connectionTimeoutMillis: 15000`, qualquer outra parte do sistema
+// que precisasse do banco nesse meio tempo (authSession do painel, tick do
+// agendador) estourava com "Connection terminated due to connection timeout".
+// E o event loop travado derrubava o keepalive do WhatsApp (código 408), que
+// reconectava, que mandava `contacts.set` de novo: o ciclo que se auto-alimenta.
+//
+// Agora: só memória dentro do laço (persist/log desligados), cessão do event
+// loop a cada 200 contatos, e UM UPSERT em lote no fim (persistLidMappings),
+// aguardado — o pool nunca vê mais de uma query nossa por vez.
+async function processContacts(contacts, source) {
+  const lista = Array.isArray(contacts) ? contacts : [];
+  const novos = [];
+
+  for (let i = 0; i < lista.length; i += 1) {
+    const c = lista[i];
+    if (!c) continue;
+
     if (c.lid && c.id && !c.id.includes("@lid")) {
-      setLidMapping(c.lid, c.id, source);
+      if (setLidMapping(c.lid, c.id, source, { persist: false, log: false })) {
+        novos.push([normalizeJid(c.lid), normalizeJid(c.id)]);
+      }
     }
     if (c.id && c.id.includes("@lid") && (c.phone || c.number)) {
       const phone = (c.phone || c.number).replace(/\D/g, "");
-      setLidMapping(c.id, `${phone}@s.whatsapp.net`, `${source}/phone`);
+      const jid = `${phone}@s.whatsapp.net`;
+      if (setLidMapping(c.id, jid, `${source}/phone`, { persist: false, log: false })) {
+        novos.push([normalizeJid(c.id), normalizeJid(jid)]);
+      }
     }
+
+    // Devolve o event loop periodicamente: com a lista inteira de contatos,
+    // um laço sem cessão é o que derruba o keepalive do WhatsApp.
+    if (i > 0 && i % 200 === 0) await new Promise(r => setImmediate(r));
   }
-  logger.info(`[lidToJid] mapa total: ${getLidMapStats().lidToJid} entradas`);
+
+  logger.info(
+    `[${source}] ${lista.length} contatos | ${novos.length} mapeamento(s) novo(s) | ` +
+    `mapa total: ${getLidMapStats().lidToJid} entradas`
+  );
+
+  await persistLidMappings(novos);
 }
 
 // Handler de connection.update: QR code, desconexão (com backoff de
@@ -197,21 +253,7 @@ async function onConnectionUpdate({ connection, lastDisconnect, qr }) {
         return;
       }
 
-      conn.reconnecting = true;
-      const delay   = getReconnectDelay();
-      const oldSock = conn.sock;
-
-      logger.info(`Reconectando em ${delay / 1000}s... (tentativa ${conn.reconnectAttempts})`);
-
-      setTimeout(async () => {
-        try {
-          await limparSocketAntigo(oldSock);
-          await connectWhatsApp(conn.messageHandler);
-        } finally {
-          conn.reconnecting = false;
-        }
-      }, delay);
-
+      iniciarReconexaoComBackoff();
       return;
     }
 
@@ -224,8 +266,73 @@ async function onConnectionUpdate({ connection, lastDisconnect, qr }) {
     conn.reconnecting        = false;
     conn.isWhatsAppConnected = true;
     conn.lastQr              = null; // conectou: não há mais QR pendente
+    conn.watchdogFails       = 0;    // conexão nova/saudável — zera contador do watchdog
     logger.info("[WhatsApp] ✓ Conectado com sucesso!");
     emitEvent("whatsapp_status", { status: "connected" });
+  }
+}
+
+// Dispara a MESMA sequência de reconexão-com-backoff usada pelo handler de
+// connection.update "close" (getReconnectDelay + limparSocketAntigo +
+// connectWhatsApp) — reaproveitada aqui pelo watchdog para não duplicar essa
+// lógica. `conn.reconnecting` já protege contra as duas fontes (evento real
+// do Baileys e watchdog) dispararem reconexão ao mesmo tempo.
+function iniciarReconexaoComBackoff() {
+  if (conn.reconnecting) return;
+
+  conn.reconnecting = true;
+  const delay   = getReconnectDelay();
+  const oldSock = conn.sock;
+
+  logger.info(`Reconectando em ${delay / 1000}s... (tentativa ${conn.reconnectAttempts})`);
+
+  setTimeout(async () => {
+    try {
+      await limparSocketAntigo(oldSock);
+      await connectWhatsApp(conn.messageHandler);
+    } finally {
+      conn.reconnecting = false;
+    }
+  }, delay);
+}
+
+// PEDIDO DO USUÁRIO (2026-09-23): "as vezes meu whatsapp cai e fica uma queda
+// fantasma onde eu so consigo saber porque mais nenhuma notificação chega" —
+// até este fix, conn.isWhatsAppConnected só virava false quando o Baileys
+// disparava connection.update com connection==="close". Em certas quedas de
+// rede (wifi instável, NAT que derruba a sessão sem mandar RST/FIN de
+// verdade — bem comum em rede residencial/celular) o WebSocket fica preso
+// "aberto": nada mais chega nem sai, mas esse evento nunca dispara, então o
+// painel continuava mostrando "Conectado" indefinidamente — o usuário só
+// percebia a queda na prática (WhatsApp parava de notificar).
+//
+// Watchdog ATIVO: a cada WATCHDOG_INTERVAL_MS, se o estado interno diz
+// "conectado", faz uma checagem real de ida-e-volta contra o WhatsApp
+// (onWhatsApp() do próprio número — mesma chamada já usada em sendMessage/
+// sendMedia para validar destinatário, aqui reaproveitada só para confirmar
+// que o socket ainda troca dados de verdade com o servidor) com timeout
+// curto. WATCHDOG_MAX_FAILS falhas SEGUIDAS (~3min no total, não uma única
+// falha isolada — evita reconectar por causa de um soluço passageiro) faz o
+// watchdog tratar como desconexão de verdade: emite o mesmo evento que uma
+// queda real dispararia e entra no mesmo fluxo de reconexão com backoff.
+async function watchdogTick() {
+  if (!conn.isWhatsAppConnected || !conn.sock || conn.reconnecting) return;
+  if (!conn.ownNumber) return; // ainda não temos o próprio número salvo — pula esta rodada
+
+  try {
+    await withTimeout(conn.sock.onWhatsApp(conn.ownNumber), WATCHDOG_TIMEOUT_MS, "watchdog de conexão");
+    conn.watchdogFails = 0;
+  } catch (err) {
+    conn.watchdogFails += 1;
+    logger.warn(`[Watchdog] Checagem de conexão falhou (${conn.watchdogFails}/${WATCHDOG_MAX_FAILS}): ${err.message}`);
+
+    if (conn.watchdogFails >= WATCHDOG_MAX_FAILS) {
+      logger.error("[Watchdog] Conexão parece morta (sem resposta do WhatsApp) — forçando reconexão.");
+      conn.watchdogFails = 0;
+      conn.isWhatsAppConnected = false;
+      emitEvent("whatsapp_status", { status: "disconnected", code: "watchdog_timeout" });
+      iniciarReconexaoComBackoff();
+    }
   }
 }
 
@@ -289,7 +396,7 @@ async function analisarAudioRecebido(msg, bufferPreBaixado) {
       msg,
       "buffer",
       {},
-      { logger, reuploadRequest: conn.sock?.updateMediaMessage }
+      { logger: baileysLogger, reuploadRequest: conn.sock?.updateMediaMessage }
     );
     if (!buffer || !buffer.length) return null;
 
@@ -396,7 +503,7 @@ async function handleOutgoingFromPhone(msg) {
         msg,
         "buffer",
         {},
-        { logger, reuploadRequest: conn.sock?.updateMediaMessage }
+        { logger: baileysLogger, reuploadRequest: conn.sock?.updateMediaMessage }
       );
       if (mediaBuffer && mediaBuffer.length) {
         mediaInfo = await salvarMidiaRecebida(mediaBuffer, midiaBruta.mimetype, messageId, {
@@ -452,6 +559,24 @@ async function handleOutgoingFromPhone(msg) {
 // fallback amigável em caso de erro.
 async function onMessagesUpsert({ messages, type }) {
   for (const msg of messages) {
+    const jid = msg.key?.remoteJid;
+
+    // 2026-10-09 (auditoria de performance): a ordem aqui estava invertida —
+    // marcarMensagemProcessada (um INSERT no banco) rodava ANTES do filtro,
+    // então toda mensagem de grupo e todo status@broadcast pagava uma ida ao
+    // Postgres pra ser descartado na linha seguinte. No replay de uma
+    // reconexão (o WhatsApp reentrega o backlog offline inteiro, com
+    // type="append", que isValidUserMessage descarta) isso virava centenas de
+    // INSERTs inúteis + uma linha de log síncrona cada, num pool já saturado.
+    // Agora o descarte é feito primeiro, sem tocar em banco nem em disco.
+    const ehValida = isValidUserMessage(msg, type);
+    const ehEco    = isOutgoingEcho(msg, type);
+
+    if (!ehValida && !ehEco) {
+      if (!msg.key?.fromMe) logger.debug?.(`Mensagem ignorada | type=${type} | jid=${jid}`);
+      continue;
+    }
+
     const messageId = msg.key?.id;
 
     // MELHORIA: deduplicação com persistência no banco
@@ -460,17 +585,12 @@ async function onMessagesUpsert({ messages, type }) {
       continue;
     }
 
-    const jid = msg.key.remoteJid;
-
-    if (!isValidUserMessage(msg, type)) {
-      if (isOutgoingEcho(msg, type)) {
-        try {
-          await handleOutgoingFromPhone(msg);
-        } catch (err) {
-          logger.warn(`[Celular] Erro ao processar mensagem enviada pelo celular: ${err.message}`);
-        }
-      } else if (!msg.key.fromMe) {
-        logger.info(`Mensagem ignorada | type=${type} | jid=${jid}`);
+    if (!ehValida) {
+      // Sobrou o eco de mensagem enviada pelo próprio celular.
+      try {
+        await handleOutgoingFromPhone(msg);
+      } catch (err) {
+        logger.warn(`[Celular] Erro ao processar mensagem enviada pelo celular: ${err.message}`);
       }
       continue;
     }
@@ -580,7 +700,7 @@ async function onMessagesUpsert({ messages, type }) {
           msg,
           "buffer",
           {},
-          { logger, reuploadRequest: conn.sock?.updateMediaMessage }
+          { logger: baileysLogger, reuploadRequest: conn.sock?.updateMediaMessage }
         );
       } catch (err) {
         logger.warn(`[Mídia] Falha ao baixar mídia recebida de ${userId}: ${err.message}`);
@@ -964,6 +1084,13 @@ async function connectWhatsApp(onMessage) {
       path.join(__dirname, "../../auth_info")
     ));
     ({ version } = await fetchLatestBaileysVersion());
+
+    // Salva o próprio número (só dígitos) pra o watchdog usar em onWhatsApp()
+    // — só existe depois do primeiro pareamento (state.creds.me), então fica
+    // null até lá (watchdogTick já trata esse caso pulando a checagem).
+    if (state.creds?.me?.id) {
+      conn.ownNumber = state.creds.me.id.split(":")[0].split("@")[0];
+    }
   } catch (err) {
     logger.error(`[WhatsApp] Falha ao inicializar: ${err.message}`);
     emitEvent("whatsapp_status", { status: "error", message: err.message });
@@ -982,21 +1109,57 @@ async function connectWhatsApp(onMessage) {
 
   conn.sock = makeWASocket({
     version,
-    auth:                    state,
-    logger:                  pino({ level: "fatal" }),
+    // 2026-10-09 (auditoria): auth state envolvido em makeCacheableSignalKeyStore.
+    // useMultiFileAuthState guarda cada chave de sessão Signal num arquivo
+    // separado, então SEM esse cache cada decifragem de mensagem vira
+    // readFile+JSON.parse (e writeFile+JSON.stringify ao avançar o ratchet),
+    // serializados por mutex de arquivo. A própria Baileys desaconselha o uso
+    // cru em produção. Quando o event loop travava, esses awaits de disco
+    // ficavam pendurados, a decifragem estourava, o Baileys pedia reenvio
+    // (sendRetryRequest) e a mesma mensagem era redecifrada sobre um ratchet
+    // já avançado → "MessageCounterError: Key used already or never filled"
+    // (863 por minuto no log de 01/10).
+    auth: {
+      creds: state.creds,
+      keys:  makeCacheableSignalKeyStore(state.keys, baileysLogger)
+    },
+    logger:                  baileysLogger,
     printQRInTerminal:       false,
     syncFullHistory:         false,
     markOnlineOnConnect:     false,
-    keepAliveIntervalMs:     10000,
+    // Era 10000 (o padrão da Baileys é 30000). O keepalive precisa do event
+    // loop pra enviar E pra processar a resposta: com 10s, qualquer travada
+    // de ~10-20s virava desconexão com código 408 → reconexão → contacts.set
+    // inteiro de volta → travada de novo. Com 30s a mesma lentidão é tolerada
+    // em vez de virar reconexão.
+    keepAliveIntervalMs:     Number(process.env.WA_KEEPALIVE_MS || 30000),
     connectTimeoutMs:        60000,
-    defaultQueryTimeoutMs:   60000,
+    // Era 60000. É o timeout das consultas IQ (inclusive profilePictureUrl):
+    // com o socket degradado, /api/contacts/photo ficava EXATAMENTE 60s
+    // pendurado por candidato antes de desistir. 20s é de sobra.
+    defaultQueryTimeoutMs:   Number(process.env.WA_QUERY_TIMEOUT_MS || 20000),
     emitOwnEvents:           false,
-    retryRequestDelayMs:     250
+    // Era 250ms — martelava o retry e multiplicava a redecifragem.
+    retryRequestDelayMs:     1000,
+    // Grupo/newsletter/status são descartados logo depois por
+    // isValidUserMessage: ignorando aqui, o Baileys nem gasta CPU decifrando.
+    shouldIgnoreJid: (jid) => {
+      const j = String(jid || "");
+      return !j
+        || j.endsWith("@g.us")
+        || j.endsWith("@newsletter")
+        || j.endsWith("@broadcast")
+        || j === "status@broadcast";
+    }
   });
 
   conn.sock.ev.on("creds.update", saveCreds);
-  conn.sock.ev.on("contacts.upsert", contacts => processContacts(contacts, "contacts.upsert"));
-  conn.sock.ev.on("contacts.set",    ({ contacts }) => processContacts(contacts || [], "contacts.set"));
+  conn.sock.ev.on("contacts.upsert", contacts =>
+    processContacts(contacts, "contacts.upsert").catch(err =>
+      logger.warn(`[contacts.upsert] ${err.message}`)));
+  conn.sock.ev.on("contacts.set", ({ contacts }) =>
+    processContacts(contacts || [], "contacts.set").catch(err =>
+      logger.warn(`[contacts.set] ${err.message}`)));
   conn.sock.ev.on("connection.update", onConnectionUpdate);
   conn.sock.ev.on("presence.update", onPresenceUpdate);
   conn.sock.ev.on("messages.update", onMessagesUpdate);
@@ -1004,25 +1167,58 @@ async function connectWhatsApp(onMessage) {
 }
 
 
+// 2026-10-09 (auditoria — o "GET /api/contacts/photo ... 204 - 64916ms" do log):
+// profilePictureUrl é uma consulta IQ pelo websocket e obedecia ao
+// defaultQueryTimeoutMs, que era 60000. Com o socket degradado a resposta
+// nunca vinha, e como os candidatos eram percorridos em SEQUÊNCIA (até 9,
+// tipicamente 3-4 distintos), um único avatar podia custar vários minutos.
+// Pior: a lista de conversas pede ~20 avatares de uma vez, sem deduplicação,
+// e cada um ocupava uma IQ pendurada no mesmo websocket que precisa decifrar
+// as mensagens.
+//
+// Agora: timeout curto e próprio (4s), no máximo 2 candidatos, e deduplicação
+// de requisições concorrentes pelo mesmo userId.
+const PHOTO_QUERY_TIMEOUT_MS = Number(process.env.PHOTO_QUERY_TIMEOUT_MS || 4000);
+const PHOTO_MAX_CANDIDATOS   = Number(process.env.PHOTO_MAX_CANDIDATOS || 2);
+const _photoInflight = new Map();   // userId -> Promise em andamento
+
 async function getProfilePhotoUrl(userId) {
-  if (!conn.sock) return null;
+  // Sem socket OU com socket desconectado: não adianta enfileirar uma IQ que
+  // ninguém vai responder — antes só checava `conn.sock`, que continua
+  // definido durante toda a reconexão.
+  if (!conn.sock || !conn.isWhatsAppConnected) return null;
 
-  const candidates = getProfilePhotoCandidates(userId);
+  const chave = String(userId || "");
+  if (!chave) return null;
 
-  for (const jid of candidates) {
-    try {
-      const url = await conn.sock.profilePictureUrl(jid, "image");
-      if (url) {
-        logger.debug?.(`[FotoContato] foto encontrada para ${userId} via ${jid}`);
-        return url;
+  const emAndamento = _photoInflight.get(chave);
+  if (emAndamento) return emAndamento;
+
+  const promessa = (async () => {
+    const candidates = getProfilePhotoCandidates(userId).slice(0, PHOTO_MAX_CANDIDATOS);
+
+    for (const jid of candidates) {
+      try {
+        const url = await withTimeout(
+          conn.sock.profilePictureUrl(jid, "image"),
+          PHOTO_QUERY_TIMEOUT_MS,
+          `foto de perfil de ${jid}`
+        );
+        if (url) {
+          logger.debug?.(`[FotoContato] foto encontrada para ${userId} via ${jid}`);
+          return url;
+        }
+      } catch (err) {
+        logger.debug?.(`[FotoContato] sem foto para candidato ${jid}: ${err?.message || err}`);
       }
-    } catch (err) {
-      logger.debug?.(`[FotoContato] sem foto para candidato ${jid}: ${err?.message || err}`);
     }
-  }
 
-  logger.debug?.(`[FotoContato] nenhuma foto encontrada para ${userId}. candidatos=${candidates.join(",")}`);
-  return null;
+    logger.debug?.(`[FotoContato] nenhuma foto encontrada para ${userId}. candidatos=${candidates.join(",")}`);
+    return null;
+  })().finally(() => _photoInflight.delete(chave));
+
+  _photoInflight.set(chave, promessa);
+  return promessa;
 }
 
 // Reconstrói o objeto mínimo que o Baileys precisa para exibir a prévia de
@@ -1198,6 +1394,13 @@ function isConnected() {
 }
 
 startDedupCleanup();
+
+// Intervalo único do watchdog, iniciado uma vez no carregamento do módulo
+// (não a cada connectWhatsApp/reconexão — watchdogTick já lê conn.sock/
+// conn.isWhatsAppConnected por closure, então não precisa ser recriado).
+setInterval(() => {
+  watchdogTick().catch(err => logger.error(`[Watchdog] Erro inesperado: ${err.message}`));
+}, WATCHDOG_INTERVAL_MS);
 
 
 async function getBotConfigCached() {

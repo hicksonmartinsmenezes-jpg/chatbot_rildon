@@ -41,10 +41,13 @@ const JS_FILES = [
   'js/conversations/conversations-utils.js',
   'js/conversations/conversations-render.js',
   'js/07-conversations.js',
+  'js/conversations/conversations-media-reply.js',
+  'js/conversations/audio-player-menu.js',
   'js/08-settings.js',
   'js/09-users.js',
   'js/11-profile.js',
   'js/12-socket.js',
+  'js/12-wa-recovery.js',
   'js/campaigns/campaigns-render.js',
   'js/campaigns/campaigns-modal.js',
   'js/13-campaigns.js',
@@ -76,6 +79,7 @@ const CSS_FILES = [
   'css/16-metrics.css',
   'css/17-catalogo.css',
   'css/19-motion.css',
+  'css/09-wa-recovery.css',
   'css/15-light-theme.css', // tema claro deve ser o último (sobrescreve os demais)
   'supervisor.css',
 ];

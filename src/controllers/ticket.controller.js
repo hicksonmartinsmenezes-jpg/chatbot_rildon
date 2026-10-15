@@ -56,6 +56,18 @@ async function postTicket(req, res) {
 async function getTickets(req, res) {
   try {
     const { status, search, dateStart, dateEnd } = req.query;
+    // BUG CORRIGIDO (varredura 2026-10-15): o painel manda ?limit=500 mas
+    // este controller nunca lia o parâmetro — valia sempre o padrão do
+    // repositório (500 mais recentes). Com mais de 500 tickets no banco, os
+    // mais antigos não voltavam: o cliente ficava sem ticket mapeado na aba
+    // de conversas, sumia de "Fechados" e podia reaparecer em "Pendentes"
+    // como se fosse novo. Agora o limite é respeitado, com teto pra não
+    // deixar o cliente pedir a tabela inteira de uma vez.
+    const LIMITE_MAXIMO = 5000;
+    const limitBruto = Number.parseInt(req.query.limit, 10);
+    const limit = Number.isFinite(limitBruto) && limitBruto > 0
+      ? Math.min(limitBruto, LIMITE_MAXIMO)
+      : undefined;
 
     // CORRIGIDO: validação de status antes de passar ao repositório
     if (status && !STATUS_VALIDOS.includes(status)) {
@@ -64,7 +76,7 @@ async function getTickets(req, res) {
       });
     }
 
-    let tickets = await listTickets({ status, search, dateStart, dateEnd });
+    let tickets = await listTickets({ status, search, dateStart, dateEnd, limit });
 
     // BUG CORRIGIDO (#96): o painel cruza esta lista com /api/history/
     // conversations por userId (ticketsByUser[userId], em

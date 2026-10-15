@@ -64,7 +64,11 @@ async function _loadConversationsCore(silent = false) {
   try {
     const [histRes, ticketRes, hmRes] = await Promise.all([
       apiFetch(`${BASE}/api/history/conversations`).catch(() => null),
-      apiFetch(`${BASE}/api/tickets?limit=500`).catch(() => null),
+      // O limite precisa cobrir TODOS os tickets: esta lista monta o mapa
+      // "cliente → ticket mais recente" usado pelas abas Pendentes/Ativos/
+      // Fechados. Com um limite menor que a tabela, os clientes mais antigos
+      // ficam sem ticket e caem na aba errada (ver varredura 2026-10-15).
+      apiFetch(`${BASE}/api/tickets?limit=5000`).catch(() => null),
       apiFetch(`${BASE}/api/messages/humanmode`).catch(() => null)
     ]);
 
@@ -192,6 +196,9 @@ async function _loadConversationsCore(silent = false) {
     // mostra quem fechou HOJE) — diferente de estaPendente() acima, que agora
     // usa a janela rolante de reabertura em vez disso.
     const hoje = new Date().toDateString();
+    // Janela da aba "Fechados" (ver filtro mais abaixo) — dias corridos.
+    const FECHADOS_DIAS = 30;
+    const FECHADOS_JANELA_MS = FECHADOS_DIAS * 24 * 60 * 60 * 1000;
 
     // BUG CORRIGIDO DE VEZ (relatado pelo usuário 2026-08-17: "painel mostra
     // 44 notificações porém existe apenas uma única mensagem nova"):
@@ -309,7 +316,13 @@ async function _loadConversationsCore(silent = false) {
         // Reativado (cliente falou de novo depois de fechado) já foi pra
         // Pendentes acima — não duplica aqui.
         if (estaPendente(uid)) return false;
-        return t.updatedAt && new Date(t.updatedAt).toDateString() === hoje;
+        // BUG CORRIGIDO (varredura 2026-10-15): a aba só mostrava quem tinha
+        // fechado HOJE — fechou ontem, sumia da tela, e o usuário via
+        // "Fechados" vazio achando que estava quebrado. Agora é uma janela
+        // de FECHADOS_DIAS dias corridos.
+        if (!t.updatedAt) return false;
+        const fechadoEm = new Date(t.updatedAt).getTime();
+        return Number.isFinite(fechadoEm) && (Date.now() - fechadoEm) <= FECHADOS_JANELA_MS;
       });
     }
     // "todos" → sem filtro adicional

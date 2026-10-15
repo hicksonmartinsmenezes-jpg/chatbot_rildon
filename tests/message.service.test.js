@@ -31,7 +31,8 @@ jest.mock("../src/services/socket.service", () => ({ emitEvent: jest.fn() }));
 jest.mock("../src/services/ticket.service", () => ({
   reopenTicketIfClosed: jest.fn().mockResolvedValue(false),
   handleSatisfactionReply: jest.fn().mockResolvedValue(null),
-  pareceEncerramentoPosAvaliacao: jest.fn().mockResolvedValue(false)
+  pareceEncerramentoPosAvaliacao: jest.fn().mockResolvedValue(false),
+  garantirTicketPendente: jest.fn().mockResolvedValue({ criado: true })
 }));
 jest.mock("../src/services/humanMode.service", () => ({ estaAtivo: jest.fn().mockReturnValue(false) }));
 
@@ -312,5 +313,35 @@ describe("processMessage — pesquisa de satisfação", () => {
       expect(mainFlow).toHaveBeenCalled();
       expect(resposta).toBe("resposta normal do bot");
     });
+  });
+});
+
+describe("processMessage — bot desligado garante ticket pendente", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    ticketService.reopenTicketIfClosed.mockResolvedValue(false);
+    ticketService.handleSatisfactionReply.mockResolvedValue(null);
+    ticketService.garantirTicketPendente.mockResolvedValue({ criado: true });
+    humanMode.estaAtivo.mockReturnValue(false);
+    botConfigService.getBotConfig.mockResolvedValue({ ativo: false });
+  });
+
+  test("cliente comum com bot desligado → cria ticket pendente e não chama o fluxo do bot", async () => {
+    const r = await processMessage({ userId: "5579@s.whatsapp.net", contactName: "João", message: "Preciso de uma peça", messageId: "m1" });
+    expect(r).toBe("");
+    expect(ticketService.garantirTicketPendente).toHaveBeenCalledWith({ userId: "5579@s.whatsapp.net", customerName: "João", message: "Preciso de uma peça" });
+    expect(mainFlow).not.toHaveBeenCalled();
+  });
+
+  test("contato com tag Funcionário não gera ticket", async () => {
+    await processMessage({ userId: "5579@s.whatsapp.net", contactName: "Equipe", message: "teste", messageId: "m2", isFuncionario: true });
+    expect(ticketService.garantirTicketPendente).not.toHaveBeenCalled();
+  });
+
+  test("falha ao criar ticket não derruba o processamento", async () => {
+    ticketService.garantirTicketPendente.mockRejectedValueOnce(new Error("db fora"));
+    const r = await processMessage({ userId: "5579@s.whatsapp.net", contactName: "João", message: "oi", messageId: "m3" });
+    expect(r).toBe("");
+    expect(saveHistory).toHaveBeenCalled();
   });
 });

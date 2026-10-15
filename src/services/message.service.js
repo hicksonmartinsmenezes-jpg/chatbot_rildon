@@ -4,7 +4,7 @@ const { enqueue }     = require("./queue.service");
 const { getSession }  = require("./session.service");
 const { getBotConfig, resolverBotOffEfetivo } = require("./botConfig.service");
 const { emitEvent }   = require("./socket.service");
-const { reopenTicketIfClosed, handleSatisfactionReply, pareceEncerramentoPosAvaliacao } = require("./ticket.service");
+const { reopenTicketIfClosed, handleSatisfactionReply, pareceEncerramentoPosAvaliacao, garantirTicketPendente } = require("./ticket.service");
 const humanMode       = require("./humanMode.service");
 const logger          = require("../utils/logger");
 
@@ -246,6 +246,16 @@ async function processMessage({ userId, contactName, message, messageId, mediaPa
     // diferenciar no painel/histórico de um "bot desligado" normal ou de um
     // atendimento humano de verdade (ver resolverBotOffEfetivo acima).
     const sector = isFuncionario ? "funcionario_bloqueado" : (botOff ? "bot_desligado" : "humano");
+    // Bot desligado + cliente de verdade (não "Funcionário"): garante um ticket
+    // pendente para o atendimento aparecer no painel/Dashboard (ver
+    // garantirTicketPendente em ticket.service.js). Best-effort.
+    if (botOff && !isFuncionario) {
+      try {
+        await garantirTicketPendente({ userId, customerName: contactName, message });
+      } catch (err) {
+        logger.warn(`Erro ao garantir ticket com bot desligado: ${err.message}`);
+      }
+    }
     try {
       await saveHistory({
         userId, contactName, message, messageId, response: null,

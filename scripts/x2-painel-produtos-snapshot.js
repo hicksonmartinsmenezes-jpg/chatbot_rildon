@@ -84,7 +84,10 @@ const { chromium } = require('playwright');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
 const WORK_DIR = path.join(os.homedir(), '.x2-rildon-scraper');
-const PROFILE_DIR = path.join(WORK_DIR, 'chrome-profile');
+// 2026-10-14: perfil por tipo de tarefa — ver scripts/x2-perfil-chrome.js.
+// Antes todos compartilhavam 'chrome-profile', e duas tarefas simultaneas
+// derrubavam uma a outra ("Target page, context or browser has been closed").
+const PROFILE_DIR = require('./x2-perfil-chrome').perfilChrome('painel-produtos');
 const PAINEL_PRODUTOS_DIR = path.join(WORK_DIR, 'painel-produtos');
 const HISTORICO_PATH = path.join(PAINEL_PRODUTOS_DIR, 'historico.json');
 const QUALIDADE_DIR = path.join(PAINEL_PRODUTOS_DIR, 'qualidade-cadastral');

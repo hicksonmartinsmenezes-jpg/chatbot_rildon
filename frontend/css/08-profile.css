@@ -8,7 +8,6 @@
   border: 1px solid var(--border);
   border-radius: 28px;
   padding: 28px;
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
   animation: profileShow 0.22s ease;
 }
 
@@ -39,7 +38,6 @@
   object-fit: cover;
   border: 4px solid var(--border);
   background: var(--panel-2);
-  box-shadow: 0 10px 35px rgba(0, 0, 0, 0.35);
 }
 
 #profile-photo {
@@ -92,7 +90,6 @@
 .profile-box input[type="text"]:focus,
 .profile-box input[type="tel"]:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 4px rgba(29, 108, 245, 0.14);
 }
 
 /* ─── Botão salvar ─────────────────────── */
@@ -103,7 +100,6 @@
   font-size: 15px;
   font-weight: 900;
   background: linear-gradient(135deg, var(--primary), #1554c7);
-  box-shadow: 0 12px 30px rgba(29, 108, 245, 0.28);
 }
 
 .profile-box .send-btn:hover {
@@ -263,7 +259,6 @@
   background: var(--panel-2) !important;
   color: var(--text) !important;
   border: 1px solid var(--border);
-  box-shadow: none !important;
 }
 
 .twofa-secondary-btn:hover {
@@ -351,7 +346,6 @@
 .twofa-box input[type="text"]:focus,
 .twofa-box input[type="password"]:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 4px rgba(29, 108, 245, 0.14);
 }
 
 .twofa-error {
@@ -365,7 +359,6 @@
 
 .twofa-danger-btn {
   background: linear-gradient(135deg, #ef4444, #b91c1c) !important;
-  box-shadow: 0 12px 30px rgba(239, 68, 68, 0.28) !important;
 }
 
 .twofa-backup-list {
@@ -791,7 +784,6 @@
   border: 1px solid var(--border);
   border-radius: 16px;
   background: var(--panel);
-  box-shadow: 0 24px 70px rgba(0,0,0,.32);
 }
 
 .user-permissions-dialog-header {
@@ -867,5 +859,271 @@
 
   .user-permissions-dialog {
     max-height: calc(100vh - 24px);
+  }
+}
+
+
+/* ─── Meu perfil: organização ───────────────────────────────────────────── */
+.profile-box {
+  width: min(760px, calc(100vw - 32px));
+  max-width: 760px;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 22px;
+}
+
+.profile-modal-header {
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:20px;
+  padding:24px 26px 20px;
+  border-bottom:1px solid var(--border);
+  background:linear-gradient(180deg, rgba(255,255,255,.025), transparent);
+}
+
+.profile-kicker {
+  display:block;
+  margin-bottom:5px;
+  color:var(--primary);
+  font-size:10px;
+  font-weight:900;
+  letter-spacing:.12em;
+}
+
+.profile-modal-header h3 {
+  margin:0;
+  color:var(--text);
+  font-size:21px;
+}
+
+.profile-modal-header p {
+  margin:5px 0 0;
+  color:var(--muted);
+  font-size:12px;
+}
+
+.profile-close-btn {
+  width:34px;
+  height:34px;
+  border:0;
+  border-radius:10px;
+  background:rgba(255,255,255,.05);
+  color:var(--muted);
+  cursor:pointer;
+}
+
+.profile-close-btn:hover {
+  color:var(--text);
+  background:rgba(255,255,255,.09);
+}
+
+.profile-identity {
+  display:grid;
+  grid-template-columns:180px minmax(0,1fr);
+  gap:26px;
+  padding:24px 26px 22px;
+}
+
+.profile-photo-column {
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:8px;
+  padding-right:22px;
+  border-right:1px solid var(--border);
+}
+
+.profile-photo-frame {
+  width:116px;
+  height:116px;
+  padding:4px;
+  border:1px solid var(--border);
+  border-radius:50%;
+  background:var(--panel-2);
+}
+
+.profile-photo-frame img {
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  border-radius:50%;
+}
+
+.profile-photo-btn {
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  padding:8px 11px;
+  border:1px solid var(--border);
+  border-radius:9px;
+  background:var(--panel-2);
+  color:var(--text);
+  font-size:11px;
+  font-weight:800;
+  cursor:pointer;
+}
+
+.profile-photo-btn:hover {
+  border-color:var(--primary);
+}
+
+#profile-photo {
+  display:none;
+}
+
+.profile-photo-column small {
+  color:var(--muted);
+  font-size:10px;
+}
+
+.profile-data-column {
+  min-width:0;
+}
+
+.profile-section-heading {
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-bottom:16px;
+}
+
+.profile-section-icon {
+  width:34px;
+  height:34px;
+  display:grid;
+  place-items:center;
+  flex:0 0 34px;
+  border-radius:9px;
+  background:rgba(29,108,245,.10);
+  color:#60a5fa;
+}
+
+.profile-section-icon.security {
+  background:rgba(34,197,94,.10);
+  color:#4ade80;
+}
+
+.profile-section-heading strong,
+.profile-section-heading span {
+  display:block;
+}
+
+.profile-section-heading strong {
+  color:var(--text);
+  font-size:13px;
+}
+
+.profile-section-heading span {
+  margin-top:2px;
+  color:var(--muted);
+  font-size:10px;
+}
+
+.profile-fields-grid {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:14px;
+}
+
+.profile-field label {
+  display:block;
+  margin:0 0 6px;
+  color:#cbd5e1;
+  font-size:11px;
+  font-weight:800;
+}
+
+.profile-box .profile-field input {
+  height:46px;
+  border-radius:11px;
+  font-size:13px;
+}
+
+.profile-save-btn {
+  width:100%;
+  height:46px !important;
+  margin-top:16px !important;
+  border-radius:11px !important;
+  font-size:13px !important;
+}
+
+.profile-save-btn i {
+  margin-right:6px;
+}
+
+.profile-security-section {
+  margin:0;
+  padding:20px 26px 24px;
+  border-top:1px solid var(--border);
+}
+
+.profile-security-card {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  padding:14px;
+  border:1px solid var(--border);
+  border-radius:12px;
+  background:var(--panel-2);
+}
+
+.profile-security-card > div {
+  min-width:0;
+}
+
+.profile-security-card > div > strong {
+  display:block;
+  color:var(--text);
+  font-size:12px;
+}
+
+.profile-security-card .twofa-status-line {
+  margin:4px 0 0;
+  font-size:10px;
+  line-height:1.4;
+}
+
+.profile-security-card .twofa-secondary-btn {
+  flex:0 0 auto;
+  min-height:38px;
+  padding:0 13px;
+  border-radius:9px;
+  font-size:11px;
+  font-weight:800;
+}
+
+@media (max-width:620px) {
+  .profile-identity {
+    grid-template-columns:1fr;
+    gap:20px;
+  }
+
+  .profile-photo-column {
+    padding-right:0;
+    padding-bottom:18px;
+    border-right:0;
+    border-bottom:1px solid var(--border);
+  }
+
+  .profile-fields-grid {
+    grid-template-columns:1fr;
+  }
+
+  .profile-modal-header,
+  .profile-identity,
+  .profile-security-section {
+    padding-left:18px;
+    padding-right:18px;
+  }
+
+  .profile-security-card {
+    align-items:flex-start;
+    flex-direction:column;
+  }
+
+  .profile-security-card .twofa-secondary-btn {
+    width:100%;
   }
 }

@@ -26,9 +26,6 @@
   background:
     radial-gradient(circle at 100% 0%, rgba(37, 99, 235, 0.20), transparent 55%),
     linear-gradient(160deg, #1b1b1b 0%, #141414 60%, #101010 100%);
-  box-shadow:
-    0 16px 40px rgba(0, 0, 0, 0.42),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .metrics-hero::after {
@@ -108,14 +105,12 @@
   font-size: 14px;
   font-weight: 800;
   cursor: pointer;
-  box-shadow: 0 10px 26px rgba(37, 99, 235, 0.35);
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast), filter var(--transition-fast);
+  transition: transform var(--transition-fast), filter var(--transition-fast);
 }
 
 .metrics-refresh-btn:hover {
   transform: translateY(-2px);
   filter: brightness(1.06);
-  box-shadow: 0 14px 32px rgba(37, 99, 235, 0.45);
 }
 
 .metrics-refresh-btn:active { transform: translateY(0); }
@@ -204,10 +199,7 @@ body.light-theme .metrics-export-btn:hover:not(:disabled) { background: #e6ebf2;
   background:
     radial-gradient(circle at 85% 0%, rgba(255, 255, 255, 0.04), transparent 55%),
     linear-gradient(160deg, #1e1e1e 0%, #151515 60%, #121212 100%);
-  box-shadow:
-    0 14px 34px rgba(0, 0, 0, 0.40),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  transition: transform var(--transition-normal), box-shadow var(--transition-normal), border-color var(--transition-normal);
+  transition: transform var(--transition-normal), border-color var(--transition-normal);
 }
 
 /* Faixa de destaque no topo (cor por métrica) */
@@ -223,9 +215,6 @@ body.light-theme .metrics-export-btn:hover:not(:disabled) { background: #e6ebf2;
 #tab-metrics .metric-card:hover {
   transform: translateY(-4px);
   border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
-  box-shadow:
-    0 20px 46px rgba(0, 0, 0, 0.50),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .metric-card-icon {
@@ -254,7 +243,6 @@ body.light-theme .metrics-export-btn:hover:not(:disabled) { background: #e6ebf2;
   line-height: 1;
   letter-spacing: -0.03em;
   color: #fff;
-  text-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
 }
 
 .metric-card-label {
@@ -330,9 +318,6 @@ body.light-theme .metric-card-trend.is-neutral { color: #64748b; }
   background:
     radial-gradient(circle at 90% 0%, rgba(255, 255, 255, 0.035), transparent 55%),
     linear-gradient(160deg, #1c1c1c 0%, #141414 60%, #111111 100%);
-  box-shadow:
-    0 14px 34px rgba(0, 0, 0, 0.38),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 #tab-metrics .chart-card.chart-wide { grid-column: 1 / -1; }
@@ -531,7 +516,6 @@ body.light-theme .metrics-tab-btn.active { color: var(--metrics-accent); }
 .metrics-export-mes-select:focus-visible {
   outline: none;
   border-color: var(--metrics-accent);
-  box-shadow: 0 0 0 3px rgba(34, 197, 94, .15);
 }
 
 .metrics-export-mes-select option { background: #1c1c1c; color: #e2e8f0; }
@@ -591,12 +575,11 @@ body.light-theme .metrics-export-mes-select option { background: #fff; color: #0
   font-family: inherit;
   outline: none;
   box-sizing: border-box;
-  transition: border-color .15s, box-shadow .15s;
+  transition: border-color .15s;
 }
 
 .metrics-tab-search-wrap input:focus {
   border-color: var(--metrics-accent);
-  box-shadow: 0 0 0 3px rgba(34,197,94,.15);
 }
 
 /* Seletor "Linhas por página" da tabela paginada da aba Evolução. */
@@ -712,7 +695,6 @@ body.light-theme .metrics-hero {
     radial-gradient(circle at 100% 0%, rgba(37, 99, 235, 0.10), transparent 55%),
     linear-gradient(160deg, #ffffff 0%, #f5f7fb 100%);
   border-color: #dbe3ee;
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
 }
 
 body.light-theme .metrics-hero h2 { color: #0f172a; }
@@ -721,16 +703,14 @@ body.light-theme .metrics-hero p  { color: #475569; }
 body.light-theme #tab-metrics .metric-card {
   background: #ffffff;
   border-color: #dbe3ee;
-  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.07);
 }
 
-body.light-theme #tab-metrics .metric-card strong { color: #0f172a; text-shadow: none; }
+body.light-theme #tab-metrics .metric-card strong { color: #0f172a;}
 body.light-theme .metric-card-label { color: #475569; }
 
 body.light-theme #tab-metrics .chart-card {
   background: #ffffff;
   border-color: #dbe3ee;
-  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.07);
 }
 
 body.light-theme #tab-metrics .chart-card h3 { color: #0f172a; }

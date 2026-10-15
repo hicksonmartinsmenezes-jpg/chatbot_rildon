@@ -17,8 +17,24 @@ const { emitEvent } = require("../services/socket.service");
 
 const router = express.Router();
 
-// requireAdmin já é aplicado em app.js para todas as rotas de /api/users
-// requireRole("admin") interno removido — checagem dupla desnecessária
+// CORRIGIDO (varredura 2026-09-30): como as rotas de usuário passaram de
+// requireAdmin para a tela "settings", um supervisor/atendente com essa tela
+// conseguia redefinir a senha, alterar permissões ou excluir um ADMIN. Só um
+// admin pode agir sobre outro admin.
+function bloquearSeAlvoAdmin(req, res, targetUser) {
+  if (targetUser?.perfil === "admin" && req.user?.perfil !== "admin") {
+    res.status(403).json({ error: "Apenas administradores podem alterar outro administrador." });
+    return true;
+  }
+  return false;
+}
+
+// requireScreenAccess("settings") já é aplicado em app.js para todas as
+// rotas de /api/users (trocado de requireAdmin em 2026-09-19 — ver
+// comentário em app.js/auth.routes.js: agora um atendente/supervisor com a
+// tela "settings" liberada individualmente também gerencia usuários, não
+// só admin). requireRole("admin") interno removido — checagem dupla
+// desnecessária.
 
 function sanitizeUser(user) {
   return {
@@ -111,6 +127,7 @@ router.patch("/users/:id/permissions", asyncHandler(async (req, res) => {
   if (!targetUser || targetUser.ativo === false) {
     return res.status(404).json({ error: "Usuário não encontrado." });
   }
+  if (bloquearSeAlvoAdmin(req, res, targetUser)) return;
 
   // Permissões personalizadas são administradas somente por admin e não
   // permitem transformar o usuário em outro perfil — apenas telas.
@@ -145,6 +162,8 @@ router.delete("/users/:id", asyncHandler(async (req, res) => {
     return res.status(404).json({ error: "Usuário não encontrado." });
   }
 
+  if (bloquearSeAlvoAdmin(req, res, userToDelete)) return;
+
   if (userToDelete.perfil === "admin") {
     const totalAdmins = await countActiveAdmins();
     if (totalAdmins <= 1) {
@@ -159,6 +178,10 @@ router.delete("/users/:id", asyncHandler(async (req, res) => {
     `DELETE FROM auth_sessions WHERE user_data::jsonb->>'id' = $1`,
     [targetId]
   );
+  // 2026-10-09: authSession passou a ter cache em memória (TTL curto) — sem
+  // esta linha, o usuário desativado continuaria entrando até o TTL expirar.
+  // require() local: evita ciclo auth.routes <-> user.routes no carregamento.
+  require("./auth.routes").invalidarCacheSessao();
 
   await auditLog({
     user:    req.user,
@@ -184,6 +207,7 @@ router.patch("/users/:id/password", asyncHandler(async (req, res) => {
   if (!targetUser || targetUser.ativo === false) {
     return res.status(404).json({ error: "Usuário não encontrado." });
   }
+  if (bloquearSeAlvoAdmin(req, res, targetUser)) return;
 
   // updateUserPassword valida a força da senha (ver src/utils/passwordPolicy.js)
   // e lança erro com mensagem clara se não atender aos requisitos.
@@ -192,6 +216,13 @@ router.patch("/users/:id/password", asyncHandler(async (req, res) => {
   } catch (err) {
     return res.status(400).json({ error: err.message });
   }
+
+  // Senha trocada: derruba as sessões abertas do usuário afetado.
+  await pool.query(
+    `DELETE FROM auth_sessions WHERE user_data::jsonb->>'id' = $1`,
+    [String(req.params.id)]
+  );
+  require("./auth.routes").invalidarCacheSessao();   // ver nota em DELETE /users/:id
 
   await auditLog({
     user:    req.user,

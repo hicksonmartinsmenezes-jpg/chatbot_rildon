@@ -14,7 +14,6 @@
   border: 1px solid rgba(255,255,255,0.07);
   border-radius: 20px;
   padding: 24px 28px;
-  box-shadow: 0 8px 28px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.04);
 }
 
 #tab-tickets .section-title {
@@ -97,12 +96,10 @@
   flex-direction: column;
   gap: 0;
   transition: var(--transition-fast);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
 }
 
 .ticket-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.22);
 }
 
 /* ─── Variantes de status ─────────────── */
@@ -110,12 +107,6 @@
 .ticket-card.em_andamento { border-left-color: var(--blue); }
 .ticket-card.resolvido    { border-left-color: var(--green); }
 .ticket-card.cancelado    { border-left-color: var(--red); opacity: 0.72; }
-
-/* Sombra colorida ao passar o mouse, por status */
-.ticket-card.aberto:hover       { box-shadow: 0 10px 36px rgba(245, 158, 11, 0.16); }
-.ticket-card.em_andamento:hover { box-shadow: 0 10px 36px rgba(37,  99, 235, 0.16); }
-.ticket-card.resolvido:hover    { box-shadow: 0 10px 36px rgba(34, 197,  94, 0.16); }
-
 /* ─── Header do card ──────────────────── */
 .ticket-header {
   display: flex;
@@ -258,17 +249,6 @@
 .btn-chat      { background: rgba(14,  165, 233, 0.14); color: #7dd3fc; border: 1px solid rgba(14,  165, 233, 0.22); }
 .btn-transfer  { background: rgba(99,  102, 241, 0.14); color: #c4b5fd; border: 1px solid rgba(99,  102, 241, 0.22); }
 
-/* ─── Animação novo ticket ──────────── */
-.novo-ticket {
-  animation: pulseTicket 1.8s ease-in-out infinite;
-}
-
-@keyframes pulseTicket {
-  0%   { box-shadow: 0 0 0   6px rgba(245, 158, 11, 0.00); }
-  50%  { box-shadow: 0 0 0  10px rgba(245, 158, 11, 0.22); }
-  100% { box-shadow: 0 0 0   6px rgba(245, 158, 11, 0.00); }
-}
-
 /* ─── Modal de resposta rápida ─────── */
 .chat-modal {
   position: fixed;
@@ -293,7 +273,6 @@
   border: 1px solid var(--border);
   border-radius: 24px;
   padding: 24px;
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
 }
 
 .chat-header {
@@ -348,7 +327,6 @@
 
 .chat-box textarea:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 4px rgba(29, 108, 245, 0.14);
 }
 
 .send-btn {

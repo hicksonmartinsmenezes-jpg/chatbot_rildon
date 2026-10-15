@@ -6,7 +6,7 @@
  */
 const path = require('path');
 const modPath = path.join('..', 'scripts', 'x2-painel', 'qualidade-apenas-cadastrados.js');
-const { CHAVE, LABEL_BADGE, calcularApenasCadastradosDeConteudo } = require(modPath);
+const { CHAVE, LABEL_BADGE, calcularApenasCadastradosDeConteudo, metaDeExportCompleto } = require(modPath);
 
 const CABECALHO =
   ' ;Cód. Fornecedor;Código;Descrição;NCM;CEST;CST ICMS;Cod. Barras;Custo Médio;' +
@@ -79,5 +79,13 @@ describe('x2-painel/qualidade-apenas-cadastrados', () => {
   test('CSV vazio (só cabeçalho) retorna lista vazia sem quebrar', () => {
     const resultado = calcularApenasCadastradosDeConteudo(CABECALHO, { origemArquivo: 'x', capturadoEm: 'x' });
     expect(resultado.produtos).toEqual([]);
+  });
+
+  test('fonte verificada exige sidecar de export full e não aceita legado ausente', () => {
+    const meta = { validado: true, completo: true, estoqueOpcao: 'Com e sem estoque', capturadoEm: '2026-10-14T12:00:00.123Z', linhasCsv: 100, linhasTabela: 100 };
+    expect(metaDeExportCompleto(undefined)).toBe(false);
+    expect(metaDeExportCompleto({ ...meta, completo: false })).toBe(false);
+    expect(metaDeExportCompleto({ ...meta, estoqueOpcao: 'Apenas com estoque' })).toBe(false);
+    expect(metaDeExportCompleto(meta)).toBe(true);
   });
 });

@@ -36,6 +36,13 @@ const { ESTOQUE_DIR, carregarExports } = require('../x2-estoque-export');
 const CHAVE = 'apenasCadastrados';
 const LABEL_BADGE = 'Apenas Cadastrados';
 
+function _metaDeExportCompleto(meta) {
+  return Boolean(meta && meta.validado === true && meta.completo === true
+    && meta.estoqueOpcao === 'Com e sem estoque' && Number.isFinite(Date.parse(meta.capturadoEm))
+    && Number.isFinite(meta.linhasCsv) && meta.linhasCsv > 0
+    && Number.isFinite(meta.linhasTabela) && meta.linhasTabela > 0);
+}
+
 function _semEstoqueESemPreco(registro) {
   const semEstoque = !registro.qtdEstoque || registro.qtdEstoque <= 0;
   const semPreco = !registro.precoVendaVarejo || registro.precoVendaVarejo <= 0;
@@ -72,25 +79,42 @@ function calcularApenasCadastradosDeConteudo(conteudoCsv, { origemArquivo, captu
   };
 }
 
-/** CSV de estoque mais recente já baixado (qualquer opção de filtro usada
- * no download). `carregarExports()` já vem ordenado do mais novo pro mais
- * velho — ver x2-estoque-export.js. */
+function _lerExport(nome) {
+  try {
+    const caminho = path.join(ESTOQUE_DIR, nome);
+    const conteudo = fs.readFileSync(caminho, 'utf8');
+    const registros = parseCsvEstoque(conteudo);
+    if (!registros.length) return null;
+    let meta = null;
+    const caminhoMeta = `${caminho}.meta.json`;
+    if (fs.existsSync(caminhoMeta)) {
+      try { meta = JSON.parse(fs.readFileSync(caminhoMeta, 'utf8')); } catch { return null; }
+    }
+    if (meta && (!_metaDeExportCompleto(meta)
+      || registros.length < meta.linhasCsv * 0.9 || registros.length < meta.linhasTabela * 0.9)) return null;
+    return { conteudo, registros, meta };
+  } catch {
+    return null;
+  }
+}
+
 function _ultimoCsv() {
-  const exports = carregarExports();
-  return exports.length ? exports[0] : null;
+  const arquivos = carregarExports();
+  const avaliados = arquivos.map((item) => ({ item, dados: _lerExport(item.nome) })).filter((x) => x.dados);
+  // Arquivos legados sem proveniência de filtro são indeterminados; até uma
+  // nova captura full com sidecar explícito, não são fonte verificada.
+  return avaliados.find(({ dados }) => Boolean(dados.meta)) || null;
 }
 
-/** Calcula a lista "Apenas Cadastrados" a partir do último CSV de estoque
- * baixado (lê o arquivo de verdade). Retorna null se nenhum CSV foi
- * baixado ainda (aba Estoque nunca usada) — quem chama decide como
- * comunicar isso (ver rota em server.js). */
+/** Calcula a lista apenas a partir de um CSV com metadados explícitos de
+ * export completo. Retorna null quando ainda não há fonte verificada. */
 function calcularApenasCadastrados() {
-  const ultimo = _ultimoCsv();
-  if (!ultimo) return null;
-
-  const caminho = path.join(ESTOQUE_DIR, ultimo.nome);
-  const conteudo = fs.readFileSync(caminho, 'utf8');
-  return calcularApenasCadastradosDeConteudo(conteudo, { origemArquivo: ultimo.nome, capturadoEm: ultimo.modificadoEm });
+  const selecionado = _ultimoCsv();
+  if (!selecionado) return null;
+  return calcularApenasCadastradosDeConteudo(selecionado.dados.conteudo, {
+    origemArquivo: selecionado.item.nome,
+    capturadoEm: selecionado.item.modificadoEm,
+  });
 }
 
-module.exports = { CHAVE, LABEL_BADGE, calcularApenasCadastradosDeConteudo, calcularApenasCadastrados };
+module.exports = { CHAVE, LABEL_BADGE, calcularApenasCadastradosDeConteudo, calcularApenasCadastrados, metaDeExportCompleto: _metaDeExportCompleto };

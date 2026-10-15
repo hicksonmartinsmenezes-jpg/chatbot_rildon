@@ -39,7 +39,6 @@
     --purple-soft: rgba(167, 139, 250, .14);
     --radius: 10px;
     --radius-sm: 7px;
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, .35);
     /* PEDIDO DO USUÁRIO (2026-09-12, mockup "CatálogoPro"): sidebar larga
        com rótulo ao lado do ícone (não empilhado embaixo) — era 92px. */
     --sidebar-w: 224px;
@@ -95,7 +94,6 @@
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 22px 24px;
-    box-shadow: var(--shadow-sm);
   }
   .card h2 { font-size: 14.5px; font-weight: 700; margin: 0 0 16px; color: var(--text); display: flex; align-items: center; gap: 8px; }
   .card h2 .contador { font-size: 11px; font-weight: 700; color: var(--text-2); background: var(--surface-2); padding: 2px 9px; border-radius: 6px; }
@@ -125,7 +123,6 @@
     border-left: 3px solid var(--border-strong);
     border-radius: var(--radius-sm);
     padding: 15px 16px;
-    box-shadow: var(--shadow-sm);
     transition: border-color .12s, background .12s;
   }
   .stat-card:hover { background: var(--surface-2); border-color: var(--border-strong); }
@@ -198,7 +195,7 @@
     transition: border-color .12s, background .12s;
   }
   .search-input::placeholder { color: var(--muted); }
-  .search-input:focus { outline: none; border-color: var(--border-strong); background: var(--surface-3); box-shadow: 0 0 0 3px rgba(255,255,255,.05); }
+  .search-input:focus { outline: none; border-color: var(--border-strong); background: var(--surface-3);}
   .filtro-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
   .chip {
     padding: 6px 13px;
@@ -297,10 +294,10 @@
     border-radius: 6px;
     font-size: 13px;
     font-weight: 600;
-    transition: background .12s, border-color .12s, box-shadow .12s, opacity .12s;
+    transition: background .12s, border-color .12s, opacity .12s;
   }
   button:hover { background: var(--surface-3); border-color: var(--border-strong); }
-  button:disabled { opacity: .4; cursor: not-allowed; box-shadow: none; }
+  button:disabled { opacity: .4; cursor: not-allowed;}
   button.primary { background: #fff; border-color: #fff; color: #0a0a0c; }
   button.primary:hover { background: #dcdce0; border-color: #dcdce0; }
   button.primary-green { background: var(--green); border-color: var(--green); color: #06210f; }
@@ -415,7 +412,7 @@
   .status-line { font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 9px; font-weight: 500; }
   .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
   .status-line.rodando { color: var(--green); }
-  .status-line.rodando .status-dot { background: var(--green); box-shadow: 0 0 0 4px var(--green-soft); }
+  .status-line.rodando .status-dot { background: var(--green);}
   .status-line.erro { color: var(--red); }
   .status-line.erro .status-dot { background: var(--red); }
   .status-line.concluido { color: var(--green); }
@@ -549,7 +546,7 @@
   .rotina-toggle { position: relative; display: inline-block; width: 34px; height: 19px; vertical-align: middle; }
   .rotina-toggle input { opacity: 0; width: 0; height: 0; }
   .rotina-toggle .slider { position: absolute; inset: 0; background: var(--surface-3); border: 1px solid var(--border-strong); border-radius: 999px; cursor: pointer; transition: background .15s; }
-  .rotina-toggle .slider::before { content: ''; position: absolute; width: 13px; height: 13px; left: 2px; top: 2px; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.3); border-radius: 50%; transition: transform .15s; }
+  .rotina-toggle .slider::before { content: ''; position: absolute; width: 13px; height: 13px; left: 2px; top: 2px; background: #fff;border-radius: 50%; transition: transform .15s; }
   .rotina-toggle input:checked + .slider { background: var(--green); border-color: var(--green); }
   .rotina-toggle input:checked + .slider::before { transform: translateX(15px); background: #06210f; }
 
@@ -635,7 +632,6 @@
     border-radius: var(--radius-sm);
     font-size: 12.5px;
     line-height: 1.5;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, .35);
     cursor: pointer;
     background: var(--surface-2);
     border: 1px solid var(--border-strong);

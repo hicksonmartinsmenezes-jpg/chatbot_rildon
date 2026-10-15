@@ -23,7 +23,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css">
   <!-- CSS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <link rel="stylesheet" href="dist/bundle.18a9c87113.css">
+  <link rel="stylesheet" href="dist/bundle.662534c76e.css">
   <!-- CSS_BUNDLE_END -->
 <style>
     /* Centraliza colunas da tabela de histórico */
@@ -220,30 +220,29 @@
           </div>
         </div>
 
-       <div class="avatar-wrap" data-action="openProfileModal" role="button" tabindex="0">
-
-      <div
-        class="avatar"
-        id="top-user-avatar"
-      >
-        R
-      </div>
-
-      <div class="avatar-text">
-
-        <strong id="top-user-name">
-          Admin
-        </strong>
-        
-            <span id="status-badge" class="badge badge-off">● Offline</span>
+        <div class="user-menu-wrap">
+          <button type="button" class="avatar-wrap" data-action="toggleUserMenu" aria-expanded="false" aria-haspopup="true" aria-label="Abrir menu do usuário">
+            <div class="avatar" id="top-user-avatar">R</div>
+          </button>
+          <div id="user-menu-dropdown" class="user-menu-dropdown hidden" role="menu">
+            <div class="user-menu-header">
+              <div class="user-menu-avatar" id="user-menu-avatar">R</div>
+              <div>
+                <strong id="user-menu-name">Admin</strong>
+                <span id="user-menu-status">Conta ativa</span>
+              </div>
+            </div>
+            <div class="user-menu-divider"></div>
+            <button type="button" class="user-menu-item" data-action="openProfileModal">
+              <i class="fa-solid fa-user"></i>
+              <span><strong>Meu perfil</strong><small>Dados pessoais e segurança</small></span>
+            </button>
+            <button type="button" class="user-menu-item user-menu-danger" data-action="logout">
+              <i class="fa-solid fa-right-from-bracket"></i>
+              <span><strong>Sair</strong><small>Encerrar sessão</small></span>
+            </button>
           </div>
-          <i class="fa-solid fa-chevron-down"></i>
         </div>
-
-        <button type="button" class="logout-btn" data-action="logout">
-          <i class="fa-solid fa-right-from-bracket"></i>
-          Sair
-        </button>
       </div>
     </header>
 
@@ -549,6 +548,23 @@
         </section>
 
         <div id="history-container" class="history-timeline"></div>
+
+        <!-- Paginação (pedido do usuário, 2026-09-23: "distribua 1-2-3 igual
+             contatos") — mesmas classes do rodapé de Contatos (.contacts-footer/
+             .contacts-pagination/.ct-page-btn/.ct-page-info), reaproveitadas
+             aqui sem duplicar CSS. -->
+        <div class="contacts-footer">
+          <span class="contacts-showing" id="history-showing">0 clientes</span>
+          <div class="contacts-pagination">
+            <button type="button" class="ct-page-btn" id="history-prev" data-action="historyPagePrev" disabled>
+              <i class="fa-solid fa-chevron-left"></i>
+            </button>
+            <span class="ct-page-info" id="history-page-info">1 / 1</span>
+            <button type="button" class="ct-page-btn" id="history-next" data-action="historyPageNext" disabled>
+              <i class="fa-solid fa-chevron-right"></i>
+            </button>
+          </div>
+        </div>
       </section>
 
       <!-- Páginas futuras -->
@@ -1533,7 +1549,7 @@ Como podemos ajudar você hoje?
               <textarea id="set-transfer-message" placeholder="Mensagem enviada quando o cliente pede atendente"></textarea>
 
               <label>Tempo para reaproveitar o atendimento ao voltar a falar (minutos)</label>
-              <input id="set-reopen-window-minutes" type="number" min="1" step="1" placeholder="60">
+              <input id="set-reopen-window-minutes" type="number" min="1" step="1" placeholder="240">
               <p class="settings-field-hint">Dentro desse tempo após fechar, o cliente que mandar mensagem de novo continua no MESMO ticket/protocolo (sem repetir saudação do atendente nem pesquisa de satisfação). Depois desse tempo, uma mensagem nova abre um ticket novo do zero.</p>
             </div>
           </div>
@@ -2372,40 +2388,74 @@ Como podemos ajudar você hoje?
      aria-modal="true"
      aria-labelledby="profile-modal-title">
   <div class="chat-box profile-box">
-    <div class="chat-header">
-      <h3 id="profile-modal-title">Meu Perfil</h3>
-      <button type="button" data-action="closeProfileModal" aria-label="Fechar perfil">
+    <div class="profile-modal-header">
+      <div>
+        <span class="profile-kicker">CONTA</span>
+        <h3 id="profile-modal-title">Meu Perfil</h3>
+        <p>Atualize seus dados e mantenha sua conta protegida.</p>
+      </div>
+      <button type="button" class="profile-close-btn" data-action="closeProfileModal" aria-label="Fechar perfil">
         <i class="fa-solid fa-xmark"></i>
       </button>
     </div>
 
-    <div class="profile-photo-area">
-      <img id="profile-photo-preview" src="android-chrome-512x512.png" alt="Foto do perfil">
+    <div class="profile-identity">
+      <div class="profile-photo-column">
+        <div class="profile-photo-frame">
+          <img id="profile-photo-preview" src="android-chrome-512x512.png" alt="Foto do perfil">
+        </div>
+        <label class="profile-photo-btn" for="profile-photo">
+          <i class="fa-solid fa-camera"></i>
+          Alterar foto
+        </label>
+        <input id="profile-photo" type="file" accept="image/*" data-change-action="previewProfilePhoto">
+        <small>JPG, PNG ou WEBP</small>
+      </div>
 
-      <input
-        id="profile-photo"
-        type="file"
-        accept="image/*"
-        data-change-action="previewProfilePhoto"
-      >
+      <div class="profile-data-column">
+        <div class="profile-section-heading">
+          <span class="profile-section-icon"><i class="fa-solid fa-user"></i></span>
+          <div>
+            <strong>Dados pessoais</strong>
+            <span>Informações usadas no seu perfil</span>
+          </div>
+        </div>
+
+        <div class="profile-fields-grid">
+          <div class="profile-field">
+            <label for="profile-name">Nome</label>
+            <input id="profile-name" type="text" placeholder="Seu nome">
+          </div>
+          <div class="profile-field">
+            <label for="profile-phone">Número</label>
+            <input id="profile-phone" type="tel" placeholder="(79) 99999-9999" autocomplete="tel">
+          </div>
+        </div>
+
+        <button type="button" class="send-btn profile-save-btn" data-action="saveProfile">
+          <i class="fa-solid fa-check"></i>
+          Salvar alterações
+        </button>
+      </div>
     </div>
 
-    <label>Nome</label>
-    <input id="profile-name" type="text" placeholder="Seu nome">
-
-    <label>Número</label>
-    <input id="profile-phone" type="tel" placeholder="(79) 99999-9999" autocomplete="tel">
-
-    <button type="button" class="send-btn" data-action="saveProfile">
-      Salvar perfil
-    </button>
-
     <div class="profile-security-section">
-      <label>Autenticação de dois fatores (2FA)</label>
-      <div id="twofa-status-line" class="twofa-status-line">Carregando status...</div>
-      <button type="button" id="twofa-action-btn" class="send-btn twofa-secondary-btn" data-action="startTwoFactorSetup">
-        Gerenciar 2FA
-      </button>
+      <div class="profile-section-heading">
+        <span class="profile-section-icon security"><i class="fa-solid fa-shield-halved"></i></span>
+        <div>
+          <strong>Segurança da conta</strong>
+          <span>Proteja o acesso ao painel com autenticação em dois fatores</span>
+        </div>
+      </div>
+      <div class="profile-security-card">
+        <div>
+          <strong>Autenticação de dois fatores</strong>
+          <div id="twofa-status-line" class="twofa-status-line">Carregando status...</div>
+        </div>
+        <button type="button" id="twofa-action-btn" class="twofa-secondary-btn" data-action="startTwoFactorSetup">
+          Gerenciar 2FA
+        </button>
+      </div>
     </div>
   </div>
 </div>
@@ -2481,7 +2531,7 @@ Como podemos ajudar você hoje?
 
 
   <!-- JS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <script src="dist/bundle.ab5e076e88.js"></script>
+  <script src="dist/bundle.009ad6af93.js"></script>
   <!-- JS_BUNDLE_END -->
   <script id="user-permissions-live-fix">
   (() => {

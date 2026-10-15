@@ -83,10 +83,26 @@ const { listarMarcasVeiculoConhecidas } = require("./catalogo-x2.service");
 // Produto sincronizado DEPOIS dessa extração (via x2-catalogo-sync.js) não
 // vai estar nesse mapa — nesse caso o rótulo cai pro fallback antigo
 // (fabricante + referencia limpa) em vez de quebrar.
-const CODIGO_FORNECEDOR_MAP = new Map(
-  JSON.parse(fs.readFileSync(path.join(__dirname, "../config/catalogo-x2/cod-fornecedor.json"), "utf8"))
-    .map(item => [String(item.codigo), item.cod_fornecedor])
-);
+// 2026-10-14: src/config/catalogo-x2/ e gitignored (~157MB, gerado pelo
+// scraper -- ver comentario no .gitignore) e nao existe em checkout novo
+// (CI, clone recem-feito, ambiente de teste). Antes isso quebrava o
+// require deste modulo inteiro (ENOENT direto no carregamento), o que por
+// sua vez derrubava catalogo.controller.js -> catalogo.routes.js -> toda
+// suite que so queria montar as rotas com os servicos mockados. O mapa ja
+// era projetado pra ter buracos (ver comentario acima: produto fora dele
+// cai no fallback antigo), entao "arquivo ausente" vira so mapa vazio,
+// igual a todo produto estar fora dele -- comportamento real em producao
+// (onde o arquivo existe) nao muda nada.
+let CODIGO_FORNECEDOR_MAP;
+try {
+  CODIGO_FORNECEDOR_MAP = new Map(
+    JSON.parse(fs.readFileSync(path.join(__dirname, "../config/catalogo-x2/cod-fornecedor.json"), "utf8"))
+      .map(item => [String(item.codigo), item.cod_fornecedor])
+  );
+} catch (e) {
+  console.warn("[catalogo-pdf.service] cod-fornecedor.json indisponivel (" + (e.code || e.message) + ") -- rotulo de fornecedor cai no fallback antigo pra todo produto.");
+  CODIGO_FORNECEDOR_MAP = new Map();
+}
 
 // Carregada uma única vez no require — reusada em toda geração de PDF, sem
 // I/O repetido por página.
@@ -329,6 +345,11 @@ const PAGE_MARGIN = 10;
 // foto + código + nome, cabeçalho/rodapé da marca do mesmo tamanho de
 // sempre) — usuário escolheu "deixa comigo" entre um meio-termo (~30/pág)
 // e um modo mais agressivo (lista sem foto).
+// 2026-09-19: COLS/ROWS_POR_PAGINA abaixo pararam de ser usadas por
+// gerarPdfCatalogo (agora delega pra gerarPdfCatalogoCompleto, que usa
+// COLS_COMPLETO/ROWS_POR_PAGINA_COMPLETO — ver comentário na função).
+// Mantidas aqui (não deletadas) só como referência histórica da grade
+// 5×6 antiga — Knip pode acusar como não usadas, é esperado.
 const COLS = 5;
 const GAP = 10;
 // Largura de desenho da imagem do cabeçalho — página inteira (595.28pt em
@@ -768,7 +789,28 @@ const MECANICA_TITULO_FONTE = "Montserrat-ExtraBold";
 // "mecanica" só por causa do .includes("PERFECT") acima — então
 // tipoCompleto === "eletrica" força o estilo "eletrica" incondicionalmente,
 // e tipoCompleto === "mecanica"/null preserva o comportamento de sempre.
+//
+// CORRIGIDO (2026-09-22, pedido do usuário: "itens que existem Mecânica no
+// cadastro preciso que virem catálogos específicos de Mecânica [...]
+// padronize mesmo template e layout de perfect"): o lado de DADOS já
+// oferecia "{fabricante} - Mecânica" como opção pra QUALQUER fabricante com
+// produto na seção MECÂNICA, não só PERFECT (ver
+// listarFabricantesCatalogoCompleto em catalogo-x2.service.js — tipoCompleto
+// chega aqui certinho pra qualquer um deles). Mas esta função só decidia o
+// ESTILO VISUAL "mecanica" checando o NOME "PERFECT" — pra todo fabricante
+// diferente de PERFECT, mesmo selecionando "{fabricante} - Mecânica" no
+// seletor, o PDF saía no estilo "eletrica" por engano (nunca padronizava
+// com o layout do PERFECT como o pedido original de 2026-09-03 pretendia).
+// Agora tipoCompleto === "mecanica" força o estilo "mecanica"
+// incondicionalmente (era só "eletrica" que tinha esse tratamento) — o
+// fallback por nome (.includes("PERFECT")) continua existindo só pra
+// chamadas antigas sem tipoCompleto (ex.: scripts/x2-drive-lancamentos.js,
+// que chama ?fabricante=PERFECT sem esse parâmetro).
 function _estiloCatalogoCompleto(fabricante, tipoCompleto = null) {
+  // Catálogo com layout PRÓPRIO do fabricante (Arielo, 2026-10-01) — ver
+  // catalogo-pdf-arielo.service.js. Vale antes de qualquer outra regra.
+  if (/ARIELO/i.test(String(fabricante || ""))) return "arielo";
+  if (tipoCompleto === "mecanica") return "mecanica";
   if (tipoCompleto === "eletrica") return "eletrica";
   return String(fabricante || "").toUpperCase().includes("PERFECT") ? "mecanica" : "eletrica";
 }
@@ -810,6 +852,24 @@ const MECANICA_RODAPE_LOGO_OMRE_RATIO = 447 / 129;
 // pixel na referência (~56pt do fim da página até a linha).
 const MECANICA_RODAPE_ALTURA = 58;
 
+// PEDIDO DO USUÁRIO (2026-09-22): "muito espaço do cabeçalho até a linha e
+// embaixo tem muito espaço também" — antes o cabeçalho Mecânica reusava
+// HEADER_HEIGHT (~123pt, calculado a partir da ARTE da elétrica, CABECALHO_
+// IMG_RATIO 719/146) mesmo só precisando centralizar um texto/logo de
+// ~22pt, sobrando quase 50pt de vão vazio em cima E embaixo do texto até a
+// linha fina navy. MECANICA_HEADER_HEIGHT é uma altura própria, medida pro
+// conteúdo real do cabeçalho Mecânica (texto 22pt + respiro), e passa a ser
+// usada em TODA a área do cabeçalho Mecânica — página de índice e páginas
+// de conteúdo (_desenharLogoCabecalhoMecanica/_desenharCabecalho/
+// _desenharCabecalhoIndice) — e também no cálculo de onde a grade de cards
+// começa (areaTopoY em gerarPdfCatalogoCompleto, via overrides de
+// _geometriaGrid), senão o cabeçalho encolhe mas os cards continuam
+// começando na mesma altura de antes, só aumentando o vão em outro lugar.
+// Ainda sobra espaço suficiente pra uma logo de fabricante de verdade
+// (alturaMax = MECANICA_HEADER_HEIGHT - 16 = 44pt) quando o usuário
+// registrar os arquivos em MECANICA_LOGOS_FABRICANTE.
+const MECANICA_HEADER_HEIGHT = 60;
+
 // Registry de logo por fabricante pro cabeçalho Mecânica (pedido do
 // usuário: "logo de cada fabricante", 2026-09-04). Vazio de propósito:
 // nenhum arquivo de logo LIMPO (sem a grade de medição/marca d'água que
@@ -850,7 +910,10 @@ function _desenharFundoGradienteMecanica(doc) {
 function _desenharLogoCabecalhoMecanica(doc, fabricante) {
   const w = doc.page.width;
   const logo = _logoFabricante(fabricante);
-  const alturaMax = HEADER_HEIGHT - 16;
+  // 2026-09-22: usa MECANICA_HEADER_HEIGHT (própria, mais enxuta) em vez de
+  // HEADER_HEIGHT (herdada da arte da elétrica) — ver comentário na
+  // constante acima.
+  const alturaMax = MECANICA_HEADER_HEIGHT - 16;
   const larguraMax = 260;
   if (logo) {
     let largura = larguraMax;
@@ -859,15 +922,15 @@ function _desenharLogoCabecalhoMecanica(doc, fabricante) {
       altura = alturaMax;
       largura = altura * logo.ratio;
     }
-    doc.image(logo.img, (w - largura) / 2, (HEADER_HEIGHT - altura) / 2, { width: largura, height: altura });
+    doc.image(logo.img, (w - largura) / 2, (MECANICA_HEADER_HEIGHT - altura) / 2, { width: largura, height: altura });
   } else {
     // Fallback: nome do fabricante em texto (sem logo cadastrada ainda —
     // ver MECANICA_LOGOS_FABRICANTE acima).
     doc.font(MECANICA_TITULO_FONTE).fontSize(22).fillColor(MECANICA_TITULO_FUNDO)
-      .text(String(fabricante || "").toUpperCase(), 0, (HEADER_HEIGHT - 22) / 2, { width: w, align: "center" });
+      .text(String(fabricante || "").toUpperCase(), 0, (MECANICA_HEADER_HEIGHT - 22) / 2, { width: w, align: "center" });
     doc.fillColor("#111827").font("Helvetica");
   }
-  doc.moveTo(PAGE_MARGIN, HEADER_HEIGHT).lineTo(w - PAGE_MARGIN, HEADER_HEIGHT)
+  doc.moveTo(PAGE_MARGIN, MECANICA_HEADER_HEIGHT).lineTo(w - PAGE_MARGIN, MECANICA_HEADER_HEIGHT)
     .lineWidth(MECANICA_LINHA_FINA_ESPESSURA).strokeColor(MECANICA_LINHA_FINA_COR).stroke();
 }
 
@@ -1062,7 +1125,10 @@ const INDICE_TITULO_GAP_LINHAS = 34;
 // Início da área de conteúdo da página de índice — mesma lógica de
 // AREA_TOPO_Y acima, só com as constantes maiores específicas do índice
 // (cabeçalho/respiros/título) em vez das compartilhadas.
-const AREA_TOPO_Y_INDICE = INDICE_HEADER_HEIGHT + INDICE_TITULO_GAP_TOPO + INDICE_TITULO_TAMANHO + INDICE_TITULO_GAP_LINHAS;
+// 2026-09-22: a fórmula em si passou a ser calculada localmente dentro de
+// gerarPdfCatalogoCompleto (`areaTopoYIndiceEfetivo`), porque o estilo
+// mecânica precisa trocar INDICE_HEADER_HEIGHT por MECANICA_HEADER_HEIGHT
+// (ver Issue #377) — não dá mais pra ser uma constante fixa de módulo.
 
 // Pedido do usuário (2026-07-30): remover o fundo cinza clarinho atrás da
 // foto (existia desde 2026-07-28 pra dar contraste com fotos de fundo
@@ -1090,6 +1156,9 @@ const LINHA_DIVISORIA = "#e5e7eb"; // separa a área da foto da área de texto
 // mapa é a fonte PRIMÁRIA; o corte por " - " continua só como fallback pra
 // produto que não estiver no mapa (sincronizado depois da extração).
 function _rotuloProduto(produto) {
+  // Catálogos de layout próprio (Arielo): o card representa uma FAMÍLIA de
+  // códigos (EST349 = EST800349/EST600349…), então o rótulo vem de fora.
+  if (produto._rotuloOverride) return produto._rotuloOverride;
   const codigoFornecedor =
     CODIGO_FORNECEDOR_MAP.get(String(produto.codigo)) ||
     (produto.referencia ? String(produto.referencia).split(" - ")[0].trim() : null);
@@ -1476,13 +1545,57 @@ function _bboxConteudoFoto(buffer, mimetype, cacheKey = null) {
 // continua cuidando do fallback "sem foto" pra ESSE produto, mas o
 // vazamento de clip que quebrava TODOS os produtos seguintes na página
 // para de acontecer.
-function _desenharFotoAjustada(doc, buffer, mimetype, x, y, boxWidth, boxHeight, cacheKey = null) {
+//
+// PEDIDO DO USUÁRIO (2026-09-22, "preciso que ajuste imagens" ->
+// "tamanho/proporção da foto na caixa"): o "contain" puro (Math.min)
+// nunca corta nada, mas peças compridas e finas (amortecedor fotografado
+// na diagonal ou deitado, por exemplo) têm bbox muito mais larga que
+// alta (ou o contrário) — encaixar isso inteiro numa caixa quase
+// quadrada sobra MUITO espaço em branco no eixo curto. Usuário não teve
+// preferência entre "corta um pouco" vs. "aumenta só a caixa" — optei
+// por um meio-termo controlado: zoom até FOTO_LIMITE_ZOOM_CROP vezes
+// maior que o "contain" (nunca mais que o "cover" full, que preencheria
+// a caixa inteira mas podia cortar bem mais que isso pras peças mais
+// extremas), sempre centralizado — fotos quase quadradas (a maioria)
+// não mudam quase nada, só as bem alongadas ganham zoom real, com corte
+// pequeno e previsível nas pontas (nunca mais que o necessário pra caber
+// no fator de zoom escolhido).
+//
+// REVERTIDO (pedido do usuário, 2026-09-23: "preciso que não corte
+// absolutamente nenhuma imagem"): o meio-termo acima (1.3x) cortava um
+// pouco as peças bem alongadas, exatamente o cenário que motivou o pedido
+// original — o usuário decidiu agora que nenhum corte é aceitável, nem
+// esse "pequeno e previsível". FOTO_LIMITE_ZOOM_CROP = 1 faz
+// `escala = Math.min(escalaCover, escalaContain * 1)` sempre resolver
+// pra `escalaContain` (contain nunca é maior que cover) — volta a ser
+// "contain" puro sobre o bbox do conteúdo real: a foto inteira sempre
+// cabe na caixa, sem cortar nenhum pixel do produto fotografado. O clip
+// continua ativo só por segurança (evita vazar por cima de cards
+// vizinhos em casos extremos de arredondamento), mas na prática não deve
+// cortar mais nada — nesse fator ele só corta a margem branca da própria
+// imagem original, quando ela ultrapassa ligeiramente a caixa depois do
+// contain, nunca o produto em si. Mesma constante usada em TODOS os
+// tipos de catálogo em PDF (Completo, Promocional, Diversos) porque
+// todos passam por _desenharFotoAjustada via _desenharCard.
+const FOTO_LIMITE_ZOOM_CROP = 1;
+// `imagemAberta` (2026-10-14): imagem já parseada por doc.openImage() — ver
+// _fotosUtilizaveis abaixo. pdfkit aceita no 1º argumento de doc.image()
+// tanto o buffer cru quanto um objeto de imagem já aberto (ele só checa
+// `src.width && src.height` antes de chamar openImage por conta própria),
+// então passar o objeto aqui evita re-parsear o mesmo arquivo e, mais
+// importante, garante que o parse (onde o EXIF malformado estoura) já
+// aconteceu ANTES de qualquer decisão de layout. O bbox continua sendo
+// medido no buffer cru, que é o que o jpeg-js decodifica.
+function _desenharFotoAjustada(doc, buffer, mimetype, x, y, boxWidth, boxHeight, cacheKey = null, imagemAberta = null) {
+  const origem = imagemAberta || buffer;
   const bbox = _bboxConteudoFoto(buffer, mimetype, cacheKey);
   if (!bbox) {
-    doc.image(buffer, x, y, { fit: [boxWidth, boxHeight], align: "center", valign: "center" });
+    doc.image(origem, x, y, { fit: [boxWidth, boxHeight], align: "center", valign: "center" });
     return;
   }
-  const escala = Math.min(boxWidth / bbox.width, boxHeight / bbox.height);
+  const escalaContain = Math.min(boxWidth / bbox.width, boxHeight / bbox.height);
+  const escalaCover = Math.max(boxWidth / bbox.width, boxHeight / bbox.height);
+  const escala = Math.min(escalaCover, escalaContain * FOTO_LIMITE_ZOOM_CROP);
   const larguraDesenho = bbox.imgWidth * escala;
   const alturaDesenho = bbox.imgHeight * escala;
   const xDesenho = x + (boxWidth - bbox.width * escala) / 2 - bbox.x * escala;
@@ -1490,9 +1603,83 @@ function _desenharFotoAjustada(doc, buffer, mimetype, x, y, boxWidth, boxHeight,
   doc.save();
   try {
     doc.rect(x, y, boxWidth, boxHeight).clip();
-    doc.image(buffer, xDesenho, yDesenho, { width: larguraDesenho, height: alturaDesenho });
+    doc.image(origem, xDesenho, yDesenho, { width: larguraDesenho, height: alturaDesenho });
   } finally {
     doc.restore();
+  }
+}
+
+// BUG REAL reportado pelo usuário (2026-10-14): "alguns catálogos quando
+// gerados, apesar de não ter duas fotos no sistema, ele é arrastado para o
+// canto esquerdo e com a marca 'sem foto', como SPEED BRAKE por exemplo".
+//
+// Causa raiz: os dois desenhos de card (_desenharCardCatalogoCompleto e
+// _desenharCard) escolhiam o layout — 1 foto grande vs. 2 lado a lado —
+// olhando só o MIMETYPE das fotos, e o mimetype vem da EXTENSÃO do arquivo
+// indexado (ver obterFoto em catalogo-fotos.service.js). Ou seja, a
+// pergunta respondida era "existe um 2º arquivo .jpg indexado?", não "esse
+// arquivo abre?". Quando o 2º arquivo era uma foto que o pdfkit não
+// consegue parsear (EXIF malformado -> RangeError de dentro do jpeg-exif,
+// comum em parte do acervo real da loja — ver comentário grande acima), a
+// sequência era:
+//   1) layout decidido como "2 fotos"  -> foto 1 desenhada em MEIA largura;
+//   2) foto 2 estoura no doc.image();
+//   3) o catch, que era único pro bloco inteiro, escrevia "sem foto" na
+//      largura CHEIA — por cima da foto 1, que já estava desenhada.
+// Daí o sintoma: a foto encolhida e encostada à esquerda, com o aviso "sem
+// foto" em cima dela, num produto que TEM foto. (O try/finally de
+// 2026-09-04 consertou o vazamento de clip, que apagava os cards seguintes
+// da página, mas não este sintoma — são dois efeitos da mesma exceção.)
+//
+// Fix: parsear ANTES de decidir o layout. doc.openImage() faz só o parse,
+// sem desenhar nada, e é exatamente onde a exceção acontece — então o
+// layout passa a ser escolhido a partir das fotos que REALMENTE abrem.
+// Efeitos colaterais desejados: "sem foto" só aparece quando NENHUMA foto
+// abre; e produto cuja 1ª foto está corrompida mas a 2ª está boa agora
+// mostra a 2ª em largura cheia, em vez de "sem foto".
+function _fotosUtilizaveis(doc, codigoProduto) {
+  const utilizaveis = [];
+  for (const indice of [0, 1]) {
+    let foto;
+    try {
+      foto = obterFoto(codigoProduto, indice);
+    } catch {
+      continue; // falha ao extrair do zip — mesmo efeito de foto ausente
+    }
+    if (!foto) continue;
+    if (foto.mimetype !== "image/jpeg" && foto.mimetype !== "image/png") continue;
+    let imagem;
+    try {
+      imagem = doc.openImage(foto.buffer);
+    } catch {
+      continue; // arquivo indexado mas ilegível (EXIF quebrado etc.)
+    }
+    if (!imagem || !imagem.width || !imagem.height) continue;
+    utilizaveis.push({
+      buffer: foto.buffer,
+      mimetype: foto.mimetype,
+      imagem,
+      // Chave de cache do bbox por FOTO (não por produto): o bbox depende
+      // só do arquivo, então indexar por "codigo#indice" vale pros dois
+      // layouts. Antes, a foto única era cacheada sob a chave "codigo" e a
+      // mesma foto no layout de 2 sob "codigo#0" — duas entradas pro mesmo
+      // arquivo.
+      cacheKey: `${codigoProduto}#${indice}`,
+    });
+  }
+  return utilizaveis;
+}
+
+// Rede de segurança por FOTO: o parse já passou em _fotosUtilizaveis, mas se
+// o desenho ainda falhar (bug de pdfkit, buffer truncado), perde-se só
+// aquela foto — não o card inteiro, e não se escreve "sem foto" por cima de
+// uma foto que já foi desenhada. Devolve se desenhou ou não.
+function _desenharFotoProtegida(doc, foto, x, y, boxWidth, boxHeight) {
+  try {
+    _desenharFotoAjustada(doc, foto.buffer, foto.mimetype, x, y, boxWidth, boxHeight, foto.cacheKey, foto.imagem);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -1761,24 +1948,18 @@ function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight
   // inconsistente entre cards da mesma página — trade-off aceito, a
   // alternativa (2ª caixa sempre reservada, vazia quando não existe) foi
   // rejeitada.
-  try {
-    const foto1 = obterFoto(produto.codigo, 0);
-    const foto2 = obterFoto(produto.codigo, 1);
-    const temDuasFotos =
-      foto1 && (foto1.mimetype === "image/jpeg" || foto1.mimetype === "image/png") &&
-      foto2 && (foto2.mimetype === "image/jpeg" || foto2.mimetype === "image/png");
-
-    if (temDuasFotos) {
-      const larguraMetade = (larguraConteudo - GAP_DUAS_FOTOS) / 2;
-      _desenharFotoAjustada(doc, foto1.buffer, foto1.mimetype, xConteudo, yFoto, larguraMetade, photoBoxHeight, `${produto.codigo}#0`);
-      _desenharFotoAjustada(doc, foto2.buffer, foto2.mimetype, xConteudo + larguraMetade + GAP_DUAS_FOTOS, yFoto, larguraMetade, photoBoxHeight, `${produto.codigo}#1`);
-    } else if (foto1 && (foto1.mimetype === "image/jpeg" || foto1.mimetype === "image/png")) {
-      _desenharFotoAjustada(doc, foto1.buffer, foto1.mimetype, xConteudo, yFoto, larguraConteudo, photoBoxHeight, produto.codigo);
-    } else {
-      doc.font("Helvetica").fontSize(7).fillColor("#9ca3af")
-        .text("sem foto", xConteudo, yFoto + photoBoxHeight / 2 - 5, { width: larguraConteudo, align: "center" });
-    }
-  } catch {
+  // 2026-10-14: layout decidido pelas fotos que ABREM, não pelas que estão
+  // indexadas — ver _fotosUtilizaveis para o bug que isso corrige.
+  let fotosDesenhadas = 0;
+  const fotosOk = _fotosUtilizaveis(doc, produto.codigo);
+  if (fotosOk.length >= 2) {
+    const larguraMetade = (larguraConteudo - GAP_DUAS_FOTOS) / 2;
+    if (_desenharFotoProtegida(doc, fotosOk[0], xConteudo, yFoto, larguraMetade, photoBoxHeight)) fotosDesenhadas += 1;
+    if (_desenharFotoProtegida(doc, fotosOk[1], xConteudo + larguraMetade + GAP_DUAS_FOTOS, yFoto, larguraMetade, photoBoxHeight)) fotosDesenhadas += 1;
+  } else if (fotosOk.length === 1) {
+    if (_desenharFotoProtegida(doc, fotosOk[0], xConteudo, yFoto, larguraConteudo, photoBoxHeight)) fotosDesenhadas += 1;
+  }
+  if (!fotosDesenhadas) {
     doc.font("Helvetica").fontSize(7).fillColor("#9ca3af")
       .text("sem foto", xConteudo, yFoto + photoBoxHeight / 2 - 5, { width: larguraConteudo, align: "center" });
   }
@@ -1842,12 +2023,15 @@ function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight
 
 // Extraído de gerarPdfCatalogo (2026-08-26, Issue #21) — desenha um card de
 // produto completo em x/y dados, sem saber nada sobre grade/paginação.
-// Reusado por gerarPdfCatalogo (grade 5×6, catálogo comum) e
-// gerarPdfCatalogoCompleto (grade 4×5, por fabricante). 2026-08-27: os dois
-// modos agora têm layouts DIFERENTES (ver _desenharCardCatalogoCompleto) —
-// catálogo comum mantém o desenho original (selo sobre a foto + nome
-// abaixo), Catálogo Completo usa o cabeçalho novo (selo+descrição lado a
-// lado + OEM em vermelho + foto maior + aplicação em preto).
+// 2026-09-19: gerarPdfCatalogo passou a delegar 100% pra
+// gerarPdfCatalogoCompleto (ver comentário lá), que só chama esta função
+// com comAplicacao=true (grade 4×5, cabeçalho novo — selo+descrição lado a
+// lado + OEM em vermelho + foto maior + aplicação em preto, ver
+// _desenharCardCatalogoCompleto). O ramo comAplicacao=false abaixo (desenho
+// original: selo sobre a foto + nome abaixo, sem aplicação) ficou sem
+// nenhum call site — mantido de propósito (não deletado) como referência
+// caso algum modo futuro precise do card mais simples de volta; Knip pode
+// acusar como não usado, é esperado.
 function _desenharCard(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth, photoBoxHeight, comAplicacao = false, marcaAtual = null, preco = null, estilo = "eletrica") {
   _desenharCardVidro(doc, x, y, cardWidth, cardHeight);
 
@@ -1865,24 +2049,17 @@ function _desenharCard(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth,
   // tinha ganhado o mesmo comportamento na época. Produto com 2 fotos
   // cadastradas mostra as 2 lado a lado; com 1 foto só, continua exatamente
   // como sempre foi (foto grande, ocupando a caixa toda).
-  try {
-    const foto1 = obterFoto(produto.codigo, 0);
-    const foto2 = obterFoto(produto.codigo, 1);
-    const temDuasFotos =
-      foto1 && (foto1.mimetype === "image/jpeg" || foto1.mimetype === "image/png") &&
-      foto2 && (foto2.mimetype === "image/jpeg" || foto2.mimetype === "image/png");
-
-    if (temDuasFotos) {
-      const larguraMetade = (photoBoxWidth - GAP_DUAS_FOTOS) / 2;
-      _desenharFotoAjustada(doc, foto1.buffer, foto1.mimetype, xFoto, yFoto, larguraMetade, photoBoxHeight, `${produto.codigo}#0`);
-      _desenharFotoAjustada(doc, foto2.buffer, foto2.mimetype, xFoto + larguraMetade + GAP_DUAS_FOTOS, yFoto, larguraMetade, photoBoxHeight, `${produto.codigo}#1`);
-    } else if (foto1 && (foto1.mimetype === "image/jpeg" || foto1.mimetype === "image/png")) {
-      _desenharFotoAjustada(doc, foto1.buffer, foto1.mimetype, xFoto, yFoto, photoBoxWidth, photoBoxHeight, produto.codigo);
-    } else {
-      doc.font("Helvetica").fontSize(7).fillColor("#9ca3af")
-        .text("sem foto", xFoto, yFoto + photoBoxHeight / 2 - 5, { width: photoBoxWidth, align: "center" });
-    }
-  } catch {
+  // 2026-10-14: mesma correção do Catálogo Completo — ver _fotosUtilizaveis.
+  let fotosDesenhadas = 0;
+  const fotosOk = _fotosUtilizaveis(doc, produto.codigo);
+  if (fotosOk.length >= 2) {
+    const larguraMetade = (photoBoxWidth - GAP_DUAS_FOTOS) / 2;
+    if (_desenharFotoProtegida(doc, fotosOk[0], xFoto, yFoto, larguraMetade, photoBoxHeight)) fotosDesenhadas += 1;
+    if (_desenharFotoProtegida(doc, fotosOk[1], xFoto + larguraMetade + GAP_DUAS_FOTOS, yFoto, larguraMetade, photoBoxHeight)) fotosDesenhadas += 1;
+  } else if (fotosOk.length === 1) {
+    if (_desenharFotoProtegida(doc, fotosOk[0], xFoto, yFoto, photoBoxWidth, photoBoxHeight)) fotosDesenhadas += 1;
+  }
+  if (!fotosDesenhadas) {
     doc.font("Helvetica").fontSize(7).fillColor("#9ca3af")
       .text("sem foto", xFoto, yFoto + photoBoxHeight / 2 - 5, { width: photoBoxWidth, align: "center" });
   }
@@ -1960,7 +2137,9 @@ function _desenharCabecalho(doc, tituloBusca, estilo = "eletrica", fabricante = 
   // Pedido do usuário (2026-07-30, 2ª rodada): título começa SÓ DEPOIS que a
   // arte do cabeçalho termina (HEADER_HEIGHT + TITULO_GAP_TOPO) — nunca mais
   // sobreposto à imagem, então não tem como "encostar" no cinza da arte.
-  const tituloY = HEADER_HEIGHT + TITULO_GAP_TOPO;
+  // 2026-09-22: estilo mecânica usa MECANICA_HEADER_HEIGHT (mais enxuta,
+  // ver comentário na constante) em vez de HEADER_HEIGHT (arte da elétrica).
+  const tituloY = (estilo === "mecanica" ? MECANICA_HEADER_HEIGHT : HEADER_HEIGHT) + TITULO_GAP_TOPO;
   const tituloLargura = w - PAGE_MARGIN * 2;
 
   // Estilo "Mecânica" (pedido do usuário, 2026-09-03, fabricante PERFECT —
@@ -3047,9 +3226,18 @@ function _calcularLayoutConteudo(
     // menos que os 30,349pt padrão), reduzindo o espaço até o rodapé
     // nessas páginas específicas em vez de encolher qualquer card. Guarda
     // de segurança: só desenha se ainda sobrar pelo menos 2pt antes do
-    // rodapé de verdade (A4_ALTURA - FOOTER_HEIGHT) — nunca desenha por
+    // rodapé de verdade (A4_ALTURA - alturaRodapeReal) — nunca desenha por
     // cima do rodapé.
-    if (y + cardHeight <= A4_ALTURA - FOOTER_HEIGHT - 2) {
+    // 2026-09-22 BUG REAL achado ao ajustar o espaçamento do estilo
+    // mecânica (Issue #377): esta guarda usava FOOTER_HEIGHT (fixo, o
+    // rodapé bem mais alto da elétrica) direto, ignorando o parâmetro
+    // `alturaRodapeReal` que o resto da função já recebe — pro estilo
+    // mecânica (rodapé mais baixo, MECANICA_RODAPE_ALTURA) isso fazia a
+    // ÚLTIMA linha de cards vazios de preenchimento (a que fecha a página
+    // até areaFimY) ser descartada por engano, sumindo com a borda/moldura
+    // da última linha inteira (regressão visual introduzida pelo próprio
+    // ajuste de espaçamento — pego ao comparar a amostra antes/depois).
+    if (y + cardHeight <= A4_ALTURA - alturaRodapeReal - 2) {
       for (let col = 0; col < COLS_COMPLETO; col += 1) {
         preenchimentoFinal.push({ pagina: p, x: PAGE_MARGIN + col * (cardWidth + GAP), y, cardWidth, cardHeight });
       }
@@ -3189,7 +3377,10 @@ function _desenharCabecalhoIndice(doc, estilo = "eletrica", fabricante = "") {
   // Pedido do usuário (2026-08-26): respiro maior entre o cabeçalho e o
   // título "ÍNDICE" — INDICE_TITULO_GAP_TOPO em vez do TITULO_GAP_TOPO
   // compartilhado (8pt) usado no resto do PDF.
-  const tituloY = INDICE_HEADER_HEIGHT + INDICE_TITULO_GAP_TOPO;
+  // 2026-09-22: estilo mecânica usa MECANICA_HEADER_HEIGHT em vez de
+  // INDICE_HEADER_HEIGHT (= HEADER_HEIGHT, arte da elétrica) — mesmo motivo
+  // do tituloY em _desenharCabecalho.
+  const tituloY = (estilo === "mecanica" ? MECANICA_HEADER_HEIGHT : INDICE_HEADER_HEIGHT) + INDICE_TITULO_GAP_TOPO;
   const tituloLargura = w - PAGE_MARGIN * 2;
 
   // Pedido do usuário (2026-08-26): título "ÍNDICE" centralizado na página
@@ -3280,71 +3471,36 @@ function _desenharLinhaIndice(doc, textoLinha, numeroPagina, y, larguraTotal) {
  * chama já seta os headers de Content-Type/Content-Disposition antes).
  * Não retorna Promise: o próprio doc.end() encerra a escrita/resposta.
  */
+// Pedido do usuário (2026-09-19, melhoria "unificar layout Critérios de
+// Pesquisa/Catálogo Completo"): até aqui esta função desenhava sua PRÓPRIA
+// grade simples (5 colunas × 6 linhas, sem índice, sem agrupar por Linha/
+// Marca, card mais raso sem texto de aplicação — ver histórico do arquivo
+// se precisar recuperar essa versão antiga). O usuário comparou o PDF de
+// Critérios de Pesquisa lado a lado com o Catálogo Completo e pediu:
+// "organize linhas e colunas igual, ajuste a foto também da mesma maneira,
+// assim como todo o resto de design, a única diferença mesmo é que posso
+// fazer catálogo com apenas aqueles selecionados" — ou seja, o layout
+// (índice, agrupamento por Linha/Marca, grade 4×5, foto real + aplicação
+// no card, cabeçalho/rodapé) deve ficar IDÊNTICO ao Catálogo Completo; a
+// única diferença legítima entre os dois modos é QUAIS produtos entram
+// (resultado de busca/seleção manual aqui, "todo o catálogo de 1
+// fabricante" lá) — não como eles são desenhados.
+//
+// Por isso esta função agora delega inteiramente pra
+// gerarPdfCatalogoCompleto: fabricante="" (não há um fabricante isolado
+// numa busca por veículo/código/nome/seleção manual — cai sempre no
+// estilo "eletrica" padrão, ver _estiloCatalogoCompleto) e
+// agruparPorMarca=false (agrupa por Linha normalmente, com o mesmo sub-
+// agrupamento por marca de veículo dentro de cada Linha que o Catálogo
+// Completo já faz). `tituloBusca` deixou de ser desenhado como texto de
+// cabeçalho — o Catálogo Completo mostra o nome da Linha em cada página,
+// não a busca em si, e é exatamente esse comportamento que passa a valer
+// aqui também (mesmo pro modo "fabricante isolado + outro filtro", que já
+// caía nesta função antes — ver modoCompleto em catalogo.controller.js).
+// Parâmetro mantido no signature (compatibilidade dos call sites
+// existentes) mesmo sem uso direto no corpo.
 async function gerarPdfCatalogo(produtos, tituloBusca, destino) {
-  const doc = new PDFDocument({ size: "A4", margin: 0, autoFirstPage: false, bufferPages: true });
-  doc.pipe(destino);
-  // Registrada uma vez por documento — precisa vir antes de qualquer
-  // doc.font(TITULO_FONTE) (ver _desenharCabecalho).
-  doc.registerFont(TITULO_FONTE, TITULO_FONTE_ARQUIVO);
-  // Fonte do número de página no rodapé (pedido do usuário, 2026-09-08) —
-  // ver comentário em RODAPE_NUMERO_FONTE acima.
-  doc.registerFont(RODAPE_NUMERO_FONTE, RODAPE_NUMERO_FONTE_ARQUIVO);
-
-  let pagina = 0;
-
-  function novaPagina() {
-    doc.addPage();
-    pagina += 1;
-    _desenharCabecalho(doc, tituloBusca);
-    _desenharRodape(doc, pagina);
-    doc.y = AREA_TOPO_Y;
-  }
-
-  novaPagina();
-
-  // 2026-08-26 (Issue #21): matemática de grade extraída pra _geometriaGrid
-  // (reusada também por gerarPdfCatalogoCompleto) — mesmo cálculo de
-  // sempre, só que agora numa função parametrizada por cols/rows em vez de
-  // usar COLS/ROWS_POR_PAGINA direto aqui dentro.
-  const { cardWidth, cardHeight, photoBoxWidth, photoBoxHeight, areaFimY } =
-    _geometriaGrid(doc, COLS, ROWS_POR_PAGINA);
-
-  let col = 0;
-  let linhaY = doc.y;
-
-  for (let i = 0; i < produtos.length; i += 1) {
-    const produto = produtos[i];
-    // Epsilon de 0.5pt: como cardHeight é calculado pra preencher
-    // EXATAMENTE o espaço disponível (ver _geometriaGrid), a soma
-    // acumulada de ROWS_POR_PAGINA linhas bate matematicamente igual a
-    // areaFimY — mas ponto flutuante às vezes fecha com um resto de
-    // ~1e-13, e sem essa margem isso já disparou uma quebra de página
-    // falsa na última linha (12 cards numa página + 4 sozinhos na próxima,
-    // em vez dos 16 numa página só). O epsilon absorve esse resto sem
-    // abrir espaço perceptível de verdade.
-    if (col === 0 && linhaY + cardHeight > areaFimY + 0.5) {
-      novaPagina();
-      linhaY = doc.y;
-    }
-
-    const x = PAGE_MARGIN + col * (cardWidth + GAP);
-    const y = linhaY;
-
-    _desenharCard(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth, photoBoxHeight);
-
-    col += 1;
-    if (col >= COLS) {
-      col = 0;
-      linhaY += cardHeight + GAP;
-    }
-
-    // Ver comentário de CEDER_A_CADA_N_BLOCOS no topo do arquivo — devolve
-    // o controle ao event loop periodicamente pra não travar o servidor
-    // inteiro durante uma exportação grande.
-    if (i > 0 && i % CEDER_A_CADA_N_BLOCOS === 0) await _cederEventLoop();
-  }
-
-  doc.end();
+  return gerarPdfCatalogoCompleto(produtos, "", destino, null, false);
 }
 
 /**
@@ -3388,7 +3544,21 @@ async function gerarPdfCatalogoCompleto(produtos, fabricante, destino, tipoCompl
   // dois grupos — ver catalogo.controller.js/catalogo-x2.service.js.
   const estilo = _estiloCatalogoCompleto(fabricante, tipoCompleto);
 
-  const doc = new PDFDocument({ size: "A4", margin: 0, autoFirstPage: false, bufferPages: true });
+  if (estilo === "arielo") {
+    // eslint-disable-next-line global-require
+    return require("./catalogo-pdf-arielo.service").gerarPdfCatalogoArielo(produtos, fabricante, destino, _interno());
+  }
+
+  // 2026-10-09 (auditoria de performance): `bufferPages: true` REMOVIDO.
+  // Com ela, o pdfkit não finaliza nenhuma página no addPage: guarda todas em
+  // _pageBuffer e, só no doc.end(), roda um zlib.deflateSync POR PÁGINA de uma
+  // vez só — um bloqueio síncrono de vários segundos no fim da geração, depois
+  // do último await, justamente quando o usuário acha que acabou. A flag não
+  // servia pra nada aqui: ela só é necessária pra doc.switchToPage(), que este
+  // gerador evita de propósito (ver comentário mais abaixo). Sem ela, cada
+  // página é finalizada no addPage seguinte — dentro do laço, entre as
+  // chamadas de _cederEventLoop — distribuindo o custo. O PDF sai idêntico.
+  const doc = new PDFDocument({ size: "A4", margin: 0, autoFirstPage: false });
   doc.pipe(destino);
   doc.registerFont(TITULO_FONTE, TITULO_FONTE_ARQUIVO);
   // Quicksand só é usada no card do Catálogo Completo (_desenharCardCatalogoCompleto)
@@ -3408,10 +3578,23 @@ async function gerarPdfCatalogoCompleto(produtos, fabricante, destino, tipoCompl
     ? _agruparPorMarca(produtos).map(({ marca, produtos: itens }) => ({ linha: marca, itens }))
     : _agruparPorLinha(produtos);
 
+  // 2026-09-22 (pedido do usuário: "muito espaço do cabeçalho até a linha e
+  // embaixo tem muito espaço também"): estilo mecânica usa cabeçalho
+  // (MECANICA_HEADER_HEIGHT) e rodapé (MECANICA_RODAPE_ALTURA) próprios, bem
+  // mais enxutos que a arte/imagem da elétrica (HEADER_HEIGHT/FOOTER_HEIGHT)
+  // — daqui pra baixo, toda conta de área disponível (índice E grade de
+  // cards) usa estas duas variáveis "efetivas" em vez das constantes fixas,
+  // senão o cabeçalho/rodapé encolhem mas a área de conteúdo continua
+  // reservando o vão antigo, maior, só empurrando o espaço sobrando pra
+  // outro lugar da página.
+  const headerHeightIndiceEfetivo = estilo === "mecanica" ? MECANICA_HEADER_HEIGHT : INDICE_HEADER_HEIGHT;
+  const areaTopoYIndiceEfetivo = headerHeightIndiceEfetivo + INDICE_TITULO_GAP_TOPO + INDICE_TITULO_TAMANHO + INDICE_TITULO_GAP_LINHAS;
+  const alturaRodapeReal = estilo === "mecanica" ? MECANICA_RODAPE_ALTURA : FOOTER_HEIGHT;
+
   // --- Pré-cálculo da paginação do índice (ver comentário acima) ---
   const larguraUtilIndice = A4_LARGURA - PAGE_MARGIN * 2;
-  const areaFimYIndice = A4_ALTURA - FOOTER_HEIGHT - 8;
-  const alturaDisponivelIndice = areaFimYIndice - AREA_TOPO_Y_INDICE;
+  const areaFimYIndice = A4_ALTURA - alturaRodapeReal - 8;
+  const alturaDisponivelIndice = areaFimYIndice - areaTopoYIndiceEfetivo;
   const linhasPorPaginaIndice = Math.max(1, Math.floor(alturaDisponivelIndice / INDICE_LINHA_ALTURA));
   const paginasIndice = Math.max(1, Math.ceil(grupos.length / linhasPorPaginaIndice));
 
@@ -3435,8 +3618,21 @@ async function gerarPdfCatalogoCompleto(produtos, fabricante, destino, tipoCompl
   // geométrica (ver comentário na função), então index/paginação real se
   // ajustam sozinhos a partir daqui.
   const rowsCompleto = estilo === "mecanica" ? ROWS_POR_PAGINA_COMPLETO_MECANICA : ROWS_POR_PAGINA_COMPLETO;
-  const geometriaCompleto = _geometriaGrid(doc, COLS_COMPLETO, rowsCompleto, true);
-  const { posicoes, preenchimentoFinal } = _calcularLayoutConteudo(sequencia, geometriaCompleto, alturaHeaderMarca);
+  // 2026-09-22: mesma lógica de overrides já usada pelo Catálogo Promocional
+  // (ver comentário em _geometriaGrid) — pro estilo mecânica, recalcula
+  // areaTopoY/areaFimY com MECANICA_HEADER_HEIGHT/MECANICA_RODAPE_ALTURA em
+  // vez das constantes AREA_TOPO_Y/FOOTER_HEIGHT (calibradas pro cabeçalho/
+  // rodapé bem mais altos da elétrica). Estilo elétrica passa a mesma conta
+  // que os defaults internos de _geometriaGrid já faziam — comportamento
+  // idêntico a antes, sem mudança.
+  const geometriaOverrides = estilo === "mecanica"
+    ? {
+        areaTopoY: MECANICA_HEADER_HEIGHT + TITULO_GAP_TOPO + TITULO_TAMANHO + TITULO_GAP_CARDS,
+        areaFimY: A4_ALTURA - alturaRodapeReal - 30.349,
+      }
+    : { areaTopoY: AREA_TOPO_Y, areaFimY: A4_ALTURA - alturaRodapeReal - 30.349 };
+  const geometriaCompleto = _geometriaGrid(doc, COLS_COMPLETO, rowsCompleto, true, geometriaOverrides);
+  const { posicoes, preenchimentoFinal } = _calcularLayoutConteudo(sequencia, geometriaCompleto, alturaHeaderMarca, false, alturaRodapeReal);
   const paginaInicialPorGrupo = primeiroIndicePorGrupo.map(
     (idx) => paginasIndice + 1 + posicoes[idx].pagina
   );
@@ -3453,7 +3649,7 @@ async function gerarPdfCatalogoCompleto(produtos, fabricante, destino, tipoCompl
 
     const offset = p * linhasPorPaginaIndice;
     const linhasDestaPagina = grupos.slice(offset, offset + linhasPorPaginaIndice);
-    let y = AREA_TOPO_Y_INDICE;
+    let y = areaTopoYIndiceEfetivo;
     linhasDestaPagina.forEach((grupo, i) => {
       _desenharLinhaIndice(doc, grupo.linha, paginaInicialPorGrupo[offset + i], y, larguraUtilIndice);
       y += INDICE_LINHA_ALTURA;
@@ -3628,7 +3824,16 @@ async function gerarPdfCatalogoCompleto(produtos, fabricante, destino, tipoCompl
  * (mesmo campo, significado diferente por modo — ver _agruparPorFabricante).
  */
 async function gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino, modo = "linha") {
-  const doc = new PDFDocument({ size: "A4", margin: 0, autoFirstPage: false, bufferPages: true });
+  // 2026-10-09 (auditoria de performance): `bufferPages: true` REMOVIDO.
+  // Com ela, o pdfkit não finaliza nenhuma página no addPage: guarda todas em
+  // _pageBuffer e, só no doc.end(), roda um zlib.deflateSync POR PÁGINA de uma
+  // vez só — um bloqueio síncrono de vários segundos no fim da geração, depois
+  // do último await, justamente quando o usuário acha que acabou. A flag não
+  // servia pra nada aqui: ela só é necessária pra doc.switchToPage(), que este
+  // gerador evita de propósito (ver comentário mais abaixo). Sem ela, cada
+  // página é finalizada no addPage seguinte — dentro do laço, entre as
+  // chamadas de _cederEventLoop — distribuindo o custo. O PDF sai idêntico.
+  const doc = new PDFDocument({ size: "A4", margin: 0, autoFirstPage: false });
   doc.pipe(destino);
   doc.registerFont(TITULO_FONTE, TITULO_FONTE_ARQUIVO);
   doc.registerFont(PROMO_TITULO_FONTE, PROMO_TITULO_FONTE_ARQUIVO);
@@ -3659,7 +3864,23 @@ async function gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino, m
   // reverte a decisão anterior ("Mantém cabeçalho de Linha" via índice, ver
   // comentário acima no JSDoc) só pra esta função; `gerarPdfCatalogoCompleto`
   // continua com índice normalmente, não é afetado.
-  const { sequencia } = _construirSequenciaConteudoPromocional(grupos, modo === "fabricante");
+  // BUG REAL achado em auditoria (2026-09-23): modo "linha" passava `false`
+  // aqui — grupos (Linhas) diferentes podiam compartilhar a MESMA linha da
+  // grade, coluna a coluna, sem quebra nenhuma entre eles. Como o cabeçalho
+  // grande da página (_desenharCabecalhoPromo, logo abaixo) só é redesenhado
+  // em troca de PÁGINA, nunca em troca de Linha no meio dela, uma seleção
+  // promocional misturando categorias (comum — é o uso normal do recurso)
+  // podia mostrar um título ("AMORTECEDOR DE CAPO", por exemplo) cobrindo
+  // produtos de Linhas completamente diferentes embaixo (chicote, estator,
+  // induzido — nenhuma relação com o título). Mesma classe de bug já
+  // corrigida no Catálogo Completo em 2026-09-05 (Linha nova no meio da
+  // página sem indicação nenhuma) — lá a correção foi repetir o nome da
+  // Linha; aqui, sem o mecanismo de cabeçalho de marca do Completo, a
+  // correção equivalente mais simples e já testada é sempre iniciar cada
+  // grupo numa linha de grade nova (`true`, como o modo "fabricante" já
+  // fazia) — ver forcarQuebraEntreGrupos logo abaixo, que passa a valer
+  // pros dois modos.
+  const { sequencia } = _construirSequenciaConteudoPromocional(grupos, true);
   // 2026-08-31 (pedido do usuário: "reduza mais esse espaço e suba mais um
   // pouco o rodapé"): a grade do Promocional reusava AREA_TOPO_Y/
   // FOOTER_HEIGHT do Catálogo padrão (cabeçalho/rodapé bem mais altos),
@@ -3678,9 +3899,12 @@ async function gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino, m
     areaTopoY: alturaCabecalhoPromo + GAP,
     areaFimY: A4_ALTURA - alturaRodapePromo - GAP,
   });
-  // forcarQuebraEntreGrupos só no modo "fabricante" (ver comentário em
-  // _construirSequenciaConteudoPromocional) — modo "linha" mantém a
-  // paginação contínua de sempre, sem quebra forçada entre Linhas.
+  // forcarQuebraEntreGrupos agora SEMPRE true, nos dois modos (antes só no
+  // "fabricante" — ver comentário no call site de
+  // _construirSequenciaConteudoPromocional acima sobre o bug de título
+  // divergente do conteúdo que isso corrige no modo "linha"). Mesmo
+  // princípio já documentado pro "fabricante": "o cabeçalho da página
+  // precisa sempre corresponder a TODOS os cards que aparecem nela".
   // BUG REAL 2026-09-14 (ver comentário completo em _calcularLayoutConteudo
   // sobre `alturaRodapeReal`): passa `alturaRodapePromo` (o rodapé de
   // verdade, mais baixo, deste catálogo) em vez de deixar a função usar o
@@ -3689,7 +3913,7 @@ async function gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino, m
   // que cabia de verdade, e a linha vazia de "preenchimento" tomava o lugar
   // dos produtos que deveriam estar ali.
   const { posicoes, preenchimentoFinal } = _calcularLayoutConteudo(
-    sequencia, geometriaCompleto, 0, modo === "fabricante", alturaRodapePromo
+    sequencia, geometriaCompleto, 0, true, alturaRodapePromo
   );
 
   let pagina = 0;
@@ -3734,6 +3958,20 @@ async function gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino, m
   if (paginaLocalAtual !== -1) _desenharPreenchimentoDaPagina(paginaLocalAtual);
 
   doc.end();
+}
+
+// Helpers de desenho compartilhados com os catálogos de layout próprio
+// (catalogo-pdf-arielo.service.js) — função (e não objeto) pra resolver os
+// nomes só na hora da chamada, depois de todo o módulo carregado.
+function _interno() {
+  return {
+    _geometriaGrid, _desenharCardCatalogoCompleto, AREA_TOPO_Y, GAP, _desenharCardVidro, _desenharCardVazio,
+    obterFoto, _agruparPorLinha, _cederEventLoop, _desenharCabecalho, _desenharRodape,
+    _desenharCabecalhoIndice, _desenharLinhaIndice, _desenharFotoAjustada, _truncarParaAltura,
+    TITULO_FONTE, TITULO_FONTE_ARQUIVO, RODAPE_NUMERO_FONTE, RODAPE_NUMERO_FONTE_ARQUIVO,
+    A4_LARGURA, A4_ALTURA, PAGE_MARGIN, FOOTER_HEIGHT,
+    INDICE_HEADER_HEIGHT, INDICE_TITULO_GAP_TOPO, INDICE_TITULO_TAMANHO, INDICE_TITULO_GAP_LINHAS, INDICE_LINHA_ALTURA,
+  };
 }
 
 module.exports = { gerarPdfCatalogo, gerarPdfCatalogoCompleto, gerarPdfCatalogoPromocional, limparCacheBboxFotos };

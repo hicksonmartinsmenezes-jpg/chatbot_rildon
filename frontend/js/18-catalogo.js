@@ -1058,14 +1058,21 @@ async function _catalogoExportarSelecionadosManual(btnEl) {
   }
 
   try {
-    const formData = new FormData();
-    formData.append("codigos", JSON.stringify(codigos));
-    formData.append("modo", "linha");
-
-    const res = await fetch("/api/catalogo/promocional/exportar-pdf", {
+    // Pedido do usuário (2026-09-19, melhoria "unificar layout"): antes
+    // reusava /api/catalogo/promocional/exportar-pdf só porque já resolvia
+    // uma lista de códigos soltos — só que aquele endpoint desenha com o
+    // cabeçalho/rodapé PRÓPRIOS do Catálogo Promocional (redesign de
+    // 2026-08-31), diferentes da arte do Catálogo Completo. Rota dedicada
+    // (ver exportarPdfSelecionadosHandler/catalogo.controller.js) gera com
+    // o MESMO layout do Catálogo Completo — o usuário pediu que a única
+    // diferença entre os modos continuasse sendo "quais produtos entram",
+    // não o design. Sem upload de CSV aqui, então body JSON simples em vez
+    // de FormData/multipart.
+    const res = await fetch("/api/catalogo/exportar-selecionados-pdf", {
       method: "POST",
       credentials: "include",
-      body: formData,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ codigos }),
     });
 
     if (!res.ok) {

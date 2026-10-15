@@ -867,7 +867,7 @@ describe("ticket.routes", () => {
     // Fechados). Substitui o teste antigo, que travava o comportamento
     // OPOSTO (reabertura manual sempre reenviava a saudação) — ver
     // foiReabertoManualmenteRecente() em ticket.service.js.
-    test("reabertura MANUAL (botão 'Reabrir' em Fechados) DENTRO da janela (60min) também pula a saudação", async () => {
+    test("reabertura MANUAL (botão 'Reabrir' em Fechados) DENTRO da janela (240min/4h) também pula a saudação", async () => {
       const userId = "u-ciclo-2";
       const ticket = await criarTicket(ADMIN, userId);
 
@@ -888,7 +888,7 @@ describe("ticket.routes", () => {
       );
     });
 
-    test("reabertura MANUAL bem depois da janela (60min+) volta a mandar a saudação normalmente — atendimento genuinamente novo", async () => {
+    test("reabertura MANUAL bem depois da janela (240min+) volta a mandar a saudação normalmente — atendimento genuinamente novo", async () => {
       const userId = "u-ciclo-3";
       const ticket = await criarTicket(ADMIN, userId);
 
@@ -902,7 +902,7 @@ describe("ticket.routes", () => {
       // simula o atendente reabrindo agora, mas só assumindo de fato bem
       // mais tarde (ou o relógio real passando dessa janela).
       const realNow = Date.now();
-      const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => realNow + 61 * 60 * 1000);
+      const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => realNow + 241 * 60 * 1000);
       try {
         const outroAtendente = { id: "at-4", nome: "Diego", perfil: "atendente", sector: "vendas" };
         await request(buildApp(outroAtendente)).patch(`/api/tickets/${ticket.id}/assign`).send({});

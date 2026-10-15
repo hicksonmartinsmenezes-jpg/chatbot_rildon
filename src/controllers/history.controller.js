@@ -1,5 +1,5 @@
 const fs = require("fs");
-const { listHistory, listHistoryGrouped, getHistoryById } = require("../services/history.service");
+const { listHistory, listHistoryGrouped, getHistoryGroupedSummary, getHistoryById } = require("../services/history.service");
 const { resolverCaminhoMidia } = require("../services/mediaStorage.service");
 const { canonicalizeUserId } = require("../whatsapp/lid-map");
 const logger = require("../utils/logger");
@@ -57,30 +57,65 @@ async function getHistoryHandler(req, res) {
 // recente + total de interações), não um recorte plano das últimas N
 // mensagens da loja inteira — ver comentário em history.repository.js
 // (findGroupedByUser) sobre o bug que isso corrige.
+// PAGINAÇÃO DO PAINEL DE HISTÓRICO (pedido do usuário, 2026-09-23: "meu
+// histórico ainda carrega absolutamente todos, preciso que distribua
+// 1-2-3 igual contatos"): antes só aceitava `limit`/`offset` sem devolver
+// o total de clientes que batem no filtro, então o frontend não tinha como
+// calcular quantas páginas existem — por isso nunca paginava de verdade e
+// só usava um limit=500 fixo (ver 04-history.js). Agora aceita também
+// `page` (igual getHistoryHandler já faz pra /api/history), e a resposta
+// inclui `total` (clientes únicos que batem no filtro, pro cálculo de
+// totalPages) e `summary` (contagens agregadas sobre TODAS as linhas do
+// filtro, não só a página atual — os 4 cards de resumo do painel usam
+// isso em vez de somar o array parcial que chega no navegador).
 async function getHistoryGroupedHandler(req, res) {
   try {
     const { q, from, to, horaInicio, horaFim } = req.query;
 
+    const page = Math.max(parseInt(req.query.page || "1", 10), 1);
+
     const limit = Math.min(
-      Math.max(parseInt(req.query.limit || "500", 10), 1),
+      Math.max(parseInt(req.query.limit || "40", 10), 1),
       2000
     );
-    const offset = Math.max(parseInt(req.query.offset || "0", 10), 0);
 
-    const result = await listHistoryGrouped({
+    // offset explícito continua aceito (compatibilidade), mas page tem
+    // prioridade quando os dois vierem — mesmo padrão de getHistoryHandler.
+    const offset = req.query.page
+      ? (page - 1) * limit
+      : Math.max(parseInt(req.query.offset || "0", 10), 0);
+
+    const filtros = {
       q:    q    || undefined,
       from: from || undefined,
       to:   to   || undefined,
       horaInicio: horaInicio || undefined,
       horaFim:    horaFim    || undefined,
-      limit,
-      offset,
-    });
+    };
 
-    res.json({ count: result.length, data: result });
+    const [result, summary] = await Promise.all([
+      listHistoryGrouped({ ...filtros, limit, offset }),
+      getHistoryGroupedSummary(filtros),
+    ]);
+
+    res.json({
+      page,
+      limit,
+      total: summary.totalClientes,
+      count: result.length,
+      data: result,
+      summary,
+    });
   } catch (err) {
     logger.error("❌ Erro ao buscar histórico agrupado:", err.message);
-    res.status(500).json({ count: 0, data: [] });
+    res.status(500).json({
+      page: 1,
+      limit: 40,
+      total: 0,
+      count: 0,
+      data: [],
+      summary: { totalClientes: 0, totalRegistros: 0, hoje: 0, comResposta: 0 },
+    });
   }
 }
 

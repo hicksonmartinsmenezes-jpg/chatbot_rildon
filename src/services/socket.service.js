@@ -106,10 +106,17 @@ function initSocket(server) {
   io.on("connection", socket => {
     logger.info(`Painel conectado: ${socket.id} (user: ${socket.user?.usuario || socket.user?.nome || "?"})`);
 
-    socket.on("user_online", user => {
-      if (!user?.id) return;
+    // CORRIGIDO (varredura 2026-09-30): o payload enviado pelo cliente era
+    // confiado (qualquer sessão podia marcar outro usuário como online ou
+    // trocar o nome exibido). Agora a identidade vem da sessão autenticada.
+    socket.on("user_online", () => {
+      const u = socket.user;
+      if (!u?.id) return;
 
-      setUserOnline(user.id, socket.id, user);
+      setUserOnline(u.id, socket.id, {
+        id: u.id, nome: u.nome, usuario: u.usuario, perfil: u.perfil,
+        sector: u.sector, foto: u.foto
+      });
       io.emit("online_users", getOnlineUsers());
     });
 

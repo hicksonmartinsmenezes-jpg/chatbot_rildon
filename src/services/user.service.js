@@ -8,25 +8,40 @@ const userRepository =
 
 const SALT_ROUNDS = 10;
 
-// Cada perfil possui um conjunto máximo de telas. Permissões individuais
-// podem somente remover telas desse conjunto.
+// Lista canônica das telas do menu — espelha PANEL_SCREEN_PERMISSIONS em
+// frontend/js/09-users.js (mesmos 9 ids). Cada perfil sugere um conjunto
+// PADRÃO de telas (PROFILE_SCREEN_ACCESS abaixo), mas a permissão
+// individual sempre pode sobrepor em qualquer direção — LIBERAR uma tela
+// fora do padrão do perfil (pedido do usuário, 2026-09-19: "não consigo dar
+// permissão... mesmo que seja atendente ou supervisor") ou RETIRAR uma tela
+// que o perfil teria por padrão (comportamento que já existia antes).
+const ALL_SCREEN_IDS = [
+  "dashboard", "conversations", "history", "contacts", "catalogo",
+  "channels", "metrics", "chatbot", "settings"
+];
+
+// "Padrão" de cada perfil quando a tela não foi definida explicitamente em
+// `permissions` — usado só como fallback, nunca mais como teto. admin não
+// tem entrada aqui de propósito (normalizeScreenPermissions trata perfil
+// "admin" à parte, sempre liberando tudo).
 const PROFILE_SCREEN_ACCESS = {
   atendente: new Set(["dashboard", "conversations", "history", "contacts", "catalogo"]),
-  supervisor: new Set(["dashboard", "conversations", "history", "contacts", "catalogo", "channels", "metrics"]),
-  admin: null
+  supervisor: new Set(["dashboard", "conversations", "history", "contacts", "catalogo", "channels", "metrics"])
 };
 
 function normalizeScreenPermissions(perfil, permissions = {}) {
-  const allowed = PROFILE_SCREEN_ACCESS[perfil] || PROFILE_SCREEN_ACCESS.atendente;
-
   if (perfil === "admin") {
-    return { ...permissions };
+    // admin sempre tem acesso total — não faz sentido restringir a única
+    // conta que administra o resto (evita o risco de autoexclusão
+    // acidental do próprio painel).
+    return Object.fromEntries(ALL_SCREEN_IDS.map(screen => [screen, true]));
   }
 
+  const defaultSet = PROFILE_SCREEN_ACCESS[perfil] || PROFILE_SCREEN_ACCESS.atendente;
   const normalized = {};
-  for (const screen of allowed) {
+  for (const screen of ALL_SCREEN_IDS) {
     normalized[screen] = permissions[screen] === undefined
-      ? true
+      ? defaultSet.has(screen)
       : permissions[screen] === true;
   }
   return normalized;

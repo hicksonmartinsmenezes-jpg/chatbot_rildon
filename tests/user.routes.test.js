@@ -89,7 +89,8 @@ function installFakePool(state) {
       // Reativação (userRepository.reactivate) — usuário existente
       // (ativo=false) é atualizado em vez de inserido de novo, já que
       // "usuario" tem UNIQUE NOT NULL.
-      const u = state.users.find(x => x.id === params[6]);
+      // reactivate() recebe permissions como $7 e o id como $8.
+      const u = state.users.find(x => x.id === params[7]);
       if (!u) return { rows: [] };
       u.nome = params[0]; u.senha = params[1]; u.perfil = params[2];
       u.sector = params[3]; u.numero = params[4]; u.foto = params[5];
@@ -219,5 +220,31 @@ describe("GET /api/users — ticketsAtivos (status 'em atendimento' no painel)",
     const elis = res.body.find(u => u.usuario === "elis");
 
     expect(elis.ticketsAtivos).toBe(0);
+  });
+});
+
+describe("Proteção de contas admin (varredura 2026-09-30)", () => {
+  let state;
+  const SUPERVISOR = { id: "sup-1", nome: "Sara Supervisora", perfil: "supervisor", sector: "geral" };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    state = buildState();
+    state.users.push({ id: "admin-2", nome: "Outro Admin", usuario: "admin2", senha: "x", perfil: "admin", ativo: true, sector: "geral", permissions: {} });
+    installFakePool(state);
+  });
+
+  test("supervisor com tela settings NÃO redefine a senha de um admin", async () => {
+    const res = await request(buildApp(SUPERVISOR)).patch("/api/users/admin-2/password").send({ senha: "4821" });
+    expect(res.status).toBe(403);
+    expect(state.users[0].senha).toBe("x");
+  });
+
+  test("supervisor NÃO altera permissões nem exclui um admin", async () => {
+    const app = buildApp(SUPERVISOR);
+    const perm = await request(app).patch("/api/users/admin-2/permissions").send({ permissions: { metrics: false } });
+    const del = await request(app).delete("/api/users/admin-2");
+    expect(perm.status).toBe(403);
+    expect(del.status).toBe(403);
   });
 });

@@ -106,7 +106,7 @@ async function _loadConversationsCore(silent = false) {
 
     // BUG CORRIGIDO (relatado pelo usuário): cliente com ticket fechado que
     // manda mensagem FORA da janela de reopen (TICKET_REOPEN_WINDOW_MINUTOS,
-    // padrão 60min) não reabre o ticket antigo de propósito (ver comentário
+    // padrão 240min/4h) não reabre o ticket antigo de propósito (ver comentário
     // em reopenTicketIfClosed, ticket.service.js) — o bot responde
     // normalmente, mas nenhum ticket novo é criado só por isso (uma saudação
     // não deveria virar ticket sozinha). Resultado: ticketsByUser[uid] ainda
@@ -157,19 +157,41 @@ async function _loadConversationsCore(silent = false) {
     // pesquisa de satisfação como efeito colateral. Ticket genuinamente
     // "aberto" continua pendente independente do dia (esse não foi o caso
     // relatado, e um ticket aberto de verdade sempre precisa de ação).
-    const hoje = new Date().toDateString();
+    //
+    // BUG CORRIGIDO (pedido do usuário, 2026-09-23: "analise se as condições
+    // de reabrir esta batendo"): o corte acima usava "mesmo dia do
+    // calendário" (toDateString()), recalculado a cada render — diferente da
+    // janela em HORAS (configurável, padrão 240min/4h) que o BACKEND usa pra
+    // tudo relacionado a reabertura (reopenTicketIfClosed, preservar nota de
+    // satisfação, pular saudação/pesquisa — ver ticket.service.js,
+    // _getReopenWindowMs). Resultado: um cliente que reengajava uma conversa
+    // fechada há muito tempo (fora da janela do backend, sem gerar ticket
+    // novo) perto da meia-noite aparecia em Pendentes, e SUMIA sozinho da
+    // lista assim que o dia virava — mesmo sem nenhum atendente ter visto ou
+    // respondido. Agora usa a MESMA janela rolante (em minutos, cacheada em
+    // window.reopenWindowMinutosAtual por loadBotToggleStatus, 08-settings.js
+    // — /api/settings é admin-only, por isso vem de /api/bot-status) contada
+    // a partir da mensagem em si, não da data do calendário.
     function estaPendente(uid) {
       const t = ticketsByUser[uid];
       const lastMsg = lastMsgAtByUser[uid];
-      const ehDeHoje = !!(lastMsg && new Date(lastMsg).toDateString() === hoje);
-      if (!t) return ehDeHoje;
+      const janelaMs = (Number(window.reopenWindowMinutosAtual) || 240) * 60 * 1000;
+      const dentroDaJanela = !!(lastMsg && (Date.now() - lastMsg) <= janelaMs);
+      if (!t) return dentroDaJanela;
       if (t.status === "aberto") return true;
       if (t.status === "resolvido" || t.status === "cancelado") {
-        return !!(lastMsg && t.updatedAt && lastMsg > new Date(t.updatedAt).getTime() && ehDeHoje);
+        return !!(lastMsg && t.updatedAt && lastMsg > new Date(t.updatedAt).getTime() && dentroDaJanela);
       }
       return false;
     }
     window.estaPendente = estaPendente; // usado por _scheduleConvReload em 12-socket.js
+
+    // Ainda usado abaixo por dois cálculos que são GENUINAMENTE "mesmo dia do
+    // calendário" por definição (não janela de reabertura): reconciliação do
+    // contador de não-lidas (universoNaoLidaValido) e a aba "Fechados" (só
+    // mostra quem fechou HOJE) — diferente de estaPendente() acima, que agora
+    // usa a janela rolante de reabertura em vez disso.
+    const hoje = new Date().toDateString();
 
     // BUG CORRIGIDO DE VEZ (relatado pelo usuário 2026-08-17: "painel mostra
     // 44 notificações porém existe apenas uma única mensagem nova"):
@@ -231,17 +253,30 @@ async function _loadConversationsCore(silent = false) {
     // não é visível PRA MIM). A lista realmente exibida já excluía esses
     // usuários via hiddenActiveUserIds (linha abaixo, "usersSeen") — o badge
     // não aplicava esse mesmo filtro. Agora aplica.
-    const pendentes   = Object.keys(ticketsByUser).filter(uid => estaPendente(uid)).length
-      + Object.keys(lastMsgAtByUser).filter(uid => !ticketsByUser[uid] && !hiddenActiveUserIds.has(uid) && new Date(lastMsgAtByUser[uid]).toDateString() === hoje).length;
+    //
+    // BUG CORRIGIDO (2026-09-23, mesma análise de "condições de reabrir"):
+    // o 2º termo (uid "sem ticket") tinha sua PRÓPRIA cópia da regra de
+    // "pendente" (toDateString() === hoje), em vez de chamar estaPendente()
+    // como o 1º termo já fazia — quando estaPendente() passou a usar a
+    // janela rolante de reabertura em vez do corte por dia do calendário
+    // (ver comentário acima da função), esse 2º termo ficou desalinhado: o
+    // NÚMERO do badge podia dizer uma coisa e a LISTA (que usa estaPendente
+    // pra TODOS os uids, com ou sem ticket) mostrar outra. Unificado num só
+    // conjunto de uids passando pela mesma função, pra nunca mais divergir.
+    const todosOsUidsComAtividade = new Set([...Object.keys(ticketsByUser), ...Object.keys(lastMsgAtByUser)]);
+    const pendentes = [...todosOsUidsComAtividade]
+      .filter(uid => !hiddenActiveUserIds.has(uid) && estaPendente(uid)).length;
     const emAndamento = Object.values(ticketsByUser).filter(t => t.status === "em_andamento").length;
     const badgeP = document.getElementById("badge-pendentes");
     const badgeA = document.getElementById("badge-em_andamento");
+    // setTextPop (Issue #14): pop de escala só quando o número muda de
+    // verdade (evita animar a cada poll silencioso com o mesmo valor).
     if (badgeP) {
-      badgeP.textContent = pendentes;
+      setTextPop("badge-pendentes", pendentes);
       badgeP.style.display = pendentes > 0 ? "" : "none";
     }
     if (badgeA) {
-      badgeA.textContent = emAndamento;
+      setTextPop("badge-em_andamento", emAndamento);
       badgeA.style.display = emAndamento > 0 ? "" : "none";
     }
 
@@ -306,7 +341,38 @@ async function _loadConversationsCore(silent = false) {
       return;
     }
 
-    list.innerHTML = users.map(userId => {
+    // Reconciliação incremental do DOM (pedido do usuário, 2026-09-23:
+    // "sempre que chega mensagem... a página atualiza sozinha, queria só
+    // que subisse a mensagem"). Antes, mesmo com `silent=true` (o próprio
+    // comentário da função já dizia que o objetivo era "evitar piscar em
+    // polls automáticos"), esta etapa final fazia `list.innerHTML =` com
+    // TODOS os itens de novo a cada nova mensagem — inclusive conversas que
+    // não mudaram nada. Isso recriava a lista inteira (perde scroll/hover,
+    // "pisca" tudo) só pra fazer 1 item mudar de posição. Agora reaproveita
+    // os nós já no DOM (chave = data-user), só troca o conteúdo de quem
+    // mudou de verdade e reordena via appendChild — visualmente só a
+    // conversa que recebeu mensagem nova "sobe" pro topo, o resto não é
+    // tocado.
+    // BUG CORRIGIDO (relatado pelo usuário: "minhas mensagens está
+    // carregando infinitamente mas não aparece nenhuma mensagem"): a
+    // reconciliação só reaproveita/adiciona nós `.chat-item` — mas não
+    // limpava o que sobrava de ANTES na lista (o skeleton de "Carregando..."
+    // do início da função, ou a mensagem de "Nenhuma conversa encontrada"/
+    // erro de uma chamada anterior). Sem isso, os itens reais eram
+    // adicionados DEPOIS do skeleton em vez de substituí-lo — a lista
+    // parecia travada "carregando" pra sempre porque o skeleton nunca saía
+    // da tela. Remove qualquer coisa que não seja um item de conversa antes
+    // de reconciliar.
+    Array.from(list.children).forEach(node => {
+      if (!node.classList.contains("chat-item")) node.remove();
+    });
+
+    const existingChatNodes = new Map();
+    list.querySelectorAll(":scope > .chat-item").forEach(node => {
+      if (node.dataset.user) existingChatNodes.set(node.dataset.user, node);
+    });
+
+    for (const userId of users) {
       const last    = getLastHistoryItem(userId);
       const name    = getContactName(userId) || formatPhone(userId);
       const preview = lastMessage(userId);
@@ -323,8 +389,7 @@ async function _loadConversationsCore(silent = false) {
       // laranja/azul/vermelho ilegível antes.
       const unreadLabel = unread > 99 ? "99+" : unread; // igual ao badge da sidebar (updateSidebarUnreadBadge)
 
-      return `
-        <button type="button" class="chat-item ${statusClass}" data-user="${escapeAttr(userId)}" data-conv-list-action="open">
+      const innerHtml = `
           ${avatarHtml(userId, name)}
           <span class="chat-item-body">
             <span class="chat-item-top">
@@ -337,9 +402,31 @@ async function _loadConversationsCore(silent = false) {
             </span>
             ${statusPill ? `<span class="chat-item-row3">${statusPill}</span>` : ""}
           </span>
-        </button>
       `;
-    }).join("");
+      const className = `chat-item ${statusClass}`.trim();
+
+      let node = existingChatNodes.get(userId);
+      if (node) {
+        existingChatNodes.delete(userId);
+        if (node.className !== className) node.className = className;
+        if (node.innerHTML !== innerHtml) node.innerHTML = innerHtml;
+      } else {
+        node = document.createElement("button");
+        node.type = "button";
+        node.dataset.user = userId;
+        node.dataset.convListAction = "open";
+        node.className = className;
+        node.innerHTML = innerHtml;
+      }
+      // appendChild move o nó se já existir no DOM, ou insere no fim se for
+      // novo — como o loop segue a ordem final (`users`, já ordenado por
+      // última atividade), o resultado é a ordem correta sem recriar nada.
+      list.appendChild(node);
+    }
+
+    // Remove quem saiu da lista (mudou de aba/filtro, ticket sumiu, etc.)
+    for (const node of existingChatNodes.values()) node.remove();
+
     bindConversationListDelegation();
     if (!silent) applyStaggerIn(list);
 
@@ -404,6 +491,145 @@ function renderMediaBubble(item) {
       <i class="fa-solid fa-paperclip"></i> ${safe(nomeArquivo)}
     </a>
   `;
+}
+
+// Constrói o HTML de um lote de mensagens (mais antiga → mais nova) para o
+// chat. Extraído de dentro de openConversation (pedido do usuário,
+// 2026-09-23: paginar o histórico) pra poder ser reaproveitado tanto no
+// carregamento inicial quanto ao "Carregar mensagens anteriores" e ao
+// mesclar mensagem nova chegando via socket — sem duplicar essa lógica de
+// render em 3 lugares.
+//
+// dayState = { lastDay } é mutado in-place pra saber, no fim, qual foi o
+// último separador de dia usado neste lote (usado por quem chama pra
+// decidir se precisa remover um separador de dia duplicado na emenda com o
+// que já está no DOM). Itens cujo item.id já esteja em _renderedHistoryIds
+// são pulados (evita duplicar balão ao mesclar mensagem nova com o que já
+// foi renderizado).
+function buildMessagesHtml(messages, dayState) {
+  const html = [];
+  for (const item of messages) {
+    if (item.id != null && _renderedHistoryIds.has(item.id)) continue;
+
+    const currentDay = dayLabel(item.createdAt);
+    if (currentDay !== dayState.lastDay) {
+      html.push(`<div class="day-separator" data-day="${escapeAttr(currentDay)}"><span>${safe(currentDay)}</span></div>`);
+      dayState.lastDay = currentDay;
+    }
+    if (item.id != null) _renderedHistoryIds.add(item.id);
+
+    if (item.message) {
+      const ehPlaceholderMidia = isMediaPlaceholderLabel(item.message);
+      const podeResponder = Boolean(item.message && item.messageId && !ehPlaceholderMidia);
+      const replyBtn = podeResponder
+        ? `<button type="button" class="bubble-reply-btn" data-reply-msg-id="${escapeAttr(item.messageId)}" data-reply-text="${escapeAttr(item.message.slice(0, 300))}" title="Responder"><i class="fa-solid fa-reply"></i></button>`
+        : "";
+      html.push(`
+        <div class="bubble-row client-row">
+          <div class="bubble client">
+            ${replyBtn}
+            ${renderMediaBubble(item)}
+            ${item.message && !ehPlaceholderMidia ? `<p>${item.mediaMimetype?.startsWith("audio/") ? `<i>${safe(item.message.replace(/^\s*(?:_\*)?Transcrição(?:\*_)?\s*:?[\s\r\n]*/i, "").trim())}</i>` : safe(item.message)}</p>` : ""}
+            <small>${safe(shortTime(item.createdAt))}</small>
+          </div>
+        </div>
+      `);
+    }
+    if (item.response) {
+      const quoteStrip = item.quotedText
+        ? `<div class="bubble-quote"><i class="fa-solid fa-reply"></i> ${safe(item.quotedText.slice(0, 160))}</div>`
+        : "";
+      html.push(`
+        <div class="bubble-row bot-row">
+          <div class="bubble bot"${item.messageId ? ` data-msg-id="${escapeAttr(item.messageId)}"` : ""}>
+            ${quoteStrip}
+            ${renderMediaBubble(item)}
+            ${item.response ? `<p>${safe(item.response)}</p>` : ""}
+            <small>${safe(shortTime(item.createdAt))} <span class="msg-status">${renderMessageStatus(item.status)}</span></small>
+          </div>
+        </div>
+      `);
+    }
+  }
+  return html;
+}
+
+// "Carregar mensagens anteriores" (pedido do usuário, 2026-09-23): busca a
+// próxima página (mais antiga) do histórico da conversa aberta e insere no
+// TOPO do chat, sem re-renderizar o que já está na tela — preserva a
+// posição de leitura (ajusta scrollTop pela altura inserida) e evita
+// separador de dia duplicado na emenda entre os dois lotes.
+async function loadOlderMessages() {
+  if (_historyState.loadingMore || !_historyState.hasMore || !_historyState.userId) return;
+  const messagesBox = document.getElementById("chat-messages");
+  const btn = messagesBox?.querySelector(".chat-load-older-btn");
+  if (!messagesBox) return;
+
+  _historyState.loadingMore = true;
+  if (btn) { btn.disabled = true; btn.textContent = "Carregando..."; }
+
+  try {
+    const nextPage = _historyState.page + 1;
+    const r = await apiFetch(`${BASE}/api/history?userId=${encodeURIComponent(_historyState.userId)}&page=${nextPage}&limit=${HISTORY_PAGE_SIZE}`);
+    if (!r?.ok) return;
+    const raw  = await r.json();
+    const rows = Array.isArray(raw) ? raw : raw.data || [];
+
+    if (!rows.length) {
+      _historyState.hasMore = false;
+      btn?.remove();
+      return;
+    }
+
+    _historyState.page = nextPage;
+    if (rows.length < HISTORY_PAGE_SIZE) _historyState.hasMore = false;
+
+    const olderMessages = [...rows].reverse(); // mais antiga → mais nova, dentro deste lote
+    const dayState = { lastDay: null };
+    let htmlStr = buildMessagesHtml(olderMessages, dayState).join("");
+
+    // Emenda: se o último dia deste lote antigo é o MESMO dia que já está
+    // no topo do que já foi renderizado, remove o separador de dia
+    // duplicado (o que sobra logo acima já cobre esse dia).
+    if (dayState.lastDay && dayState.lastDay === _historyState.topDay) {
+      const marker  = `data-day="${dayState.lastDay.replace(/"/g, "&quot;")}"`;
+      const lastIdx = htmlStr.lastIndexOf(`<div class="day-separator" ${marker}>`);
+      if (lastIdx !== -1) {
+        const closeIdx = htmlStr.indexOf("</div>", lastIdx) + "</div>".length;
+        htmlStr = htmlStr.slice(0, lastIdx) + htmlStr.slice(closeIdx);
+      }
+    } else if (dayState.lastDay) {
+      _historyState.topDay = dayState.lastDay;
+    }
+
+    if (!htmlStr) return; // tudo neste lote já estava renderizado (raro, corrida com socket)
+
+    const prevScrollHeight = messagesBox.scrollHeight;
+    const prevScrollTop    = messagesBox.scrollTop;
+
+    const wrapper = document.createElement("div");
+    wrapper.innerHTML = htmlStr;
+    const frag = document.createDocumentFragment();
+    while (wrapper.firstChild) frag.appendChild(wrapper.firstChild);
+    // Insere logo depois do botão (que fica sempre no topo) — assim o
+    // próximo clique em "carregar mais" continua inserindo o lote ainda
+    // mais antigo no lugar certo, acima do que acabou de entrar.
+    if (btn) messagesBox.insertBefore(frag, btn.nextSibling);
+    else messagesBox.insertBefore(frag, messagesBox.firstChild);
+
+    bindLazyImageFade(messagesBox);
+
+    requestAnimationFrame(() => {
+      const addedHeight = messagesBox.scrollHeight - prevScrollHeight;
+      messagesBox.scrollTop = prevScrollTop + addedHeight;
+    });
+  } catch (_) {
+    // silencioso — usuário pode tentar de novo clicando no botão
+  } finally {
+    _historyState.loadingMore = false;
+    if (btn && _historyState.hasMore) { btn.disabled = false; btn.textContent = "Carregar mensagens anteriores"; }
+    else if (btn && !_historyState.hasMore) btn.remove();
+  }
 }
 
 async function openConversation(userId, updateActive = true) {
@@ -552,10 +778,35 @@ async function openConversation(userId, updateActive = true) {
     return;
   }
 
-  // Busca histórico completo do usuário via API para exibir todas as mensagens
-  let userHistory = allHistory.filter(item => item.userId === userId);
+  // PAGINAÇÃO DO HISTÓRICO (pedido do usuário, 2026-09-23): "histórico de
+  // chat não precisa aparecer exatamente todo em uma página só, pode ficar
+  // dividido... para evitar trava". Antes, esta função buscava e renderizava
+  // até 500 mensagens de uma vez sempre que a conversa era aberta (inclusive
+  // a cada mensagem nova chegando via socket na mesma conversa já aberta —
+  // ver 12-socket.js, evento nova_mensagem) — travava o navegador em
+  // conversas longas. Agora:
+  //   - Conversa DIFERENTE sendo aberta (ou reabertura do zero): busca só a
+  //     página mais recente (HISTORY_PAGE_SIZE) e substitui o conteúdo,
+  //     com um botão "Carregar mensagens anteriores" no topo quando houver
+  //     mais (loadOlderMessages, acima).
+  //   - MESMA conversa já aberta, re-render disparado por mensagem nova
+  //     chegando: busca só a página mais recente e ANEXA no final só o que
+  //     ainda não estava renderizado (via _renderedHistoryIds), sem tocar
+  //     no que já foi carregado (inclusive páginas antigas já trazidas via
+  //     "Carregar mensagens anteriores").
+  // `renderizado`: só vale como "mesma conversa" se o 1º render completo já aconteceu. Sem isso, ao Assumir
+  // (clique + evento do socket quase juntos) a 2ª chamada achava que a conversa já estava na tela e só anexava
+  // mensagens por cima do conteúdo anterior (duplicando/misturando).
+  const isConversaDiferente = !eraMesmaConversaJaAberta || _historyState.userId !== userId || !_historyState.renderizado;
+
+  if (isConversaDiferente) {
+    _historyState = { userId, page: 1, hasMore: false, loadingMore: false, topDay: null, bottomDay: null, renderizado: false };
+    _renderedHistoryIds = new Set();
+  }
+
+  let userHistory = allHistory.filter(item => item.userId === userId).slice(-HISTORY_PAGE_SIZE);
   try {
-    const r = await apiFetch(`${BASE}/api/history?userId=${encodeURIComponent(userId)}&limit=500`, { signal: _openConvAbort.signal });
+    const r = await apiFetch(`${BASE}/api/history?userId=${encodeURIComponent(userId)}&page=1&limit=${HISTORY_PAGE_SIZE}`, { signal: _openConvAbort.signal });
     if (seq !== _openConvSeq) return; // chamada mais nova já assumiu o controle
     if (r?.ok) {
       const raw = await r.json();
@@ -565,103 +816,76 @@ async function openConversation(userId, updateActive = true) {
   } catch (_) {}
 
   if (seq !== _openConvSeq) return; // verificação final antes de renderizar
-
-  const messages = [...userHistory].reverse();
-
   if (!messagesBox) return;
 
-  if (!messages.length) {
-    messagesBox.innerHTML = `<p class="empty chat-empty">Nenhuma mensagem encontrada.</p>`;
+  // hasMore só é confiável a partir do que REALMENTE veio da API (a página
+  // cheia = provavelmente há mais); no fallback offline (allHistory
+  // recortado) não há como saber, então fica false (sem botão) por segurança.
+  if (isConversaDiferente) _historyState.hasMore = userHistory.length >= HISTORY_PAGE_SIZE;
+
+  const messages = [...userHistory].reverse(); // mais antiga → mais nova
+
+  if (isConversaDiferente) {
+    if (!messages.length) {
+      messagesBox.innerHTML = `<p class="empty chat-empty">Nenhuma mensagem encontrada.</p>`;
+      _historyState.renderizado = true;
+      return;
+    }
+
+    const dayState = { lastDay: null };
+    const html = buildMessagesHtml(messages, dayState);
+    _historyState.topDay = dayLabel(messages[0].createdAt);
+    _historyState.bottomDay = dayState.lastDay;
+
+    const loadOlderBtnHtml = _historyState.hasMore
+      ? `<div class="chat-load-older-wrap"><button type="button" class="chat-load-older-btn">Carregar mensagens anteriores</button></div>`
+      : "";
+
+    messagesBox.innerHTML = loadOlderBtnHtml + html.join("");
+    _historyState.renderizado = true;
+    // BUG REAL (2026-09-03, pedido do usuário: "meus arquivos de mídia não
+    // estão sendo carregados"): renderMediaBubble() usa <img loading="lazy">
+    // pra foto do cliente — todo <img loading="lazy"> nasce com opacity:0
+    // (ver 19-motion.css) e só fica visível quando bindLazyImageFade() marca
+    // a classe .is-loaded, depois que a imagem termina de carregar. Esse
+    // bind nunca era chamado aqui (só em 18-catalogo.js), então TODA foto
+    // enviada por cliente no painel de Conversas ficava invisível pra
+    // sempre — o balão da mensagem aparecia (com o tamanho certo), só a
+    // imagem em si nunca "acendia". Mesma classe de bug já documentada em
+    // [[project-bot-rildon-trocar-foto-principal-catalogo]] (bug #2, modal
+    // de trocar foto), agora encontrada aqui.
+    bindLazyImageFade(messagesBox);
+    bindConversationMessagesDelegation();
+    // Aguarda render antes de rolar para garantir altura correta — conversa
+    // recém-aberta sempre começa mostrando o final (mensagens mais recentes).
+    requestAnimationFrame(() => {
+      messagesBox.scrollTop = messagesBox.scrollHeight;
+    });
     return;
   }
 
-  let lastDay = "";
-  const html  = [];
+  // Mesma conversa já aberta — só anexa mensagens novas (ids que ainda não
+  // foram renderizados), sem re-renderizar nem perder páginas antigas já
+  // carregadas via "Carregar mensagens anteriores".
+  if (!messages.length) return;
 
-  for (const item of messages) {
-    const currentDay = dayLabel(item.createdAt);
-    if (currentDay !== lastDay) {
-      html.push(`<div class="day-separator"><span>${safe(currentDay)}</span></div>`);
-      lastDay = currentDay;
-    }
-    // BUG CORRIGIDO (achado na sessão de testes, 2026-07-23): a condição
-    // antiga (`item.message || item.mediaPath`) fazia QUALQUER linha com
-    // mediaPath renderizar do lado do CLIENTE, mesmo quando a mídia foi
-    // enviada pelo ATENDENTE (feature de enviar arquivo — mediaPath +
-    // response, message sempre null nesse caso). Resultado: arquivo/foto
-    // enviado pelo atendente aparecia DUAS VEZES — uma à esquerda (errado)
-    // e uma à direita (certo, no bloco de baixo) — sempre, com ou sem
-    // legenda, já que `response` nunca fica null pro atendente (com
-    // legenda usa o texto digitado; sem legenda usa o fallback "[arquivo
-    // enviado]" do fix anterior). Mídia recebida do cliente sempre grava
-    // um rótulo em `message` (ex: "[imagem recebido]"), então checar só
-    // `item.message` já cobre os dois casos reais de mídia do cliente sem
-    // duplicar a do atendente.
-    if (item.message) {
-      // Feature: responder mensagem específica (pedido do usuário,
-      // 2026-07-23). Só mensagem de TEXTO do cliente pode ser citada — mesmo
-      // escopo do backend (message.controller.js, _buscarContextoCitacao):
-      // uma linha do histórico não distingue com segurança o id da mensagem
-      // do cliente do id da mensagem do próprio atendente, então citar uma
-      // mensagem de mídia (sem texto) ou sem messageId ficaria ambíguo.
-      //
-      // PEDIDO DO USUÁRIO (2026-08-14): não tratar o rótulo interno de mídia
-      // sem legenda ("[imagem recebida]", "[sticker recebido]" etc. — ver
-      // isMediaPlaceholderLabel em conversations-utils.js) como texto de
-      // verdade — nem pra exibir (a mídia já aparece no balão logo acima),
-      // nem pra oferecer resposta/citação em cima dele.
-      const ehPlaceholderMidia = isMediaPlaceholderLabel(item.message);
-      const podeResponder = Boolean(item.message && item.messageId && !ehPlaceholderMidia);
-      const replyBtn = podeResponder
-        ? `<button type="button" class="bubble-reply-btn" data-reply-msg-id="${escapeAttr(item.messageId)}" data-reply-text="${escapeAttr(item.message.slice(0, 300))}" title="Responder"><i class="fa-solid fa-reply"></i></button>`
-        : "";
-      html.push(`
-        <div class="bubble-row client-row">
-          <div class="bubble client">
-            ${replyBtn}
-            ${renderMediaBubble(item)}
-            ${item.message && !ehPlaceholderMidia ? `<p>${item.mediaMimetype?.startsWith("audio/") ? `<i>${safe(item.message.replace(/^\s*(?:_\*)?Transcrição(?:\*_)?\s*:?[\s\r\n]*/i, "").trim())}</i>` : safe(item.message)}</p>` : ""}
-            <small>${safe(shortTime(item.createdAt))}</small>
-          </div>
-        </div>
-      `);
-    }
-    if (item.response) {
-      // Prévia da mensagem citada (reply/quote) — mesmo visual do WhatsApp,
-      // uma faixa acima do texto respondido. Só existe quando esta resposta
-      // foi enviada com quotedMessageId (ver migration 019 e
-      // src/config/whatsapp.js, _buildQuotedMessage).
-      const quoteStrip = item.quotedText
-        ? `<div class="bubble-quote"><i class="fa-solid fa-reply"></i> ${safe(item.quotedText.slice(0, 160))}</div>`
-        : "";
-      html.push(`
-        <div class="bubble-row bot-row">
-          <div class="bubble bot"${item.messageId ? ` data-msg-id="${escapeAttr(item.messageId)}"` : ""}>
-            ${quoteStrip}
-            ${renderMediaBubble(item)}
-            ${item.response ? `<p>${safe(item.response)}</p>` : ""}
-            <small>${safe(shortTime(item.createdAt))} <span class="msg-status">${renderMessageStatus(item.status)}</span></small>
-          </div>
-        </div>
-      `);
-    }
-  }
+  const dayState = { lastDay: _historyState.bottomDay || null };
+  const html = buildMessagesHtml(messages, dayState);
+  if (dayState.lastDay) _historyState.bottomDay = dayState.lastDay;
+  if (!html.length) return; // nada novo (re-render disparado por outro motivo)
 
-  messagesBox.innerHTML = html.join("");
-  // BUG REAL (2026-09-03, pedido do usuário: "meus arquivos de mídia não
-  // estão sendo carregados"): renderMediaBubble() usa <img loading="lazy">
-  // pra foto do cliente — todo <img loading="lazy"> nasce com opacity:0
-  // (ver 19-motion.css) e só fica visível quando bindLazyImageFade() marca
-  // a classe .is-loaded, depois que a imagem termina de carregar. Esse
-  // bind nunca era chamado aqui (só em 18-catalogo.js), então TODA foto
-  // enviada por cliente no painel de Conversas ficava invisível pra
-  // sempre — o balão da mensagem aparecia (com o tamanho certo), só a
-  // imagem em si nunca "acendia". Mesma classe de bug já documentada em
-  // [[project-bot-rildon-trocar-foto-principal-catalogo]] (bug #2, modal
-  // de trocar foto), agora encontrada aqui.
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = html.join("");
+  const frag = document.createDocumentFragment();
+  while (wrapper.firstChild) frag.appendChild(wrapper.firstChild);
+  // Feature (Issue #14): so chegam aqui mensagens NOVAS de uma conversa JA
+  // ABERTA (a conversa recem-aberta/trocada retorna antes, sem animar), entao
+  // so elas ganham a entrada suave (fade+slide) — nunca o historico inteiro.
+  frag.querySelectorAll(".bubble-row").forEach((row) => row.classList.add("msg-enter"));
+  messagesBox.appendChild(frag);
+
   bindLazyImageFade(messagesBox);
   bindConversationMessagesDelegation();
-  // Aguarda render antes de rolar para garantir altura correta
   requestAnimationFrame(() => {
     if (deveAcompanharFinal) {
       messagesBox.scrollTop = messagesBox.scrollHeight;
@@ -685,24 +909,6 @@ function closeMobileChat() {
   selectedConversationUser = null;
 }
 
-// ─── Devolver atendimento ao bot ─────────────────────────────────────────────
-async function releaseToBot(userId) {
-  try {
-    const res = await apiFetch(`${BASE}/api/messages/humanmode/release`, {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ userId })
-    });
-    if (!res?.ok) throw new Error("falhou");
-    humanModeUsers.delete(userId);
-    showToast("🤖 Bot reativado para este cliente.");
-    await loadConversations();
-    if (selectedConversationUser) openConversation(selectedConversationUser);
-  } catch (_) {
-    showToast("❌ Não consegui devolver ao bot.");
-  }
-}
-
 // ─── Ações de ticket na conversa ─────────────────────────────────────────────
 function bindConversationHeaderDelegation() {
   const header = document.getElementById("chat-window-header");
@@ -721,7 +927,6 @@ function bindConversationHeaderDelegation() {
     if (action === "transferir" && ticketId) return transferirTicketConv(ticketId);
     if (action === "fechar" && ticketId) return fecharTicketConv(ticketId);
     if (action === "reabrir" && userId) return reabrirTicketConv(userId);
-    if (action === "release-bot" && userId) return releaseToBot(userId);
   });
 }
 
@@ -1161,9 +1366,17 @@ function bindConversationMessagesDelegation() {
   box.dataset.delegated = "true";
 
   box.addEventListener("click", (event) => {
-    const btn = event.target.closest("[data-reply-msg-id]");
-    if (!btn || !box.contains(btn)) return;
-    replyToMessage(btn.dataset.replyMsgId, btn.dataset.replyText || "");
+    const replyBtn = event.target.closest("[data-reply-msg-id]");
+    if (replyBtn && box.contains(replyBtn)) {
+      replyToMessage(replyBtn.dataset.replyMsgId, replyBtn.dataset.replyText || "");
+      return;
+    }
+    // Paginação do histórico (pedido do usuário, 2026-09-23): botão fixo no
+    // topo do chat que busca a próxima página de mensagens mais antigas.
+    const olderBtn = event.target.closest(".chat-load-older-btn");
+    if (olderBtn && box.contains(olderBtn)) {
+      loadOlderMessages();
+    }
   });
 }
 
@@ -1447,7 +1660,8 @@ function updateSidebarUnreadBadge() {
   if (!badge) return;
   const totalUnread = Object.values(unreadMessages).reduce((sum, v) => sum + Number(v || 0), 0);
   if (totalUnread > 0) {
-    badge.textContent = totalUnread > 99 ? "99+" : totalUnread;
+    // setTextPop (Issue #14): pop de escala só quando o valor muda de fato.
+    setTextPop("sidebar-unread-count", totalUnread > 99 ? "99+" : totalUnread);
     badge.classList.remove("hidden");
   } else {
     badge.textContent = "0";

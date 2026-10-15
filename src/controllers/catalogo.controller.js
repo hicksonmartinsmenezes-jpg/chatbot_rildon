@@ -1,7 +1,7 @@
 const crypto = require("crypto");
 const ExcelJS = require("exceljs");
 const logger = require("../utils/logger");
-const { listarFotos, obterFoto, obterFotoPorNome, definirFotoPreferida, ocultarFoto, recarregarIndice: recarregarIndiceFotos, obterVersaoFotos, temMultiplasFotos, adicionarFotoManual } = require("../services/catalogo-fotos.service");
+const { listarFotos, obterFoto, obterFotoPorNome, definirFotoPreferida, ocultarFoto, recarregarIndice: recarregarIndiceFotos, obterVersaoFotos, temMultiplasFotos, temAlgumaFoto, adicionarFotoManual } = require("../services/catalogo-fotos.service");
 const { buscarProdutosPainel, buscarPorCodigo, buscarPorNomePainel, listarFabricantes, listarFabricantesCatalogoCompleto, listarMarcasVeiculoConhecidas, decodificarFabricanteCompleto, recarregarIndices: recarregarIndicesProdutos, listarLinhasParaEdicaoCategoria, definirLinhaProduto, PSEUDO_FABRICANTE_DIVERSOS } = require("../services/catalogo-x2.service");
 const { listarSecoes, listarLinhasPorSecao } = require("../services/catalogo.service");
 const { gerarPdfCatalogo, gerarPdfCatalogoCompleto, gerarPdfCatalogoPromocional, limparCacheBboxFotos } = require("../services/catalogo-pdf.service");
@@ -351,13 +351,22 @@ async function exportarPdfHandler(req, res) {
         });
       }
 
-      // Pedido do usuário (2026-09-05): também só entra produto com foto —
-      // listarFotos é metadados só (índice em memória, sem ler bytes),
-      // barato de chamar por produto mesmo em listas grandes. Aplicado
-      // DEPOIS do filtro de preço, com mensagem própria, pra distinguir no
-      // erro qual dos dois filtros zerou o resultado.
+      // Pedido do usuário (2026-09-05): também só entra produto com foto.
+      // Aplicado DEPOIS do filtro de preço, com mensagem própria, pra
+      // distinguir no erro qual dos dois filtros zerou o resultado.
+      //
+      // 2026-10-09 (auditoria de performance): este filtro usava
+      // `listarFotos(p.codigo).length > 0`, e o comentário antigo afirmava
+      // que listarFotos era "metadados só, sem ler bytes, barato". ERRADO —
+      // listarFotos chama _reordenarFotos, que EXTRAI OS BYTES de cada foto
+      // (openSync + readSync + inflateRawSync no zip) pra ler as dimensões.
+      // Num fabricante de 1000 produtos isso eram ~900 leituras de arquivo
+      // síncronas num único .filter(), com o event loop travado, ANTES de
+      // qualquer header HTTP — o maior travamento de toda a exportação, e
+      // fora do alcance do _cederEventLoop do gerador. temAlgumaFoto responde
+      // a mesma pergunta olhando só o índice em memória.
       const totalAntesDaFoto = produtos.length;
-      produtos = produtos.filter(p => listarFotos(p.codigo).length > 0);
+      produtos = produtos.filter(p => temAlgumaFoto(p.codigo));
       if (!produtos.length) {
         return res.status(404).json({
           error: `${totalAntesDaFoto} peça(s) com preço encontrada(s) pra "${fabricanteCompleto}", mas nenhuma tem foto cadastrada — nada pra exportar.`,
@@ -470,6 +479,67 @@ function _resolverProdutosPorCodigos(codigos) {
     else naoEncontrados.push(codigo);
   });
   return { produtos, naoEncontrados };
+}
+
+// POST /api/catalogo/exportar-selecionados-pdf — "Exportar selecionados
+// (PDF)" da aba Critérios de Pesquisa (melhoria, pedido do usuário
+// 2026-09-19: "a ideia é eu poder montar o catalogo a meu criterio... a
+// unica diferença mesmo é que posso fazer catalogo com apenas aqueles
+// selecionados"). Antes, esse botão reusava
+// /api/catalogo/promocional/exportar-pdf (gerarPdfCatalogoPromocional) só
+// porque já resolvia uma lista de códigos soltos — só que o Promocional
+// tem cabeçalho/rodapé PRÓPRIOS, redesenhados (Issue de 2026-08-31, ver
+// _desenharCabecalhoPromo/catalogo-pdf.service.js), diferentes da arte do
+// Catálogo Completo. Rota dedicada pra não misturar as duas coisas: usa o
+// MESMO resolvedor de código (_resolverProdutosPorCodigos, compartilhado
+// com o Promocional) mas chama gerarPdfCatalogo — que agora delega 100%
+// pro layout do Catálogo Completo (ver comentário na função,
+// catalogo-pdf.service.js) — em vez de gerarPdfCatalogoPromocional. Sem
+// upload de CSV/preço aqui (isso é exclusivo do Catálogo Promocional,
+// aba separada) — só a lista de códigos selecionados, então body JSON
+// simples em vez de multipart/form-data.
+async function exportarPdfSelecionadosHandler(req, res) {
+  try {
+    let codigos = req.body?.codigos;
+    if (!Array.isArray(codigos) || !codigos.length) {
+      return res.status(400).json({ error: "Selecione ao menos 1 produto pra gerar o catálogo." });
+    }
+
+    codigos = [...new Set(codigos.map(c => String(c).trim()).filter(Boolean))];
+    if (!codigos.length) {
+      return res.status(400).json({ error: "Selecione ao menos 1 produto pra gerar o catálogo." });
+    }
+    if (codigos.some(c => !_codigoValido(c))) {
+      return res.status(400).json({ error: "Código de produto inválido na lista selecionada." });
+    }
+    if (codigos.length > MAX_ITENS_PROMOCIONAL) {
+      return res.status(400).json({ error: `A lista tem ${codigos.length} produtos — máx. ${MAX_ITENS_PROMOCIONAL} por exportação.` });
+    }
+
+    const { produtos, naoEncontrados } = _resolverProdutosPorCodigos(codigos);
+    if (!produtos.length) {
+      return res.status(404).json({ error: "Nenhum dos produtos selecionados foi encontrado no catálogo." });
+    }
+
+    // Mesmo melhor-esforço limitado do Catálogo Completo/Promocional
+    // (Issue #23) — organiza com IA só os textos de aplicação ainda sem
+    // cache, até o mesmo teto.
+    try {
+      await anexarAplicacoesOrganizadas(produtos, { maxNovos: MAX_APLICACOES_NOVAS_POR_EXPORT });
+    } catch (err) {
+      logger.warn(`[Catálogo] Falha ao organizar aplicações com IA (seguindo sem elas): ${err.message}`);
+    }
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="catalogo-selecionados-${Date.now()}.pdf"`);
+    if (naoEncontrados.length) {
+      res.setHeader("X-Catalogo-Codigos-Nao-Encontrados", naoEncontrados.join(","));
+    }
+    await gerarPdfCatalogo(produtos, "Produtos selecionados", res);
+  } catch (err) {
+    logger.error("❌ Erro ao exportar produtos selecionados em PDF:", err.message);
+    if (!res.headersSent) res.status(500).json({ error: "Erro ao gerar PDF dos produtos selecionados." });
+  }
 }
 
 // BUG REAL achado testando com arquivo de verdade do usuário (2026-08-29,
@@ -1078,6 +1148,7 @@ module.exports = {
   buscarPorCodigoHandler,
   buscarPorNomeHandler,
   exportarPdfHandler,
+  exportarPdfSelecionadosHandler,
   exportarPdfPromocionalHandler,
   importarArquivoPromocionalHandler,
   listarCategoriaLinhasHandler,

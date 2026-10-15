@@ -44,25 +44,71 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const crypto = require('crypto');
 const { parseCsvEstoque } = require('../../src/services/estoque.service');
 
 const WORK_DIR = path.join(os.homedir(), '.x2-rildon-scraper');
 const ESTOQUE_DIR = path.join(WORK_DIR, 'estoque');
 const INDICE_PATH = path.join(ESTOQUE_DIR, 'lancamentos-indice.json');
+const _cacheElegibilidadeCsv = new Map();
+
+function _metadadosDeSnapshotCompleto(meta) {
+  return Boolean(meta && meta.validado === true && meta.completo === true
+    && meta.estoqueOpcao === 'Com e sem estoque' && Number.isFinite(Date.parse(meta.capturadoEm)));
+}
+
+function _csvConfereComMetadados(conteudo, meta) {
+  if (!_metadadosDeSnapshotCompleto(meta)
+    || !Number.isFinite(meta.linhasCsv) || meta.linhasCsv <= 0
+    || !Number.isFinite(meta.linhasTabela) || meta.linhasTabela <= 0) return false;
+  try {
+    const registros = parseCsvEstoque(conteudo);
+    return Array.isArray(registros) && registros.length > 0
+      && registros.length >= meta.linhasCsv * 0.9
+      && registros.length >= meta.linhasTabela * 0.9;
+  } catch {
+    return false;
+  }
+}
+
+function _comCacheElegibilidade(chave, assinatura, avaliar) {
+  const cacheado = _cacheElegibilidadeCsv.get(chave);
+  if (cacheado && cacheado.assinatura === assinatura) return cacheado.valor;
+  const valor = avaliar();
+  _cacheElegibilidadeCsv.set(chave, { assinatura, valor });
+  return valor;
+}
 
 function _listarCsvsOrdenados() {
   if (!fs.existsSync(ESTOQUE_DIR)) return [];
-  return fs.readdirSync(ESTOQUE_DIR)
+  const listados = fs.readdirSync(ESTOQUE_DIR)
     .filter((f) => f.endsWith('.csv'))
     .map((f) => {
       const caminho = path.join(ESTOQUE_DIR, f);
       const stat = fs.statSync(caminho);
-      return { nome: f, caminho, tamanho: stat.size, mtimeMs: stat.mtimeMs };
-    })
-    // Data vem do NOME do arquivo (estoque-AAAA-MM-DD_HH-MM.csv), não do
-    // mtime do arquivo — mtime muda se o arquivo for copiado/movido depois
-    // (ex: pro handoff do docker), o nome não.
-    .sort((a, b) => a.nome.localeCompare(b.nome));
+      const caminhoMeta = `${caminho}.meta.json`;
+      // Legados sem sidecar são indeterminados e ficam fora do índice; não
+      // há como provar que representam o universo completo de produtos.
+      if (!fs.existsSync(caminhoMeta)) return null;
+      const statMeta = fs.statSync(caminhoMeta);
+      const conteudoMeta = fs.readFileSync(caminhoMeta, 'utf8');
+      const assinaturaMeta = `${statMeta.size}:${statMeta.mtimeMs}:${crypto.createHash('sha256').update(conteudoMeta).digest('hex')}`;
+      const assinatura = `${f}:${stat.size}:${stat.mtimeMs}:${assinaturaMeta}`;
+      const validacao = _comCacheElegibilidade(caminho, assinatura, () => {
+        try {
+          const meta = JSON.parse(conteudoMeta);
+          if (!_metadadosDeSnapshotCompleto(meta)
+            || !_csvConfereComMetadados(fs.readFileSync(caminho, 'utf8'), meta)) return null;
+          return { meta, assinaturaMeta: `${assinaturaMeta}:${meta.capturadoEm}` };
+        } catch {
+          return null;
+        }
+      });
+      if (!validacao) return null;
+      const capturadoMs = Date.parse(validacao.meta.capturadoEm);
+      return { nome: f, caminho, tamanho: stat.size, mtimeMs: stat.mtimeMs, ordenarMs: capturadoMs, capturadoEm: new Date(capturadoMs).toISOString(), assinaturaMeta: validacao.assinaturaMeta };
+    });
+  return listados.filter(Boolean).sort((a, b) => (a.ordenarMs - b.ordenarMs) || a.nome.localeCompare(b.nome));
 }
 
 function _dataDoNomeArquivo(nomeArquivo) {
@@ -90,7 +136,7 @@ function _salvarIndiceCache(indice) {
 // Assinatura da lista de CSVs atual — muda se algum arquivo for
 // adicionado/removido/alterado, invalidando o cache.
 function _assinaturaArquivos(csvs) {
-  return csvs.map((c) => `${c.nome}:${c.tamanho}`).join('|');
+  return csvs.map((c) => `${c.nome}:${c.tamanho}:${c.mtimeMs}:${c.assinaturaMeta || 'legacy'}`).join('|');
 }
 
 /**
@@ -103,7 +149,7 @@ function construirIndice(arquivos) {
   const produtos = {}; // codigo -> { primeiraVez, arquivoOrigem, descricao, codFornecedor, custoMedio, precoVendaVarejo, precoVendaAtacado }
 
   for (const arquivo of arquivos) {
-    const dataArquivo = _dataDoNomeArquivo(arquivo.nome);
+    const dataArquivo = arquivo.capturadoEm ? new Date(arquivo.capturadoEm) : _dataDoNomeArquivo(arquivo.nome);
     if (!dataArquivo) continue; // nome fora do padrão esperado — ignora, não quebra o índice inteiro
     let registros;
     try {
@@ -137,7 +183,7 @@ function construirIndice(arquivos) {
 function obterIndiceAtualizado() {
   const csvs = _listarCsvsOrdenados();
   if (!csvs.length) {
-    return { produtos: {}, totalArquivos: 0, primeiroArquivo: null, ultimoArquivo: null };
+    return { produtos: {}, totalArquivos: 0, primeiroArquivo: null, primeiroCapturadoEm: null, ultimoArquivo: null };
   }
 
   const assinaturaAtual = _assinaturaArquivos(csvs);
@@ -147,11 +193,12 @@ function obterIndiceAtualizado() {
       produtos: cache.produtos,
       totalArquivos: csvs.length,
       primeiroArquivo: csvs[0].nome,
+      primeiroCapturadoEm: csvs[0].capturadoEm,
       ultimoArquivo: csvs[csvs.length - 1].nome,
     };
   }
 
-  const arquivosComConteudo = csvs.map((c) => ({ nome: c.nome, conteudo: fs.readFileSync(c.caminho, 'utf8') }));
+  const arquivosComConteudo = csvs.map((c) => ({ nome: c.nome, capturadoEm: c.capturadoEm, conteudo: fs.readFileSync(c.caminho, 'utf8') }));
   const produtos = construirIndice(arquivosComConteudo);
   _salvarIndiceCache({ assinatura: assinaturaAtual, produtos, geradoEm: new Date().toISOString() });
 
@@ -159,6 +206,7 @@ function obterIndiceAtualizado() {
     produtos,
     totalArquivos: csvs.length,
     primeiroArquivo: csvs[0].nome,
+    primeiroCapturadoEm: csvs[0].capturadoEm,
     ultimoArquivo: csvs[csvs.length - 1].nome,
   };
 }
@@ -171,7 +219,7 @@ function obterIndiceAtualizado() {
  * disso.
  */
 function listarLancamentos({ desde, ate } = {}) {
-  const { produtos, totalArquivos, primeiroArquivo, ultimoArquivo } = obterIndiceAtualizado();
+  const { produtos, totalArquivos, primeiroArquivo, primeiroCapturadoEm, ultimoArquivo } = obterIndiceAtualizado();
 
   if (totalArquivos < 2) {
     return {
@@ -185,7 +233,7 @@ function listarLancamentos({ desde, ate } = {}) {
     };
   }
 
-  const dataBase = _dataDoNomeArquivo(primeiroArquivo);
+  const dataBase = primeiroCapturadoEm ? new Date(primeiroCapturadoEm) : _dataDoNomeArquivo(primeiroArquivo);
   const desdeDate = desde ? new Date(desde) : null;
   const ateDate = ate ? new Date(new Date(ate).setHours(23, 59, 59, 999)) : null;
 
@@ -207,6 +255,9 @@ module.exports = {
   ESTOQUE_DIR,
   INDICE_PATH,
   construirIndice,
+  metadadosDeSnapshotCompleto: _metadadosDeSnapshotCompleto,
+  csvConfereComMetadados: _csvConfereComMetadados,
+  comCacheElegibilidade: _comCacheElegibilidade,
   obterIndiceAtualizado,
   listarLancamentos,
 };

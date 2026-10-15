@@ -18,6 +18,12 @@ const SUITE_ARG = process.argv.find(a => a.startsWith("--suite=") || a === "--su
       || process.argv[process.argv.indexOf("--suite") + 1])
   : "all";
 
+// Os roteiros abaixo validam diálogos completos (inclusive formulários com
+// várias respostas). A transferência global após 3 mensagens tem testes
+// próprios; deixamos o limite alto aqui para ela não interromper esses
+// cenários antes de testar o comportamento que cada roteiro cobre.
+process.env.LIMITE_MENSAGENS_BOT = "100";
+
 // ─── Mock: PostgreSQL pool ──────────────────────────────────────────────────
 const _dbSessions = {};
 let _ticketCounter = 0;
@@ -97,6 +103,10 @@ require.cache[require.resolve("./src/database/postgres")] = {
 // ─── Mock: IA (respostas controláveis por cenário) ──────────────────────────
 let _iaMockFn = null;   // se definido, usa ele; senão usa default
 const aiMock = {
+  // O fluxo consulta o circuit breaker mesmo quando a chamada da IA é
+  // simulada. No teste ele está desligado; falhas são controladas por
+  // _iaMockFn e devem percorrer o fallback normal após duas tentativas.
+  iaEmFalhaCritica: () => false,
   perguntarIA: async (msg, opts) => {
     if (_iaMockFn) return _iaMockFn(msg, opts);
     const m = msg.toLowerCase();

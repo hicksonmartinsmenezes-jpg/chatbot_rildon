@@ -13,12 +13,18 @@
  * pesquisa" por depender do atendente lembrar de usar o certo toda vez):
  * reabertura manual de um ticket avaliado HÁ POUCO TEMPO (mesma janela de
  * TICKET_REOPEN_WINDOW_MINUTOS já usada pro reopen automático, padrão
- * 60min) preserva a nota — fechar de novo não reenvia a pesquisa.
+ * 240min/4h — pedido do usuário em 2026-09-19, era 60min) preserva a nota
+ * — fechar de novo não reenvia a pesquisa.
  * Reabertura de um ticket avaliado há muito tempo (ou nunca avaliado)
  * continua resetando normalmente, como antes.
  */
 jest.mock("../src/repositories/ticket.repository", () => ({
   updateStatus: jest.fn(),
+}));
+jest.mock("../src/services/settings.service", () => ({
+  getSettings: jest.fn().mockResolvedValue({
+    atendimento: { tempoReaberturaSemPesquisa: 240 },
+  }),
 }));
 
 const ticketRepository = require("../src/repositories/ticket.repository");
@@ -149,14 +155,14 @@ describe("foiReabertoManualmenteRecente — janela pra pular saudação/pesquisa
     expect(await foiReabertoManualmenteRecente(1000)).toBe(false);
   });
 
-  test("expira sozinho depois da janela (TICKET_REOPEN_WINDOW_MINUTOS, padrão 60min)", async () => {
+  test("expira sozinho depois da janela (TICKET_REOPEN_WINDOW_MINUTOS, padrão 240min/4h)", async () => {
     await updateTicketStatus(999, "aberto", {
       ticketAtual: { id: 999, status: "resolvido", satisfactionRatedAt: null },
     });
     expect(await foiReabertoManualmenteRecente(999)).toBe(true);
 
     const realNow = Date.now();
-    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => realNow + 61 * 60 * 1000);
+    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => realNow + 241 * 60 * 1000);
     try {
       expect(await foiReabertoManualmenteRecente(999)).toBe(false);
     } finally {

@@ -133,15 +133,16 @@ function applyUserPermissions() {
     el.style.display = ["admin", "supervisor"].includes(perfil) ? "" : "none";
   });
 
-  // Permissões individuais: só escondem o que o perfil já poderia acessar.
+  // Visibilidade da aba no menu = só a permissão individual da tela
+  // (allowed[tab], já com o fallback pro padrão do perfil — ver
+  // getUserScreenPermissions/09-users.js). Antes disso, as classes
+  // .admin-only/.supervisor-only no HTML (loops acima) travavam
+  // Chatbot/Configurações/Campanhas/Métricas pra atendente/supervisor
+  // mesmo com a tela marcada em "Acesso às telas" — pedido do usuário
+  // (2026-09-19) foi exatamente permitir esse override tela por tela.
   document.querySelectorAll(".sidebar [data-tab]").forEach(el => {
     const tab = el.dataset.tab;
-    const roleAllows = el.classList.contains("admin-only")
-      ? perfil === "admin"
-      : el.classList.contains("supervisor-only")
-        ? ["admin", "supervisor"].includes(perfil)
-        : true;
-    const visible = roleAllows && (perfil === "admin" || allowed[tab] === true);
+    const visible = perfil === "admin" || allowed[tab] === true;
     el.style.display = visible ? "" : "none";
     el.setAttribute("aria-hidden", visible ? "false" : "true");
   });
@@ -150,14 +151,24 @@ function applyUserPermissions() {
 }
 
 function applyUserProfileVisual(user) {
-  const name    = user.nome || user.usuario || "Usuário";
+  const name = user.nome || user.usuario || "Usuário";
   const topName = document.getElementById("top-user-name");
-  const avatar  = document.getElementById("top-user-avatar");
+  const avatar = document.getElementById("top-user-avatar");
+  const menuName = document.getElementById("user-menu-name");
+  const menuAvatar = document.getElementById("user-menu-avatar");
+
+  // O cabeçalho mostra só a foto, mas o menu aberto deve identificar
+  // claramente quem está logado pelo nome cadastrado.
   if (topName) topName.textContent = name;
-  if (avatar) {
-    const photo = safeUrl(user.foto);
-    avatar.innerHTML = photo ? `<img src="${escapeAttr(photo)}" alt="Perfil">` : safe(initials(name));
-  }
+  if (menuName) menuName.textContent = name;
+
+  const photo = safeUrl(user.foto);
+  const avatarMarkup = photo
+    ? `<img src="${escapeAttr(photo)}" alt="Perfil">`
+    : safe(initials(name));
+
+  if (avatar) avatar.innerHTML = avatarMarkup;
+  if (menuAvatar) menuAvatar.innerHTML = avatarMarkup;
 }
 
 document

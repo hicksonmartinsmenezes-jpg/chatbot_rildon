@@ -312,7 +312,7 @@ async function _fabricantesComVersaoMecanica({ baseUrl, apiToken }) {
 // pós-Lançamentos só cobria fabricantes com código novo, então preço, foto
 // e ficha alterados em produto antigo nunca chegavam ao PDF do Drive.
 // `exceto` = fabricantes que acabaram de ser enviados nesta rodada.
-async function rodarUploadTodosFabricantes({ exceto = [], so = null, limite = 0, pausaSegundos = 20 } = {}) {
+async function rodarUploadTodosFabricantes({ exceto = [], so = null, limite = 0, pausaSegundos = 20, dryRun = false } = {}) {
   const resultado = { fabricantes: [], enviados: [], erros: [] };
   const config = _configDriveOuMotivo();
   if (!config.ok) {
@@ -346,6 +346,13 @@ async function rodarUploadTodosFabricantes({ exceto = [], so = null, limite = 0,
   alvo.length = 0; alvo.push(...alvoFinal);
   resultado.fabricantes = alvo.map((o) => String(o.value).split('::')[0]);
   if (!alvo.length) return resultado;
+  if (dryRun) {
+    console.log(`[x2-drive] SIMULAÇÃO — enviaria ${alvo.length} catálogo(s) ao Drive (nada foi gerado nem enviado):`);
+    for (const o of alvo) {
+      console.log(`  • ${String(o.value).split('::')[0]}.pdf${String(o.value).endsWith('::mecanica') ? ' (versão Mecânica)' : ''}`);
+    }
+    return resultado;
+  }
   console.log(`[x2-drive] reenvio completo: ${alvo.length} catálogo(s) ao Drive (1 por vez, pausa de ${pausaSegundos}s entre eles).`);
   const drive = await _clienteDrive(config.clientId, config.clientSecret, path.resolve(config.tokenPath));
   for (const opcao of alvo) {
@@ -386,7 +393,28 @@ async function _aguardarBotSaudavel(baseUrl, apiToken) {
   return false;
 }
 
-module.exports = { rodarUploadDrive, rodarUploadTodosMecanica, rodarUploadTodosFabricantes };
+// Lista de fabricantes que o painel pode enviar ao Drive (seletor da UI).
+async function listarFabricantesDrive() {
+  const config = _configDriveOuMotivo();
+  if (!config.ok) throw new Error(config.motivo);
+  const { BASE_URL } = require('./x2-whatsapp-alerta');
+  const r = await fetch(`${BASE_URL}/api/catalogo/fabricantes-completo`, {
+    headers: { Authorization: `Bearer ${config.apiToken}` },
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!r.ok) throw new Error(`Falha ao listar fabricantes do Catálogo Completo (HTTP ${r.status}).`);
+  const opcoes = (await r.json()).opcoes || [];
+  const mapa = new Map();
+  for (const o of opcoes) {
+    const nome = String(o.value).split('::')[0];
+    const atual = mapa.get(nome) || { nome, mecanica: false };
+    if (String(o.value).endsWith('::mecanica')) atual.mecanica = true;
+    mapa.set(nome, atual);
+  }
+  return Array.from(mapa.values()).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+}
+
+module.exports = { rodarUploadDrive, rodarUploadTodosMecanica, rodarUploadTodosFabricantes, listarFabricantesDrive };
 
 // ─── CLI direto (2026-09-22): `node scripts/x2-drive-lancamentos.js
 // --todos-mecanica` — pro usuário rodar o reenvio manual sem precisar do

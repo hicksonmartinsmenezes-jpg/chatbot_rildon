@@ -247,6 +247,27 @@
                 <button class="primary-blue full" data-action="estoque-baixar-agora">Baixar CSV agora</button>
               </div>
             </div>
+
+            <div class="acao-rapida" data-acao-rapida="drive-enviar">
+              <div class="acao-rapida-linha" data-tab="drive-enviar">
+                <div class="acao-rapida-icone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 17l4-4 4 4"/><path d="M12 21V13"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 4 16.29"/></svg></div>
+                <div class="acao-rapida-texto">
+                  <div class="acao-rapida-titulo">Enviar catálogo ao Drive</div>
+                  <div class="acao-rapida-sub">Gera o PDF dos fabricantes escolhidos e substitui na pasta do Drive</div>
+                </div>
+                <svg class="acao-rapida-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+              </div>
+              <div class="acao-rapida-painel">
+                <div class="drive-fab-topo">
+                  <span>Fabricantes</span>
+                  <button type="button" class="small ghost" data-action="drive-fab-todos">Marcar todos</button>
+                  <button type="button" class="small ghost" data-action="drive-fab-nenhum">Limpar</button>
+                </div>
+                <div class="drive-fab-lista" id="drive-fab-lista"><span class="hint-sub">Abra para carregar a lista…</span></div>
+                <label><input type="checkbox" id="drive-enviar-dry-run" checked> Só simular (mostra o que seria enviado, sem gerar nem enviar nada)</label>
+                <button class="primary-blue full" data-action="drive-enviar">Enviar ao Drive</button>
+              </div>
+            </div>
           </div>
         </div>
 

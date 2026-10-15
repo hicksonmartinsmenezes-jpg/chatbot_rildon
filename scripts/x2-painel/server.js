@@ -420,6 +420,21 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
           semAlerta: !!opcoes.semAlerta,
           numeroAlerta: opcoes.numeroAlerta || undefined,
         });
+      } else if (tipo === 'drive-enviar') {
+        // Enviar catálogo ao Drive, por fabricante (escolhidos no painel).
+        // Só fala com o bot + Drive — não abre Chrome nem mexe no X2.
+        const fabricantes = Array.isArray(opcoes.fabricantes) ? opcoes.fabricantes.map(String).filter(Boolean) : [];
+        if (!fabricantes.length) throw new Error('Escolha pelo menos 1 fabricante.');
+        const resultado = await driveLancamentos.rodarUploadTodosFabricantes({
+          so: fabricantes,
+          pausaSegundos: opcoes.dryRun ? 0 : 5,
+          dryRun: !!opcoes.dryRun,
+        });
+        if (!opcoes.dryRun) {
+          console.log(`\nResumo: ${resultado.enviados.length} enviado(s), ${resultado.erros.length} com erro.`);
+          for (const e of resultado.erros) console.log(`  ✗ ${e.fabricante || '(config)'}: ${e.erro}`);
+          if (resultado.erros.length) throw new Error(`${resultado.erros.length} catálogo(s) não foram enviados — veja o log acima.`);
+        }
       } else if (tipo === 'lancamentos-x2') {
         // PEDIDO DO USUÁRIO (2026-08-11): a aba Lançamentos deduzia "produto
         // novo" comparando CSVs de estoque (ver x2-painel/lancamentos.js) —
@@ -965,6 +980,15 @@ app.get('/api/log-stream', (req, res) => {
   res.write('\n');
   clientesSSE.add(res);
   req.on('close', () => clientesSSE.delete(res));
+});
+
+// Lista de fabricantes para o seletor de "Enviar catálogo ao Drive".
+app.get('/api/drive/fabricantes', async (req, res) => {
+  try {
+    res.json({ fabricantes: await driveLancamentos.listarFabricantesDrive() });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
 });
 
 app.post('/api/acao', (req, res) => {

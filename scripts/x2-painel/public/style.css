@@ -650,3 +650,9 @@
 .opcoes-avancadas { margin: 8px 0 12px; }
 .opcoes-avancadas > summary { cursor: pointer; font-size: 13px; color: var(--muted, #667085); margin-bottom: 8px; }
 .opcoes-avancadas > label { display: block; margin: 6px 0; }
+
+/* Enviar catálogo ao Drive: seletor de fabricantes */
+.drive-fab-topo { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; }
+.drive-fab-topo > span { flex: 1; font-weight: 600; }
+.drive-fab-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px 12px; max-height: 220px; overflow: auto; margin-bottom: 12px; }
+.drive-fab-lista label { display: flex; align-items: center; gap: 6px; font-size: 13px; }

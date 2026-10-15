@@ -44,14 +44,14 @@ describe("GET /api/bot-status", () => {
     getSettings.mockResolvedValue({ bot: { ativo: true } });
     const res = await request(buildApp()).get("/api/bot-status");
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ ativo: true });
+    expect(res.body).toMatchObject({ ativo: true });
   });
 
   test("retorna ativo:false quando bot.ativo é false", async () => {
     getSettings.mockResolvedValue({ bot: { ativo: false } });
     const res = await request(buildApp()).get("/api/bot-status");
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ ativo: false });
+    expect(res.body).toMatchObject({ ativo: false });
   });
 
   test("qualquer perfil (não só admin) consegue ler — não há checagem de perfil no handler", async () => {
@@ -74,7 +74,7 @@ describe("PUT /api/bot-status", () => {
       .send({ ativo: true });
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ ativo: true });
+    expect(res.body).toMatchObject({ ativo: true });
     expect(saveSettings).toHaveBeenCalledWith({ bot: { ativo: true } });
     expect(addLog).toHaveBeenCalledWith(user, "BOT_LIGADO", expect.stringContaining("ativou"));
     expect(emitEvent).toHaveBeenCalledWith("bot_status_atualizado", { ativo: true, por: user.nome });
@@ -89,7 +89,7 @@ describe("PUT /api/bot-status", () => {
       .send({ ativo: false });
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ ativo: false });
+    expect(res.body).toMatchObject({ ativo: false });
     expect(addLog).toHaveBeenCalledWith(user, "BOT_DESLIGADO", expect.stringContaining("desativou"));
     expect(emitEvent).toHaveBeenCalledWith("bot_status_atualizado", { ativo: false, por: user.nome });
   });

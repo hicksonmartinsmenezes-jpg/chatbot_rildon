@@ -18,7 +18,6 @@
   body.light-theme .sidebar.open {
     background: #ffffff !important;
     border-right: 1px solid rgba(0, 0, 0, 0.08) !important;
-    box-shadow: 12px 0 40px rgba(0, 0, 0, 0.18) !important;
   }
 }
 
@@ -55,8 +54,6 @@ body.light-theme .loading {
 body.light-theme label,
 body.light-theme .field label,
 body.light-theme .history-date-field label { color: #475569; }
-body.light-theme .panel { box-shadow: 0 12px 35px rgba(0,0,0,.08); }
-
 /* Central de Configurações: título/descrição e cards ficavam brancos sobre
    fundo branco (herdados de 07-settings.css, pensados pro tema escuro) —
    texto do título literalmente invisível. Pedido do usuário, 3ª varredura
@@ -93,7 +90,6 @@ body.light-theme .settings-home-card:hover {
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border-color: rgba(37, 99, 235, 0.28);
-  box-shadow: 0 18px 40px rgba(37, 99, 235, 0.12);
 }
 
 /* Configurações: barra "Voltar para configurações" + título da subtela
@@ -129,7 +125,6 @@ body.light-theme .btn-refresh:hover { background: #e5e7eb; }
 body.light-theme .metric-card {
   background: linear-gradient(180deg, rgba(0,0,0,.02), rgba(0,0,0,.01));
   border-color: rgba(0,0,0,.08);
-  box-shadow: 0 10px 40px rgba(0,0,0,.08);
 }
 body.light-theme .metric-card::before { background: none; }
 body.light-theme .metric-card .value { color: #0f172a; }
@@ -147,9 +142,6 @@ body.light-theme .dashboard-executive-hero {
     radial-gradient(circle at 100% 50%, rgba(37, 99, 235, 0.12), transparent 55%),
     linear-gradient(135deg, #ffffff 0%, #ffffff 55%, #f5f8fd 100%);
   border-color: rgba(15, 23, 42, 0.08);
-  box-shadow:
-    0 18px 40px rgba(15, 23, 42, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 body.light-theme .dashboard-executive-hero::after {
   background: radial-gradient(circle, rgba(37, 99, 235, 0.18), transparent 70%);
@@ -170,9 +162,6 @@ body.light-theme .dashboard-live-badge {
 body.light-theme .executive-card {
   background: #ffffff !important;
   border-color: rgba(15, 23, 42, 0.08) !important;
-  box-shadow:
-    0 10px 26px rgba(15, 23, 42, 0.06),
-    inset 0 1px 0 rgba(255, 255, 255, 0.7) !important;
 }
 body.light-theme .executive-card-icon {
   background: rgba(0, 0, 0, 0.06);
@@ -200,7 +189,6 @@ body.light-theme .csc-purple .csc-icon {
 }
 body.light-theme .executive-card strong {
   color: #0f172a !important;
-  text-shadow: none;
 }
 body.light-theme .executive-card-label {
   color: #334155;
@@ -210,7 +198,6 @@ body.light-theme .executive-card-label {
 /* ─── Conversas (WhatsApp) — visual claro estilo WhatsApp Web ──────────── */
 body.light-theme .whatsapp-panel {
   background: #ffffff;
-  box-shadow: 0 22px 70px rgba(0,0,0,.10);
 }
 body.light-theme .chat-sidebar,
 body.light-theme .chat-sidebar-header { background: #ffffff; }
@@ -269,6 +256,11 @@ body.light-theme .conv-btn-fechar { color: #b91c1c; }
 
 body.light-theme .day-separator span { background: #ffffff; color: #54656f; }
 
+/* Mesmo tratamento do separador de dia acima — botão "Carregar mensagens
+   anteriores" (paginação do histórico, pedido do usuário 2026-09-23). */
+body.light-theme .chat-load-older-btn { background: #ffffff; color: #54656f; }
+body.light-theme .chat-load-older-btn:hover:not(:disabled) { background: #eef2f5; color: #111b21; }
+
 /* Pedido do usuário (2026-07-22): no tema claro, nada de marca d'água —
    fundo da conversa em cinza liso, e a barra de digitação em branco liso
    (sem imagem nenhuma nos dois casos). */
@@ -291,12 +283,7 @@ body.light-theme .chat-input-area textarea {
   background: #ffffff;
   color: #0f172a;
   border: none;
-  box-shadow: 0 1px 3px rgba(0,0,0,.10);
-}
-body.light-theme .chat-input-area textarea:focus {
-  box-shadow: 0 1px 5px rgba(0,0,0,.16);
-}
-body.light-theme .chat-input-area button {
+}body.light-theme .chat-input-area button {
   background: #25d366;
 }
 /* "Nenhuma conversa selecionada": herdava o fundo escuro do watermark do
@@ -313,7 +300,6 @@ body.light-theme .chat-start p { color: #475569; }
 body.light-theme .notif-dropdown {
   background: #ffffff;
   border-color: rgba(0,0,0,.10);
-  box-shadow: 0 20px 60px rgba(0,0,0,.15);
 }
 body.light-theme .notif-dropdown-header { border-bottom-color: rgba(0,0,0,.08); }
 body.light-theme .notif-dropdown-header strong { color: #0f172a; }
@@ -351,7 +337,6 @@ body.light-theme .chat-input-bar-cancel:hover { background: rgba(0,0,0,.08); col
 body.light-theme .bubble-reply-btn {
   background: #ffffff;
   color: #54656f;
-  box-shadow: 0 1px 3px rgba(0,0,0,.20);
 }
 body.light-theme .bubble-reply-btn:hover { background: #f0f2f5; color: #111b21; }
 

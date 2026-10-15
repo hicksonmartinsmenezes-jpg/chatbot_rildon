@@ -196,7 +196,7 @@ describe("patchTicket — não reenvia pesquisa de satisfação ao fechar um tic
   // pesquisa de satisfação por determinado tempo" — mudou o comportamento
   // que este teste travava antes (reabertura manual sempre disparava a
   // pesquisa de novo). Fechar de novo DENTRO da janela de reabertura
-  // (TICKET_REOPEN_WINDOW_MINUTOS, padrão 60min) agora NÃO reenvia — ver
+  // (TICKET_REOPEN_WINDOW_MINUTOS, padrão 240min/4h) agora NÃO reenvia — ver
   // foiReabertoManualmenteRecente() em ticket.service.js.
   test("fechar → reabrir → fechar de novo DENTRO da janela → NÃO reenvia a pesquisa", async () => {
     const app = buildApp(ATENDENTE);
@@ -211,7 +211,7 @@ describe("patchTicket — não reenvia pesquisa de satisfação ao fechar um tic
     expect(sendMessage).toHaveBeenCalledTimes(1);
   });
 
-  test("fechar → reabrir → fechar de novo bem DEPOIS da janela (60min+) → dispara a pesquisa de novo (atendimento genuinamente novo)", async () => {
+  test("fechar → reabrir → fechar de novo bem DEPOIS da janela (240min+) → dispara a pesquisa de novo (atendimento genuinamente novo)", async () => {
     const app = buildApp(ATENDENTE);
     const created = await request(app).post("/api/tickets")
       .send({ userId: "5511900000003@s.whatsapp.net", type: "orcamento" });
@@ -221,7 +221,7 @@ describe("patchTicket — não reenvia pesquisa de satisfação ao fechar um tic
     await request(app).patch(`/api/tickets/${id}`).send({ status: "aberto" });
 
     const realNow = Date.now();
-    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => realNow + 61 * 60 * 1000);
+    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => realNow + 241 * 60 * 1000);
     try {
       await request(app).patch(`/api/tickets/${id}`).send({ status: "resolvido" });
       expect(sendMessage).toHaveBeenCalledTimes(2);

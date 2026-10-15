@@ -211,6 +211,80 @@ async function findGroupedByUser({ q, from, to, horaInicio, horaFim, limit = 500
   return result.rows.map(row => ({ ...mapHistory(row), count: Number(row.total_count) }));
 }
 
+// PAGINAÇÃO DO PAINEL DE HISTÓRICO (pedido do usuário, 2026-09-23: "meu
+// histórico ainda carrega absolutamente todos, preciso que distribua
+// 1-2-3 igual contatos"): findGroupedByUser acima já suporta LIMIT/OFFSET
+// de verdade, mas o frontend (04-history.js) nunca usava — buscava tudo
+// de uma vez (limit=500) e renderizava a lista inteira. Pra paginar de
+// verdade (como o painel de Contatos já faz) falta saber o TOTAL de
+// clientes que batem no filtro (pro "X / Y" e pro cálculo de totalPages),
+// e os 4 cards de resumo (total de registros/clientes/hoje/com resposta)
+// precisam continuar corretos mesmo mostrando só uma página de clientes —
+// antes eles eram calculados no navegador em cima do array inteiro (até
+// 500 linhas), o que já era uma aproximação; agora vem de uma agregação
+// SQL exata sobre TODAS as linhas que batem no filtro, não só a página
+// atual. Mesmos filtros de findGroupedByUser, reaproveitados via helper.
+function _buildGroupedWhere({ q, from, to, horaInicio, horaFim } = {}) {
+  const values = [];
+  const where = [];
+
+  if (q) {
+    const pattern = `%${q}%`;
+    values.push(pattern); const i1 = values.length;
+    values.push(pattern); const i2 = values.length;
+    values.push(pattern); const i3 = values.length;
+    values.push(pattern); const i4 = values.length;
+    where.push(`(user_id ILIKE $${i1} OR contact_name ILIKE $${i2} OR message ILIKE $${i3} OR response ILIKE $${i4})`);
+  }
+
+  const tz = process.env.TZ_NEGOCIO || "America/Maceio";
+  if (from) {
+    values.push(from);
+    where.push(`(created_at AT TIME ZONE '${tz}')::date >= $${values.length}::date`);
+  }
+  if (to) {
+    values.push(to);
+    where.push(`(created_at AT TIME ZONE '${tz}')::date <= $${values.length}::date`);
+  }
+  if (horaInicio) {
+    values.push(horaInicio);
+    where.push(`(created_at AT TIME ZONE '${tz}')::time >= $${values.length}::time`);
+  }
+  if (horaFim) {
+    values.push(horaFim);
+    where.push(`(created_at AT TIME ZONE '${tz}')::time <= $${values.length}::time`);
+  }
+
+  return { where, values, tz };
+}
+
+async function getGroupedSummary(filters = {}) {
+  const { where, values, tz } = _buildGroupedWhere(filters);
+
+  const result = await pool.query(
+    `
+    SELECT
+      COUNT(DISTINCT user_id) AS total_clientes,
+      COUNT(*) AS total_registros,
+      COUNT(*) FILTER (
+        WHERE (created_at AT TIME ZONE '${tz}')::date = (now() AT TIME ZONE '${tz}')::date
+      ) AS hoje,
+      COUNT(*) FILTER (WHERE response IS NOT NULL) AS com_resposta
+    FROM history
+    ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+    `,
+    values
+  );
+
+  const row = result.rows[0] || {};
+  return {
+    totalClientes:  Number(row.total_clientes)  || 0,
+    totalRegistros: Number(row.total_registros) || 0,
+    hoje:           Number(row.hoje)            || 0,
+    comResposta:    Number(row.com_resposta)    || 0,
+  };
+}
+
 // Usado só pela rota de servir mídia (GET /api/history/media/:id) — precisa
 // da linha exata pra checar media_path/media_mimetype antes de tentar abrir
 // o arquivo em disco.
@@ -238,5 +312,6 @@ module.exports = {
   findAll,
   findById,
   findGroupedByUser,
+  getGroupedSummary,
   updateMessageStatus
 };

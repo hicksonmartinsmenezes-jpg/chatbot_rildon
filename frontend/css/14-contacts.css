@@ -96,7 +96,6 @@
 
 .contacts-search:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(29,108,245,.13);
 }
 
 .contacts-filter-select {
@@ -580,7 +579,6 @@
 .contacts-modal select:focus,
 .contacts-modal textarea:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(29,108,245,.14);
 }
 
 .contacts-modal-actions {

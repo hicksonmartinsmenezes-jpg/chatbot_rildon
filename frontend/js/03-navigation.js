@@ -8,6 +8,15 @@ if (btnMenu) btnMenu.addEventListener("click", () => sidebar.classList.toggle("o
 
 // ─── Navegação ────────────────────────────────────────────────────────────────
 function switchTab(tab, event) {
+  // Impede acesso a telas não liberadas para o usuário atual, mesmo que a
+  // URL/ação seja disparada manualmente no navegador.
+  if (typeof hasUserScreenPermission === "function" && !hasUserScreenPermission(tab)) {
+    if (tab !== "dashboard" && typeof hasUserScreenPermission === "function" && hasUserScreenPermission("dashboard")) {
+      return switchTab("dashboard", event);
+    }
+    return;
+  }
+
   // CORRIGIDO: evita scroll pro topo e bug de histórico do navegador
   if (event) event.preventDefault();
 
@@ -28,7 +37,8 @@ function switchTab(tab, event) {
   if (tab === "catalogo") {
     if (typeof loadCatalogoSecoes === "function") loadCatalogoSecoes();
     if (typeof loadCatalogoFabricantes === "function") loadCatalogoFabricantes();
-    // Foco direto no campo Marca ao abrir a aba — atendente já começa digitando.
+    if (typeof loadCatalogoMontadoras === "function") loadCatalogoMontadoras();
+    // Foco direto no campo Montadora ao abrir a aba — atendente já começa digitando.
     setTimeout(() => document.getElementById("catalogo-marca")?.focus(), 50);
   }
   if (tab === "settings") {

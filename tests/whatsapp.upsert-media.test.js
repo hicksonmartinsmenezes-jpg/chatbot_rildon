@@ -79,6 +79,12 @@ jest.mock("qrcode-terminal", () => ({ generate: jest.fn() }));
 jest.mock("@whiskeysockets/baileys", () => ({
   __esModule: true,
   default: jest.fn(),
+  // 2026-10-14: faltava aqui — src/config/whatsapp.js usa
+  // makeCacheableSignalKeyStore(state.keys, ...) de verdade; sem isso no
+  // mock, a chamada estourava "makeCacheableSignalKeyStore is not a
+  // function" em toda suite que carrega o modulo (confirmado: mesmo erro
+  // nas 7 suites que mockam este modulo).
+  makeCacheableSignalKeyStore: jest.fn((keys) => keys),
   useMultiFileAuthState: jest.fn(async () => ({ state: {}, saveCreds: jest.fn() })),
   DisconnectReason: { loggedOut: 401 },
   fetchLatestBaileysVersion: jest.fn(async () => ({ version: [2, 3000, 0] })),
@@ -265,7 +271,15 @@ describe("config/whatsapp — messages.upsert com foto", () => {
       JID,
       expect.objectContaining({ text: expect.stringContaining("Deseja que eu já registre um orçamento") })
     );
-    expect(updateSession).toHaveBeenCalledWith(JID, { aguardandoConfirmacaoOrcamento: true });
+    // BUG CORRIGIDO (Issue #15): quando a visão reconhece a peça, o texto
+    // reconhecido precisa ir pra sessão (veiculoSugerido/produtoSugerido) —
+    // sem isso, confirmar "sim" fazia o bot perguntar o veículo do zero,
+    // mesmo tendo acabado de exibi-lo nesta mesma mensagem.
+    expect(updateSession).toHaveBeenCalledWith(JID, {
+      aguardandoConfirmacaoOrcamento: true,
+      veiculoSugerido: "pastilha de freio dianteira",
+      produtoSugerido: "pastilha de freio dianteira",
+    });
   }, 10000);
 
   // Peça real de celular/incerta → analisarImagemPeca (PASSO 2 do prompt)

@@ -21,6 +21,38 @@
  *     "pesada"/"leve"/"agricola" (vocabulário de SEGMENTO da loja, não nome
  *     de peça) entraram em PALAVRAS_GENERICAS_PECA.
  */
+jest.mock("fs", () => {
+  const actual = jest.requireActual("fs");
+  return { ...actual, readdirSync: jest.fn(), readFileSync: jest.fn() };
+});
+
+const fs = require("fs");
+const FIXTURE = [
+  {
+    codigo: "PALHETA1",
+    nome: "PALHETA 26 VETOR CAMINHAO VOLVO LINHA PESADA",
+    secao: "PALHETAS",
+    linha: "PALHETA",
+    ficha: { referencia: "REF-P1", aplicacao: "Volvo FH12", equivalentesLista: [], referenciasCruzadas: {} },
+  },
+  {
+    codigo: "CORREIA1",
+    nome: "CORREIA DENTADA FIAT PALIO",
+    secao: "CORREIAS",
+    linha: "CORREIA DENTADA",
+    ficha: { referencia: "REF-C1", aplicacao: "Fiat Palio", equivalentesLista: [], referenciasCruzadas: {} },
+  },
+  {
+    codigo: "ROTOR1",
+    nome: "ROTOR DE ALTERNADOR BOSCH",
+    secao: "ALTERNADORES",
+    linha: "ROTOR",
+    ficha: { referencia: "REF-R1", aplicacao: null, equivalentesLista: [], referenciasCruzadas: {} },
+  },
+];
+fs.readdirSync.mockReturnValue(["produtos-busca-teste.json"]);
+fs.readFileSync.mockReturnValue(JSON.stringify(FIXTURE));
+
 const { buscarPorNomeProduto } = require("../src/services/catalogo-x2.service");
 
 describe("catalogo-x2.service — buscarPorNomeProduto", () => {

@@ -17,19 +17,25 @@ const rateLimit = require("express-rate-limit");
 // todos dividirem o mesmo balde por IP. Sem sessão (login, health-check
 // etc.) cai no IP normal — ipKeyGenerator trata IPv6 corretamente (exigido
 // pelo express-rate-limit v8 pra não warnar/quebrar em IPv6).
+// CORRIGIDO (varredura 2026-09-30): o cookie não era validado — enviar
+// cookies aleatórios criava um balde novo a cada requisição e anulava o
+// limite. Agora só vale como chave o formato exato de token que o servidor
+// emite (64 hex). Como um cookie forjado nesse formato ainda criaria balde
+// novo, existe também o apiIpLimiter (por IP, teto alto) na frente.
+const _SID_RE = /^[a-f0-9]{64}$/;
 function chavePorSessaoOuIp(req) {
   const sid = req.cookies?.rildon_sid;
-  return sid ? `sid:${sid}` : rateLimit.ipKeyGenerator(req.ip);
+  return sid && _SID_RE.test(sid) ? `sid:${sid}` : rateLimit.ipKeyGenerator(req.ip);
 }
 
-function makeLimiter({ windowMs, max, message }) {
+function makeLimiter({ windowMs, max, message, keyGenerator = chavePorSessaoOuIp }) {
   return rateLimit({
     windowMs,
     max,
     message: { error: message },
     standardHeaders: true,
     legacyHeaders: false,
-    keyGenerator: chavePorSessaoOuIp
+    keyGenerator
   });
 }
 
@@ -37,6 +43,18 @@ const apiLimiter = makeLimiter({
   windowMs: 60 * 1000,
   max: Number(process.env.API_RATE_LIMIT_MAX || 120),
   message: "Muitas requisições. Aguarde alguns instantes."
+});
+
+// Teto por IP (independente de cookie): impede burlar o limite por sessão
+// com cookies forjados. Alto de propósito, pois vários atendentes podem
+// dividir o mesmo IP na rede local.
+const apiIpLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: Number(process.env.API_IP_RATE_LIMIT_MAX || 1500),
+  message: { error: "Muitas requisições. Aguarde alguns instantes." },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => rateLimit.ipKeyGenerator(req.ip)
 });
 
 const loginLimiter = rateLimit({
@@ -66,10 +84,34 @@ const criticalActionLimiter = makeLimiter({
   message: "Muitas ações críticas em pouco tempo. Aguarde alguns instantes."
 });
 
+// Chave própria pro MCP (nova função, 2026-09-09): usa o próprio token
+// Bearer como identidade, não sessão de atendente (cliente MCP nunca manda
+// cookie) nem só IP (mesmo motivo do bug corrigido acima — evita que MCP e
+// os scripts do X2, que também autenticam por Bearer sem cookie, dividam um
+// balde por IP). Seguro usar o token puro aqui porque este limiter só roda
+// DEPOIS do middleware de autenticação de mcp.routes.js — ou seja, quando
+// chega aqui o Bearer já foi validado contra MCP_API_TOKEN, nunca é um
+// valor arbitrário que um cliente sem credencial poderia forjar pra ganhar
+// baldes infinitos.
+function chavePorTokenMcp(req) {
+  const auth = req.headers["authorization"] || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+  return token ? `mcp:${token}` : rateLimit.ipKeyGenerator(req.ip);
+}
+
+const mcpLimiter = makeLimiter({
+  windowMs: 60 * 1000,
+  max: Number(process.env.MCP_RATE_LIMIT_MAX || 30),
+  message: "Muitas chamadas MCP em pouco tempo. Aguarde alguns instantes.",
+  keyGenerator: chavePorTokenMcp
+});
+
 module.exports = {
   apiLimiter,
+  apiIpLimiter,
   loginLimiter,
   messageLimiter,
   uploadLimiter,
-  criticalActionLimiter
+  criticalActionLimiter,
+  mcpLimiter
 };

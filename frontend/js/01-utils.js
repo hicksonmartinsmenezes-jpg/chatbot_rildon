@@ -28,7 +28,7 @@ function avatarHtml(userId, name, big = false) {
   const imgHtml = photoUrl ? `
       <img
         src="${photoUrl}"
-        alt="${safe(name || "Contato")}"
+        alt="${safeAttr(name || "Contato")}"
         data-avatar-img="true"
         data-avatar-user="${safeAttr(userId)}"
         style="display:none;"
@@ -215,11 +215,28 @@ function cutText(text, max) {
   return text.length > max ? `${text.substring(0, max)}...` : text;
 }
 
+// 2026-10-09 (auditoria de segurança — XSS armazenado CONFIRMADO):
+// safe() não escapava aspas, e era usado DENTRO de atributos HTML (o
+// alt="${safe(name)}" do avatarHtml, logo acima). Como `name` vem de
+// msg.pushName — o nome que o próprio cliente escolhe no WhatsApp dele, sem
+// nenhuma sanitização no caminho (config/whatsapp.js grava direto em
+// contact_name) — qualquer pessoa de fora podia se nomear com
+//     x" onerror="<código>
+// mandar uma mensagem qualquer pro número da empresa, e o código rodava no
+// painel de TODOS os atendentes, com a sessão deles. O CSP permite
+// scriptSrcAttr 'unsafe-inline', então handlers inline funcionam de verdade.
+//
+// Escapar aspas aqui fecha a classe inteira do problema (os 49 usos de safe()
+// no frontend ficam seguros em atributo e em texto — &quot;/&#39; renderizam
+// como " e ' normalmente em conteúdo de texto). O uso pontual em atributo
+// também foi trocado por safeAttr.
 function safe(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 function escapeAttr(value) {

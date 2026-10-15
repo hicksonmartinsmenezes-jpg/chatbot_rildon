@@ -73,6 +73,7 @@ const os = require('os');
 const readline = require('readline');
 const { chromium } = require('playwright');
 const { criarZip } = require('../src/utils/zip-writer');
+const { listarEntradas: listarEntradasZip, extrairArquivo: extrairArquivoZip } = require('../src/utils/zip-reader');
 
 // Sem isso, X2_USUARIO/X2_SENHA só carregavam quando este script rodava
 // DENTRO do server.js (que já dá o require de dotenv) — rodando direto
@@ -86,7 +87,10 @@ const FOTOS_DIR = path.join(CATALOGO_DIR, 'fotos');
 
 // Fora do OneDrive de propósito — ver comentário do topo do arquivo.
 const WORK_DIR = path.join(os.homedir(), '.x2-rildon-scraper');
-const PROFILE_DIR = path.join(WORK_DIR, 'chrome-profile');
+// 2026-10-14: perfil por tipo de tarefa — ver scripts/x2-perfil-chrome.js.
+// Antes todos compartilhavam 'chrome-profile', e duas tarefas simultaneas
+// derrubavam uma a outra ("Target page, context or browser has been closed").
+const PROFILE_DIR = require('./x2-perfil-chrome').perfilChrome('fotos');
 const STAGING_DIR = path.join(WORK_DIR, 'staging');
 const PROGRESS_DIR = path.join(WORK_DIR, 'progress');
 
@@ -388,7 +392,19 @@ async function garantirPopupAberto(context, { confirmar, modoAutomatico } = {}) 
 
     popup = context.pages().find((p) => p.url().includes(POPUP_URL_MARK));
     if (!popup) {
-      throw new Error('Modo automático: cheguei em "Vendas 3.0 > Produção de Vendas" pelo menu, mas o popup "Catálogo de Produtos" não abriu — esse clique específico é conhecido por bloquear automação (ver cabeçalho do arquivo), diferente de um problema de navegação. Precisa de confirmação humana pra essa ação específica.');
+      // Espera o clique humano em "Catálogo de Produtos" (esse clique bloqueia
+      // automação). Um único clique vale pra rodada inteira.
+      const esperaMin = Number(process.env.X2_ESPERA_CLIQUE_MIN) || 15;
+      console.log(`⏳ Aguardando você clicar em "Catálogo de Produtos" na janela do Chrome (Vendas 3.0 > Produção de Vendas). Espero até ${esperaMin} min...`);
+      const limite = Date.now() + esperaMin * 60 * 1000;
+      while (!popup && Date.now() < limite) {
+        await new Promise((r) => setTimeout(r, 2000));
+        popup = context.pages().find((p) => p.url().includes(POPUP_URL_MARK));
+      }
+      if (!popup) {
+        throw new Error(`Modo automático: esperei ${esperaMin} min e o popup "Catálogo de Produtos" não foi aberto (o clique nesse botão precisa ser humano). Rode de novo e clique quando a janela do Chrome estiver em "Vendas 3.0 > Produção de Vendas".`);
+      }
+      console.log('✅ Popup detectado, seguindo.');
     }
     await popup.waitForLoadState('domcontentloaded');
     await popup.waitForSelector('iframe[name="frame_pesquisa"]', { timeout: 15000 });
@@ -496,6 +512,34 @@ async function buscarSecaoInteira(popup, labelSecao) {
   );
 }
 
+// Fallback (2026-10-01): produto que NÃO aparece na tabela da seção (ex.: recém-recebido,
+// ou tabela da seção truncada) é procurado direto pelo código, com Seção = Todos.
+async function buscarPorCodigoNoPopup(popup, codigo) {
+  await popup.evaluate((cod) => {
+    const fd = window.frames['frame_pesquisa'].document;
+    for (const nome of ['cd_fornecedor', 'cd_barras', 'ds_descricao_comercial']) {
+      const el = fd.querySelector(`input[name="${nome}"]`);
+      if (el) el.value = '';
+    }
+    fd.querySelector('input[name="id_produto"]').value = cod;
+    const sel = fd.querySelector('select[name="id_secao"]');
+    sel.value = '';
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    window.frames['frame_pesquisa'].pesquisar();
+  }, codigo);
+  try {
+    await popup.waitForFunction(
+      (cod) => Array.from(window.frames['frame_pesquisa'].document.querySelectorAll('table a'))
+        .some((a) => a.textContent.trim().startsWith(cod + ' ')),
+      codigo,
+      { timeout: 12000, polling: 400 }
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function buscarEClicarProduto(popup, codigo) {
   return popup.evaluate((cod) => {
     const fpDoc = window.frames['frame_pesquisa'].document;
@@ -590,8 +634,24 @@ async function checarEBaixarFotos(popup, codigo, destDir) {
 }
 
 async function processarUmProduto(popup, codigo, secaoSlug) {
-  const achou = await buscarEClicarProduto(popup, codigo);
-  if (!achou) return { status: 'nao_encontrado_na_tabela', arquivos: [] };
+  let achou = await buscarEClicarProduto(popup, codigo);
+  let usouFallback = false;
+  if (!achou) {
+    // Fallback: busca direta pelo código (Seção = Todos) e, depois, restaura a tabela da seção.
+    usouFallback = await buscarPorCodigoNoPopup(popup, codigo);
+    if (usouFallback) achou = await buscarEClicarProduto(popup, codigo);
+  }
+  try {
+    if (!achou) return { status: 'nao_encontrado_na_tabela', arquivos: [] };
+    return await _baixarProdutoAberto(popup, codigo, secaoSlug);
+  } finally {
+    if (usouFallback) {
+      try { await buscarSecaoInteira(popup, SECOES[secaoSlug]); } catch { /* o próximo item acusa erro se não restaurou */ }
+    }
+  }
+}
+
+async function _baixarProdutoAberto(popup, codigo, secaoSlug) {
 
   const bateu = await esperarFrameFoto(popup, codigo);
   if (!bateu) return { status: 'frame_foto_nao_bateu', arquivos: [] };
@@ -617,9 +677,24 @@ async function processarUmProduto(popup, codigo, secaoSlug) {
 // cobre produto totalmente NOVO (código que ainda nem existe no JSON da
 // seção) — isso precisaria antes de uma nova extração em massa (tela
 // compra/catalogo_produto) pra descobrir o código novo.
-function calcularFila(codigos, progresso, { limit, retrySemFoto } = {}) {
-  const pendentes = codigos.filter((c) => {
+//
+// `codigosEspecificos` (pedido do usuário, 2026-09-11): quando informado,
+// restringe a fila a SÓ esses códigos antes de aplicar a lógica de
+// pendente/retry acima — usado pelo encadeamento pós-Lançamentos (ver
+// server.js), pra baixar foto só dos códigos que tiveram lançamento
+// naquela semana, sem puxar de brinde o resto do backlog pendente da
+// mesma seção. `codigos` continua sendo TODOS os códigos da seção (lidos
+// do <slug>.json em processarSecaoComPopup) — o filtro é sempre uma
+// interseção com esse total, nunca uma lista solta por fora dele.
+function calcularFila(codigos, progresso, { limit, retrySemFoto, codigosEspecificos, renovarAposDias, renovarLimite } = {}) {
+  const base = codigosEspecificos && codigosEspecificos.length
+    ? codigos.filter((c) => codigosEspecificos.includes(String(c)))
+    : codigos;
+  const pendentes = base.filter((c) => {
     if (!progresso[c]) return true;
+    // Rodada restrita a códigos (Lançamentos): o que não foi achado/baixado antes entra de novo
+    // (produto recém-recebido pode demorar a aparecer na tela Catálogo de Produtos do X2).
+    if (codigosEspecificos && codigosEspecificos.length && ['nao_encontrado_na_tabela', 'frame_foto_nao_bateu', 'erro'].includes(progresso[c].status)) return true;
     // BUG REAL corrigido (2026-08-13, achado analisando os 1209 erros de
     // MECÂNICA — provável degradação de uma sessão de navegador longa
     // demais, ver comentário em rodarMuitasSecoes): produto com
@@ -631,13 +706,27 @@ function calcularFila(codigos, progresso, { limit, retrySemFoto } = {}) {
     if (retrySemFoto && (progresso[c].status === 'sem_foto' || progresso[c].status === 'placeholder' || progresso[c].status === 'erro')) return true;
     return false;
   });
+  // Renovação de fotos (auditoria 2026-09-30): "ok" nunca voltava à fila, então
+  // foto trocada no X2 jamais era rebaixada. Com renovarAposDias, entram também
+  // os códigos "ok" cujo download é mais velho que N dias — os mais antigos
+  // primeiro, no máximo `renovarLimite` (padrão 300) por execução, pra girar o
+  // catálogo aos poucos sem uma rodada de horas.
+  if (renovarAposDias && renovarAposDias > 0) {
+    const corte = Date.now() - renovarAposDias * 86400000;
+    const idade = (c) => { const t = Date.parse(progresso[c] && progresso[c].ts); return Number.isFinite(t) ? t : 0; };
+    const velhos = base
+      .filter((c) => progresso[c] && progresso[c].status === 'ok' && idade(c) < corte)
+      .sort((a, b) => idade(a) - idade(b))
+      .slice(0, renovarLimite || 300);
+    pendentes.push(...velhos);
+  }
   return limit ? pendentes.slice(0, limit) : pendentes;
 }
 
 // Processa UMA seção usando um popup já aberto (não abre/fecha navegador —
 // isso permite encadear várias seções numa única sessão de navegador/login,
 // ver `rodarMuitasSecoes`).
-async function processarSecaoComPopup(popup, secaoSlug, { limit, retrySemFoto, deveParar } = {}) {
+async function processarSecaoComPopup(popup, secaoSlug, { limit, retrySemFoto, deveParar, codigosEspecificos, renovarAposDias, renovarLimite } = {}) {
   const labelSecao = SECOES[secaoSlug];
   if (!labelSecao) {
     throw new Error(`Seção desconhecida: "${secaoSlug}". Opções: ${Object.keys(SECOES).join(', ')}`);
@@ -648,10 +737,10 @@ async function processarSecaoComPopup(popup, secaoSlug, { limit, retrySemFoto, d
   const codigos = produtos.map((p) => p.codigo);
 
   const progresso = carregarProgresso(secaoSlug);
-  const fila = calcularFila(codigos, progresso, { limit, retrySemFoto });
+  const fila = calcularFila(codigos, progresso, { limit, retrySemFoto, codigosEspecificos, renovarAposDias, renovarLimite });
 
   console.log(`\n=== Seção ${labelSecao} (${secaoSlug}) ===`);
-  console.log(`${codigos.length} produtos no total, ${Object.keys(progresso).length} já processados, ${fila.length} nesta execução${retrySemFoto ? ' (incluindo retry de sem_foto/placeholder/erro)' : ''}.`);
+  console.log(`${codigos.length} produtos no total, ${Object.keys(progresso).length} já processados, ${fila.length} nesta execução${retrySemFoto ? ' (incluindo retry de sem_foto/placeholder/erro)' : ''}${codigosEspecificos && codigosEspecificos.length ? ` (restrito aos ${codigosEspecificos.length} código(s) informado(s))` : ''}.`);
   if (!fila.length) {
     console.log('Nada pendente nesta seção.');
     return { secaoSlug, totalFeitos: Object.keys(progresso).length, total: codigos.length, pulada: true };
@@ -723,7 +812,7 @@ async function processarSecaoComPopup(popup, secaoSlug, { limit, retrySemFoto, d
   return { secaoSlug, totalFeitos, total: codigos.length, pulada: false };
 }
 
-async function rodarSecao(secaoSlug, { limit, channel, retrySemFoto, reiniciar, confirmar, modoAutomatico, deveParar }) {
+async function rodarSecao(secaoSlug, { limit, channel, retrySemFoto, reiniciar, confirmar, modoAutomatico, deveParar, codigosEspecificos, renovarAposDias, renovarLimite }) {
   if (reiniciar) {
     console.log(`Reiniciando "${secaoSlug}" do zero (apagando progresso e staging salvos)...`);
     reiniciarSecao(secaoSlug);
@@ -731,7 +820,7 @@ async function rodarSecao(secaoSlug, { limit, channel, retrySemFoto, reiniciar, 
   const context = await abrirNavegador(channel);
   try {
     const popup = await garantirPopupAberto(context, { confirmar, modoAutomatico });
-    await processarSecaoComPopup(popup, secaoSlug, { limit, retrySemFoto, deveParar });
+    await processarSecaoComPopup(popup, secaoSlug, { limit, retrySemFoto, deveParar, codigosEspecificos, renovarAposDias, renovarLimite });
   } finally {
     await context.close().catch(() => {});
   }
@@ -740,7 +829,7 @@ async function rodarSecao(secaoSlug, { limit, channel, retrySemFoto, reiniciar, 
 // Roda várias seções em UMA ÚNICA sessão de navegador — só pausa 1x pro
 // usuário logar/abrir o popup, depois processa seção por seção sozinho.
 // `limit`, se passado, se aplica a CADA seção (não ao total).
-async function rodarMuitasSecoes(slugs, { limit, channel, retrySemFoto, reiniciar, confirmar, modoAutomatico, deveParar }) {
+async function rodarMuitasSecoes(slugs, { limit, channel, retrySemFoto, reiniciar, confirmar, modoAutomatico, deveParar, codigosEspecificos, renovarAposDias, renovarLimite }) {
   if (reiniciar) {
     console.log(`Reiniciando ${slugs.length} seção(ões) do zero (apagando progresso e staging salvos)...`);
     for (const s of slugs) reiniciarSecao(s);
@@ -758,7 +847,12 @@ async function rodarMuitasSecoes(slugs, { limit, channel, retrySemFoto, reinicia
         break;
       }
       try {
-        const r = await processarSecaoComPopup(popup, secaoSlug, { limit, retrySemFoto, deveParar });
+        // `codigosEspecificos` (pedido do usuário, 2026-09-11) se aplica a
+        // TODAS as seções da lista igual — cada `processarSecaoComPopup`
+        // faz a interseção com os códigos da SUA própria seção (ver
+        // calcularFila), então passar a mesma lista pra todas aqui é seguro
+        // mesmo com seções diferentes na mesma chamada.
+        const r = await processarSecaoComPopup(popup, secaoSlug, { limit, retrySemFoto, deveParar, codigosEspecificos, renovarAposDias, renovarLimite });
         resumo.push(r);
       } catch (e) {
         console.error(`\nErro na seção ${secaoSlug}: ${e.message} — pulando pra próxima.`);
@@ -815,7 +909,32 @@ async function _forcarReloadCatalogo() {
   }
 }
 
-async function montarZipFinal(secaoSlug) {
+// Retenção de backups (auditoria 2026-09-30): .zip.bak-* acumulavam ~20 GB.
+// OPT-IN: só poda se X2_ZIP_BACKUPS_MANTER for definido (ex: 20). Sem a variável,
+// nada é apagado (decisão do usuário: risco de perder foto que só existe no backup).
+// Nunca apaga o backup mais recente com conteúdo real (> 1 KB).
+function podarBackupsZip(secaoSlug, manter = Number(process.env.X2_ZIP_BACKUPS_MANTER) || 0) {
+  if (!manter) return;
+  try {
+    const prefixo = `${secaoSlug}.zip.bak-`;
+    const baks = fs.readdirSync(FOTOS_DIR)
+      .filter((n) => n.startsWith(prefixo))
+      .map((n) => ({ n, ts: Number(n.slice(prefixo.length)) || 0, size: fs.statSync(path.join(FOTOS_DIR, n)).size }))
+      .sort((a, b) => b.ts - a.ts);
+    const ultimoBom = baks.find((b) => b.size > 1024);
+    let removidos = 0;
+    for (const b of baks.slice(manter)) {
+      if (ultimoBom && b.n === ultimoBom.n) continue;
+      fs.unlinkSync(path.join(FOTOS_DIR, b.n));
+      removidos++;
+    }
+    if (removidos) console.log(`Backups antigos de ${secaoSlug}: ${removidos} removido(s), mantendo os ${manter} mais recentes.`);
+  } catch (e) {
+    console.log(`(não consegui podar backups de ${secaoSlug}: ${e.message})`);
+  }
+}
+
+async function montarZipFinal(secaoSlug, { parcial = false } = {}) {
   const labelSecao = SECOES[secaoSlug];
   if (!labelSecao) {
     throw new Error(`Seção desconhecida: "${secaoSlug}". Opções: ${Object.keys(SECOES).join(', ')}`);
@@ -827,45 +946,136 @@ async function montarZipFinal(secaoSlug) {
   const progresso = carregarProgresso(secaoSlug);
 
   const faltando = codigos.filter((c) => !progresso[c]);
-  if (faltando.length) {
+  if (faltando.length && !parcial) {
     console.log(`ATENÇÃO: ${faltando.length} de ${codigos.length} produtos ainda não foram processados nesta seção.`);
     console.log('O zip só é montado quando a seção estiver 100% processada — rode sem --build-zip pra continuar.');
     return;
   }
+  if (faltando.length) {
+    console.log(`(zip parcial de "${secaoSlug}": ${faltando.length} produto(s) ainda sem download — as fotos que já estão no zip atual são preservadas.)`);
+  }
 
   const stagingDir = stagingSecaoDir(secaoSlug);
+  const destino = path.join(FOTOS_DIR, `${secaoSlug}.zip`);
+
+  // BUG REAL corrigido (2026-08-31, achado investigando produtos "com todas
+  // as fotos baixadas" mas sem foto no Catálogo — ex: DNI0102/102670, ver
+  // memória "bot Rildon: fotos invisíveis..."): este loop reconstruía o zip
+  // INTEIRO do zero a cada rodada, só a partir do `progresso` ATUAL. Um
+  // código que já tinha foto real num zip anterior (status:"ok" numa rodada
+  // passada) mas que — por qualquer motivo (degradação de sessão do
+  // navegador, "Reiniciar do zero" parcial, etc., ver comentário em
+  // calcularFila) — ficou marcado "erro"/"sem_foto"/"placeholder" na rodada
+  // atual, tinha sua foto REAL simplesmente descartada aqui, e o zip novo
+  // (sem essa foto) sobrescrevia o zip antigo (que a tinha). O backup
+  // automático (`.zip.bak-*` logo abaixo) evitou perda definitiva, mas o
+  // Catálogo ao vivo ficava sem a foto até alguém notar e restaurar na mão.
+  // Fix: antes de descartar um código não-"ok", olha se ele já tem foto(s)
+  // no zip EXISTENTE em disco — se tiver, preserva essas fotos no zip novo
+  // em vez de descartar. Só produtos que NUNCA tiveram foto real registrada
+  // em nenhuma rodada (não estão no zip antigo) continuam de fato de fora.
+  const existentesPorCodigo = new Map();
+  if (fs.existsSync(destino)) {
+    try {
+      const entradasExistentes = listarEntradasZip(destino);
+      for (const entrada of entradasExistentes) {
+        const barra = entrada.name.indexOf('/');
+        if (barra <= 0) continue;
+        const codigo = entrada.name.slice(0, barra);
+        if (!existentesPorCodigo.has(codigo)) existentesPorCodigo.set(codigo, []);
+        existentesPorCodigo.get(codigo).push(entrada);
+      }
+    } catch (e) {
+      console.log(`(não consegui ler o zip anterior pra preservar fotos já existentes: ${e.message} — seguindo sem preservação.)`);
+    }
+  }
+
   const entradas = [];
-  let semFotoCount = 0, placeholderCount = 0, erroCount = 0;
+  let semFotoCount = 0, placeholderCount = 0, erroCount = 0, preservadoCount = 0;
   const pequenasCodigos = [];
+  const preservadosCodigos = [];
+  const comFotoReal = new Set();
 
   for (const codigo of codigos) {
     const st = progresso[codigo];
-    if (st.status === 'sem_foto') { semFotoCount++; continue; }
-    if (st.status === 'placeholder') { placeholderCount++; continue; }
-    if (st.status !== 'ok') { erroCount++; continue; }
+    if (!st) {
+      // Ainda não processado (só ocorre em zip parcial): preserva o que o zip atual já tem.
+      const preservar = existentesPorCodigo.get(codigo);
+      if (preservar && preservar.length) {
+        for (const entrada of preservar) entradas.push({ name: entrada.name, data: extrairArquivoZip(destino, entrada) });
+      }
+      continue;
+    }
+    if (st.status !== 'ok') {
+      if (st.status === 'sem_foto') semFotoCount++;
+      else if (st.status === 'placeholder') placeholderCount++;
+      else erroCount++;
+
+      const preservar = existentesPorCodigo.get(codigo);
+      if (preservar && preservar.length) {
+        preservadoCount++;
+        preservadosCodigos.push(codigo);
+        comFotoReal.add(codigo);
+        for (const entrada of preservar) {
+          entradas.push({ name: entrada.name, data: extrairArquivoZip(destino, entrada) });
+        }
+      }
+      continue;
+    }
+    comFotoReal.add(codigo);
     if (fotosSuspeitas(st.detalhes).length) pequenasCodigos.push(codigo);
     const dir = path.join(stagingDir, codigo);
     const arquivos = (st.arquivos && st.arquivos.length) ? st.arquivos : (fs.existsSync(dir) ? fs.readdirSync(dir) : []);
+    // Progresso semeado do zip (x2-semear-progresso.js) ou staging apagado:
+    // se algum arquivo não está em disco, usa as fotos do zip existente.
+    const faltaArquivo = arquivos.some((nome) => !fs.existsSync(path.join(dir, nome)));
+    const doZip = existentesPorCodigo.get(codigo);
+    if (faltaArquivo && doZip && doZip.length) {
+      for (const entrada of doZip) entradas.push({ name: entrada.name, data: extrairArquivoZip(destino, entrada) });
+      continue;
+    }
     for (const nome of arquivos) {
       const data = fs.readFileSync(path.join(dir, nome));
       entradas.push({ name: `${codigo}/${nome}`, data });
     }
   }
 
+  // TRAVA (auditoria 2026-09-30): instrumento-painel.zip foi sobrescrito por
+  // um zip VAZIO (22 bytes) e ~343 fotos sumiram do Catálogo ao vivo. Recusa
+  // sobrescrever se o zip novo tem 0 fotos, ou perde mais de 30% das fotos
+  // do zip atual (--forcar-zip ou X2_FORCAR_ZIP=1 confirma que é intencional).
+  // Só conta fotos de códigos que ainda pertencem à seção (código que saiu do JSON não conta como "perda").
+  const fotosAnteriores = codigos.reduce((a, c) => a + ((existentesPorCodigo.get(c) || []).length), 0);
+  const forcarZip = process.argv.includes('--forcar-zip') || process.env.X2_FORCAR_ZIP === '1';
+  if (!forcarZip) {
+    if (entradas.length === 0) {
+      throw new Error(`Zip de "${secaoSlug}" NÃO gerado: o novo teria 0 fotos (o atual tem ${fotosAnteriores}). Zip antigo mantido. Confira o staging/progresso da seção.`);
+    }
+    if (fotosAnteriores > 0 && entradas.length < fotosAnteriores * 0.7) {
+      throw new Error(`Zip de "${secaoSlug}" NÃO gerado: o novo teria ${entradas.length} fotos contra ${fotosAnteriores} do atual (queda maior que 30%). Zip antigo mantido. Use --forcar-zip se for intencional.`);
+    }
+  }
+
   const zipBuf = criarZip(entradas);
   fs.mkdirSync(FOTOS_DIR, { recursive: true });
-  const destino = path.join(FOTOS_DIR, `${secaoSlug}.zip`);
   if (fs.existsSync(destino)) {
     const backup = path.join(FOTOS_DIR, `${secaoSlug}.zip.bak-${Date.now()}`);
     fs.copyFileSync(destino, backup);
     console.log(`Backup do zip antigo: ${backup}`);
   }
-  fs.writeFileSync(destino, zipBuf);
+  // Escrita atômica: grava em .tmp e renomeia, nunca deixa zip pela metade.
+  const tmpZip = `${destino}.tmp-${process.pid}`;
+  fs.writeFileSync(tmpZip, zipBuf);
+  fs.renameSync(tmpZip, destino);
+  podarBackupsZip(secaoSlug);
   await _forcarReloadCatalogo();
 
   console.log(`\nZip final gerado: ${destino}`);
-  console.log(`${entradas.length} fotos, de ${codigos.length - semFotoCount - placeholderCount - erroCount} produtos com foto real.`);
+  console.log(`${entradas.length} fotos, de ${comFotoReal.size} produtos com foto real.`);
   console.log(`${semFotoCount} sem foto cadastrada no X2, ${placeholderCount} só com o placeholder "imagem não disponível", ${erroCount} com erro (revise manualmente).`);
+  if (preservadoCount) {
+    console.log(`${preservadoCount} produto(s) preservado(s) do zip anterior (status atual não é "ok", mas já tinham foto real de uma rodada passada): ${preservadosCodigos.join(', ')}`);
+  }
   console.log(`${pequenasCodigos.length} produto(s) com foto abaixo de ${LARGURA_MINIMA_AVISO}px — revisar: ${pequenasCodigos.join(', ') || '(nenhum)'}`);
   console.log(`\nFalta atualizar a linha "${labelSecao}" na tabela de src/config/catalogo-x2/README.md com a nova contagem/data.`);
 }

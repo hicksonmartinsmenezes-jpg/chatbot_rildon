@@ -15,7 +15,25 @@ const router = express.Router();
 // restrito a admin.
 router.get("/bot-status", asyncHandler(async (req, res) => {
   const settings = await getSettings();
-  res.json({ ativo: settings.bot?.ativo !== false });
+
+  // PEDIDO DO USUÁRIO (2026-09-23, "analise se as condições de reabrir esta
+  // batendo"): o painel de Conversas (07-conversations.js, estaPendente())
+  // precisava saber a mesma janela de reabertura configurável usada pelo
+  // backend (atendimento.tempoReaberturaSemPesquisa, padrão 240min — ver
+  // _getReopenWindowMs em ticket.service.js) pra decidir por quanto tempo um
+  // cliente reengajado sem ticket novo continua aparecendo em Pendentes —
+  // antes usava "mesmo dia do calendário", que fazia esse cliente sumir da
+  // lista sozinho na virada da meia-noite, mesmo sem ninguém ter atendido.
+  // GET /api/settings (settings.routes.js) é admin-only (requireScreenAccess
+  // "chatbot"/"settings" em app.js) — a maioria dos atendentes não tem
+  // acesso, então não dava pra usar de lá. Esta rota já é liberada pra
+  // qualquer atendente logado (mesmo motivo do campo "ativo" abaixo), então
+  // reaproveitada em vez de criar um endpoint novo só pra 1 número.
+  const tempoReaberturaMinutos = Number(settings.atendimento?.tempoReaberturaSemPesquisa) > 0
+    ? Number(settings.atendimento.tempoReaberturaSemPesquisa)
+    : 240;
+
+  res.json({ ativo: settings.bot?.ativo !== false, tempoReaberturaMinutos });
 }));
 
 router.put("/bot-status", asyncHandler(async (req, res) => {

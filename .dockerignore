@@ -1,7 +1,31 @@
 node_modules
 .env
+.env.*
+!.env.example
+.git
+.github
+.claude
+auth_info
+auth_info*
 src/logs
 src/backups
 src/data
-auth_info
-.git
+# Pastas pesadas/locais: nao entram na imagem (o docker-compose monta o
+# projeto inteiro em /app, entao o catalogo e as midias chegam por la)
+src/config/catalogo-x2
+src/uploads
+src/media-recebida
+credentials
+backups
+fotos
+contatos
+training
+documentos-projeto
+Claude outputs
+dist
+docs
+tests
+*.log
+*.sql
+*.sql.gz
+*.sql.gz.enc

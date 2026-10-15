@@ -30,7 +30,11 @@ async function _loadTicketsCore(silent = false) {
 
     updateStats(data.stats, data.tickets || [], data.liveStats, data.todayStats, data.encerradosHoje);
 
-    if (!firstLoadTickets && data.total > lastTicketTotal) showNewTicketAlert();
+    // Mesmo corte do nova_mensagem (12-socket.js) — usuário sem a tela
+    // "Atendimentos" não deve receber alerta de novo atendimento (pedido
+    // do usuário, 2026-09-21).
+    const podeVerAtendimentos = typeof hasUserScreenPermission !== "function" || hasUserScreenPermission("conversations");
+    if (!firstLoadTickets && data.total > lastTicketTotal && podeVerAtendimentos) showNewTicketAlert();
 
     lastTicketTotal  = data.total;
     firstLoadTickets = false;

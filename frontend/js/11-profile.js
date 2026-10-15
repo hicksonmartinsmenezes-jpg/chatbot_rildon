@@ -104,28 +104,71 @@ async function saveProfile() {
 }
 
 // ─── Permissões ───────────────────────────────────────────────────────────────
+function getAllowedUserScreens(user = getCurrentUser()) {
+  if (!user) return {};
+  const base = typeof getUserScreenPermissions === "function"
+    ? getUserScreenPermissions(user.perfil, user.permissions)
+    : {};
+  return base;
+}
+
+function hasUserScreenPermission(tab, user = getCurrentUser()) {
+  if (!user) return false;
+  if (user.perfil === "admin") return true;
+  const allowed = getAllowedUserScreens(user);
+  return allowed[tab] === true;
+}
+
 function applyUserPermissions() {
   const user = getCurrentUser();
   if (!user) return;
   const perfil = user.perfil;
+  const allowed = getAllowedUserScreens(user);
+
   document.querySelectorAll(".admin-only").forEach(el => {
     el.style.display = perfil === "admin" ? "" : "none";
   });
+
   document.querySelectorAll(".supervisor-only").forEach(el => {
     el.style.display = ["admin", "supervisor"].includes(perfil) ? "" : "none";
   });
+
+  // Visibilidade da aba no menu = só a permissão individual da tela
+  // (allowed[tab], já com o fallback pro padrão do perfil — ver
+  // getUserScreenPermissions/09-users.js). Antes disso, as classes
+  // .admin-only/.supervisor-only no HTML (loops acima) travavam
+  // Chatbot/Configurações/Campanhas/Métricas pra atendente/supervisor
+  // mesmo com a tela marcada em "Acesso às telas" — pedido do usuário
+  // (2026-09-19) foi exatamente permitir esse override tela por tela.
+  document.querySelectorAll(".sidebar [data-tab]").forEach(el => {
+    const tab = el.dataset.tab;
+    const visible = perfil === "admin" || allowed[tab] === true;
+    el.style.display = visible ? "" : "none";
+    el.setAttribute("aria-hidden", visible ? "false" : "true");
+  });
+
   applyUserProfileVisual(user);
 }
 
 function applyUserProfileVisual(user) {
-  const name    = user.nome || user.usuario || "Usuário";
+  const name = user.nome || user.usuario || "Usuário";
   const topName = document.getElementById("top-user-name");
-  const avatar  = document.getElementById("top-user-avatar");
+  const avatar = document.getElementById("top-user-avatar");
+  const menuName = document.getElementById("user-menu-name");
+  const menuAvatar = document.getElementById("user-menu-avatar");
+
+  // O cabeçalho mostra só a foto, mas o menu aberto deve identificar
+  // claramente quem está logado pelo nome cadastrado.
   if (topName) topName.textContent = name;
-  if (avatar) {
-    const photo = safeUrl(user.foto);
-    avatar.innerHTML = photo ? `<img src="${escapeAttr(photo)}" alt="Perfil">` : safe(initials(name));
-  }
+  if (menuName) menuName.textContent = name;
+
+  const photo = safeUrl(user.foto);
+  const avatarMarkup = photo
+    ? `<img src="${escapeAttr(photo)}" alt="Perfil">`
+    : safe(initials(name));
+
+  if (avatar) avatar.innerHTML = avatarMarkup;
+  if (menuAvatar) menuAvatar.innerHTML = avatarMarkup;
 }
 
 document

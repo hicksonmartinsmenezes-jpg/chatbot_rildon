@@ -94,7 +94,14 @@ describe("POST /api/messages/send-media", () => {
       .attach("media", Buffer.from("fake-jpg-bytes"), "foto.jpg");
 
     expect(res.status).toBe(400);
-    // Nenhum arquivo deve sobrar no diretório de mídia após o cleanup
+    // Nenhum arquivo deve sobrar no diretório de mídia após o cleanup.
+    // A rota remove com fs.unlink assíncrono (fire-and-forget) depois de
+    // responder, então a leitura imediata do diretório corre contra o unlink
+    // (flaky no CI). Espera o diretório esvaziar, com teto de 2s.
+    const limite = Date.now() + 2000;
+    while (fs.readdirSync(mockTmpMediaDir).length > 0 && Date.now() < limite) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
     expect(fs.readdirSync(mockTmpMediaDir)).toHaveLength(0);
   });
 

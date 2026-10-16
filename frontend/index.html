@@ -158,13 +158,6 @@
       <span class="label">Chatbot</span>
     </a>
 
-   <a
-  href="#"
-  class="admin-only" data-tab="settings"
->
-  <i class="fa-solid fa-gear"></i>
-  <span class="label">Configurações</span>
-</a>
 
 
 
@@ -172,6 +165,15 @@
 <a href="#" class="supervisor-only" data-tab="metrics">
   <i class="fa-solid fa-chart-line"></i>
   <span class="label">Métricas</span>
+</a>
+
+    <hr class="sidebar-sep">
+    <a
+  href="#"
+  class="admin-only" data-tab="settings"
+>
+  <i class="fa-solid fa-gear"></i>
+  <span class="label">Configurações</span>
 </a>
 
 
@@ -359,15 +361,11 @@
       <section id="tab-conversations" class="tab-content hidden">
         <div class="whatsapp-panel">
           <aside class="chat-sidebar">
-            <div class="chat-sidebar-header">
-              <div>
-                <strong>Conversas</strong>
-                <span id="chat-total">0 conversas</span>
-              </div>
-              <button type="button" data-action="loadConversations" title="Atualizar lista">
-                <i class="fa-solid fa-arrows-rotate"></i>
-              </button>
+            <div class="chat-search">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input id="search-conversations" type="text" aria-label="Pesquisar conversa" placeholder="Pesquisar conversa..." data-input-action="debouncedSearch">
             </div>
+            <span id="chat-total" hidden>0 conversas</span>
             <div class="chat-status-tabs">
               <button type="button" class="chat-status-tab active" data-filter="pendentes" data-action="setTicketFilter" data-value="pendentes">
                 <i class="fa-solid fa-clock"></i>
@@ -383,11 +381,6 @@
                 <i class="fa-solid fa-circle-check"></i>
                 <span class="tab-label">Fechados</span>
               </button>
-            </div>
-
-            <div class="chat-search">
-              <i class="fa-solid fa-magnifying-glass"></i>
-              <input id="search-conversations" type="text" aria-label="Pesquisar conversa" placeholder="Pesquisar conversa..." data-input-action="debouncedSearch">
             </div>
 
             <div class="chat-list" id="chat-list"></div>
@@ -618,22 +611,19 @@
           <div class="contacts-table-wrap">
             <table class="contacts-table">
               <colgroup>
-                <col><col><col><col><col><col><col><col>
+                <col><col><col><col><col>
               </colgroup>
               <thead>
                 <tr>
                   <th width="44"><input type="checkbox" id="contacts-check-all" data-change-action="toggleContactSelectAll"></th>
                   <th width="250">Nome</th>
                   <th width="210">WhatsApp</th>
-                  <th width="90">Estado</th>
-                  <th width="110">Status</th>
                   <th width="180">Tags</th>
-                  <th width="180">Departamento</th>
                   <th width="120">Ações</th>
                 </tr>
               </thead>
               <tbody id="contacts-tbody">
-                <tr><td colspan="8"><div class="contacts-empty"><i class="fa-solid fa-users-slash"></i>Nenhum contato.</div></td></tr>
+                <tr><td colspan="5"><div class="contacts-empty"><i class="fa-solid fa-users-slash"></i>Nenhum contato.</div></td></tr>
               </tbody>
             </table>
           </div>

@@ -229,7 +229,7 @@ body.light-theme .chat-item.active {
 }
 body.light-theme .chat-item-body { border-bottom-color: rgba(0,0,0,.07); }
 body.light-theme .chat-item-top strong { color: #0f172a; }
-body.light-theme .chat-item-top small { color: #475569; background: rgba(0,0,0,.05); }
+body.light-theme .chat-item-top small { color: #475569; background: none; }
 body.light-theme .chat-item-bottom span { color: #475569; }
 body.light-theme .conv-sector-tag { color: #475569; background: rgba(0,0,0,.05); }
 
@@ -437,3 +437,12 @@ body.light-theme .history-date-field input { color: #0f172a; }
    branco fixo (herdado de 07-settings.css) — invisível sobre fundo branco,
    só a legenda cinza embaixo aparecia. */
 body.light-theme .flow-item { color: #0f172a; }
+
+/* Barra lateral no tema claro: aba selecionada sem fundo; hover preto */
+body.light-theme .sidebar a.active,
+body.light-theme .sidebar a.highlight,
+body.light-theme .sidebar a.active:hover { background: transparent !important; box-shadow: none !important; }
+body.light-theme .sidebar a:hover,
+body.light-theme .sidebar a:hover i { color: #000 !important; background: transparent !important; }
+body.light-theme .sidebar.open a.active::before,
+body.light-theme .sidebar.open a.highlight::before { background: transparent !important; }

@@ -13,6 +13,8 @@ body.tab-fullscreen #top-tabs-panel {
 
 body.tab-fullscreen .content {
   padding: 0 !important;
+  max-width: none !important;
+  margin: 0 !important;
 }
 
 body.tab-fullscreen .whatsapp-panel {
@@ -233,14 +235,16 @@ body.tab-fullscreen #tab-conversations {
   gap: 3px;
   font-size: 10px;
   font-weight: 700;
-  padding: 2px 7px;
-  border-radius: 999px;
+  padding: 0;
+  background: none;
+  border: 0;
 }
 
-.conv-status-pill.status-aberto       { background: rgba(186,117,23,0.12); color: #BA7517; }
-.conv-status-pill.status-em_andamento { background: rgba(24,95,165,0.12);  color: #185FA5; }
-.conv-status-pill.status-resolvido    { background: rgba(30,132,97,0.12);  color: #1D9E75; }
-.conv-status-pill.status-cancelado    { background: rgba(163,45,45,0.12);  color: #A32D2D; }
+/* Sem fundo/borda na lista de conversas (pedido 16/10/2026): só o texto colorido. */
+.conv-status-pill.status-aberto       { background: none; border: 0; color: #BA7517; }
+.conv-status-pill.status-em_andamento { background: none; border: 0; color: #185FA5; }
+.conv-status-pill.status-resolvido    { background: none; border: 0; color: #1D9E75; }
+.conv-status-pill.status-cancelado    { background: none; border: 0; color: #A32D2D; }
 
 .conv-sector-tag {
   display: inline-flex;
@@ -256,6 +260,7 @@ body.tab-fullscreen #tab-conversations {
 .chat-item-row3 {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 5px;
   margin-top: 3px;
 }
@@ -544,29 +549,43 @@ body.tab-fullscreen #tab-conversations {
    linha, sem offset especial. */
 .chat-unread {
   box-sizing: border-box;
-  min-width: 20px;
-  height: 20px;
+  min-width: 17px;
+  height: 17px;
 
   border-radius: 999px;
 
   background: #22c55e;
 
-  color: #ffffff !important;
+  /* Pedido do usuário (2026-10-16): círculo menor, número centralizado e preto. */
+  color: #000000 !important;
   -webkit-font-smoothing: antialiased;
 
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 800;
-  letter-spacing: -.2px;
-  line-height: 20px;
+  letter-spacing: 0;
+  line-height: 1;
   text-align: center;
 
   display: flex;
   align-items: center;
   justify-content: center;
 
-  padding: 0 6px;
+  padding: 0 4px;
 
   flex-shrink: 0;
+}
+
+/* Mais específico que ".chat-item-bottom span" (display:block, 13px, overflow
+   hidden), que quebrava o centramento e o tamanho do número do contador. */
+.chat-item-bottom .chat-unread {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  line-height: 1;
+  padding: 0;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 /* ─── Janela de mensagens ─────────────── */
@@ -1167,9 +1186,8 @@ body.tab-fullscreen #tab-conversations {
 }
 
 .chat-item-top small {
-  background: rgba(255,255,255,.05);
-  padding: 4px 8px;
-  border-radius: 999px;
+  background: none;
+  padding: 0;
   color: #94a3b8;
   font-size: 10px;
 }
@@ -1325,4 +1343,31 @@ body.tab-fullscreen #tab-conversations {
   .chat-input-area textarea {
     font-size: 16px;
   }
+}
+
+/* Figurinha (sticker) estilo WhatsApp: pequena, sem balão nem fundo; só o
+   horário embaixo. */
+.chat-sticker {
+  display: block;
+  width: 150px;
+  height: 150px;
+  max-width: 100%;
+  object-fit: contain;
+  margin: 0 0 2px;
+  border-radius: 0;
+}
+
+.bubble.bubble-sticker,
+body.light-theme .bubble.bubble-sticker {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+/* Foto enviada sem legenda: sem balão, só a imagem (igual figurinha). */
+.bubble.bubble-sticker .chat-media-image {
+  max-width: 260px;
+  border-radius: 10px;
+  margin: 0 0 2px;
 }

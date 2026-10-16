@@ -483,12 +483,21 @@ function bindConversationListDelegation() {
 // migration 017) e serve de volta por GET /api/history/media/:id
 // (autenticado — mesma sessão do painel). Escolhe a tag certa pelo prefixo
 // do mimetype; documento (ou mimetype desconhecido) vira link de download.
+// Figurinha (sticker) do WhatsApp sempre chega/sai como image/webp; foto
+// normal é jpeg. Usado pra mostrar a figurinha pequena e sem balão, igual ao app.
+function isStickerItem(item) {
+  return Boolean(item?.mediaPath && (item.mediaMimetype || "") === "image/webp");
+}
+
 function renderMediaBubble(item) {
   if (!item.mediaPath || !item.id) return "";
 
   const url = `${BASE}/api/history/media/${item.id}`;
   const mime = item.mediaMimetype || "";
 
+  if (isStickerItem(item)) {
+    return `<img class="chat-media chat-sticker" src="${escapeAttr(url)}" alt="Figurinha" loading="lazy">`;
+  }
   if (mime.startsWith("image/")) {
     return `<a href="${escapeAttr(url)}" target="_blank" rel="noopener"><img class="chat-media chat-media-image" src="${escapeAttr(url)}" alt="Imagem enviada pelo cliente" loading="lazy"></a>`;
   }
@@ -531,6 +540,7 @@ function buildMessagesHtml(messages, dayState) {
     }
     if (item.id != null) _renderedHistoryIds.add(item.id);
 
+    const ehSticker = isStickerItem(item);
     if (item.message) {
       const ehPlaceholderMidia = isMediaPlaceholderLabel(item.message);
       const podeResponder = Boolean(item.message && item.messageId && !ehPlaceholderMidia);
@@ -539,7 +549,7 @@ function buildMessagesHtml(messages, dayState) {
         : "";
       html.push(`
         <div class="bubble-row client-row">
-          <div class="bubble client">
+          <div class="bubble client${ehSticker && ehPlaceholderMidia ? " bubble-sticker" : ""}">
             ${replyBtn}
             ${renderMediaBubble(item)}
             ${item.message && !ehPlaceholderMidia ? `<p>${item.mediaMimetype?.startsWith("audio/") ? `<i>${safe(item.message.replace(/^\s*(?:_\*)?Transcrição(?:\*_)?\s*:?[\s\r\n]*/i, "").trim())}</i>` : safe(item.message)}</p>` : ""}
@@ -549,15 +559,18 @@ function buildMessagesHtml(messages, dayState) {
       `);
     }
     if (item.response) {
+      // "[arquivo enviado]" é só o marcador interno de mídia sem legenda —
+      // a mídia já aparece no balão, então o colchete não é mostrado.
+      const ehPlaceholderEnvio = isMediaPlaceholderLabel(item.response);
       const quoteStrip = item.quotedText
         ? `<div class="bubble-quote"><i class="fa-solid fa-reply"></i> ${safe(item.quotedText.slice(0, 160))}</div>`
         : "";
       html.push(`
         <div class="bubble-row bot-row">
-          <div class="bubble bot"${item.messageId ? ` data-msg-id="${escapeAttr(item.messageId)}"` : ""}>
+          <div class="bubble bot${ehPlaceholderEnvio && item.mediaPath && (item.mediaMimetype || "").startsWith("image/") ? " bubble-sticker" : ""}"${item.messageId ? ` data-msg-id="${escapeAttr(item.messageId)}"` : ""}>
             ${quoteStrip}
             ${renderMediaBubble(item)}
-            ${item.response ? `<p>${safe(item.response)}</p>` : ""}
+            ${item.response && !ehPlaceholderEnvio ? `<p>${safe(item.response)}</p>` : ""}
             <small>${safe(shortTime(item.createdAt))} <span class="msg-status">${renderMessageStatus(item.status)}</span></small>
           </div>
         </div>

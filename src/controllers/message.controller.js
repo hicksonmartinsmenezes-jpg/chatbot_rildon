@@ -403,5 +403,6 @@ module.exports = {
   sendMediaMessage,
   sendTyping,
   listHumanMode,
-  releaseHumanMode
+  releaseHumanMode,
+  ensureTicketForManualReply: _ensureTicketForManualReply
 };

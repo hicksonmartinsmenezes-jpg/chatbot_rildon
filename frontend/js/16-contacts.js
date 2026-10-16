@@ -117,7 +117,7 @@ async function loadContacts(silent = false) {
   } catch (e) {
     if (requestId !== _contactsRequestSeq) return;
     if (tbody) tbody.innerHTML = `
-      <tr><td colspan="8" class="contacts-empty">
+      <tr><td colspan="5" class="contacts-empty">
         <i class="fa-solid fa-triangle-exclamation"></i><br>
         Não foi possível carregar os contatos.<br>
         <small>Verifique a conexão e tente novamente.</small><br>
@@ -131,7 +131,7 @@ function renderContactsTable(rows) {
   if (!tbody) return;
 
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="8"><div class="contacts-empty"><i class="fa-solid fa-users-slash"></i>Nenhum contato encontrado.</div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5"><div class="contacts-empty"><i class="fa-solid fa-users-slash"></i>Nenhum contato encontrado.</div></td></tr>`;
     return;
   }
 
@@ -158,15 +158,11 @@ function renderContactsTable(rows) {
           </div>
           <div>
             <strong>${safe(c.nome)}</strong>
-            ${c.departamento ? `<span>${safe(c.departamento)}</span>` : ""}
           </div>
         </div>
       </td>
       <td style="white-space:nowrap;">${safe(formatContactPhone(c.whatsapp))}</td>
-      <td>${contactEstadoCellHTML(c)}</td>
-      <td><span class="ct-status ${contactStatusClass(c.status)}">${safe(contactStatusLabel(c.status))}</span></td>
       <td><div class="ct-tags">${tags || '<span style="color:var(--muted);font-size:12px;">—</span>'}</div></td>
-      <td>${safe(c.departamento || "—")}</td>
       <td>
         <div class="ct-actions">
           <button type="button" class="ct-btn ct-btn-msg" title="Enviar mensagem" data-contact-action="message" data-whatsapp="${escapeAttr(c.whatsapp)}" data-name="${escapeAttr(c.nome)}">

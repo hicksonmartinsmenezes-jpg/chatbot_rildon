@@ -40,23 +40,42 @@
   min-width: 0 !important;
   box-sizing: border-box !important;
   overflow: visible !important;
+  /* Estilo WhatsApp (2026-10-16): sem faixa/imagem de fundo — só a pílula. */
+  padding: 8px 16px 12px !important;
+  gap: 0 !important;
+  background-image: none !important;
+  background-color: #0b141a !important;
+  border-top: 0 !important;
 }
+
+body.light-theme .chat-input-area { background-color: #e9edf2 !important; }
 
 .chat-input-area textarea#conversation-message {
   flex: 1 1 auto !important;
   width: auto !important;
   min-width: 0 !important;
-  max-width: calc(100% - 58px) !important;
+  max-width: 100% !important;
   margin: 0 !important;
-  padding-right: 14px !important;
+  padding: 14px 56px !important;
+  background: #202324 !important;
+  color: #e9edf2 !important;
   box-sizing: border-box !important;
   position: relative !important;
   z-index: 1 !important;
-  border-color: transparent !important;
+  border: 0 !important;
 }
 
-.chat-input-area textarea#conversation-message:focus {
-  box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.18) !important;
+body.light-theme .chat-input-area textarea#conversation-message {
+  background: #ffffff !important;
+  color: #111b21 !important;
+}
+
+.chat-input-area textarea#conversation-message:focus,
+.chat-input-area textarea#conversation-message:focus-visible {
+  /* Sem brilho/contorno branco ao clicar (pedido 2026-10-16). */
+  box-shadow: none !important;
+  outline: none !important;
+  border: 0 !important;
 }
 
 .chat-input-area .chat-attach-btn {
@@ -73,15 +92,17 @@
   border-radius: 50% !important;
   background: transparent !important;
   box-shadow: none !important;
-  color: #8696a0 !important;
+  color: #ffffff !important;
   transform: none !important;
-  position: relative !important;
+  position: absolute !important;
+  left: 22px !important;
+  bottom: 14px !important;
   z-index: 5 !important;
 }
 
 .chat-input-area .chat-attach-btn:hover:not(:disabled) {
-  background: rgba(255,255,255,.06) !important;
-  color: #d1d5db !important;
+  background: rgba(255,255,255,.10) !important;
+  color: #ffffff !important;
   transform: none !important;
 }
 
@@ -91,15 +112,21 @@
 }
 
 .chat-input-area #btn-send-conversation {
-  position: relative !important;
+  position: absolute !important;
+  right: 22px !important;
+  bottom: 14px !important;
+  background: none !important;
+  box-shadow: none !important;
+  color: #ffffff !important;
+  font-size: 18px !important;
   z-index: 50 !important;
-  width: 48px !important;
-  min-width: 48px !important;
-  max-width: 48px !important;
-  height: 48px !important;
-  min-height: 48px !important;
-  max-height: 48px !important;
-  flex: 0 0 48px !important;
+  width: 42px !important;
+  min-width: 42px !important;
+  max-width: 42px !important;
+  height: 42px !important;
+  min-height: 42px !important;
+  max-height: 42px !important;
+  flex: 0 0 42px !important;
   flex-shrink: 0 !important;
   flex-grow: 0 !important;
   display: flex !important;
@@ -114,6 +141,13 @@
   pointer-events: auto !important;
   transform: none !important;
 }
+
+.chat-input-area #btn-send-conversation:hover:not(:disabled) {
+  background: rgba(255,255,255,.08) !important;
+  color: #fff !important;
+}
+
+body.light-theme .chat-input-area #btn-send-conversation { color: #667781 !important; background: none !important; }
 
 .chat-input-area #btn-send-conversation.composer-send-hidden,
 .chat-input-area #btn-send-conversation:disabled {
@@ -306,3 +340,11 @@ body.light-theme .chat-messages .rildon-audio-menu-item {
 body.light-theme .chat-messages .rildon-audio-menu-item i {
   color: #667781 !important;
 }
+
+/* Tema claro: cabecalho da conversa (nome + Aceitar/Transferir/Fechar) branco */
+body.light-theme .chat-window-header,
+body.light-theme #chat-window-header { background: #ffffff !important; background-image: none !important; }
+
+/* Contatos: tags sem fundo/borda, mesma cor e opacidade dos icones de Acoes */
+.ct-tags .ct-tag,
+body.light-theme .ct-tags .ct-tag { background: none !important; border: 0 !important; padding: 0 !important; color: #94a3b8 !important; opacity: .55; }

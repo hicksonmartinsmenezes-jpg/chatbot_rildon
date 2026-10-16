@@ -68,6 +68,12 @@ jest.mock("../src/services/humanMode.service", () => ({
   estaAtivo: jest.fn(() => false),
   ativar: jest.fn(),
 }));
+jest.mock("../src/repositories/user.repository", () => ({
+  findByUsername: jest.fn(async () => ({ id: "u-rafael", nome: "Rafael", usuario: "atendente04", ativo: true })),
+}));
+jest.mock("../src/controllers/message.controller", () => ({
+  ensureTicketForManualReply: jest.fn(async () => {}),
+}));
 jest.mock("qrcode-terminal", () => ({ generate: jest.fn() }));
 jest.mock("@whiskeysockets/baileys", () => ({
   __esModule: true,
@@ -91,6 +97,8 @@ const humanMode = require("../src/services/humanMode.service");
 const { resolveLid, setLidMapping } = require("../src/whatsapp/lid-map");
 const { salvarMidiaRecebida } = require("../src/services/mediaStorage.service");
 const dedup = require("../src/whatsapp/dedup");
+const userRepository = require("../src/repositories/user.repository");
+const { ensureTicketForManualReply } = require("../src/controllers/message.controller");
 
 const JID = "5579999998888@s.whatsapp.net";
 
@@ -165,6 +173,32 @@ describe("config/whatsapp — mensagem enviada pelo CELULAR (eco fromMe não rec
     expect(humanMode.ativar).toHaveBeenCalledWith(JID, expect.objectContaining({ agentName: "Celular" }));
     // Não deve cair no pipeline normal do bot (não é mensagem de cliente).
     expect(processMessage).not.toHaveBeenCalled();
+  });
+
+  test("resposta pelo celular → atendimento aceito em nome do atendente fixo (Rafael)", async () => {
+    await sockAtual.__handlers["messages.upsert"]({
+      messages: [mensagemEnviadaPeloCelular({ id: "PHONE-ACEITE-1" })],
+      type: "notify",
+    });
+
+    expect(userRepository.findByUsername).toHaveBeenCalledWith("atendente04");
+    expect(ensureTicketForManualReply).toHaveBeenCalledWith(
+      JID,
+      expect.objectContaining({ id: "u-rafael", nome: "Rafael" }),
+      ""
+    );
+  });
+
+  test("atendente fixo inexistente/inativo → não quebra, só não aceita o atendimento", async () => {
+    userRepository.findByUsername.mockResolvedValueOnce(null);
+
+    await sockAtual.__handlers["messages.upsert"]({
+      messages: [mensagemEnviadaPeloCelular({ id: "PHONE-ACEITE-2" })],
+      type: "notify",
+    });
+
+    expect(saveHistory).toHaveBeenCalled();
+    expect(ensureTicketForManualReply).not.toHaveBeenCalled();
   });
 
   test("mensagem fromMe cujo id JÁ foi registrado no envio (painel/bot) → NÃO trata como celular, não duplica histórico", async () => {

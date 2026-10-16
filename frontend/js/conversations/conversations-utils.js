@@ -22,6 +22,7 @@ const _MEDIA_PLACEHOLDER_LABELS = {
   "áudio recebido":     "🎤 Áudio",
   "documento recebido": "📎 Documento",
   "vídeo recebido":     "🎬 Vídeo",
+  "arquivo enviado":    "📎 Arquivo",
 };
 
 function mediaPlaceholderFriendlyLabel(msg) {
@@ -46,7 +47,9 @@ function getLastHistoryItem(userId) {
 function lastMessage(userId) {
   const last   = getLastHistoryItem(userId);
   const raw    = last?.message || last?.response || "Sem mensagens";
-  const text   = mediaPlaceholderFriendlyLabel(last?.message) || raw;
+  const text   = mediaPlaceholderFriendlyLabel(last?.message)
+    || mediaPlaceholderFriendlyLabel(last?.response)
+    || raw;
   const prefix = last?.response && !last?.message ? "Você: " : "";
   return cutText(`${prefix}${text}`, 52);
 }

@@ -6,6 +6,13 @@ const sidebar = document.getElementById("sidebar");
 const btnMenu = document.getElementById("btn-menu");
 if (btnMenu) btnMenu.addEventListener("click", () => sidebar.classList.toggle("open"));
 
+// No computador a barra fica só com ícones: o nome de cada aba aparece como
+// dica ao passar o mouse (title nativo, lido do próprio rótulo do item).
+document.querySelectorAll("#sidebar a[data-tab]").forEach(link => {
+  const nome = link.querySelector(".label")?.textContent?.trim();
+  if (nome && !link.title) link.title = nome;
+});
+
 // ─── Navegação ────────────────────────────────────────────────────────────────
 function switchTab(tab, event) {
   // Impede acesso a telas não liberadas para o usuário atual, mesmo que a

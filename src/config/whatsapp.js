@@ -550,6 +550,28 @@ async function handleOutgoingFromPhone(msg) {
   // Mesmo efeito de sendManualMessage: atendente (agora pelo celular) está
   // respondendo diretamente — pausa o bot pra esse cliente.
   humanMode.ativar(userId, { agentName: "Celular" });
+
+  // PEDIDO DO USUÁRIO (2026-10-16): resposta dada pelo celular deve contar como
+  // atendimento aceito no painel — senão o ticket seguia em "Pendentes" mesmo
+  // com o cliente já sendo atendido. Atribui ao atendente fixo configurado em
+  // ATENDENTE_CELULAR_USUARIO (login; padrão "atendente04", o Rafael). Mesmo
+  // caminho da resposta manual pelo painel: reaproveita ticket ativo (sem
+  // roubar de quem já assumiu), reabre fechado ou cria um novo. Best-effort.
+  try {
+    const usuario = process.env.ATENDENTE_CELULAR_USUARIO || "atendente04";
+    const atendente = await require("../repositories/user.repository").findByUsername(usuario);
+    if (atendente && atendente.ativo) {
+      await require("../controllers/message.controller").ensureTicketForManualReply(
+        userId,
+        { id: atendente.id, nome: atendente.nome, usuario: atendente.usuario },
+        contactName
+      );
+    } else {
+      logger.warn(`[Celular] Atendente "${usuario}" não encontrado/ativo — atendimento não foi aceito automaticamente.`);
+    }
+  } catch (err) {
+    logger.warn(`[Celular] Falha ao aceitar atendimento automaticamente: ${err.message}`);
+  }
 }
 
 // Handler de messages.upsert: pipeline completo de uma mensagem recebida —

@@ -522,6 +522,10 @@
     const estavaRodando = rodando;
     rodando = !!payload.rodando;
     aplicarBotoesDesabilitados();
+    // Marca o estado no <body> pro CSS desenhar o trilho de execução no
+    // topo (ver .x2-rodando em style.css) — a pessoa precisa ver que o
+    // painel está ocupado de qualquer ponto da rolagem.
+    document.body.classList.toggle('x2-rodando', rodando);
 
     if (rodando && !estavaRodando) {
       execucaoInicio = { tipo: payload.tipo, inicio: Date.now() };

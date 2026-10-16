@@ -174,10 +174,26 @@ async function abrirRelatorioEstoque(page, { modoAutomatico } = {}) {
   // página", confirmado ao vivo ser esse ícone nesta sessão de descoberta
   // (2026-08-06). É o ponto mais frágil desta função: se o X2 mudar o
   // layout do cabeçalho, quebra aqui primeiro.
-  await page.locator('a').first().click({ timeout: 10000 });
-  await page.waitForTimeout(500);
-
-  await page.locator('a:has-text("Logística")').first().click({ timeout: 10000 });
+  // Tolerante (2026-10-16): a rotina agendada falhava com "waiting for
+  // locator('a:has-text("Logística")')" porque o ☰ era SEMPRE clicado — se o
+  // menu já estivesse aberto (perfil persistente reaproveitado), o clique o
+  // fechava; e, com sessão expirada, não havia menu nenhum. Agora só clica
+  // no ☰ se "Logística" ainda não estiver visível, tenta de novo, e na falha
+  // informa em que página/estado estava.
+  const linkLogistica = () => page.locator('a:has-text("Logística")').first();
+  let logisticaOk = false;
+  for (let tentativa = 0; tentativa < 3 && !logisticaOk; tentativa++) {
+    if (await linkLogistica().isVisible().catch(() => false)) { logisticaOk = true; break; }
+    await tentarLoginAutomaticoSeNecessario(page).catch(() => {});
+    await page.locator('a').first().click({ timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(800 + tentativa * 700);
+    logisticaOk = await linkLogistica().isVisible().catch(() => false);
+  }
+  if (!logisticaOk) {
+    const estado = `url=${page.url()} | links=${await page.locator('a').count().catch(() => '?')} | senha=${await page.locator('input[type="password"]').count().catch(() => '?')}`;
+    throw new Error(`Menu "Logística" não apareceu após 3 tentativas (${estado}). Sessão do X2 provavelmente expirada ou layout mudou — abra o X2 no painel, faça login e rode de novo.`);
+  }
+  await linkLogistica().click({ timeout: 10000 });
   await page.waitForTimeout(500);
 
   await page.locator(`a[href*="${ESTOQUE_HREF_MARK}"]`).first().click({ timeout: 10000 });

@@ -91,11 +91,44 @@ async function enviarAlertaWhatsApp(mensagem, { numero } = {}) {
 }
 
 const NIVEIS = { erro: '🔴', aviso: '🟡', ok: '🟢', info: '🔵' };
+
+/**
+ * Transforma um erro técnico (Playwright/Node) em texto curto e legível pro
+ * WhatsApp: tira códigos de cor (com ou sem o ESC, que se perde no caminho),
+ * descarta o "Call log", traduz os casos conhecidos e limita o tamanho.
+ */
+function humanizarErro(erro, { max = 220 } = {}) {
+  let texto = String(erro && erro.message ? erro.message : erro || '').trim();
+  texto = texto.replace(/\u001b\[[0-9;]*m/g, '').replace(/\[(?:\d{1,2};?)+m/g, '');
+  const primeira = texto.split(/\r?\n/)[0].trim();
+  const alvo = texto.match(/waiting for (?:locator|getBy\w+)\((['"`])([\s\S]*?)\1\)/);
+  const menu = alvo && (alvo[2].match(/has-text\("([^"]+)"\)/) || alvo[2].match(/"([^"]+)"/));
+  let humano;
+  if (/Timeout \d+ms exceeded/i.test(primeira) && alvo) {
+    const nome = menu ? `"${menu[1]}"` : 'um botão/menu';
+    humano = `o X2 não mostrou ${nome} a tempo (sessão provavelmente expirada ou tela diferente do normal).`;
+  } else if (/Target (page|closed)|browser has been closed|Target closed/i.test(texto)) {
+    humano = 'a janela do Chrome do painel foi fechada durante a rotina.';
+  } else if (/net::ERR_|ENOTFOUND|ECONNREFUSED|ETIMEDOUT/i.test(primeira)) {
+    humano = 'sem conexão com o X2 (internet ou site fora do ar).';
+  } else if (/Passou de \d+ minutos/i.test(primeira)) {
+    humano = primeira.replace(/;.*$/, '.');
+  } else {
+    humano = primeira.replace(/^(Error|TimeoutError):\s*/i, '');
+  }
+  if (humano.length > max) humano = `${humano.slice(0, max - 1).trimEnd()}…`;
+  return humano;
+}
+
+const _maiuscula = (t) => { const s = String(t).trim(); return s ? s[0].toUpperCase() + s.slice(1) : s; };
+
 /** Monta mensagem de WhatsApp padronizada: título em negrito, linhas, "o que fazer" e horário. */
 function formatarAlerta({ nivel = 'aviso', titulo, linhas = [], acao } = {}) {
   const quando = new Date().toLocaleString('pt-BR', { timeZone: process.env.TZ_NEGOCIO || 'America/Maceio', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
   const partes = [`${NIVEIS[nivel] || NIVEIS.aviso} *${titulo}*`];
-  if (linhas.length) partes.push(linhas.map((l) => `• ${l}`).join('\n'));
+  const itens = linhas.filter(Boolean).map(_maiuscula);
+  if (itens.length === 1) partes.push(itens[0]);
+  else if (itens.length) partes.push(itens.map((l) => `• ${l}`).join('\n'));
   if (acao) partes.push(`👉 *O que fazer:* ${acao}`);
   partes.push(`_Chatbot Rildon · ${quando}_`);
   return partes.join('\n\n');
@@ -125,4 +158,4 @@ async function enviarDocumentoWhatsApp(caminho, legenda = '', { numero } = {}) {
   return corpo;
 }
 
-module.exports = { enviarAlertaWhatsApp, enviarDocumentoWhatsApp, formatarAlerta, BASE_URL };
+module.exports = { enviarAlertaWhatsApp, enviarDocumentoWhatsApp, formatarAlerta, humanizarErro, BASE_URL };

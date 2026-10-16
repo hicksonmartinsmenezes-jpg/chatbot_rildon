@@ -204,6 +204,22 @@ function removerRotina(id) {
   salvarRotinas(nova);
 }
 
+/**
+ * Marca que uma rotina COMEÇOU (auditoria 2026-10-14, item 5 do plano): sem
+ * isso, uma execução que morre no meio não deixa rastro nenhum e o painel
+ * segue exibindo o sucesso anterior como se nada tivesse acontecido.
+ * Também é a referência de intervalo das rotinas "a cada N horas".
+ */
+function registrarInicio(id) {
+  const lista = carregarRotinas();
+  const idx = lista.findIndex((r) => r.id === id);
+  if (idx === -1) return;
+  lista[idx].ultimoInicio = new Date().toISOString();
+  lista[idx].ultimoResultado = 'rodando';
+  lista[idx].ultimoErro = null;
+  salvarRotinas(lista);
+}
+
 function registrarExecucao(id, { resultado, erro }) {
   const lista = carregarRotinas();
   const idx = lista.findIndex((r) => r.id === id);
@@ -217,27 +233,93 @@ function registrarExecucao(id, { resultado, erro }) {
 // ─── Regras de data/hora — puras, recebem `agora` como parâmetro pra dar
 // pra testar sem depender do relógio real do sistema. ─────────────────────
 
+// Fuso em que os horários das rotinas são interpretados. Antes isso era o
+// fuso do PROCESSO (`setHours`), então a mesma rotina "07:50" disparava às
+// 04:50 de Brasília num servidor configurado em UTC — e perdia a janela de
+// recuperação da noite. Agora é sempre o fuso do negócio, igual ao resto do
+// projeto (ver src/utils/horario.js).
+const TZ = process.env.TZ_NEGOCIO || 'America/Maceio';
+
+/** Diferença, em ms, entre o fuso do negócio e o UTC no instante dado. */
+function _offsetDoFuso(data) {
+  const partes = new Intl.DateTimeFormat('en-US', {
+    timeZone: TZ, hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(data).reduce((acc, p) => (acc[p.type] = p.value, acc), {});
+  const comoSeFosseUTC = Date.UTC(
+    Number(partes.year), Number(partes.month) - 1, Number(partes.day),
+    Number(partes.hour) % 24, Number(partes.minute), Number(partes.second),
+  );
+  return comoSeFosseUTC - data.getTime();
+}
+
+/** Ano/mês/dia/dia-da-semana de um instante, lidos no fuso do negócio. */
+function _civilNoFuso(data) {
+  const partes = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short',
+  }).formatToParts(data).reduce((acc, p) => (acc[p.type] = p.value, acc), {});
+  const semana = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  return {
+    ano: Number(partes.year),
+    mes: Number(partes.month),
+    dia: Number(partes.day),
+    diaSemana: semana[partes.weekday],
+  };
+}
+
+/** Instante exato (UTC) de uma hora de parede no fuso do negócio. */
+function _instanteNoFuso(ano, mes, dia, hora, minuto) {
+  const chute = Date.UTC(ano, mes - 1, dia, hora, minuto, 0);
+  // Duas passadas resolvem a borda de mudança de horário (o Brasil não tem
+  // horário de verão hoje, mas a conta continua certa se voltar a ter).
+  let instante = new Date(chute - _offsetDoFuso(new Date(chute)));
+  instante = new Date(chute - _offsetDoFuso(instante));
+  return instante;
+}
+
+/**
+ * A ocorrência agendada MAIS RECENTE que já passou (ou null se nenhuma).
+ *
+ * BUG CORRIGIDO (auditoria 2026-10-14, P1): a regra antiga exigia que HOJE
+ * fosse o dia da semana configurado. Se a segunda-feira passasse com o
+ * painel fechado, a rotina semanal só rodava na segunda seguinte — uma
+ * semana inteira de lançamentos sem cadastro, sem foto e sem PDF no Drive,
+ * sem nenhum registro. Agora olha para trás até 8 dias e devolve a última
+ * ocorrência devida, então a rotina perdida roda assim que o painel voltar.
+ */
+function ultimaOcorrenciaDevida(rotina, agora = new Date()) {
+  const [h, m] = String(rotina.horario).split(':').map(Number);
+  const umDiaMs = 24 * 60 * 60 * 1000;
+  for (let voltar = 0; voltar <= 8; voltar++) {
+    const civil = _civilNoFuso(new Date(agora.getTime() - voltar * umDiaMs));
+    if (rotina.frequencia === 'semanal' && civil.diaSemana !== Number(rotina.diaSemana)) continue;
+    const instante = _instanteNoFuso(civil.ano, civil.mes, civil.dia, h, m);
+    if (instante <= agora) return instante;
+  }
+  return null;
+}
+
 function proximaExecucao(rotina, agora = new Date()) {
   // "horas" não tem hora fixa — a próxima é sempre "última execução +
   // intervaloHoras" (ou agora mesmo, se nunca rodou ainda).
   if (rotina.frequencia === 'horas') {
-    if (!rotina.ultimaExecucao) return new Date(agora);
-    return new Date(new Date(rotina.ultimaExecucao).getTime() + rotina.intervaloHoras * 60 * 60 * 1000);
+    const referencia = rotina.ultimoInicio || rotina.ultimaExecucao;
+    if (!referencia) return new Date(agora);
+    return new Date(new Date(referencia).getTime() + rotina.intervaloHoras * 60 * 60 * 1000);
   }
 
-  const [h, m] = rotina.horario.split(':').map(Number);
-  const candidato = new Date(agora);
-  candidato.setHours(h, m, 0, 0);
-
-  if (rotina.frequencia === 'diaria') {
-    if (candidato <= agora) candidato.setDate(candidato.getDate() + 1);
-    return candidato;
+  // Mesma conta de fuso de deveRodarAgora — o horário é do negócio, não do
+  // processo (ver comentário em TZ, acima).
+  const [h, m] = String(rotina.horario).split(':').map(Number);
+  const umDiaMs = 24 * 60 * 60 * 1000;
+  for (let avancar = 0; avancar <= 8; avancar++) {
+    const civil = _civilNoFuso(new Date(agora.getTime() + avancar * umDiaMs));
+    if (rotina.frequencia === 'semanal' && civil.diaSemana !== Number(rotina.diaSemana)) continue;
+    const instante = _instanteNoFuso(civil.ano, civil.mes, civil.dia, h, m);
+    if (instante > agora) return instante;
   }
-
-  let diffDias = (Number(rotina.diaSemana) - candidato.getDay() + 7) % 7;
-  if (diffDias === 0 && candidato <= agora) diffDias = 7;
-  candidato.setDate(candidato.getDate() + diffDias);
-  return candidato;
+  return new Date(agora);
 }
 
 // Uma rotina "está pra rodar" quando: está ativa, já passou do horário
@@ -253,22 +335,34 @@ function deveRodarAgora(rotina, agora = new Date()) {
   // "horas": não olha pra relógio nenhum — só "já passou intervaloHoras
   // desde a última vez?" (ou "nunca rodou ainda" → roda assim que a rotina
   // for checada pela 1ª vez depois de criada/ativada).
+  //
+  // BUG CORRIGIDO (auditoria 2026-10-14, P3): a conta saía do FIM da
+  // execução anterior, então uma rotina de 5 h que leva 40 min rodava de
+  // fato a cada 5h40, deslizando a cada ciclo. Agora mede a partir do
+  // INÍCIO (ultimoInicio, gravado por registrarInicio) quando ele existe.
   if (rotina.frequencia === 'horas') {
-    if (!rotina.ultimaExecucao) return true;
-    const decorridoMs = agora.getTime() - new Date(rotina.ultimaExecucao).getTime();
+    const referencia = rotina.ultimoInicio || rotina.ultimaExecucao;
+    if (!referencia) return true;
+    const decorridoMs = agora.getTime() - new Date(referencia).getTime();
     return decorridoMs >= rotina.intervaloHoras * 60 * 60 * 1000;
   }
 
-  if (rotina.frequencia === 'semanal' && agora.getDay() !== Number(rotina.diaSemana)) return false;
+  const ocorrencia = ultimaOcorrenciaDevida(rotina, agora);
+  if (!ocorrencia) return false;
 
-  const [h, m] = rotina.horario.split(':').map(Number);
-  const horarioDeHoje = new Date(agora);
-  horarioDeHoje.setHours(h, m, 0, 0);
-  if (agora < horarioDeHoje) return false;
-
-  if (!rotina.ultimaExecucao) return true;
-  const ultima = new Date(rotina.ultimaExecucao);
-  return ultima < horarioDeHoje;
+  // Rotina recém-criada não "deve" ocorrências anteriores à própria
+  // criação — sem isso, cadastrar uma rotina de segunda numa quarta a
+  // dispararia na hora.
+  if (!rotina.ultimaExecucao) {
+    if (rotina.criadaEm) return new Date(rotina.criadaEm) <= ocorrencia;
+    // Rotina antiga, sem data de criação: mantém o critério clássico — só a
+    // ocorrência do próprio dia conta, pra não disparar por uma janela
+    // antiga que ninguém pediu.
+    const hoje = _civilNoFuso(agora);
+    const dia = _civilNoFuso(ocorrencia);
+    return hoje.ano === dia.ano && hoje.mes === dia.mes && hoje.dia === dia.dia;
+  }
+  return new Date(rotina.ultimaExecucao) < ocorrencia;
 }
 
 module.exports = {
@@ -284,7 +378,9 @@ module.exports = {
   criarRotina,
   atualizarRotina,
   removerRotina,
+  registrarInicio,
   registrarExecucao,
   proximaExecucao,
+  ultimaOcorrenciaDevida,
   deveRodarAgora,
 };

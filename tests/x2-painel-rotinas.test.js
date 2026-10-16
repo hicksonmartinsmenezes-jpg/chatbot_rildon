@@ -13,6 +13,12 @@ os.homedir = () => HOME_FALSO;
 
 const rotinas = require('../scripts/x2-painel/rotinas');
 
+// Correção P2 da auditoria de 14/10/2026: o horário das rotinas passou a ser
+// interpretado no FUSO DO NEGÓCIO (TZ_NEGOCIO, padrão America/Maceio), não
+// mais no fuso do processo. Os instantes abaixo são explícitos pra que o
+// teste signifique a mesma coisa rodando em UTC, em Brasília ou na CI.
+const emMaceio = (iso) => new Date(`${iso}-03:00`);
+
 afterAll(() => {
   os.homedir = homedirOriginal;
   fs.rmSync(HOME_FALSO, { recursive: true, force: true });
@@ -132,54 +138,67 @@ describe('rotinas: deveRodarAgora', () => {
   });
 
   test('diária: antes do horário configurado não deve rodar', () => {
-    const r = { ...rotinaBase, ativa: true, ultimaExecucao: null };
-    expect(rotinas.deveRodarAgora(r, new Date('2026-08-06T21:00:00'))).toBe(false);
+    const r = { ...rotinaBase, ativa: true, ultimaExecucao: null, criadaEm: emMaceio('2026-08-06T08:00:00').toISOString() };
+    expect(rotinas.deveRodarAgora(r, emMaceio('2026-08-06T21:00:00'))).toBe(false);
   });
 
   test('diária: depois do horário e nunca rodou, deve rodar', () => {
-    const r = { ...rotinaBase, ativa: true, ultimaExecucao: null };
-    expect(rotinas.deveRodarAgora(r, new Date('2026-08-06T22:05:00'))).toBe(true);
+    const r = { ...rotinaBase, ativa: true, ultimaExecucao: null, criadaEm: emMaceio('2026-08-06T08:00:00').toISOString() };
+    expect(rotinas.deveRodarAgora(r, emMaceio('2026-08-06T22:05:00'))).toBe(true);
   });
 
   test('diária: depois do horário mas já rodou hoje depois desse horário, não roda de novo', () => {
-    const r = { ...rotinaBase, ativa: true, ultimaExecucao: new Date('2026-08-06T22:01:00').toISOString() };
-    expect(rotinas.deveRodarAgora(r, new Date('2026-08-06T23:00:00'))).toBe(false);
+    const r = { ...rotinaBase, ativa: true, ultimaExecucao: emMaceio('2026-08-06T22:01:00').toISOString() };
+    expect(rotinas.deveRodarAgora(r, emMaceio('2026-08-06T23:00:00'))).toBe(false);
   });
 
   test('diária: rodou ONTEM (antes do horário de hoje) — deve rodar hoje de novo', () => {
-    const r = { ...rotinaBase, ativa: true, ultimaExecucao: new Date('2026-08-05T22:01:00').toISOString() };
-    expect(rotinas.deveRodarAgora(r, new Date('2026-08-06T22:05:00'))).toBe(true);
+    const r = { ...rotinaBase, ativa: true, ultimaExecucao: emMaceio('2026-08-05T22:01:00').toISOString() };
+    expect(rotinas.deveRodarAgora(r, emMaceio('2026-08-06T22:05:00'))).toBe(true);
   });
 
-  test('semanal: só roda no dia da semana certo', () => {
-    const r = { ...rotinaBase, frequencia: 'semanal', diaSemana: 0, ativa: true, ultimaExecucao: null }; // domingo
-    const quintaFeira = new Date('2026-08-06T23:00:00'); // 2026-08-06 é quinta
+  test('semanal: só roda depois da ocorrência do dia certo', () => {
+    // Criada na quinta: a ocorrência de domingo ainda não chegou, então não
+    // roda; no domingo, depois do horário, roda.
+    const r = {
+      ...rotinaBase, frequencia: 'semanal', diaSemana: 0, ativa: true, ultimaExecucao: null,
+      criadaEm: emMaceio('2026-08-06T09:00:00').toISOString(),
+    }; // domingo
+    const quintaFeira = emMaceio('2026-08-06T23:00:00'); // 2026-08-06 é quinta
     expect(rotinas.deveRodarAgora(r, quintaFeira)).toBe(false);
-    const domingo = new Date('2026-08-09T22:05:00');
+    const domingo = emMaceio('2026-08-09T22:05:00');
     expect(rotinas.deveRodarAgora(r, domingo)).toBe(true);
+  });
+
+  // Correção P1 da auditoria de 14/10/2026 — ver tests/x2-painel.agendamento.test.js
+  // para a bateria completa de recuperação.
+  test('semanal: recupera na segunda-feira quando o domingo passou fechado', () => {
+    const r = {
+      ...rotinaBase, frequencia: 'semanal', diaSemana: 0, ativa: true,
+      ultimaExecucao: emMaceio('2026-08-02T22:01:00').toISOString(),
+    };
+    expect(rotinas.deveRodarAgora(r, emMaceio('2026-08-10T08:00:00'))).toBe(true);
   });
 });
 
 describe('rotinas: proximaExecucao', () => {
   test('diária, ainda não passou do horário hoje: próxima é hoje', () => {
     const r = { ...rotinaBase };
-    const agora = new Date('2026-08-06T10:00:00');
-    const prox = rotinas.proximaExecucao(r, agora);
-    expect(prox.getDate()).toBe(agora.getDate());
+    const prox = rotinas.proximaExecucao(r, emMaceio('2026-08-06T10:00:00'));
+    expect(prox.toISOString()).toBe(emMaceio('2026-08-06T22:00:00').toISOString());
   });
 
   test('diária, já passou do horário hoje: próxima é amanhã', () => {
     const r = { ...rotinaBase };
-    const agora = new Date('2026-08-06T23:00:00');
-    const prox = rotinas.proximaExecucao(r, agora);
-    expect(prox.getDate()).toBe(agora.getDate() + 1);
+    const prox = rotinas.proximaExecucao(r, emMaceio('2026-08-06T23:00:00'));
+    expect(prox.toISOString()).toBe(emMaceio('2026-08-07T22:00:00').toISOString());
   });
 
   test('semanal: calcula o próximo dia da semana certo', () => {
     const r = { ...rotinaBase, frequencia: 'semanal', diaSemana: 0 }; // domingo
-    const quintaFeira = new Date('2026-08-06T10:00:00');
+    const quintaFeira = emMaceio('2026-08-06T10:00:00');
     const prox = rotinas.proximaExecucao(r, quintaFeira);
-    expect(prox.getDay()).toBe(0);
+    expect(prox.toISOString()).toBe(emMaceio('2026-08-09T22:00:00').toISOString());
     expect(prox > quintaFeira).toBe(true);
   });
 });

@@ -16,27 +16,40 @@
      id/classe/data-attribute usado pelo JS abaixo permanece idêntico,
      então nenhum comportamento foi tocado aqui.
      ══════════════════════════════════════════════════════════════ */
+  /* ──────────────────────────────────────────────────────────────
+     Repaginada 2026-10-15 — do preto genérico para um grafite
+     azulado com acento de COBRE. O preto puro com verde-limão é a
+     cara de qualquer painel escuro; cobre sobre grafite vem do
+     assunto (eletropeças: fio de cobre, bancada, painel elétrico) e
+     conversa com o azul da marca. Só a paleta e os estados mudaram —
+     nenhum id, classe ou data-attribute foi tocado, então o JS
+     continua idêntico.
+     ────────────────────────────────────────────────────────────── */
   :root {
-    --bg: #0a0a0c;
-    --sidebar-bg: #000000;
-    --surface: #131316;
-    --surface-2: #1c1c20;
-    --surface-3: #232327;
-    --border: #26262b;
-    --border-strong: #333338;
-    --text: #f2f2f4;
-    --text-2: #b4b4bc;
-    --muted: #75757e;
-    --green: #3ddc84;
-    --green-soft: rgba(61, 220, 132, .14);
-    --amber: #f5b942;
-    --amber-soft: rgba(245, 185, 66, .14);
-    --red: #ff6b6b;
-    --red-soft: rgba(255, 107, 107, .14);
-    --blue: #4d8dff;
-    --blue-soft: rgba(77, 141, 255, .14);
-    --purple: #a78bfa;
-    --purple-soft: rgba(167, 139, 250, .14);
+    --bg: #0e1218;
+    --sidebar-bg: #090c11;
+    --surface: #151a22;
+    --surface-2: #1c232d;
+    --surface-3: #242d39;
+    --border: #232c38;
+    --border-strong: #35414f;
+    --text: #eef2f7;
+    --text-2: #a9b5c4;
+    --muted: #6d7b8c;
+    /* Cobre: ação principal, trilho do item ativo, execução em curso. */
+    --cobre: #e08b42;
+    --cobre-forte: #f0a059;
+    --cobre-soft: rgba(224, 139, 66, .14);
+    --green: #2fbf8f;
+    --green-soft: rgba(47, 191, 143, .14);
+    --amber: #e3a93c;
+    --amber-soft: rgba(227, 169, 60, .14);
+    --red: #e4605c;
+    --red-soft: rgba(228, 96, 92, .14);
+    --blue: #4f93e8;
+    --blue-soft: rgba(79, 147, 232, .14);
+    --purple: #9b8cf0;
+    --purple-soft: rgba(155, 140, 240, .14);
     --radius: 10px;
     --radius-sm: 7px;
     /* PEDIDO DO USUÁRIO (2026-09-12, mockup "CatálogoPro"): sidebar larga
@@ -656,3 +669,120 @@
 .drive-fab-topo > span { flex: 1; font-weight: 600; }
 .drive-fab-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px 12px; max-height: 220px; overflow: auto; margin-bottom: 12px; }
 .drive-fab-lista label { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+
+
+/* ══════════════════════════════════════════════════════════════════
+   Repaginada 2026-10-15 — refinamentos sobre a base acima.
+   Três intenções: número legível (este painel é todo contagem),
+   hierarquia clara entre "o que eu escolho" e "o que está rodando",
+   e um único momento de destaque — o trilho de execução no topo.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* Números em largura fixa: as contagens mudam a cada atualização e,
+   com figuras proporcionais, a coluna inteira dança a cada segundo. */
+.stat-card .valor,
+.stat-sub,
+.tabela-secoes td,
+.contador,
+.progresso-label,
+.execucao-resumo-grid strong,
+.drive-fab-lista label {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* Cartões de número: o valor é o conteúdo, o resto é legenda. */
+.stat-card { transition: border-color .15s ease, background-color .15s ease; }
+.stat-card:hover { background: var(--surface-2); border-color: var(--border-strong); }
+.stat-card .valor { font-size: 25px; letter-spacing: -.015em; }
+.stat-card .rotulo { letter-spacing: .04em; }
+
+/* Ação escolhida: trilho de cobre no item aberto. Os fechados ficam
+   quietos, pra leitura ir direto ao que está selecionado. */
+.acao-rapida { position: relative; }
+.acao-rapida.aberta { border-color: var(--border-strong); background: var(--surface-2); }
+.acao-rapida.aberta::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 10px; bottom: 10px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--cobre);
+}
+.acao-rapida-linha { transition: background-color .15s ease; }
+.acao-rapida:not(.aberta) .acao-rapida-linha:hover { background: var(--surface-2); }
+
+/* Botão principal: cobre sólido, sem gradiente nem sombra colorida. */
+button.primary-blue,
+button.primary {
+  background: var(--cobre);
+  border-color: var(--cobre);
+  color: #1a1206;
+  font-weight: 700;
+}
+button.primary-blue:hover:not(:disabled),
+button.primary:hover:not(:disabled) {
+  background: var(--cobre-forte);
+  border-color: var(--cobre-forte);
+}
+button.primary-blue:disabled,
+button.primary:disabled { opacity: .45; }
+
+/* Trilho de execução: enquanto algo roda, uma faixa fina percorre o
+   topo do conteúdo. É o único movimento não pedido da tela, e existe
+   porque o painel fica minutos ocupado e a pessoa precisa saber disso
+   de qualquer ponto da rolagem. */
+.main-content { position: relative; }
+body.x2-rodando .main-content::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: var(--sidebar-w);
+  right: 0;
+  height: 2px;
+  z-index: 50;
+  background: linear-gradient(90deg, transparent, var(--cobre), transparent);
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  animation: x2-execucao 1.6s linear infinite;
+}
+@keyframes x2-execucao {
+  from { background-position: -40% 0; }
+  to   { background-position: 140% 0; }
+}
+
+/* Log: bloco de terminal de verdade, não um parágrafo cinza. */
+#log {
+  background: #0a0e13;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  line-height: 1.55;
+  tab-size: 2;
+}
+
+/* Base de acessibilidade: foco sempre visível e movimento opcional. */
+:where(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--cobre-forte);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+  }
+}
+
+/* Telas estreitas: a sidebar vira uma faixa de ícones e o conteúdo
+   respira. O painel é usado em notebook, mas também aberto no celular
+   pra conferir uma rotina. */
+@media (max-width: 760px) {
+  :root { --sidebar-w: 64px; }
+  .sidebar { padding: 14px 8px; }
+  .sidebar-brand-nome, .top-tab-label { display: none; }
+  .top-tab { justify-content: center; }
+  .main-content { padding: 20px 16px 40px; }
+  body.x2-rodando .main-content::before { left: var(--sidebar-w); }
+}

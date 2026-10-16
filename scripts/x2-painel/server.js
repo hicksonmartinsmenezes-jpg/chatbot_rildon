@@ -76,7 +76,8 @@ const ALERTAS_INFO = {
   'secao-nao-mapeada': { nivel: 'aviso', titulo: 'Lançamentos fora do catálogo', acao: 'A Seção desses códigos não está mapeada. Me envie a Seção para eu incluir.' },
   'estoque-parado': { titulo: 'Estoque/preço desatualizado', acao: 'Confira se o Painel X2 está aberto e rode "Exportar estoque".' },
   'estoque-sem': { titulo: 'Estoque nunca importado', acao: 'Rode "Exportar estoque" no Painel X2.' },
-  'acao': { titulo: 'Rotina do Painel X2 falhou', acao: 'Abra o painel, veja o log da rotina e rode de novo.' },
+  'acao-estoque': { titulo: 'Estoque: rotina falhou', acao: 'No Chrome do Painel X2, confira se o X2 está logado (faça login se pedir) e clique em "Exportar estoque". Se repetir, me envie o log.' },
+  'acao': { titulo: 'Rotina do Painel X2 falhou', acao: 'Abra o painel (http://127.0.0.1:4123), veja o log da rotina e rode de novo. Se o X2 pedir login, entre antes.' },
 };
 const _alertasRecentes = new Map();
 async function alertarFalhaX2(chave, mensagem) {
@@ -128,6 +129,23 @@ const PORT = Number(process.env.X2_PAINEL_PORT || 4123);
 
 const app = express();
 app.use(express.json());
+
+// SEGURANÇA (auditoria 2026-10-14, P2): o painel não tem login — o modelo é
+// só o bind em 127.0.0.1. Mas POST de formulário é requisição "simples" e
+// não passa por preflight, então uma página qualquer aberta no navegador do
+// operador alcançava rotas sem corpo (/api/confirmar, /api/cancelar,
+// /api/rotinas/:id/rodar-agora...) e disparava ação real às cegas. Aqui a
+// requisição com Origin de fora é barrada; sem Origin (curl, CLI, o próprio
+// .bat) continua passando, então nada do uso local muda.
+app.use((req, res, next) => {
+  if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
+  const origem = req.get('origin');
+  if (!origem) return next();
+  const permitidas = [`http://localhost:${PORT}`, `http://127.0.0.1:${PORT}`];
+  if (permitidas.includes(origem)) return next();
+  console.warn(`[x2-painel] bloqueado ${req.method} ${req.path} vindo de origem não autorizada: ${origem}`);
+  return res.status(403).json({ error: 'Origem não autorizada.' });
+});
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ─── Captura de saída (console.log/process.stdout.write) num "terminal
@@ -244,6 +262,13 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
   const modoAutomatico = !!origemRotina || !!opcoes.automatico;
   const execucaoLocal = { tipo, terminal: new TerminalVirtual(), rodando: true, aguardando: null, erro: null, origemRotina: origemRotina || null, rotulo: rotulo || null, cancelado: false };
   execucao = execucaoLocal;
+  // Marca o INÍCIO da rotina (auditoria 2026-10-14, item 5): sem isso, uma
+  // execução que morre no meio (queda do processo, pane) não deixa rastro e
+  // a aba Rotinas segue exibindo o sucesso anterior. Também é a referência
+  // de intervalo das rotinas "a cada N horas", que antes deslizava.
+  if (origemRotina) {
+    try { rotinasStore.registrarInicio(origemRotina); } catch (e) { console.error(`[x2-painel] não consegui marcar o início da rotina: ${e.message}`); }
+  }
   transmitir();
 
   // PEDIDO DO USUÁRIO (2026-09-08): "quando utilizar a ferramenta Lançamentos
@@ -485,7 +510,7 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
     execucaoLocal.terminal.escrever(`\n❌ Erro: ${e.message}\n`);
     if (origemRotina) rotinasStore.registrarExecucao(origemRotina, { resultado: 'erro', erro: e.message });
     if (origemRotina || (opcoes && opcoes.automatico)) {
-      alertarFalhaX2(`acao-${tipo}`, `a rotina "${rotulo || tipo}" falhou: ${String(e.message).slice(0, 300)}`);
+      alertarFalhaX2(`acao-${tipo}`, `A rotina "${rotulo || tipo}" falhou: ${require('../x2-whatsapp-alerta').humanizarErro(e)}`);
     }
   } finally {
     process.stdout.write = origWrite;
@@ -1186,7 +1211,7 @@ server.listen(PORT, '127.0.0.1', () => {
   setInterval(() => {
     try {
       const idadeH = (Date.now() - fs.statSync(CSV_ESTOQUE).mtimeMs) / 3600000;
-      if (idadeH > 12) alertarFalhaX2('estoque-parado', `o estoque/preço do bot não atualiza há ${Math.round(idadeH)} h (rotina de 5 h parada?). Confira se o Painel X2 está aberto.`);
+      if (idadeH > 12) alertarFalhaX2('estoque-parado', `O estoque e o preço do bot estão sem atualizar há ${Math.round(idadeH)} h (o normal é a cada 5 h). A rotina provavelmente parou ou o painel está fechado.`);
     } catch {
       alertarFalhaX2('estoque-sem-csv', 'não achei src/data/estoque-latest.csv — estoque/preço nunca foi importado nesta máquina.');
     }

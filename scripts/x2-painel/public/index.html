@@ -149,6 +149,17 @@
                      (codigosEspecificos) continua existindo — só não tem mais
                      esse jeito manual duplicado aqui. -->
                 <button class="primary-blue full" data-action="baixar">Atualizar fotos das selecionadas</button>
+
+                <!-- PEDIDO DO USUARIO (2026-10-17): colar uma lista de codigos
+                     (ex.: pedido de atualizar fotos de alguns itens) e baixar do
+                     X2 so esses. Nao depende das secoes marcadas acima. -->
+                <div class="fotos-codigos-bloco">
+                  <div class="fotos-codigos-titulo">Ou colar uma lista de códigos</div>
+                  <textarea id="fotos-codigos-lista" class="fotos-codigos-lista" rows="5" placeholder="Um código por linha (ou separados por vírgula)&#10;Ex:&#10;114927&#10;31797" spellcheck="false"></textarea>
+                  <div class="fotos-codigos-contador" id="fotos-codigos-contador">0 códigos</div>
+                  <label><input type="checkbox" id="opt-fotos-codigos-refazer" checked> Baixar de novo também quem já tem foto</label>
+                  <button class="primary-blue full" data-action="fotos-codigos">Buscar fotos desses códigos</button>
+                </div>
               </div>
             </div>
 

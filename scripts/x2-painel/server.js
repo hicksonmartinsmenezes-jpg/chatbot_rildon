@@ -101,6 +101,7 @@ async function alertarFalhaX2(chave, mensagem) {
 const qualidadeApenasCadastrados = require('./qualidade-apenas-cadastrados');
 const { listarEntradas } = require('../../src/utils/zip-reader');
 const rotinasStore = require('./rotinas');
+const fotosCodigos = require('./fotos-codigos');
 const lancamentos = require('./lancamentos');
 
 // dotenv — mesmo padrão do src/server.js — pra X2_USUARIO/X2_SENHA (usados
@@ -1051,6 +1052,67 @@ app.post('/api/acao', (req, res) => {
   });
 
   res.status(202).json({ ok: true });
+});
+
+// PEDIDO DO USUARIO (2026-10-17): colar uma LISTA DE CODIGOS e baixar/atualizar
+// as fotos deles no X2. Codigos que ainda nao estao no catalogo passam antes pelo
+// cadastro (sync por codigos); depois baixa a foto so desses codigos (restrito, igual
+// ao encadeamento pos-Lancamentos). A foto baixada ja e publicada (zip parcial),
+// entao entra no catalogo e nos PDFs.
+function carregarMapaCodigos() {
+  const porSlug = {};
+  for (const slug of Object.keys(SECOES)) {
+    try {
+      porSlug[slug] = JSON.parse(fs.readFileSync(path.join(CATALOGO_DIR, `${slug}.json`), 'utf8'));
+    } catch { /* secao sem JSON ainda */ }
+  }
+  return fotosCodigos.montarMapaCodigos(porSlug);
+}
+
+app.post('/api/fotos-por-codigos', (req, res) => {
+  const { codigos: entrada, refazer } = req.body || {};
+  const codigos = fotosCodigos.parseListaCodigos(entrada);
+  if (!codigos.length) return res.status(400).json({ error: 'Cole ao menos um código.' });
+  if (codigos.length > fotosCodigos.LIMITE_CODIGOS) {
+    return res.status(400).json({ error: `Máximo de ${fotosCodigos.LIMITE_CODIGOS} códigos por vez (recebi ${codigos.length}).` });
+  }
+  if (execucao && execucao.rodando) {
+    return res.status(409).json({ error: 'Já tem uma ação rodando.' });
+  }
+
+  const { conhecidos, novos } = fotosCodigos.classificarCodigos(codigos, carregarMapaCodigos());
+
+  (async () => {
+    if (novos.length) {
+      console.log(`[x2-painel] Fotos por lista: ${novos.length} código(s) fora do catálogo — cadastrando antes: ${novos.join(', ')}`);
+      await rodarAcao('sync', { codigos: novos, automatico: true }, { rotulo: 'Cadastro (lista de códigos)' });
+      if (execucao && (execucao.cancelado || execucao.erro)) {
+        console.log('[x2-painel] cadastro da lista cancelado/falhou — fotos não serão baixadas.');
+        return;
+      }
+    }
+    const { conhecidos: alvo, slugs, novos: semCadastro } = fotosCodigos.classificarCodigos(codigos, carregarMapaCodigos());
+    if (semCadastro.length) {
+      console.log(`[x2-painel] Fotos por lista: ${semCadastro.length} código(s) não encontrado(s) no X2: ${semCadastro.join(', ')}`);
+    }
+    if (!alvo.length) {
+      console.log('[x2-painel] Fotos por lista: nenhum código encontrado — nada a baixar.');
+      return;
+    }
+    await rodarAcao('baixar', {
+      secoes: slugs,
+      codigosEspecificos: alvo,
+      retrySemFoto: true,
+      // refazer: rebaixa tambem quem ja tem foto "ok" (produto cuja foto foi trocada no X2).
+      renovarAposDias: refazer === false ? undefined : 0.001,
+      renovarLimite: alvo.length,
+      automatico: true,
+    }, { rotulo: 'Fotos (lista de códigos)' });
+  })().catch((e) => {
+    console.error('[x2-painel] erro na ação fotos por lista de códigos:', e.message);
+  });
+
+  res.status(202).json({ ok: true, total: codigos.length, jaNoCatalogo: conhecidos.length, novos: novos.length });
 });
 
 app.post('/api/confirmar', (req, res) => {

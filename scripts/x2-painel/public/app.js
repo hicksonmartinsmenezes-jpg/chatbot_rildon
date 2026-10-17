@@ -484,7 +484,7 @@
   // ─── Estado de execução (via SSE) ──────────────────────────────────
   function aplicarBotoesDesabilitados() {
     document.querySelectorAll('[data-action]').forEach((b) => {
-      if (['baixar', 'sync', 'drive-enviar'].includes(b.dataset.action)) b.disabled = rodando;
+      if (['baixar', 'sync', 'drive-enviar', 'fotos-codigos'].includes(b.dataset.action)) b.disabled = rodando;
     });
   }
 
@@ -628,6 +628,21 @@
     es.onerror = () => { /* reconecta sozinho, comportamento padrão do EventSource */ };
   }
 
+  // Mesma regra do servidor (fotos-codigos.js): separa por linha/virgula/ponto e virgula/espaco.
+  function lerCodigosColados() {
+    const vistos = new Set();
+    const lista = [];
+    for (const parte of String(el('fotos-codigos-lista').value || '').split(/[\s,;]+/)) {
+      const c = parte.trim().replace(/^["']+|["']+$/g, '');
+      if (c && !vistos.has(c)) { vistos.add(c); lista.push(c); }
+    }
+    return lista;
+  }
+  el('fotos-codigos-lista').addEventListener('input', () => {
+    const n = lerCodigosColados().length;
+    el('fotos-codigos-contador').textContent = `${n} código${n === 1 ? '' : 's'}`;
+  });
+
   async function dispararAcao(tipo, opcoes) {
     if (!selecionadas.size) {
       mostrarToast('Selecione ao menos uma seção.', 'aviso');
@@ -743,6 +758,23 @@
         retrySemFoto: el('opt-retry-sem-foto').checked,
         reiniciar,
       });
+      return;
+    }
+    // PEDIDO DO USUARIO (2026-10-17): lista de codigos colada -> procura no X2 e baixa
+    // a foto de cada um (cadastra antes os que ainda nao existem no catalogo).
+    if (btn.dataset.action === 'fotos-codigos') {
+      const codigos = lerCodigosColados();
+      if (!codigos.length) { mostrarToast('Cole ao menos um código.', 'aviso'); return; }
+      fetch('/api/fotos-por-codigos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ codigos, refazer: el('opt-fotos-codigos-refazer').checked }),
+      }).then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { mostrarToast(data.error || 'Erro ao iniciar.', 'erro'); return; }
+        const extra = data.novos ? ` (${data.novos} novo(s) serão cadastrados antes)` : '';
+        mostrarToast(`Buscando fotos de ${data.total} código(s)${extra}.`, 'sucesso');
+      }).catch(() => mostrarToast('Erro de conexão.', 'erro'));
       return;
     }
     if (btn.dataset.action === 'sync') {

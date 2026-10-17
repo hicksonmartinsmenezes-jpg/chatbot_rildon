@@ -786,3 +786,9 @@ body.x2-rodando .main-content::before {
   .main-content { padding: 20px 16px 40px; }
   body.x2-rodando .main-content::before { left: var(--sidebar-w); }
 }
+
+/* Atualizar Fotos: colar lista de codigos (2026-10-17) */
+.fotos-codigos-bloco { margin-top: 14px; padding-top: 14px; border-top: 1px solid rgba(128,128,128,.25); display: flex; flex-direction: column; gap: 8px; }
+.fotos-codigos-titulo { font-weight: 700; font-size: 13px; }
+.fotos-codigos-lista { width: 100%; box-sizing: border-box; resize: vertical; min-height: 90px; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(128,128,128,.35); background: transparent; color: inherit; font: 13px/1.5 ui-monospace, Consolas, monospace; }
+.fotos-codigos-contador { font-size: 12px; opacity: .7; }

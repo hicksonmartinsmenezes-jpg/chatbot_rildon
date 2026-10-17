@@ -325,8 +325,10 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
           retrySemFoto: !!opcoes.retrySemFoto,
           // Rotina automática de fotos (sem lista de códigos) renova aos poucos as fotos
           // com mais de X2_RENOVAR_FOTOS_DIAS dias (padrão 60), até 300 por seção/execução.
-          renovarAposDias: opcoes.renovarAposDias || ((origemRotina && !(opcoes.codigosEspecificos && opcoes.codigosEspecificos.length)) ? (Number(process.env.X2_RENOVAR_FOTOS_DIAS) || 60) : undefined),
-          renovarLimite: opcoes.renovarLimite || undefined,
+          renovarAposDias: opcoes.renovarAposDias || (opcoes.rebaixarTudo ? 0.5 : undefined) || ((origemRotina && !(opcoes.codigosEspecificos && opcoes.codigosEspecificos.length)) ? (Number(process.env.X2_RENOVAR_FOTOS_DIAS) || 60) : undefined),
+          // rebaixarTudo (2026-10-17): rebaixa tudo da secao sem apagar progresso; quem foi baixado nas
+          // ultimas 12h e pulado, entao uma execucao interrompida (limite de 20 min) e retomavel.
+          renovarLimite: opcoes.renovarLimite || (opcoes.rebaixarTudo ? 100000 : undefined),
           reiniciar: !!opcoes.reiniciar,
           confirmar: modoAutomatico ? undefined : confirmarFactory(),
           modoAutomatico,

@@ -131,3 +131,29 @@ describe('x2-fotos-scraper.calcularFila — pedido do usuário 2026-07-28: "retr
     expect(scraper.calcularFila(codigos, {}, { retrySemFoto: true })).toEqual(codigos);
   });
 });
+
+describe('x2-fotos-scraper.calcularFila — rebaixar tudo (2026-10-17): retomavel, sem apagar progresso', () => {
+  const h = (horas) => new Date(Date.now() - horas * 3600000).toISOString();
+  const codigos = ['a', 'b', 'c', 'd'];
+
+  test('com renovarAposDias=0.5 entram os "ok" baixados ha mais de 12h; os recentes ficam de fora', () => {
+    const progresso = {
+      a: { status: 'ok', ts: h(48) },
+      b: { status: 'ok', ts: h(13) },
+      c: { status: 'ok', ts: h(2) },
+      d: { status: 'ok', ts: h(0.1) },
+    };
+    const fila = scraper.calcularFila(codigos, progresso, { renovarAposDias: 0.5, renovarLimite: 100000 });
+    expect(fila).toEqual(['a', 'b']);
+  });
+
+  test('retomada: o que acabou de ser refeito nao volta pra fila, o resto continua', () => {
+    const progresso = { a: { status: 'ok', ts: h(0.05) }, b: { status: 'ok', ts: h(30) }, c: { status: 'ok', ts: h(30) }, d: { status: 'ok', ts: h(30) } };
+    expect(scraper.calcularFila(codigos, progresso, { renovarAposDias: 0.5, renovarLimite: 100000 })).toEqual(['b', 'c', 'd']);
+  });
+
+  test('sem renovarAposDias, "ok" nunca volta (comportamento antigo preservado)', () => {
+    const progresso = { a: { status: 'ok', ts: h(500) } };
+    expect(scraper.calcularFila(['a'], progresso, {})).toEqual([]);
+  });
+});

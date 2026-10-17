@@ -757,6 +757,7 @@
       dispararAcao('baixar', {
         retrySemFoto: el('opt-retry-sem-foto').checked,
         reiniciar,
+        rebaixarTudo: !reiniciar && el('opt-rebaixar-tudo').checked,
       });
       return;
     }

@@ -1,7 +1,7 @@
 @echo off
 REM PEDIDO DO USUARIO (2026-09-12): "ele nunca fica desligado, preciso que
 REM ative essa rotina pra evitar ele nao funcionar" -- o computador fica
-REM sempre ligado, mas o Painel X2 (npm run x2-painel) so roda se alguem
+REM sempre ligado, mas o Lente Rildon (npm run x2-painel) so roda se alguem
 REM abrir o terminal manualmente. A rotina "Atualizar precos / estoque" (a
 REM cada 5h) so dispara se esse processo estiver de pe -- se ninguem abriu
 REM o painel depois de reiniciar o PC, a rotina simplesmente nao roda.

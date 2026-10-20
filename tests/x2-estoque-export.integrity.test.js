@@ -28,7 +28,7 @@ describe('integridade do CSV de estoque', () => {
   test('recusa CSV com linhas textuais mas poucos registros parseÃ¡veis', () => {
     const csv = 'cabecalho\na\nb\nc';
     expect(validarCompletudeCsv(csv, 4, () => [])).toMatchObject({
-      valido: false, motivo: 'CSV has no parseable records',
+      valido: false, motivo: 'o CSV baixado não tem nenhuma linha legível',
     });
   });
 

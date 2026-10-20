@@ -220,13 +220,31 @@ function registrarInicio(id) {
   salvarRotinas(lista);
 }
 
+// Histórico curto por rotina (2026-10-17, sessão de testes): antes só
+// ficava guardado o ÚLTIMO resultado, então uma rotina que roda a cada 5h
+// e falha 4x por dia aparecia como "1 execução hoje, 1 falha" — e uma
+// falha da madrugada sumia assim que a execução seguinte dava certo. Sem
+// isso não dá pra responder "o catálogo está sendo atualizado sozinho?",
+// que é justamente o que o painel precisa mostrar. 40 entradas cobrem
+// ~8 dias da rotina mais frequente (a cada 5h) e mantêm o JSON pequeno.
+const LIMITE_HISTORICO_ROTINA = 40;
+
 function registrarExecucao(id, { resultado, erro }) {
   const lista = carregarRotinas();
   const idx = lista.findIndex((r) => r.id === id);
   if (idx === -1) return;
-  lista[idx].ultimaExecucao = new Date().toISOString();
+  const agora = new Date().toISOString();
+  lista[idx].ultimaExecucao = agora;
   lista[idx].ultimoResultado = resultado;
   lista[idx].ultimoErro = erro || null;
+  const historico = Array.isArray(lista[idx].historico) ? lista[idx].historico : [];
+  historico.unshift({
+    em: agora,
+    inicio: lista[idx].ultimoInicio || null,
+    resultado,
+    erro: erro ? String(erro).slice(0, 300) : null,
+  });
+  lista[idx].historico = historico.slice(0, LIMITE_HISTORICO_ROTINA);
   salvarRotinas(lista);
 }
 

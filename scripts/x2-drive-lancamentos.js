@@ -144,8 +144,20 @@ async function _clienteDrive(clientId, clientSecret, tokenPath) {
 // ─── Sobe (ou substitui, se já existir) "<fabricante>.pdf" na pasta única
 // do Drive — busca por nome dentro da pasta antes de decidir create/update,
 // pra nunca duplicar arquivo do mesmo fabricante.
+// "Diversos (todos os fabricantes)" trafega como o sentinel interno
+// __DIVERSOS_TODOS_FABRICANTES__ (ver PSEUDO_FABRICANTE_DIVERSOS em
+// catalogo-x2.service.js). Sem esta tradução o arquivo iria pro Drive da
+// equipe com esse nome cru — achado na sessão de testes de 2026-10-17
+// (ainda não tinha acontecido: a opção nunca havia sido enviada).
+function _nomeArquivoFabricante(fabricante) {
+  const nome = fabricante === '__DIVERSOS_TODOS_FABRICANTES__'
+    ? 'DIVERSOS (todos os fabricantes)'
+    : fabricante;
+  return `${nome}.pdf`;
+}
+
 async function _enviarPdfParaDrive(drive, pastaId, fabricante, bufferPdf) {
-  const nomeArquivo = `${fabricante}.pdf`;
+  const nomeArquivo = _nomeArquivoFabricante(fabricante);
   const q = `name='${_escaparNomeParaQuery(nomeArquivo)}' and '${pastaId}' in parents and trashed=false`;
   const busca = await drive.files.list({ q, fields: 'files(id, name)', spaces: 'drive' });
   const existente = (busca.data.files || [])[0];
@@ -349,7 +361,7 @@ async function rodarUploadTodosFabricantes({ exceto = [], so = null, limite = 0,
   if (dryRun) {
     console.log(`[x2-drive] SIMULAÇÃO — enviaria ${alvo.length} catálogo(s) ao Drive (nada foi gerado nem enviado):`);
     for (const o of alvo) {
-      console.log(`  • ${String(o.value).split('::')[0]}.pdf${String(o.value).endsWith('::mecanica') ? ' (versão Mecânica)' : ''}`);
+      console.log(`  • ${_nomeArquivoFabricante(String(o.value).split('::')[0])}${String(o.value).endsWith('::mecanica') ? ' (versão Mecânica)' : ''}`);
     }
     return resultado;
   }

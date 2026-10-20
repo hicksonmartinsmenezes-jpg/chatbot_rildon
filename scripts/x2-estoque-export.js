@@ -97,11 +97,11 @@ function validarCompletudeCsv(conteudo, linhasTabela, parseCsv) {
   const linhasDadosTabela = Math.max(0, Number(linhasTabela) - 1); // tabela inclui cabeçalho
   let valido = linhasDadosTabela > 0 && Array.isArray(registrosCsv) && linhasCsv > 0;
   let motivo = null;
-  if (linhasDadosTabela <= 0) motivo = 'stable table row count is unavailable';
-  else if (!Array.isArray(registrosCsv) || linhasCsv <= 0) motivo = 'CSV has no parseable records';
+  if (linhasDadosTabela <= 0) motivo = 'não consegui contar as linhas da tabela do X2';
+  else if (!Array.isArray(registrosCsv) || linhasCsv <= 0) motivo = 'o CSV baixado não tem nenhuma linha legível';
   else if (linhasCsv < linhasDadosTabela * LIMIAR_COMPLETUDE_EXPORT) {
     valido = false;
-    motivo = 'CSV below 90% of observed stable table rows (heuristic, not proof of completeness)';
+    motivo = 'o CSV veio com menos de 90% das linhas que a tela do X2 mostrava (conferência por amostragem, não é prova de que está completo)';
   }
   return { valido, linhasCsv, linhasTabela: linhasDadosTabela, motivo };
 }
@@ -485,19 +485,19 @@ async function exportarEstoque(context, { estoqueOpcao = 'Com e sem estoque', mo
     const { parseCsvEstoque } = require('../src/services/estoque.service');
     verificacao = validarCompletudeCsv(conteudo, linhasEsperadas, parseCsvEstoque);
   } catch (e) {
-    verificacao = { valido: false, motivo: `CSV could not be parsed: ${e.message}`, linhasTabela: Math.max(0, linhasEsperadas - 1), linhasCsv: 0 };
+    verificacao = { valido: false, motivo: `não consegui ler o CSV baixado: ${e.message}`, linhasTabela: Math.max(0, linhasEsperadas - 1), linhasCsv: 0 };
   }
   if (!verificacao.valido) {
     fs.mkdirSync(rejeitadosDir, { recursive: true });
     const rejeitado = path.join(rejeitadosDir, nomeArquivo.replace(/\.csv$/i, '.rejeitado.csv'));
     fs.renameSync(temporario, rejeitado);
-    throw new Error(`Export refused by heuristic validation: ${verificacao.motivo} (observed table rows: ${verificacao.linhasTabela}, CSV rows: ${verificacao.linhasCsv}). Preserved at ${rejeitado}; import skipped.`);
+    throw new Error(`Export recusado na conferência: ${verificacao.motivo} (a tela do X2 mostrava ${verificacao.linhasTabela} linhas e o CSV veio com ${verificacao.linhasCsv}). O arquivo foi guardado em ${rejeitado} e NADA foi importado — o estoque do bot continua com os dados anteriores.`);
   }
   // O identificador aleatório por execução evita colisões entre processos.
   // O rename publica o snapshot somente após a validação.
   fs.renameSync(temporario, destino);
   fs.writeFileSync(`${destino}.meta.json`, JSON.stringify({ estoqueOpcao, completo: estoqueOpcao === 'Com e sem estoque', validado: true, linhasCsv: verificacao.linhasCsv, linhasTabela: verificacao.linhasTabela, capturadoEm: new Date().toISOString() }, null, 2));
-  console.log(`(heuristic validation passed: ${verificacao.linhasCsv} CSV products; table observed ${verificacao.linhasTabela})`);
+  console.log(`(conferência ok: ${verificacao.linhasCsv} produtos no CSV; a tela do X2 mostrava ${verificacao.linhasTabela} linhas)`);
   let importacao = { estado: 'nao_aplicavel', motivo: 'export filtrado não substitui o estoque completo no banco' };
   if (estoqueOpcao === 'Com e sem estoque') importacao = await _dispararImportacaoNoDocker(destino);
   else console.log('(filtered export saved for reference; database import skipped to avoid replacing full inventory with a subset)');

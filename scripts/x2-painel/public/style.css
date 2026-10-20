@@ -792,3 +792,159 @@ body.x2-rodando .main-content::before {
 .fotos-codigos-titulo { font-weight: 700; font-size: 13px; }
 .fotos-codigos-lista { width: 100%; box-sizing: border-box; resize: vertical; min-height: 90px; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(128,128,128,.35); background: transparent; color: inherit; font: 13px/1.5 ui-monospace, Consolas, monospace; }
 .fotos-codigos-contador { font-size: 12px; opacity: .7; }
+
+
+/* ══════════════════════════════════════════════════════════════════
+   Tema claro "X2" — 2026-10-17
+   PEDIDO DO USUÁRIO: "vamos alternar para tema branco mesmo, fontes
+   parecidas e cores igual o x2". Paleta e fonte medidas direto no X2
+   (sistemas7.xprocess.com.br, base AdminLTE): azul #3c8dbc na barra
+   e nos botões, menu lateral #222d32, fundo #ecf0f5, texto #333,
+   Helvetica Neue/Arial, cantos quase retos. Só pele: nenhum id,
+   classe ou data-attribute usado pelo JS foi tocado. Este bloco vem
+   por último de propósito — redefine as variáveis e corrige os
+   poucos valores fixos (branco/preto) que as regras acima usavam.
+   ══════════════════════════════════════════════════════════════════ */
+:root {
+  --bg: #ecf0f5;
+  --sidebar-bg: #222d32;
+  --surface: #ffffff;
+  --surface-2: #f7f9fb;
+  --surface-3: #eaeff4;
+  --border: #dbe1e8;
+  --border-strong: #b7c2cd;
+  --text: #333333;
+  --text-2: #4d5b63;
+  --muted: #7b8a93;
+  --cobre: #3c8dbc;
+  --cobre-forte: #367fa9;
+  --cobre-soft: rgba(60, 141, 188, .12);
+  --green: #00a65a;
+  --green-soft: rgba(0, 166, 90, .12);
+  --amber: #b9770e;
+  --amber-soft: rgba(243, 156, 18, .14);
+  --red: #dd4b39;
+  --red-soft: rgba(221, 75, 57, .11);
+  --blue: #3c8dbc;
+  --blue-soft: rgba(60, 141, 188, .12);
+  --purple: #605ca8;
+  --purple-soft: rgba(96, 92, 168, .12);
+  --radius: 4px;
+  --radius-sm: 3px;
+  --sidebar-w: 230px;
+}
+body { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-size: 14px; color: var(--text); }
+h1 { letter-spacing: 0; }
+
+/* Menu lateral: escuro como o do X2, marca em azul no topo. */
+.sidebar { padding: 0 0 20px; border-right: none; box-shadow: 1px 0 3px rgba(0,0,0,.15); }
+.sidebar-brand { margin: 0 0 14px; padding: 0 16px; height: 56px; background: #3c8dbc; gap: 10px; }
+.sidebar-logo { background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.35); color: #fff; border-radius: 3px; width: 34px; height: 34px; }
+.sidebar-brand-nome { color: #fff; font-size: 15px; font-weight: 700; letter-spacing: 0; }
+.top-tabs { padding: 0; gap: 0; }
+.top-tab { border-radius: 0; padding: 12px 18px; color: #b8c7ce; border-left: 3px solid transparent; }
+.top-tab:hover { background: #1e282c; color: #fff; }
+.top-tab.active { background: #1e282c; color: #fff; border-left-color: #3c8dbc; }
+.top-tab.active .top-tab-label { font-weight: 700; }
+.top-tab svg { opacity: .9; }
+
+.main-content { padding: 26px 30px 56px; }
+
+/* Cartões no estilo "box" do X2: fio azul-acinzentado no topo + sombra leve. */
+.card { border: 1px solid var(--border); border-top: 3px solid #d2d6de; border-radius: var(--radius); box-shadow: 0 1px 1px rgba(0,0,0,.08); padding: 18px 22px; }
+.card h2 { font-size: 16px; font-weight: 600; color: #333; }
+.card h2 .contador { background: var(--cobre-soft); color: #2b6f96; border-radius: 3px; }
+.layout .card:first-child { border-top-color: #3c8dbc; }
+.section-label { color: var(--text-2); }
+
+/* KPIs */
+.stat-card { border-radius: var(--radius); box-shadow: 0 1px 1px rgba(0,0,0,.06); border-left: 3px solid #3c8dbc; }
+.stat-card:hover { background: var(--surface); border-color: var(--border-strong); border-left-color: #3c8dbc; }
+.stat-card--rico { border-left-color: var(--border); }
+.stat-card--rico::after { background: #3c8dbc; opacity: .55; }
+.stat-card .valor { color: #2b4a5a; }
+.stat-card--rico.alerta .valor, .stat-card--rico.risco .valor { color: #2b4a5a; }
+.stat-icone { background: var(--cobre-soft); color: #3c8dbc; border-radius: 3px; }
+.stat-progress-fill { background: var(--green); }
+
+/* Campos, chips, tabela */
+.search-input { background: #fff; border-color: #c9d2db; border-radius: 3px; color: var(--text); }
+.search-input:focus { background: #fff; border-color: #3c8dbc; box-shadow: 0 0 0 2px rgba(60,141,188,.18); }
+.chip { background: #fff; border-color: #c9d2db; color: var(--text-2); border-radius: 3px; }
+.chip:hover { border-color: #3c8dbc; color: #2b6f96; }
+.chip.active { background: #3c8dbc; border-color: #3c8dbc; color: #fff; }
+.chip.active .chip-contador { color: rgba(255,255,255,.8); }
+th { background: #f4f7fa; color: #333; font-weight: 700; text-transform: none; letter-spacing: 0; font-size: 12.5px; cursor: default; border-bottom: 2px solid #d2d6de; }
+td { color: var(--text); }
+tr:hover td { background: #f1f6fa; }
+tr.selecionada td { background: rgba(60,141,188,.10); }
+tr.selecionada:hover td { background: rgba(60,141,188,.16); }
+.badge { border-radius: 3px; }
+.link-csv { color: #3c8dbc; }
+
+/* Botões: padrão cinza claro do X2, principal azul. */
+button { border-radius: 3px; background: #f4f4f4; border-color: #ddd; color: #444; font-weight: 600; }
+button:hover { background: #e7e7e7; border-color: #adadad; }
+button.ghost { background: transparent; border-color: transparent; }
+button.ghost:hover { background: var(--surface-3); border-color: var(--border); }
+button.primary, button.primary-blue { background: #3c8dbc; border-color: #367fa9; color: #fff; }
+button.primary:hover:not(:disabled), button.primary-blue:hover:not(:disabled) { background: #367fa9; border-color: #2e6e94; }
+button.primary-green { background: #00a65a; border-color: #008d4c; color: #fff; }
+button.primary-green:hover { background: #008d4c; border-color: #008d4c; }
+.btn-voltar { background: none; border: none; color: #3c8dbc; }
+.btn-voltar:hover { background: none; color: #367fa9; }
+
+/* Ações rápidas */
+.acao-rapida { background: #fff; border-radius: var(--radius); }
+.acao-rapida.aberta { background: #fff; border-color: #3c8dbc; }
+.acao-rapida-linha:hover, .acao-rapida:not(.aberta) .acao-rapida-linha:hover { background: #f4f8fb; }
+.acao-rapida-icone { background: var(--cobre-soft); color: #3c8dbc; border-radius: 3px; }
+.acao-rapida.aberta .acao-rapida-icone { background: #3c8dbc; color: #fff; }
+.acao-rapida-titulo { color: #333; }
+.acao-rapida-painel input[type="number"] { background: #fff; border-color: #c9d2db; border-radius: 3px; }
+.fotos-codigos-bloco { border-top-color: var(--border); }
+.fotos-codigos-lista { background: #fff; border-color: #c9d2db; border-radius: 3px; color: var(--text); }
+.fotos-codigos-lista:focus { outline: none; border-color: #3c8dbc; box-shadow: 0 0 0 2px rgba(60,141,188,.18); }
+
+/* Abas da Qualidade Cadastral */
+.qualidade-tab.active { color: #3c8dbc; border-color: #3c8dbc; }
+.qualidade-tab.active .qualidade-tab-contador { background: var(--cobre-soft); color: #2b6f96; }
+.qualidade-tab-contador { background: var(--surface-3); }
+
+/* Execução e log */
+.progresso-bar-track { background: #dfe6ec; border-radius: 3px; height: 10px; }
+.progresso-bar-fill { background: linear-gradient(90deg, #3c8dbc, #5aa9d6); border-radius: 3px; }
+.status-line.rodando, .status-line.concluido { color: #008d4c; }
+.execucao-idle-icone { background: var(--green-soft); color: #00a65a; }
+pre#log, #log { background: #222d32; border-color: #1a2327; color: #d6e0e5; border-radius: 3px; }
+
+/* Avisos legíveis em fundo claro */
+.aviso-banner, .aviso-inline, .aguardando-banner, .toast.aviso { border-color: rgba(243,156,18,.45); color: #7a4f08; background: #fdf3e0; }
+.aguardando-banner span { color: #7a4f08; }
+.info-banner { background: #f4f8fb; border-color: #d2e1ec; color: var(--text-2); }
+.toast { background: #fff; border-color: var(--border-strong); color: var(--text); box-shadow: 0 4px 14px rgba(0,0,0,.18); border-left: 4px solid #3c8dbc; }
+.toast.erro { background: #fdeceb; border-color: rgba(221,75,57,.4); border-left-color: #dd4b39; color: #a8281a; }
+
+/* Toggle e miniaturas */
+.rotina-toggle .slider { background: #c9d2db; border-color: #b7c2cd; }
+.rotina-toggle input:checked + .slider { background: #3c8dbc; border-color: #367fa9; }
+.rotina-toggle input:checked + .slider::before { background: #fff; }
+.thumb-produto, .thumb-produto-vazio { background: #fff; }
+.icon-btn { background: #fff; border-color: #c9d2db; border-radius: 3px; }
+.icon-btn:hover { color: #3c8dbc; border-color: #3c8dbc; }
+
+/* Trilho de execução e foco em azul X2 */
+:where(button, a, input, select, textarea, summary, [tabindex]):focus-visible { outline-color: #3c8dbc; }
+/* Ponto de status + nome da seção: o ponto é inline e, em nome longo que
+   quebra em duas linhas, ficava sozinho na primeira. Recuo pendurado
+   mantém o ponto colado no começo do nome e alinha a continuação. O
+   seletor é por ID — o tbody é id="tabela-secoes", não classe (a regra
+   antiga com ponto não casava com nada). */
+#tabela-secoes td:nth-child(2) { padding-left: 26px; text-indent: -14px; }
+#tabela-secoes td:nth-child(2) .cell-slug { text-indent: 0; }
+.status-dot-mini { vertical-align: middle; position: relative; top: -1px; }
+
+/* Coluna Ações da lista de produtos: sem o ícone "ver foto" (produto sem
+   foto) o botão escorregava pra esquerda e a coluna ficava serrilhada.
+   Alinhado à direita, todos os botões caem na mesma vertical. */
+.modal-produtos-acoes { justify-content: flex-end; }

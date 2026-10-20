@@ -4,6 +4,7 @@ const logger = require("../utils/logger");
 const { listarFotos, obterFoto, obterFotoPorNome, definirFotoPreferida, ocultarFoto, recarregarIndice: recarregarIndiceFotos, obterVersaoFotos, temMultiplasFotos, temAlgumaFoto, adicionarFotoManual } = require("../services/catalogo-fotos.service");
 const { buscarProdutosPainel, buscarPorCodigo, buscarPorNomePainel, listarFabricantes, listarFabricantesCatalogoCompleto, listarMarcasVeiculoConhecidas, decodificarFabricanteCompleto, recarregarIndices: recarregarIndicesProdutos, listarLinhasParaEdicaoCategoria, definirLinhaProduto, PSEUDO_FABRICANTE_DIVERSOS } = require("../services/catalogo-x2.service");
 const { listarSecoes, listarLinhasPorSecao } = require("../services/catalogo.service");
+const prontos = require("../services/catalogo-prontos.service");
 const { gerarPdfCatalogo, gerarPdfCatalogoCompleto, gerarPdfCatalogoPromocional, limparCacheBboxFotos } = require("../services/catalogo-pdf.service");
 const { carregarEstoque, statusCache } = require("../services/estoque.service");
 const { anexarAplicacoesOrganizadas } = require("../services/catalogo-aplicacao-ia.service");
@@ -254,7 +255,15 @@ async function buscarProdutosHandler(req, res) {
 // Diferente da tela, aqui NÃO aplica o teto de exibição de 200 — traz tudo
 // que bateu no filtro, até o teto de segurança MAX_EXPORT_PDF.
 async function exportarPdfHandler(req, res) {
+  // Catálogo Completo PRONTO: pedido só com ?fabricante=X (sem outros filtros)
+  // é servido do arquivo já gerado em segundo plano — abre na hora.
+  const chaveProntos = Object.keys(req.query || {}).every((k) => ["fabricante", "_", "t"].includes(k)) && req.query.fabricante
+    ? String(req.query.fabricante)
+    : null;
   try {
+    if (chaveProntos && !req.__apenasGerar && prontos.existe(chaveProntos)) {
+      return await prontos.enviar(res, chaveProntos);
+    }
     const codigo = String(req.query.codigo || "").trim();
     const nome   = String(req.query.nome || "").trim();
     let produtos;
@@ -396,6 +405,21 @@ async function exportarPdfHandler(req, res) {
       } catch (err) {
         logger.warn(`[Catálogo] Falha ao organizar aplicações com IA (seguindo sem elas): ${err.message}`);
       }
+    }
+
+    if (modoCompleto && chaveProntos) {
+      // Gera para arquivo, publica e entrega (próximos pedidos abrem direto).
+      const agrupar = fabricanteCompleto === PSEUDO_FABRICANTE_DIVERSOS;
+      const destino = prontos.novoDestino(chaveProntos);
+      try {
+        await gerarPdfCatalogoCompleto(produtos, fabricanteCompleto, destino.stream, tipoCompletoSelecionado, agrupar);
+        await destino.publicar();
+      } catch (e) {
+        destino.descartar();
+        throw e;
+      }
+      if (req.__apenasGerar) return;
+      return await prontos.enviar(res, chaveProntos);
     }
 
     res.setHeader("Content-Type", "application/pdf");
@@ -1095,6 +1119,7 @@ async function definirLinhaProdutoHandler(req, res) {
 async function recarregarEstoqueHandler(req, res) {
   try {
     await carregarEstoque();
+    prontos.limparTodos(); // preços/estoque novos: catálogos refeitos no próximo clique
     res.json({ ok: true, ...statusCache() });
   } catch (err) {
     logger.error("❌ Erro ao recarregar cache de estoque:", err.message);
@@ -1122,6 +1147,9 @@ async function recarregarCatalogoHandler(req, res) {
     // limparCacheBboxFotos) continuaria servindo o recorte calculado em
     // cima da foto ANTIGA até o processo reiniciar.
     limparCacheBboxFotos();
+    // Fotos/produtos mudaram: descarta os catálogos prontos; cada um é
+    // gerado de novo no próximo clique.
+    prontos.limparTodos();
     res.json({ ok: true, produtosComFoto: idx.size });
   } catch (err) {
     logger.error("❌ Erro ao recarregar catálogo/fotos:", err.message);

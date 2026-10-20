@@ -1,3 +1,9 @@
+// Modo consulta do catálogo (programa .exe da loja): a janela abre a URL com
+// ?app=catalogo — só a aba Catálogo fica visível (sem menu lateral das demais
+// abas). Pedido do usuário (2026-10-20): "programa exe ... esse de consulta".
+const MODO_CONSULTA_CATALOGO = new URLSearchParams(location.search).get("app") === "catalogo";
+if (MODO_CONSULTA_CATALOGO) document.documentElement.classList.add("modo-consulta-catalogo");
+
 // 02-auth.js
 // Sessão gerenciada via cookie HttpOnly — o navegador envia automaticamente.
 // O JS do cliente nunca vê nem armazena o token de sessão.
@@ -295,6 +301,17 @@ async function logout() {
 // Tenta buscar o usuário atual — se o cookie for válido, o servidor responde com os dados.
 // Não há token armazenado no cliente para verificar localmente.
 async function checkAuth() {
+  // Modo consulta (programa .exe da loja): sem login. O servidor libera só a
+  // leitura do catálogo pela rede interna (middlewares/catalogo-consulta.js).
+  if (MODO_CONSULTA_CATALOGO) {
+    setCurrentUser({
+      id: 0, nome: "Consulta", usuario: "consulta", perfil: "atendente",
+      permissions: { catalogo: true, dashboard: false, conversations: false, history: false, contacts: false, channels: false, metrics: false }
+    });
+    showDashboard();
+    applyUserPermissions();
+    return;
+  }
   try {
     const res = await fetch(`${BASE}/api/auth/me`, {
       credentials: "include"
@@ -321,6 +338,10 @@ function showDashboard() {
   document.getElementById("login-screen").style.display = "none";
   document.getElementById("sidebar").style.display      = "";
   document.getElementById("dashboard").style.display    = "";
+  if (MODO_CONSULTA_CATALOGO && typeof switchTab === "function") {
+    switchTab("catalogo");
+    if (typeof catalogoConsultaInicio === "function") catalogoConsultaInicio();
+  }
 }
 
 function showLogin() {
@@ -334,6 +355,10 @@ function showLogin() {
 let _sessionExpiredShown = false;
 
 function showSessionExpired() {
+  if (MODO_CONSULTA_CATALOGO) {
+    if (typeof showToast === "function") showToast("Ação não disponível no modo consulta.", "warning");
+    return;
+  }
   if (_sessionExpiredShown) return;
   _sessionExpiredShown = true;
 

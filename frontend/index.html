@@ -4,6 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
+  <script>
+    /* Programa .exe da loja (?app=catalogo): marca o modo ANTES da página pintar,
+       senão a tela de login aparece por um instante a cada atualização. */
+    if (/[?&]app=catalogo(&|$)/.test(location.search)) document.documentElement.className += " modo-consulta-catalogo consulta-inicio";
+  </script>
   <title>Rildon Painel de Atendimento</title>
   <meta name="description" content="Painel de atendimento WhatsApp - Rildon Eletropeças">
   <meta name="theme-color" content="#111827">
@@ -2048,6 +2053,35 @@ Como podemos ajudar você hoje?
 
 <section id="tab-catalogo" class="tab-content hidden">
 
+  <!-- Modo consulta (programa .exe da loja, ?app=catalogo): duas abas grandes.
+       Ficam escondidas fora desse modo — ver 17-catalogo.css. -->
+  <!-- Tela inicial do programa (modo consulta): logo + duas caixas quadradas. -->
+  <div class="catalogo-home" id="catalogo-home">
+    <img src="logo-rildon.png" alt="Rildon Eletro Peças" class="catalogo-home-logo">
+    <div class="catalogo-home-caixas">
+      <button type="button" class="catalogo-home-caixa" onclick="catalogoConsultaMostrar('consultar')">
+        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+        <span>Consultar</span>
+      </button>
+      <button type="button" class="catalogo-home-caixa" onclick="catalogoConsultaMostrar('montar')">
+        <i class="fa-solid fa-book-open" aria-hidden="true"></i>
+        <span>Gerar Catálogos</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="catalogo-consulta-tabs" id="catalogo-consulta-tabs">
+    <button type="button" class="catalogo-consulta-tab" id="catalogo-consulta-tab-inicio" onclick="catalogoConsultaInicio()" aria-label="Voltar ao início">
+      <i class="fa-solid fa-house"></i> Início
+    </button>
+    <button type="button" class="catalogo-consulta-tab active" id="catalogo-consulta-tab-consultar" onclick="catalogoConsultaMostrar('consultar')">
+      <i class="fa-solid fa-magnifying-glass"></i> Consultar
+    </button>
+    <button type="button" class="catalogo-consulta-tab" id="catalogo-consulta-tab-montar" onclick="catalogoConsultaMostrar('montar')">
+      <i class="fa-solid fa-book-open"></i> Gerar Catálogos
+    </button>
+  </div>
+
   <div class="catalogo-erp-panel">
     <div class="catalogo-erp-tabs">
       <span class="catalogo-erp-tab active" data-action="catalogoMostrarAbaVeiculo" id="catalogo-tab-veiculo">
@@ -2192,6 +2226,12 @@ Como podemos ajudar você hoje?
     </form>
 
     <div id="catalogo-form-completo" class="catalogo-erp-body hidden">
+      <!-- Modo consulta: ícones dos catálogos prontos (um por fabricante); o
+           clique abre o PDF contínuo. Escondido fora do modo consulta. -->
+      <div id="catalogo-montar-grid" class="catalogo-montar-grid" role="list"></div>
+      <button type="button" id="catalogo-montar-voltar" class="catalogo-montar-voltar" onclick="catalogoMontarVoltar()">
+        <i class="fa-solid fa-arrow-left"></i> Voltar aos catálogos
+      </button>
       <div class="catalogo-erp-box catalogo-erp-box-codigo">
         <div class="catalogo-box-header">
           <span class="catalogo-box-icon catalogo-box-icon-blue"><i class="fa-solid fa-industry"></i></span>

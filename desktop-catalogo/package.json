@@ -1,0 +1,41 @@
+{
+  "name": "catalogo-rildon-loja",
+  "version": "0.1.0",
+  "description": "Catálogo Rildon Eletropeças — consulta no balcão (versão Loja)",
+  "main": "main.js",
+  "author": "Rildon Eletropeças",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis --x64"
+  },
+  "devDependencies": {
+    "electron": "33.2.1",
+    "electron-builder": "25.1.8"
+  },
+  "build": {
+    "appId": "br.com.rildon.catalogo.loja",
+    "productName": "Catalogo Rildon",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "erro.html",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "icon.png",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    }
+  }
+}

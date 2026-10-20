@@ -290,7 +290,14 @@ const CABECALHO_IMG_RATIO = 719 / 146;
 // (usa a altura REAL da imagem inteira, ~120.9pt, era ~88.9pt com
 // sangria=32) — inevitável pra mostrar a parte mais larga da cunha; se o
 // usuário achar o cabeçalho grande demais depois, dá pra revisitar.
-const CABECALHO_SANGRIA_TOPO = 0;
+// 2026-10-19: pedido do usuário "no cabeçalho suba mais um pouco; se as pontas
+// cinzas não encostarem, pode esticar um pouco" — sobe CABECALHO_SANGRIA_TOPO pt
+// (parte de cima da arte fica fora da página) e, como a cunha vai afinando
+// pra baixo (a ponta direita perde ~2.1px de arte por linha), a imagem é
+// ESTICADA SÓ NA HORIZONTAL (CABECALHO_ESTICAR_X) pra ponta cinza voltar a
+// encostar na borda direita. Medido no PNG 5752×1168: tinta começa em x=46 e,
+// na linha da sangria (~133px), termina em x≈5432.
+const CABECALHO_SANGRIA_TOPO = 26; // 2026-10-19: 14 -> 26 ("suba mais o cabeçalho")
 
 // 2026-08-28 (mesmo dia, pedido seguinte): "cole mais o cabeçalho na
 // esquerda e direita" — medido pixel a pixel no MESMO arquivo (719×146,
@@ -356,8 +363,15 @@ const GAP = 10;
 // A4) MULTIPLICADA pelo zoom de bleed (ver CABECALHO_ESCALA_BLEED acima),
 // e o X de desenho correspondente (negativo — a imagem começa um pouco
 // antes da borda esquerda da página, de propósito, é o bleed).
-const CABECALHO_IMG_LARGURA_DESENHO = 595.28 * CABECALHO_ESCALA_BLEED;
-const CABECALHO_IMG_X_DESENHO = -CABECALHO_CONTEUDO_ESQUERDA_FRACAO * CABECALHO_IMG_LARGURA_DESENHO;
+const CABECALHO_IMG_LARGURA_BASE = 595.28 * CABECALHO_ESCALA_BLEED;
+const CABECALHO_PX_L = 5752, CABECALHO_PX_A = 1168, CABECALHO_TINTA_ESQ_PX = 46;
+const CABECALHO_ALTURA_BASE = CABECALHO_IMG_LARGURA_BASE / CABECALHO_IMG_RATIO;
+// fim (px) da tinta na linha de corte da sangria: ~5699 - 2.12/linha (medido)
+const CABECALHO_LINHA_CORTE_PX = CABECALHO_SANGRIA_TOPO * CABECALHO_PX_A / CABECALHO_ALTURA_BASE;
+const CABECALHO_TINTA_DIR_PX = CABECALHO_SANGRIA_TOPO > 0 ? 5720 - 2.12 * CABECALHO_LINHA_CORTE_PX : 5699;
+const CABECALHO_ESTICAR_X = (595.28 * 1.003 * CABECALHO_PX_L / (CABECALHO_TINTA_DIR_PX - CABECALHO_TINTA_ESQ_PX)) / CABECALHO_IMG_LARGURA_BASE;
+const CABECALHO_IMG_LARGURA_DESENHO = CABECALHO_IMG_LARGURA_BASE * (CABECALHO_SANGRIA_TOPO > 0 ? CABECALHO_ESTICAR_X : 1);
+const CABECALHO_IMG_X_DESENHO = -(CABECALHO_TINTA_ESQ_PX / CABECALHO_PX_L) * CABECALHO_IMG_LARGURA_DESENHO;
 // Altura REAL/undistorcida da imagem do cabeçalho — calculada a partir da
 // proporção verdadeira do arquivo e da largura de desenho acima (já com
 // bleed), sem esticar/espremer o desenho (pedido do usuário original:
@@ -366,7 +380,7 @@ const CABECALHO_IMG_X_DESENHO = -CABECALHO_CONTEUDO_ESQUERDA_FRACAO * CABECALHO_
 // si (ver _desenharCabecalho) — todo o resto do layout usa HEADER_HEIGHT
 // (abaixo), que é a altura VISÍVEL na página (menor, por causa da
 // sangria).
-const CABECALHO_IMG_ALTURA_REAL = CABECALHO_IMG_LARGURA_DESENHO / CABECALHO_IMG_RATIO;
+const CABECALHO_IMG_ALTURA_REAL = CABECALHO_ALTURA_BASE; // esticar só na horizontal
 // Altura visível do cabeçalho na página — desconta a sangria (a imagem é
 // desenhada em y negativo, então essa fatia do topo fica fora da página,
 // invisível). Título, cards etc. usam ESTA altura, não a real.
@@ -389,7 +403,7 @@ const TITULO_GAP_TOPO = 15;
 // encostando nos produtos, deixe a distância parecida como a das colunas" —
 // a distância entre o título e o topo dos cards é EXATAMENTE o mesmo valor
 // do respiro entre colunas (GAP), em vez de um número arbitrário.
-const TITULO_GAP_CARDS = 14;
+const TITULO_GAP_CARDS = 24; // 2026-10-19: 12 -> 24 ("desça do primeiro fabricante pra baixo")
 
 // Pedido do usuário (2026-07-28): 4 linhas de card por página em A4 (antes
 // cabiam só 3). A altura da foto NÃO é mais uma escala fixa — é calculada
@@ -557,7 +571,7 @@ const RESUMO_ALTURA = 8;        // 1 linha nesse tamanho
 // essa constante da altura total do card, a foto encolhe automaticamente
 // esses mesmos pontos — não precisa mexer em mais nada pra layout
 // continuar batendo certo.
-const GAP_FOTO_RESUMO = 13;     // respiro entre a foto e a linha de resumo
+const GAP_FOTO_RESUMO = 16;     // respiro entre a foto e a linha de resumo (era 13 — 2026-10-19, "desce um pouquinho mais a descrição")
 const GAP_RESUMO_APLICACAO = 3; // respiro entre a linha de resumo e a aplicação
 
 // Cor do texto do código — pedido do usuário (2026-07-30): "azul oceano/
@@ -678,6 +692,80 @@ function _desenharBadgePreco(doc, preco, xConteudo, yTopo, larguraConteudo, larg
       align: "center",
     });
 
+  doc.fillColor("#111827").font("Helvetica");
+}
+
+// 2026-10-19 (pedido do usuário: "se padronizarmos nos catálogos de
+// elétrica a corrente e tensão no canto superior direito?"): selo de
+// ESPECIFICAÇÃO ELÉTRICA — "12V | 90A" — no canto superior direito do card,
+// na mesma altura do selo do código (canto esquerdo), pra o balconista bater
+// o olho e ver a tensão/corrente sem ler a descrição. Lê primeiro o campo
+// estruturado da ficha (dadosTecnicos: "Tensão: 12V\nCorrente: 90A" /
+// "Voltagem: 12V") e, na falta dele, o padrão do nome do X2 ("... 12V 90A
+// ..."). Só aparece se achar ao menos um dos dois; nunca inventa valor.
+// Não desenha no Catálogo Promocional (o canto direito é do preço) nem no
+// estilo Mecânica. Seções sem relação com elétrica (mecânica, filtros,
+// química, consumo, engates) ficam de fora pra "12V" solto no nome de uma
+// peça mecânica não virar selo.
+const SECOES_SEM_SELO_ELETRICO = /MEC[ÂA]NICA|FILTRO|QU[ÍI]MICA|CONSUMO|ENGATE/i;
+const SELO_ELETRICO_FUNDO = "#e6eef8";
+const SELO_ELETRICO_TEXTO = "#005aaa";
+const SELO_ELETRICO_FONTE = 7;
+
+function _limparEspecEletrica(texto) {
+  return String(texto).replace(/\s*\/\s*/g, "/").replace(/,/g, ".").replace(/\s+/g, "").toUpperCase();
+}
+
+function _extrairEspecEletrica(produto) {
+  if (SECOES_SEM_SELO_ELETRICO.test(String(produto.secao || ""))) return null;
+  const dados = String(produto.dadosTecnicos || "");
+  const nome = String(produto.nome || "");
+
+  let tensao = null;
+  const linhaTensao = dados.match(/^\s*(?:Tens[aã]o|Voltagem)[^:\n]*:\s*(.+)$/im);
+  const reTensao = /(\d{1,2}(?:[.,]\d)?(?:\s*\/\s*\d{1,2})?)\s*V(?:OLTS?|DC)?\b/i;
+  const mTensao = (linhaTensao && linhaTensao[1].match(reTensao)) || nome.match(new RegExp("\\b" + reTensao.source, "i"));
+  if (mTensao) tensao = _limparEspecEletrica(mTensao[1]) + "V";
+
+  let corrente = null;
+  const linhaCorrente = dados.match(/^\s*(?:Corrente|Amperagem)[^:\n]*:\s*(.+)$/im);
+  const reCorrente = /(\d{1,4}(?:\s*\/\s*\d{1,4})?)\s*A(?:MP(?:ERES?)?)?(?![A-Za-z0-9])/i;
+  const mCorrente = (linhaCorrente && linhaCorrente[1].match(reCorrente)) || nome.match(new RegExp("\\b" + reCorrente.source, "i"));
+  if (mCorrente) corrente = _limparEspecEletrica(mCorrente[1]) + "A";
+
+  if (!tensao && !corrente) return null;
+  return { tensao, corrente };
+}
+
+// Desenha o selo no canto superior direito. Mesma altura do selo do código;
+// se o selo do código ocupar quase o card inteiro (código gigante) e o
+// selo elétrico colidir, ele é omitido naquele card — mesma regra do badge
+// de preço.
+function _desenharSeloEletrico(doc, spec, xConteudo, yTopo, larguraConteudo, larguraSelo, alturaSelo) {
+  if (!spec) return;
+  const partes = [spec.tensao, spec.corrente].filter(Boolean);
+  doc.font(TITULO_FONTE).fontSize(SELO_ELETRICO_FONTE);
+  const larguras = partes.map(t => doc.widthOfString(t));
+  const sep = partes.length === 2 ? 5 : 0; // espaço do divisor entre tensão e corrente
+  const larguraBadge = larguras.reduce((a, b) => a + b, 0) + sep + CAIXA_CODIGO_PAD_H * 2 + 1.5;
+  const xBadge = xConteudo + larguraConteudo - larguraBadge;
+  if (xBadge < xConteudo + larguraSelo + 4) return; // colidiria com o selo do código — omite
+
+  const alturaLinha = doc.currentLineHeight();
+  const yTexto = yTopo + (alturaSelo - alturaLinha) / 2;
+  doc.rect(xBadge, yTopo, larguraBadge, alturaSelo).fillColor(SELO_ELETRICO_FUNDO).fill();
+  doc.fillColor(SELO_ELETRICO_TEXTO).font(TITULO_FONTE).fontSize(SELO_ELETRICO_FONTE);
+  let x = xBadge + CAIXA_CODIGO_PAD_H + 0.75;
+  partes.forEach((t, i) => {
+    doc.text(t, x, yTexto, { width: larguras[i] + 2, height: alturaLinha, lineBreak: false });
+    x += larguras[i];
+    if (i === 0 && partes.length === 2) {
+      const xDiv = x + sep / 2;
+      doc.moveTo(xDiv, yTopo + 2).lineTo(xDiv, yTopo + alturaSelo - 2)
+        .lineWidth(0.6).strokeColor(SELO_ELETRICO_TEXTO, 0.55).stroke();
+      x += sep;
+    }
+  });
   doc.fillColor("#111827").font("Helvetica");
 }
 
@@ -974,6 +1062,23 @@ const AREA_TOPO_Y = HEADER_HEIGHT + TITULO_GAP_TOPO + TITULO_TAMANHO + TITULO_GA
 // modos de exportação continuam com COLS/ROWS_POR_PAGINA, sem mudança.
 const COLS_COMPLETO = 4;
 const ROWS_POR_PAGINA_COMPLETO = 5;
+// 2026-10-19 (pedido do usuário: "as fotos estão muito pequenas... desce um
+// pouquinho mais a descrição e aumenta imagem, deixe mais organizado"):
+// medido no layout de então — card de 106,99pt com 77,4pt de texto fixo
+// (selo + OEM + resumo + aplicação + respiros), sobrando só 29,59pt de
+// ALTURA pra foto num quadro de 126,32pt de largura. Como a foto é
+// encaixada mantendo proporção (_desenharFotoAjustada), uma peça quase
+// quadrada (alternador, motor de partida) ficava com ~29pt de lado e
+// desperdiçava metade da largura do quadro — daí a sensação de foto
+// minúscula. 5 linhas por página era o teto que sobrava depois do texto,
+// não uma escolha de leitura. Com 4 linhas o card vai a ~136pt e a foto
+// mais que dobra (~56pt), sem mexer em nenhuma fonte nem no texto do card.
+// Custo: ~25% mais páginas por catálogo (16 peças/página em vez de 20).
+// Vale só pra ELÉTRICA — a Mecânica já roda em 4 (ver
+// ROWS_POR_PAGINA_COMPLETO_MECANICA) e o Catálogo Promocional segue em 5
+// (constante acima, usada lá e na conta de rebalanceamento das duas
+// últimas páginas), que não foi o que o usuário pediu pra mexer.
+const ROWS_POR_PAGINA_COMPLETO_ELETRICA = 4;
 
 // BUG REAL corrigido 2026-09-01 (usuário reportou "catálogo completo não
 // está gerando" — na real ficava carregando pra sempre): as 3 funções que
@@ -1155,13 +1260,36 @@ const LINHA_DIVISORIA = "#e5e7eb"; // separa a área da foto da área de texto
 // topo do arquivo), extraído direto do site X2, sem nenhuma sujeira. Esse
 // mapa é a fonte PRIMÁRIA; o corte por " - " continua só como fallback pra
 // produto que não estiver no mapa (sincronizado depois da extração).
+// 2026-10-19: produto novo (lançamento sincronizado depois da extração do
+// cod-fornecedor.json, sem ficha) não tinha código de fabricante nem
+// referencia, então o selo do topo caía pro código da LOJA — igual ao de
+// baixo (ex: induzidos MARILIA 129452-4; 211 produtos no total). O X2 nomeia
+// o produto no padrão "DESCRIÇÃO - FABRICANTE - CÓDIGO", então o último
+// trecho depois de " - " é o código do fabricante. Aceita um espaço interno
+// ("IK 5582" -> "IK5582", mesmo formato do mapa) e recusa trechos que são
+// quantidade/embalagem ("PCT C/ 50", "KIT 2") ou o próprio código da loja.
+const _PREFIXOS_NAO_CODIGO = new Set(["PCT", "C/", "KIT", "CX", "PAR", "UN", "UND", "JOGO", "JG", "PC", "PCS"]);
+function _codigoFabricanteDoNome(produto) {
+  const partes = String(produto.nome || "").split(" - ");
+  if (partes.length < 2) return null;
+  const ultimo = partes[partes.length - 1].trim();
+  const tokens = ultimo.split(/\s+/);
+  if (tokens.length > 2 || ultimo.length > 26 || !/\d/.test(ultimo)) return null;
+  if (_PREFIXOS_NAO_CODIGO.has(tokens[0].toUpperCase())) return null;
+  const codigo = tokens.join("");
+  if (!/^[A-Za-z0-9][A-Za-z0-9.\-\/]*$/.test(codigo)) return null;
+  if (codigo === String(produto.codigo)) return null;
+  return codigo;
+}
+
 function _rotuloProduto(produto) {
   // Catálogos de layout próprio (Arielo): o card representa uma FAMÍLIA de
   // códigos (EST349 = EST800349/EST600349…), então o rótulo vem de fora.
   if (produto._rotuloOverride) return produto._rotuloOverride;
   const codigoFornecedor =
     CODIGO_FORNECEDOR_MAP.get(String(produto.codigo)) ||
-    (produto.referencia ? String(produto.referencia).split(" - ")[0].trim() : null);
+    (produto.referencia ? String(produto.referencia).split(" - ")[0].trim() : null) ||
+    _codigoFabricanteDoNome(produto);
   return codigoFornecedor || String(produto.codigo);
 }
 
@@ -1637,9 +1765,72 @@ function _desenharFotoAjustada(doc, buffer, mimetype, x, y, boxWidth, boxHeight,
 // Efeitos colaterais desejados: "sem foto" só aparece quando NENHUMA foto
 // abre; e produto cuja 1ª foto está corrompida mas a 2ª está boa agora
 // mostra a 2ª em largura cheia, em vez de "sem foto".
+// 2026-10-19 (usuário: "porque tantos produtos estão duplicando a mesma
+// foto aparecendo duas vezes no mesmo card"): medido numa amostra de 309
+// produtos — 179 têm 2+ fotos e em 97 delas (54%) as duas são A MESMA IMAGEM:
+// 48 byte-a-byte idênticas e 49 em que a 2ª é a MINIATURA da 1ª (o X2 manda
+// a foto cheia e uma cópia pequena, ex.: 430×430 e 150×150, 1440×1440 e
+// 150×150, 550×625 e 132×150). _fotosUtilizaveis pegava só os índices 0 e 1,
+// então todo produto assim saía com a mesma peça duas vezes no card (e a
+// 2ª, pequena, ainda estragava o encaixe).
+// Critério de "mesma foto" (conferido visualmente em 10 pares reais): bytes
+// iguais; OU mesma proporção (±4%), uma com no mínimo 1,4× o tamanho da
+// outra (é a miniatura) e impressão digital 8×8 parecida (<= 8 bits de 64).
+// Só o tamanho NÃO basta e só a impressão digital TAMBÉM não: duas vistas
+// diferentes da mesma peça (traseira/frente do alternador) ficam <= 3 bits
+// uma da outra, mas têm o mesmo tamanho — o critério de miniatura as separa.
+// Quando duas fotos são a mesma, fica a MAIOR (melhor resolução no PDF).
+// Olha até 4 fotos por produto pra ainda achar uma 2ª foto diferente quando
+// a 2ª é cópia da 1ª.
+const FOTO_DUP_ASPECTO_TOL = 0.04;
+const FOTO_DUP_RAZAO_MINIATURA = 1.4;
+const FOTO_DUP_HAMMING_MAX = 8;
+const FOTOS_CANDIDATAS_MAX = 4;
+const _ahashFotoCache = new Map();
+
+function _ahashJpeg(foto) {
+  if (_ahashFotoCache.has(foto.cacheKey)) return _ahashFotoCache.get(foto.cacheKey);
+  let bits = null;
+  try {
+    const im = jpeg.decode(foto.buffer, { useTArray: true, maxMemoryUsageInMB: 256 });
+    const g = [];
+    for (let y = 0; y < 8; y += 1) {
+      for (let x = 0; x < 8; x += 1) {
+        const px = Math.floor(((x + 0.5) * im.width) / 8);
+        const py = Math.floor(((y + 0.5) * im.height) / 8);
+        const i = (py * im.width + px) * 4;
+        g.push((im.data[i] + im.data[i + 1] + im.data[i + 2]) / 3);
+      }
+    }
+    const media = g.reduce((a, b) => a + b, 0) / 64;
+    bits = g.map(v => (v > media ? 1 : 0)).join("");
+  } catch {
+    bits = null; // JPEG que o jpeg-js não decodifica (progressivo exótico etc.) — sem impressão digital
+  }
+  _ahashFotoCache.set(foto.cacheKey, bits);
+  return bits;
+}
+
+function _ehMesmaFoto(a, b) {
+  if (a.buffer.length === b.buffer.length && a.buffer.equals(b.buffer)) return true;
+  const ra = a.imagem.width / a.imagem.height;
+  const rb = b.imagem.width / b.imagem.height;
+  if (Math.abs(ra - rb) / Math.max(ra, rb) > FOTO_DUP_ASPECTO_TOL) return false;
+  const ma = Math.max(a.imagem.width, a.imagem.height);
+  const mb = Math.max(b.imagem.width, b.imagem.height);
+  if (Math.max(ma, mb) / Math.min(ma, mb) < FOTO_DUP_RAZAO_MINIATURA) return false;
+  if (a.mimetype !== "image/jpeg" || b.mimetype !== "image/jpeg") return false;
+  const ha = _ahashJpeg(a);
+  const hb = _ahashJpeg(b);
+  if (!ha || !hb) return false;
+  let diferentes = 0;
+  for (let i = 0; i < 64; i += 1) if (ha[i] !== hb[i]) diferentes += 1;
+  return diferentes <= FOTO_DUP_HAMMING_MAX;
+}
+
 function _fotosUtilizaveis(doc, codigoProduto) {
   const utilizaveis = [];
-  for (const indice of [0, 1]) {
+  for (const indice of Array.from({ length: FOTOS_CANDIDATAS_MAX }, (_, i) => i)) {
     let foto;
     try {
       foto = obterFoto(codigoProduto, indice);
@@ -1667,7 +1858,18 @@ function _fotosUtilizaveis(doc, codigoProduto) {
       cacheKey: `${codigoProduto}#${indice}`,
     });
   }
-  return utilizaveis;
+  // Tira as repetidas (mesma foto / miniatura da mesma foto) — ver comentário
+  // acima. Mantém a ordem original e, entre duas iguais, fica a maior.
+  const escolhidas = [];
+  for (const candidata of utilizaveis) {
+    const k = escolhidas.findIndex(e => _ehMesmaFoto(e, candidata));
+    if (k < 0) {
+      escolhidas.push(candidata);
+    } else if (candidata.imagem.width * candidata.imagem.height > escolhidas[k].imagem.width * escolhidas[k].imagem.height) {
+      escolhidas[k] = candidata;
+    }
+  }
+  return escolhidas.slice(0, 2);
 }
 
 // Rede de segurança por FOTO: o parse já passou em _fotosUtilizaveis, mas se
@@ -1920,6 +2122,10 @@ function _desenharCardCatalogoCompleto(doc, produto, x, y, cardWidth, cardHeight
   // nada, canto continua vazio como sempre foi.
   if (preco != null) {
     _desenharBadgePreco(doc, preco, xConteudo, yTopo, larguraConteudo, larguraSelo);
+  } else if (estilo !== "mecanica") {
+    // 2026-10-19: canto livre (sem preço) -> selo "12V | 90A", ver
+    // _extrairEspecEletrica.
+    _desenharSeloEletrico(doc, _extrairEspecEletrica(produto), xConteudo, yTopo, larguraConteudo, larguraSelo, alturaSelo);
   }
 
   // --- Código original/OEM em vermelho, embaixo do selo ---
@@ -2092,6 +2298,22 @@ function _desenharCard(doc, produto, x, y, cardWidth, cardHeight, photoBoxWidth,
 
 function _desenharCabecalho(doc, tituloBusca, estilo = "eletrica", fabricante = "") {
   const w = doc.page.width;
+  // EXPERIMENTO (EXP_PROMO=1): cabeçalho do Promocional no Completo elétrica — só para gerar mockup.
+  if (process.env.EXP_PROMO === "1" && estilo !== "mecanica") {
+    // Teste: arte do Promocional sem o texto "Catálogo promocional"; o nome da Linha vai na faixa amarela
+    // e o título grande do bloco azul é removido (pedido do usuário, 2026-10-19).
+    const hP = w / PROMO_CABECALHO_LINHA_RATIO;
+    doc.image(path.join(__dirname, "../assets/catalogo-completo-cabecalho-teste.png"), 0, 0, { width: w, height: hP });
+    const txt = String(tituloBusca || "").toUpperCase();
+    const xT = w * 0.014, larg = w * 0.31, yFaixa = hP * (112 / 151), altFaixa = hP * (36 / 151);
+    let fonteP = 16;
+    doc.font(PROMO_TITULO_FONTE);
+    while (fonteP > 7 && doc.fontSize(fonteP).widthOfString(txt) > larg) fonteP -= 0.5;
+    doc.fillColor("#12408f").font(PROMO_TITULO_FONTE).fontSize(fonteP)
+      .text(txt, xT, yFaixa + (altFaixa - fonteP) / 2, { width: larg, height: fonteP * 1.3, align: "left", lineBreak: false });
+    doc.fillColor("#111827").font("Helvetica");
+    return;
+  }
 
   // Pedido do usuário (2026-09-04, "Mecânica.pdf"): cabeçalho Mecânica v2
   // usa a logo do FABRICANTE (ou fallback em texto) sobre o fundo em
@@ -2139,7 +2361,8 @@ function _desenharCabecalho(doc, tituloBusca, estilo = "eletrica", fabricante = 
   // sobreposto à imagem, então não tem como "encostar" no cinza da arte.
   // 2026-09-22: estilo mecânica usa MECANICA_HEADER_HEIGHT (mais enxuta,
   // ver comentário na constante) em vez de HEADER_HEIGHT (arte da elétrica).
-  const tituloY = (estilo === "mecanica" ? MECANICA_HEADER_HEIGHT : HEADER_HEIGHT) + TITULO_GAP_TOPO;
+  // 2026-10-19: "a linha, desça um pouquinho" — só o título desce (não mexe na área dos cards).
+  const tituloY = (estilo === "mecanica" ? MECANICA_HEADER_HEIGHT : HEADER_HEIGHT) + TITULO_GAP_TOPO + (estilo === "mecanica" ? 0 : 6);
   const tituloLargura = w - PAGE_MARGIN * 2;
 
   // Estilo "Mecânica" (pedido do usuário, 2026-09-03, fabricante PERFECT —
@@ -2207,7 +2430,7 @@ function _desenharRodape(doc, numeroPagina, estilo = "eletrica") {
   // Imagem real da logo Rildon cobrindo a largura inteira da página, sem
   // distorcer (altura já calculada na proporção exata do arquivo — ver
   // RODAPE_IMG_RATIO).
-  doc.image(RODAPE_IMG, 0, h - FOOTER_HEIGHT, { width: w, height: FOOTER_HEIGHT });
+  doc.image(process.env.EXP_PROMO === "1" ? path.join(__dirname, "../assets/catalogo-rodape-azul-teste.png") : RODAPE_IMG, 0, h - FOOTER_HEIGHT, { width: w, height: FOOTER_HEIGHT });
 
   // Nº de página em preto, maior, centralizado dentro do triângulo branco da
   // arte (pedido do usuário, 2026-07-28) — coordenadas medidas na imagem
@@ -3549,6 +3772,13 @@ async function gerarPdfCatalogoCompleto(produtos, fabricante, destino, tipoCompl
     return require("./catalogo-pdf-arielo.service").gerarPdfCatalogoArielo(produtos, fabricante, destino, _interno());
   }
 
+  // EXPERIMENTO (EXP_CONTINUO=1, pedido do usuário 2026-10-20): Catálogo Completo no modelo do Canva, 2 por linha,
+  // em rolagem contínua. Desligado por padrão — só para gerar o print/PDF de teste.
+  if (process.env.EXP_CONTINUO === "1" && estilo !== "mecanica") {
+    // eslint-disable-next-line global-require
+    return require("./catalogo-pdf-continuo.service").gerarPdfCatalogoContinuo(produtos, fabricante, destino, _interno(), { agruparPorMarca });
+  }
+
   // 2026-10-09 (auditoria de performance): `bufferPages: true` REMOVIDO.
   // Com ela, o pdfkit não finaliza nenhuma página no addPage: guarda todas em
   // _pageBuffer e, só no doc.end(), roda um zlib.deflateSync POR PÁGINA de uma
@@ -3561,6 +3791,7 @@ async function gerarPdfCatalogoCompleto(produtos, fabricante, destino, tipoCompl
   const doc = new PDFDocument({ size: "A4", margin: 0, autoFirstPage: false });
   doc.pipe(destino);
   doc.registerFont(TITULO_FONTE, TITULO_FONTE_ARQUIVO);
+  doc.registerFont(PROMO_TITULO_FONTE, PROMO_TITULO_FONTE_ARQUIVO);
   // Quicksand só é usada no card do Catálogo Completo (_desenharCardCatalogoCompleto)
   // — ver comentário em QUICKSAND_BOLD acima. gerarPdfCatalogo (modo regular/
   // busca expressa) não registra essas fontes de propósito, não é afetado.
@@ -3617,7 +3848,7 @@ async function gerarPdfCatalogoCompleto(produtos, fabricante, destino, tipoCompl
   // ponto que precisa saber disso — _calcularLayoutConteudo é puramente
   // geométrica (ver comentário na função), então index/paginação real se
   // ajustam sozinhos a partir daqui.
-  const rowsCompleto = estilo === "mecanica" ? ROWS_POR_PAGINA_COMPLETO_MECANICA : ROWS_POR_PAGINA_COMPLETO;
+  const rowsCompleto = estilo === "mecanica" ? ROWS_POR_PAGINA_COMPLETO_MECANICA : ROWS_POR_PAGINA_COMPLETO_ELETRICA;
   // 2026-09-22: mesma lógica de overrides já usada pelo Catálogo Promocional
   // (ver comentário em _geometriaGrid) — pro estilo mecânica, recalcula
   // areaTopoY/areaFimY com MECANICA_HEADER_HEIGHT/MECANICA_RODAPE_ALTURA em
@@ -3630,12 +3861,58 @@ async function gerarPdfCatalogoCompleto(produtos, fabricante, destino, tipoCompl
         areaTopoY: MECANICA_HEADER_HEIGHT + TITULO_GAP_TOPO + TITULO_TAMANHO + TITULO_GAP_CARDS,
         areaFimY: A4_ALTURA - alturaRodapeReal - 30.349,
       }
-    : { areaTopoY: AREA_TOPO_Y, areaFimY: A4_ALTURA - alturaRodapeReal - 30.349 };
-  const geometriaCompleto = _geometriaGrid(doc, COLS_COMPLETO, rowsCompleto, true, geometriaOverrides);
+    : { areaTopoY: process.env.EXP_PROMO === "1" ? A4_LARGURA / PROMO_CABECALHO_LINHA_RATIO + GAP + 14 : AREA_TOPO_Y, areaFimY: A4_ALTURA - alturaRodapeReal - 30.349 };
+  const geometriaCompleto = _geometriaGrid(doc, COLS_COMPLETO, process.env.EXP_PROMO === "1" && estilo !== "mecanica" ? 5 : rowsCompleto, true, geometriaOverrides);
   const { posicoes, preenchimentoFinal } = _calcularLayoutConteudo(sequencia, geometriaCompleto, alturaHeaderMarca, false, alturaRodapeReal);
   const paginaInicialPorGrupo = primeiroIndicePorGrupo.map(
     (idx) => paginasIndice + 1 + posicoes[idx].pagina
   );
+
+  // 2026-10-19: pedido do usuário "centralize os fabricantes entre o espaço de
+  // linha (título) e rodapé, dando impressão de centralizados, reduzindo o
+  // espaço branco acima do rodapé" — por página, mede onde termina o último
+  // bloco desenhado (card, cabeçalho de marca ou card de preenchimento) e
+  // desce TUDO daquela página metade da sobra até areaFimY. Só desloca y
+  // (nunca muda a paginação, então o índice continua batendo).
+  {
+    const fimPorPagina = new Map();
+    const marcaFim = (pg, y) => fimPorPagina.set(pg, Math.max(fimPorPagina.get(pg) ?? 0, y));
+    sequencia.forEach((bl, k) => {
+      const ps = posicoes[k];
+      marcaFim(ps.pagina, ps.y + (bl.tipo === "cabecalhoMarca" ? alturaHeaderMarca : geometriaCompleto.cardHeight));
+    });
+    preenchimentoFinal.forEach((pf) => marcaFim(pf.pagina, pf.y + pf.cardHeight));
+    const dyPorPagina = new Map();
+    // 2026-10-19: "suba mais para perto da primeira linha" — sem centralizar (dy=0): conteúdo colado no título.
+    fimPorPagina.forEach((fim, pg) => dyPorPagina.set(pg, 0));
+    posicoes.forEach((ps) => {
+      const dy = dyPorPagina.get(ps.pagina) || 0;
+      ps.y += dy;
+      if (ps.headerRepetidoY != null) ps.headerRepetidoY += dy;
+    });
+    preenchimentoFinal.forEach((pf) => { pf.y += dyPorPagina.get(pf.pagina) || 0; });
+
+    // EXPERIMENTO (EXP_PROMO=1), pedido 2026-10-19: em páginas com mais de um fabricante, desce SÓ o último
+    // fabricante (cabeçalho + cards + cards de preenchimento dele) um pouco, limitado à sobra até o rodapé.
+    if (process.env.EXP_PROMO === "1") {
+      const DESCER_ULTIMO = 60;
+      const paginas = new Set(posicoes.map((ps) => ps.pagina));
+      paginas.forEach((pg) => {
+        const idxs = sequencia.map((bl, k) => k).filter((k) => posicoes[k].pagina === pg);
+        // cabeçalhos de marca que NÃO abrem a página (o 1º grupo pode ter o cabeçalho "repetido" no topo, sem bloco próprio)
+        const cabs = idxs.filter((k) => sequencia[k].tipo === "cabecalhoMarca" && k !== idxs[0]);
+        if (cabs.length < 1 || (idxs.length && sequencia[idxs[0]].tipo === "cabecalhoMarca" && cabs.length < 1)) return;
+        const yUltimo = posicoes[cabs[cabs.length - 1]].y;
+        let fim = 0;
+        idxs.forEach((k) => { fim = Math.max(fim, posicoes[k].y + (sequencia[k].tipo === "cabecalhoMarca" ? alturaHeaderMarca : geometriaCompleto.cardHeight)); });
+        preenchimentoFinal.filter((pf) => pf.pagina === pg).forEach((pf) => { fim = Math.max(fim, pf.y + pf.cardHeight); });
+        const dy = Math.max(0, Math.min(DESCER_ULTIMO, geometriaCompleto.areaFimY - fim));
+        console.log('DBG pg',pg,'yUltimo',yUltimo.toFixed(1),'fim',fim.toFixed(1),'areaFimY',geometriaCompleto.areaFimY.toFixed(1),'dy',dy.toFixed(1));
+        idxs.forEach((k) => { if (posicoes[k].y >= yUltimo - 0.01) { posicoes[k].y += dy; if (posicoes[k].headerRepetidoY != null) posicoes[k].headerRepetidoY += dy; } });
+        preenchimentoFinal.filter((pf) => pf.pagina === pg && pf.y >= yUltimo - 0.01).forEach((pf) => { pf.y += dy; });
+      });
+    }
+  }
 
   let pagina = 0;
 
@@ -3971,6 +4248,8 @@ function _interno() {
     TITULO_FONTE, TITULO_FONTE_ARQUIVO, RODAPE_NUMERO_FONTE, RODAPE_NUMERO_FONTE_ARQUIVO,
     A4_LARGURA, A4_ALTURA, PAGE_MARGIN, FOOTER_HEIGHT,
     INDICE_HEADER_HEIGHT, INDICE_TITULO_GAP_TOPO, INDICE_TITULO_TAMANHO, INDICE_TITULO_GAP_LINHAS, INDICE_LINHA_ALTURA,
+    // Catálogo Completo contínuo (catalogo-pdf-continuo.service.js)
+    _fotosUtilizaveis, _desenharFotoProtegida, _rotuloProduto, _nomeExibicao, _agruparPorMarca, _limparCodigoOemParaExibicao, _extrairEspecEletrica,
   };
 }
 

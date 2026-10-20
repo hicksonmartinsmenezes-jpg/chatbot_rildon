@@ -693,7 +693,6 @@ function abrirModalDetalheProduto(codigo) {
   const aplicacaoTexto = produto.aplicacaoOrganizada || produto.aplicacao || "";
 
   const badges = [];
-  if (produto.marcaCompativel) badges.push('<span class="catalogo-badge catalogo-badge-marca"><i class="fa-solid fa-check"></i> Marca confere</span>');
   if (produto.anoCompativel) badges.push('<span class="catalogo-badge catalogo-badge-ano"><i class="fa-solid fa-check"></i> Ano compatível</span>');
 
   _openModal(`
@@ -1104,9 +1103,6 @@ async function _catalogoExportarSelecionadosManual(btnEl) {
 
 function _catalogoCardHTML(produto, mostrarBadgeNeutro) {
   const badges = [];
-  if (produto.marcaCompativel) {
-    badges.push('<span class="catalogo-badge catalogo-badge-marca"><i class="fa-solid fa-check"></i> Marca confere</span>');
-  }
   if (produto.anoCompativel) {
     badges.push('<span class="catalogo-badge catalogo-badge-ano"><i class="fa-solid fa-check"></i> Ano compatível</span>');
   }
@@ -1565,7 +1561,6 @@ async function _catalogoExecutarBusca(wrap, params, modoNavegacao) {
 
     const resumoBar = `
       <div class="catalogo-resumo-bar">
-        ${chipsHTML}
         <p class="catalogo-resumo">${totalTexto}${recorte}.</p>
         ${_catalogoExportBtnHTML()}
       </div>
@@ -2144,5 +2139,80 @@ async function gerarCatalogoPromocionalPDF(btnEl) {
       btnEl.disabled = codigos.length === 0;
       btnEl.innerHTML = original;
     }
+  }
+}
+
+
+// ─── Modo consulta (programa .exe da loja, ?app=catalogo) ───────────────────
+// Duas abas grandes: "Consultar" (as buscas por Critérios/Código/Nome) e
+// "Montar Catálogos" (ícones dos catálogos prontos, um por fabricante; o clique
+// abre o PDF contínuo na própria janela). Pedido do usuário (2026-10-20).
+function catalogoConsultaInicio() {
+  document.documentElement.classList.add("consulta-inicio");
+}
+
+function catalogoConsultaMostrar(modo) {
+  const montar = modo === "montar";
+  document.documentElement.classList.remove("consulta-inicio");
+  document.documentElement.classList.toggle("consulta-montar", montar);
+  document.getElementById("catalogo-consulta-tab-consultar")?.classList.toggle("active", !montar);
+  document.getElementById("catalogo-consulta-tab-montar")?.classList.toggle("active", montar);
+  if (montar) {
+    catalogoMostrarAbaCompleto();
+    catalogoMontarVoltar();
+    _catalogoMontarRenderGrid();
+  } else {
+    catalogoMostrarAbaVeiculo();
+  }
+}
+
+// Logos dos fabricantes (frontend/logos-marcas/<nome>.png). Fabricante sem
+// logo continua com o ícone de PDF. O nome do arquivo é o fabricante sem o
+// sufixo "::mecanica/eletrica", em minúsculas, sem acento.
+const _CATALOGO_LOGOS_MARCAS = new Set(["12m", "3rho", "aeroflex", "almapy", "amefil", "ams", "arielo", "automaxx", "bastos", "bastos-juntas", "bc-cabos", "bobinauto", "bosch", "bzm", "cav", "cemak", "cinap", "cinoy", "d-paula", "delco", "delco-remy", "diretec", "drift", "edanti", "eletricway", "facobras", "fiamm", "filtros-brasil", "fortluz", "frontec", "gauss", "hbr", "iguacu", "ikro", "indebras", "intermec", "katho", "kostal", "ktr", "lucas", "mancal-de-acionamento-mitsubishi", "marflex", "marilia", "marzu", "mecabrazil", "mobensani", "mte", "multilight", "multiqualita", "neolux", "ngk", "nino", "olimpic", "ospina", "osram", "perfect", "polo", "pradolux", "premier-bobinas", "rainha", "recrin", "seg", "siemens", "skf", "speed-brake", "sulcarbon", "tiger", "valeo", "venka", "vetor", "volda", "wega", "willtec", "wisa", "zen", "zwf"]);
+function _catalogoMontarLogo(valor) {
+  const nome = String(valor || "").split("::")[0].toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return _CATALOGO_LOGOS_MARCAS.has(nome) ? nome : "";
+}
+
+async function _catalogoMontarRenderGrid() {
+  const grid = document.getElementById("catalogo-montar-grid");
+  if (!grid) return;
+  grid.innerHTML = '<p class="catalogo-completo-preview-status">Carregando catálogos...</p>';
+  const opcoes = await _catalogoBuscarFabricantesCompletoOpcoes();
+  if (!opcoes.length) {
+    grid.innerHTML = '<p class="catalogo-completo-preview-status">Nenhum catálogo disponível no momento.</p>';
+    return;
+  }
+  grid.innerHTML = opcoes.map(o => {
+    const logo = _catalogoMontarLogo(o.value);
+    const visual = logo
+      ? `<img class="catalogo-montar-logo" src="logos-marcas/${logo}.png" alt="">`
+      : '<i class="fa-solid fa-file-pdf" aria-hidden="true"></i>';
+    return `<button type="button" class="catalogo-montar-card" role="listitem" data-valor="${safe(o.value)}">` +
+      `${visual}<span>${safe(o.label)}</span></button>`;
+  }).join("");
+  grid.onclick = (ev) => {
+    const card = ev.target.closest(".catalogo-montar-card");
+    if (card) catalogoMontarAbrir(card.getAttribute("data-valor"));
+  };
+}
+
+async function catalogoMontarAbrir(valor) {
+  await loadCatalogoFabricantesCompleto();
+  const select = document.getElementById("catalogo-fabricante-completo");
+  if (!select) return;
+  select.value = valor;
+  document.documentElement.classList.add("montar-aberto");
+  onCatalogoFabricanteCompletoChange();
+}
+
+function catalogoMontarVoltar() {
+  document.documentElement.classList.remove("montar-aberto");
+  const select = document.getElementById("catalogo-fabricante-completo");
+  if (select && select.value) {
+    select.value = "";
+    onCatalogoFabricanteCompletoChange();
   }
 }

@@ -1277,7 +1277,7 @@ function _codigoFabricanteDoNome(produto) {
   if (tokens.length > 2 || ultimo.length > 26 || !/\d/.test(ultimo)) return null;
   if (_PREFIXOS_NAO_CODIGO.has(tokens[0].toUpperCase())) return null;
   const codigo = tokens.join("");
-  if (!/^[A-Za-z0-9][A-Za-z0-9.\-\/]*$/.test(codigo)) return null;
+  if (!/^[A-Za-z0-9][A-Za-z0-9.\-/]*$/.test(codigo)) return null;
   if (codigo === String(produto.codigo)) return null;
   return codigo;
 }
@@ -1790,7 +1790,7 @@ const _ahashFotoCache = new Map();
 
 function _ahashJpeg(foto) {
   if (_ahashFotoCache.has(foto.cacheKey)) return _ahashFotoCache.get(foto.cacheKey);
-  let bits = null;
+  let bits;
   try {
     const im = jpeg.decode(foto.buffer, { useTArray: true, maxMemoryUsageInMB: 256 });
     const g = [];

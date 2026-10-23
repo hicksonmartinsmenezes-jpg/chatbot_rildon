@@ -97,11 +97,11 @@ function validarCompletudeCsv(conteudo, linhasTabela, parseCsv) {
   const linhasDadosTabela = Math.max(0, Number(linhasTabela) - 1); // tabela inclui cabeçalho
   let valido = linhasDadosTabela > 0 && Array.isArray(registrosCsv) && linhasCsv > 0;
   let motivo = null;
-  if (linhasDadosTabela <= 0) motivo = 'stable table row count is unavailable';
-  else if (!Array.isArray(registrosCsv) || linhasCsv <= 0) motivo = 'CSV has no parseable records';
+  if (linhasDadosTabela <= 0) motivo = 'não consegui contar as linhas da tabela do X2';
+  else if (!Array.isArray(registrosCsv) || linhasCsv <= 0) motivo = 'o CSV baixado não tem nenhuma linha legível';
   else if (linhasCsv < linhasDadosTabela * LIMIAR_COMPLETUDE_EXPORT) {
     valido = false;
-    motivo = 'CSV below 90% of observed stable table rows (heuristic, not proof of completeness)';
+    motivo = 'o CSV veio com menos de 90% das linhas que a tela do X2 mostrava (conferência por amostragem, não é prova de que está completo)';
   }
   return { valido, linhasCsv, linhasTabela: linhasDadosTabela, motivo };
 }
@@ -160,6 +160,23 @@ async function abrirRelatorioEstoque(page, { modoAutomatico } = {}) {
     // bloqueio (confirmado à parte). Por isso agora entra sempre pela tela
     // de login — se já tiver sessão válida salva no perfil, o próprio X2
     // redireciona sozinho pra fora dela, sem precisar logar de novo.
+    // 2026-10-23 (varredura): 20 das 29 execuções falhavam presas na tela de login, e
+    // TODAS fora do horário comercial (19h-08h); todos os sucessos, entre 08h e 17h.
+    // Testado ao vivo nesta data: o MESMO login automático, num perfil de Chrome novo,
+    // entra sem problema (chega em index_main4.jsp) tanto headless quanto com janela,
+    // até a partir de sessão não interativa. Ou seja: credenciais e mecanismo estão
+    // certos — o que atrapalha é o estado velho do perfil reaproveitado (cookie de
+    // sessão vencido + localStorage), que durante o expediente ainda está válido por
+    // causa do uso humano e de madrugada não está. A limpeza já existia, mas só na 3ª
+    // tentativa, quando a execução já tinha gasto as outras duas. Agora a sessão
+    // automática começa SEMPRE limpa. Seguro: este perfil é exclusivo do estoque
+    // (chrome-profile-estoque, ver x2-perfil-chrome.js), então não desloga ninguém das
+    // telas de foto/catálogo.
+    await page.context().clearCookies().catch(() => {});
+    await page.goto(LOGIN_URL).catch(() => {});
+    await page.evaluate(() => {
+      try { localStorage.clear(); sessionStorage.clear(); } catch { /* origem sem storage acessível */ }
+    }).catch(() => {});
     await page.goto(LOGIN_URL).catch(() => {});
     await page.waitForTimeout(1000);
     await tentarLoginAutomaticoSeNecessario(page);
@@ -181,17 +198,33 @@ async function abrirRelatorioEstoque(page, { modoAutomatico } = {}) {
   // no ☰ se "Logística" ainda não estiver visível, tenta de novo, e na falha
   // informa em que página/estado estava.
   const linkLogistica = () => page.locator('a:has-text("Logística")').first();
+  // 2026-10-23: 20 das últimas 29 execuções da rotina falharam aqui, sempre na
+  // tela de login, e a causa ficava escondida — o erro do login automático era
+  // engolido pelo .catch(() => {}) e alert()s do X2 (ex.: "usuário já logado")
+  // eram descartados sem registro. Agora guarda os dois pro erro final.
+  const mensagensDoX2 = [];
+  const errosDeLogin = [];
+  page.on('dialog', (d) => { mensagensDoX2.push(String(d.message()).slice(0, 200)); d.dismiss().catch(() => {}); });
   let logisticaOk = false;
   for (let tentativa = 0; tentativa < 3 && !logisticaOk; tentativa++) {
     if (await linkLogistica().isVisible().catch(() => false)) { logisticaOk = true; break; }
-    await tentarLoginAutomaticoSeNecessario(page).catch(() => {});
+    // Última tentativa: descarta cookies/sessão possivelmente corrompidos e
+    // entra de novo pela tela de login do zero.
+    if (tentativa === 2) {
+      await page.context().clearCookies().catch(() => {});
+      await page.goto(LOGIN_URL).catch(() => {});
+      await page.waitForTimeout(1500);
+    }
+    await tentarLoginAutomaticoSeNecessario(page).catch((e) => { errosDeLogin.push(String(e && e.message || e).slice(0, 200)); });
     await page.locator('a').first().click({ timeout: 10000 }).catch(() => {});
     await page.waitForTimeout(800 + tentativa * 700);
     logisticaOk = await linkLogistica().isVisible().catch(() => false);
   }
   if (!logisticaOk) {
     const estado = `url=${page.url()} | links=${await page.locator('a').count().catch(() => '?')} | senha=${await page.locator('input[type="password"]').count().catch(() => '?')}`;
-    throw new Error(`Menu "Logística" não apareceu após 3 tentativas (${estado}). Sessão do X2 provavelmente expirada ou layout mudou — abra o X2 no painel, faça login e rode de novo.`);
+    const textoTela = await page.evaluate(() => (document.body && document.body.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 300)).catch(() => '');
+    const diag = ` | loginErro=${JSON.stringify(errosDeLogin.slice(-2))} | alertasX2=${JSON.stringify(mensagensDoX2.slice(-3))} | tela="${textoTela}"`;
+    throw new Error(`Menu "Logística" não apareceu após 3 tentativas (${estado}${diag}). Sessão do X2 provavelmente expirada ou layout mudou — abra o X2 no painel, faça login e rode de novo.`);
   }
   await linkLogistica().click({ timeout: 10000 });
   await page.waitForTimeout(500);
@@ -334,6 +367,15 @@ async function configurarFiltros(page, { estoqueOpcao }) {
 // e, com tolerarTimeout, NÃO tratar o estouro como falha — o clique
 // provavelmente saiu, então quem decide é o waitForEvent('download') lá
 // fora, que tem o seu próprio limite.
+// Tempos do passo "Exportar em CSV" (ver o comentário do waitForEvent mais abaixo).
+// O clique no botão pode travar a página do X2 por um bom tempo (a tela monta a tabela
+// inteira em JS), por isso ele tolera timeout e tenta de novo; a espera do download
+// precisa cobrir TODAS as tentativas mais o tempo de geração do arquivo no servidor.
+const TIMEOUT_CLIQUE_CSV_MS = 60000;
+const TENTATIVAS_CLIQUE_CSV = 3;
+const FOLGA_GERACAO_CSV_MS = 60000;
+const TIMEOUT_DOWNLOAD_MS = TENTATIVAS_CLIQUE_CSV * TIMEOUT_CLIQUE_CSV_MS + FOLGA_GERACAO_CSV_MS; // 240s
+
 async function clicarPorTexto(page, texto, { tentativas = 3, timeoutClique = 8000, tolerarTimeout = false } = {}) {
   const MARK_ATTR = 'data-x2-click-target';
   let ultimoErro = null;
@@ -462,13 +504,18 @@ async function exportarEstoque(context, { estoqueOpcao = 'Com e sem estoque', mo
   const temporario = path.join(stagingDir, nomeArquivo);
   const destino = path.join(ESTOQUE_DIR, nomeArquivo);
 
-  // 90s (era 60) — dá mais folga pro clique com retry (clicarPorTexto pode
-  // levar até ~25s só nas tentativas) mais o tempo real de geração/download
-  // do relatório em si.
+  // ⚠️ BUG REAL corrigido 2026-10-23 (reproduzido ao vivo disparando a rotina): a espera
+  // do download era fixa em 90s enquanto o clique podia levar até 180s (3 tentativas de
+  // 60s). Quando o X2 demora pra gerar o CSV, a espera estourava ANTES de o clique
+  // terminar, e a execução morria com "Timeout 90000ms exceeded while waiting for event
+  // download" mesmo estando tudo certo. O 90s tinha ficado pra trás quando o timeoutClique
+  // subiu de 8s pra 60s (correção de 14/10). Agora os dois saem das MESMAS constantes, com
+  // a invariante garantida por teste (x2-estoque-export.timeouts.test.js): a espera do
+  // download sempre cobre o pior caso do clique mais a geração do arquivo.
   const [download] = await Promise.all([
-    context.waitForEvent('download', { timeout: 90000 }),
+    context.waitForEvent('download', { timeout: TIMEOUT_DOWNLOAD_MS }),
     (async () => {
-      const clicouOk = await clicarPorTexto(page, 'Exportar em CSV', { timeoutClique: 60000, tolerarTimeout: true });
+      const clicouOk = await clicarPorTexto(page, 'Exportar em CSV', { tentativas: TENTATIVAS_CLIQUE_CSV, timeoutClique: TIMEOUT_CLIQUE_CSV_MS, tolerarTimeout: true });
       if (!clicouOk) throw new Error('Não achei o botão "Exportar em CSV" — só aparece depois de Pesquisar retornar resultado; confirme numa sessão ao vivo se o clique automatizado funciona nele (nunca testado antes de hoje).');
     })(),
   ]);
@@ -485,19 +532,19 @@ async function exportarEstoque(context, { estoqueOpcao = 'Com e sem estoque', mo
     const { parseCsvEstoque } = require('../src/services/estoque.service');
     verificacao = validarCompletudeCsv(conteudo, linhasEsperadas, parseCsvEstoque);
   } catch (e) {
-    verificacao = { valido: false, motivo: `CSV could not be parsed: ${e.message}`, linhasTabela: Math.max(0, linhasEsperadas - 1), linhasCsv: 0 };
+    verificacao = { valido: false, motivo: `não consegui ler o CSV baixado: ${e.message}`, linhasTabela: Math.max(0, linhasEsperadas - 1), linhasCsv: 0 };
   }
   if (!verificacao.valido) {
     fs.mkdirSync(rejeitadosDir, { recursive: true });
     const rejeitado = path.join(rejeitadosDir, nomeArquivo.replace(/\.csv$/i, '.rejeitado.csv'));
     fs.renameSync(temporario, rejeitado);
-    throw new Error(`Export refused by heuristic validation: ${verificacao.motivo} (observed table rows: ${verificacao.linhasTabela}, CSV rows: ${verificacao.linhasCsv}). Preserved at ${rejeitado}; import skipped.`);
+    throw new Error(`Export recusado na conferência: ${verificacao.motivo} (a tela do X2 mostrava ${verificacao.linhasTabela} linhas e o CSV veio com ${verificacao.linhasCsv}). O arquivo foi guardado em ${rejeitado} e NADA foi importado — o estoque do bot continua com os dados anteriores.`);
   }
   // O identificador aleatório por execução evita colisões entre processos.
   // O rename publica o snapshot somente após a validação.
   fs.renameSync(temporario, destino);
   fs.writeFileSync(`${destino}.meta.json`, JSON.stringify({ estoqueOpcao, completo: estoqueOpcao === 'Com e sem estoque', validado: true, linhasCsv: verificacao.linhasCsv, linhasTabela: verificacao.linhasTabela, capturadoEm: new Date().toISOString() }, null, 2));
-  console.log(`(heuristic validation passed: ${verificacao.linhasCsv} CSV products; table observed ${verificacao.linhasTabela})`);
+  console.log(`(conferência ok: ${verificacao.linhasCsv} produtos no CSV; a tela do X2 mostrava ${verificacao.linhasTabela} linhas)`);
   let importacao = { estado: 'nao_aplicavel', motivo: 'export filtrado não substitui o estoque completo no banco' };
   if (estoqueOpcao === 'Com e sem estoque') importacao = await _dispararImportacaoNoDocker(destino);
   else console.log('(filtered export saved for reference; database import skipped to avoid replacing full inventory with a subset)');
@@ -766,6 +813,9 @@ if (require.main === module) {
 
 module.exports = {
   WORK_DIR,
+  TIMEOUT_CLIQUE_CSV_MS,
+  TENTATIVAS_CLIQUE_CSV,
+  TIMEOUT_DOWNLOAD_MS,
   ESTOQUE_DIR,
   OPCOES_ESTOQUE_VALIDAS,
   nomeArquivoTimestamp,

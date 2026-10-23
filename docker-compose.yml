@@ -24,6 +24,35 @@ services:
       - .:/app
       - /app/node_modules
 
+  # Catálogo da loja em contêiner próprio (programa Windows "Catálogo Rildon"): sem WhatsApp, então
+  # o que acontece no atendimento não deixa o catálogo lento. Mesmo código, mesmas pastas e mesmo banco.
+  catalogo:
+    # Mesma imagem do painel (o código vem do volume .:/app, então não precisa construir de novo).
+    image: chatbot_rildon-app
+    container_name: chatbot_rildon_catalogo
+    command: ["node", "src/catalogo-server.js"]
+
+    restart: always
+
+    ports:
+      - "3001:3001"
+
+    env_file:
+      - .env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      CATALOGO_PROCESSO: catalogo
+      CATALOGO_PORT: 3001
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    volumes:
+      - .:/app
+      - /app/node_modules
+
   postgres:
     image: postgres:16
 

@@ -35,6 +35,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { listarEntradas, extrairArquivo } = require("../utils/zip-reader");
+const { escolherSemRepetidas } = require("./catalogo-foto-duplicada");
 
 const FOTOS_DIR = path.join(__dirname, "../config/catalogo-x2/fotos");
 
@@ -147,26 +148,63 @@ function _garantirIndice() {
     return indice;
   }
 
-  for (const arquivo of arquivos) {
+  // BUG REAL corrigido 2026-10-23 (usuário: "em consultar ainda temos fotos
+  // duplicadas"): o MESMO arquivo aparecia duas vezes na lista do produto
+  // quando estava em dois zips diferentes (seção reexportada, zip antigo que
+  // ficou na pasta). Conferido ao vivo: o produto 109356 tinha "0.jpg" duas
+  // vezes, byte a byte igual, e o card do Consultar mostrava a peça repetida.
+  // Agora o índice é montado por NOME de arquivo dentro de cada código — zip
+  // mais novo (mtime maior) ganha, posição na lista é a da primeira aparição.
+  const zipsOrdenados = arquivos
+    .map((nome) => {
+      let mtime = 0;
+      try { mtime = fs.statSync(path.join(FOTOS_DIR, nome)).mtimeMs; } catch { /* sem stat: vai como mais antigo */ }
+      return { nome, mtime };
+    })
+    .sort((a, b) => a.mtime - b.mtime)
+    .map((z) => z.nome);
+
+  const lidos = [];
+  for (const arquivo of zipsOrdenados) {
     const zipPath = path.join(FOTOS_DIR, arquivo);
-    let entradas;
     try {
-      entradas = listarEntradas(zipPath);
+      lidos.push({ zipPath, entradas: listarEntradas(zipPath) });
     } catch (e) {
       console.error(`[catalogo-fotos.service] falha ao ler índice de ${arquivo}:`, e.message);
-      continue;
     }
+  }
+
+  const { porCodigo, repetidas } = _montarIndice(lidos);
+  indice = porCodigo;
+
+  console.log(`[catalogo-fotos.service] índice de fotos pronto: ${indice.size} produtos com foto${repetidas ? ` (${repetidas} arquivo(s) repetido(s) entre zips, ignorados)` : ""}.`);
+  return indice;
+}
+
+/**
+ * Parte pura da montagem do índice — recebe o que já foi lido dos zips (na
+ * ordem do mais antigo pro mais novo) e devolve o Map por código sem
+ * arquivos repetidos. Separada pra poder ser testada sem mexer em disco.
+ */
+function _montarIndice(zipsLidos) {
+  const porNome = new Map(); // codigo -> Map<nomeArquivo, item>
+  let repetidas = 0;
+  for (const { zipPath, entradas } of zipsLidos) {
     for (const entrada of entradas) {
       const barra = entrada.name.indexOf("/");
       if (barra <= 0) continue;
       const codigo = entrada.name.slice(0, barra);
-      if (!indice.has(codigo)) indice.set(codigo, []);
-      indice.get(codigo).push({ zipPath, entrada });
+      const nomeArquivo = path.basename(entrada.name);
+      if (!porNome.has(codigo)) porNome.set(codigo, new Map());
+      const doCodigo = porNome.get(codigo);
+      if (doCodigo.has(nomeArquivo)) repetidas += 1;
+      // Map.set em chave existente TROCA o valor e MANTÉM a posição original.
+      doCodigo.set(nomeArquivo, { zipPath, entrada });
     }
   }
-
-  console.log(`[catalogo-fotos.service] índice de fotos pronto: ${indice.size} produtos com foto.`);
-  return indice;
+  const porCodigo = new Map();
+  for (const [codigo, mapa] of porNome) porCodigo.set(codigo, [...mapa.values()]);
+  return { porCodigo, repetidas };
 }
 
 // Map<codigoProduto, Array<{ manual:true, caminho, entrada:{name} }>> — fotos
@@ -317,6 +355,7 @@ function _salvarPreferencias() {
   const obj = Object.fromEntries(preferencias);
   fs.writeFileSync(PREFERENCIAS_PATH, JSON.stringify(obj, null, 2) + "\n", "utf8");
   versaoFotos = Date.now();
+  require("./espelho.service").avisar("fotos");
 }
 
 // Aplica a preferência (se existir e apontar pra um arquivo que ainda está
@@ -371,6 +410,7 @@ function _salvarOcultas() {
   }
   fs.writeFileSync(OCULTAS_PATH, JSON.stringify(obj, null, 2) + "\n", "utf8");
   versaoFotos = Date.now();
+  require("./espelho.service").avisar("fotos");
 }
 
 /**
@@ -383,6 +423,70 @@ function _salvarOcultas() {
  * uma foto oculta use obterFotoPorNome, não obterFoto/indice).
  * Retorna [{ indice, nomeArquivo, oculta }, ...].
  */
+// Map<codigoProduto, Set<nomeArquivo>> — quais fotos do produto são
+// repetição de outra que já está na lista (ver catalogo-foto-duplicada.js).
+// Calculado sob demanda por produto e guardado aqui: a conta precisa abrir os
+// arquivos pra medir as dimensões, então fazer isso a cada busca sairia caro
+// (medido: ~10ms por produto). _aquecerDuplicadas preenche isso em segundo
+// plano depois do boot, pra busca já nascer com a resposta certa.
+let duplicadasCache = null;
+
+function _mimePorNome(nome) {
+  return MIME_POR_EXT[path.extname(nome).slice(1).toLowerCase()] || "application/octet-stream";
+}
+
+function _duplicadasDe(codigo, lista) {
+  if (!duplicadasCache) duplicadasCache = new Map();
+  const jaCalculado = duplicadasCache.get(codigo);
+  if (jaCalculado) return jaCalculado;
+
+  let esconder = new Set();
+  if (lista.length >= 2) {
+    const fotos = [];
+    for (const item of lista) {
+      const nome = path.basename(item.entrada.name);
+      try {
+        const buffer = _extrairBytes(item);
+        const dim = _dimensoesImagem(buffer);
+        fotos.push({
+          nome,
+          buffer,
+          mimetype: _mimePorNome(nome),
+          largura: dim ? dim.width : null,
+          altura: dim ? dim.height : null,
+          chave: `${codigo}#${nome}`,
+        });
+      } catch {
+        // Não deu pra abrir: fica na lista como está (nunca esconde foto por
+        // causa de uma falha de leitura).
+      }
+    }
+    esconder = escolherSemRepetidas(fotos);
+  }
+  duplicadasCache.set(codigo, esconder);
+  return esconder;
+}
+
+/**
+ * Lista final de fotos VISÍVEIS do produto, na ordem em que o atendente vê:
+ * sem as ocultas, reordenada (foto grande antes de desenho técnico), com a
+ * preferência manual no topo e — desde 2026-10-23 — sem repetições.
+ * Usada por listarFotos, obterFoto e temMultiplasFotos pra que os três deem
+ * sempre a MESMA resposta (antes, cada um montava a lista do seu jeito).
+ */
+function _listaVisivel(codigo) {
+  const idx = _garantirIndice();
+  const brutaZip = idx.get(codigo) || [];
+  const brutaManual = _listaManual(codigo);
+  if (!brutaZip.length && !brutaManual.length) return [];
+  const setOcultas = _garantirOcultas().get(codigo) || new Set();
+  const visiveisZip = brutaZip.filter(item => !setOcultas.has(path.basename(item.entrada.name)));
+  const visiveisManual = brutaManual.filter(item => !setOcultas.has(path.basename(item.entrada.name)));
+  const ordenada = _aplicarPreferencia(codigo, _reordenarFotos(codigo, visiveisZip).concat(visiveisManual));
+  const repetidas = _duplicadasDe(codigo, ordenada);
+  return repetidas.size ? ordenada.filter(item => !repetidas.has(path.basename(item.entrada.name))) : ordenada;
+}
+
 function listarFotos(codigoProduto, { incluirOcultas = false } = {}) {
   const idx = _garantirIndice();
   const codigo = String(codigoProduto);
@@ -398,15 +502,22 @@ function listarFotos(codigoProduto, { incluirOcultas = false } = {}) {
   // usuário, 2026-09-08: "só adiciona à lista", não vira principal sozinha)
   // — mas antes da preferência manual ser aplicada, que pode promover
   // QUALQUER uma (inclusive manual) pro topo se o atendente escolher.
-  const brutaZipVisivel = brutaZip.filter(item => !setOcultas.has(path.basename(item.entrada.name)));
-  const brutaManualVisivel = brutaManual.filter(item => !setOcultas.has(path.basename(item.entrada.name)));
-  const lista = _aplicarPreferencia(codigo, _reordenarFotos(codigo, brutaZipVisivel).concat(brutaManualVisivel));
+  const lista = _listaVisivel(codigo);
   const resultado = lista.map((item, i) => ({ indice: i, nomeArquivo: path.basename(item.entrada.name), oculta: false, manual: !!item.manual }));
 
   if (incluirOcultas) {
+    const mostradas = new Set(resultado.map(f => f.nomeArquivo));
     for (const item of bruta) {
       const nomeArquivo = path.basename(item.entrada.name);
-      if (setOcultas.has(nomeArquivo)) resultado.push({ indice: -1, nomeArquivo, oculta: true, manual: !!item.manual });
+      if (mostradas.has(nomeArquivo)) continue;
+      // `repetida` separa as duas razões de uma foto não estar na lista: a
+      // que o atendente escondeu à mão (oculta) e a que o sistema tirou por
+      // ser a mesma imagem de outra (ver _duplicadasDe). O painel mostra as
+      // ocultas pra poder reexibir; a repetida aparece do mesmo jeito, com a
+      // marca certa.
+      const oculta = setOcultas.has(nomeArquivo);
+      resultado.push({ indice: -1, nomeArquivo, oculta, repetida: !oculta, manual: !!item.manual });
+      mostradas.add(nomeArquivo);
     }
   }
   return resultado;
@@ -431,14 +542,50 @@ function temMultiplasFotos(codigoProduto) {
   const bruta = (idx.get(codigo) || []).concat(_listaManual(codigo));
   if (bruta.length < 2) return false;
   const setOcultas = _garantirOcultas().get(codigo) || new Set();
+  // 2026-10-23: se este produto já teve as repetidas calculadas (pelo
+  // aquecimento em segundo plano ou por alguém ter aberto as fotos dele),
+  // usa a resposta certa — é o que impede o card de nascer com 2 fotos
+  // iguais. Sem cache, segue a conta barata de antes: no pior caso o 2º
+  // <img> do card cai no onerror e some, que é o mesmo degradê de sempre.
+  const repetidas = duplicadasCache && duplicadasCache.get(codigo);
   let visiveis = 0;
   for (const item of bruta) {
-    if (!setOcultas.has(path.basename(item.entrada.name))) {
-      visiveis += 1;
-      if (visiveis >= 2) return true;
-    }
+    const nomeArquivo = path.basename(item.entrada.name);
+    if (setOcultas.has(nomeArquivo)) continue;
+    if (repetidas && repetidas.has(nomeArquivo)) continue;
+    visiveis += 1;
+    if (visiveis >= 2) return true;
   }
   return false;
+}
+
+/**
+ * Passa por todos os produtos com 2+ fotos calculando (e guardando) quais são
+ * repetidas, em segundo plano, cedendo o event loop de 5 em 5 produtos —
+ * assim o servidor segue respondendo normalmente enquanto isso. Rodado no
+ * boot do catálogo (ver catalogo-server.js): a varredura inteira leva poucos
+ * minutos e, a partir dela, a busca já devolve `duasFotos` certo.
+ */
+async function aquecerDuplicadas() {
+  const idx = _garantirIndice();
+  const inicio = Date.now();
+  let analisados = 0;
+  let comRepetida = 0;
+  for (const codigo of idx.keys()) {
+    const total = (idx.get(codigo) || []).length + _listaManual(codigo).length;
+    if (total < 2) continue;
+    try {
+      _listaVisivel(codigo);
+      const repetidas = duplicadasCache && duplicadasCache.get(codigo);
+      if (repetidas && repetidas.size) comRepetida += 1;
+    } catch {
+      // produto problemático não pode derrubar o aquecimento
+    }
+    analisados += 1;
+    if (analisados % 5 === 0) await new Promise(resolve => setImmediate(resolve));
+  }
+  console.log(`[catalogo-fotos.service] fotos repetidas mapeadas: ${comRepetida} de ${analisados} produtos com 2+ fotos (${Math.round((Date.now() - inicio) / 1000)}s).`);
+  return { analisados, comRepetida };
 }
 
 /**
@@ -549,15 +696,11 @@ function definirFotoPreferida(codigoProduto, nomeArquivo) {
  * { buffer, mimetype } ou null se o produto/índice de foto não existir.
  */
 function obterFoto(codigoProduto, indiceFoto = 0) {
-  const idx = _garantirIndice();
   const codigo = String(codigoProduto);
-  const originalZip = idx.get(codigo) || [];
-  const originalManual = _listaManual(codigo);
-  if (!originalZip.length && !originalManual.length) return null;
-  const setOcultas = _garantirOcultas().get(codigo) || new Set();
-  const visiveisZip = originalZip.filter(item => !setOcultas.has(path.basename(item.entrada.name)));
-  const visiveisManual = originalManual.filter(item => !setOcultas.has(path.basename(item.entrada.name)));
-  const lista = _aplicarPreferencia(codigo, _reordenarFotos(codigo, visiveisZip).concat(visiveisManual));
+  // Mesma lista que o Consultar enxerga (sem ocultas, sem repetidas) — é o
+  // que faz /fotos/1 devolver 404 quando a 2ª foto era só a miniatura da 1ª,
+  // em vez de mandar a mesma imagem de novo.
+  const lista = _listaVisivel(codigo);
   if (!lista[indiceFoto]) return null;
 
   const item = lista[indiceFoto];
@@ -608,9 +751,23 @@ function obterFotoPorNome(codigoProduto, nomeArquivo) {
 function recarregarIndice() {
   indice = null;
   ordemCache = null; // fotos novas podem mudar qual índice é "a grande"
+  duplicadasCache = null; // e também quem é repetição de quem
   // preferencias e ocultas NÃO são zeradas aqui de propósito — são escolha
   // manual do atendente, independente do índice de zips ser reconstruído.
   return _garantirIndice();
+}
+
+// Chamado quando o OUTRO processo do servidor (painel <-> catálogo) mudou fotos/preferências em
+// disco: descarta o que está em memória aqui para reler tudo na próxima consulta.
+// Não avisa de volta (evita ficar um ping-pong entre os dois processos).
+function recarregarDoDisco() {
+  indice = null;
+  indiceManual = null;
+  ordemCache = null;
+  duplicadasCache = null;
+  preferencias = null;
+  ocultas = null;
+  versaoFotos = Date.now();
 }
 
 /**
@@ -652,9 +809,11 @@ function adicionarFotoManual(codigoProduto, buffer) {
 
   indiceManual = null; // próxima leitura já enxerga o arquivo novo
   if (ordemCache) ordemCache.delete(codigo); // foto nova pode mudar quem é "grande" na reordenação
+  if (duplicadasCache) duplicadasCache.delete(codigo); // e pode ser repetição de uma que já existe
   versaoFotos = Date.now(); // bust de cache do navegador, igual troca/ocultar (ver comentário acima)
+  require("./espelho.service").avisar("fotos");
 
   return listarFotos(codigo, { incluirOcultas: true });
 }
 
-module.exports = { listarFotos, obterFoto, obterFotoPorNome, definirFotoPreferida, ocultarFoto, recarregarIndice, obterVersaoFotos, temMultiplasFotos, temAlgumaFoto, adicionarFotoManual };
+module.exports = { recarregarDoDisco, listarFotos, obterFoto, obterFotoPorNome, definirFotoPreferida, ocultarFoto, recarregarIndice, obterVersaoFotos, temMultiplasFotos, temAlgumaFoto, adicionarFotoManual, aquecerDuplicadas, _montarIndice };

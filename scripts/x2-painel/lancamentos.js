@@ -16,7 +16,7 @@
  *
  * 100% baseado em arquivo local, de propósito — diferente do "estoque ao
  * vivo no Catálogo" (essa outra feature, no app principal, grava em
- * Postgres via `docker exec`). Rodar isso pelo Painel Fotos X2 (que roda
+ * Postgres via `docker exec`). Rodar isso pelo Lente Rildon (que roda
  * no HOST, fora do Docker) não pode depender do banco — ver aviso em
  * src/services/estoque.service.js sobre o Postgres duplicado na porta
  * 5432. Reaproveita só a função PURA de parsing (parseCsvEstoque), que

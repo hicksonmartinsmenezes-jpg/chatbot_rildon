@@ -13,6 +13,7 @@
 
   let secoes = [];
   let totalProdutosUnicos = 0;
+  let totalComFotoUnicos = null;
   const selecionadas = new Set();
   let rodando = false;
   let filtroTexto = '';
@@ -79,7 +80,14 @@
     // conta ela 2x. Fallback pra soma bruta só se o backend ainda não
     // mandou o campo (versão antiga do server rodando).
     const totalProdutos = totalProdutosUnicos || secoes.reduce((a, s) => a + s.produtos, 0);
-    const totalBaixados = secoes.reduce((a, s) => a + s.comFotoReal, 0);
+    // `totalComFotoUnicos` vem do backend já deduplicado por código (ver
+    // contarComFotoUnicos em server.js) — a soma bruta de comFotoReal conta
+    // 2x a peça que está em duas seções e fazia o card passar de 100% e
+    // zerar "Fotos pendentes". Fallback pra soma bruta só se o servidor
+    // ainda for de uma versão anterior.
+    const totalBaixados = typeof totalComFotoUnicos === 'number'
+      ? totalComFotoUnicos
+      : secoes.reduce((a, s) => a + s.comFotoReal, 0);
     const totalPendentes = Math.max(0, totalProdutos - totalBaixados);
     const precisamZip = secoes.filter((s) => s.precisaZip).length;
     const totalErros = secoes.reduce((a, s) => a + (s.erros || 0), 0);
@@ -100,14 +108,14 @@
       <div class="stat-card stat-card--rico acento-verde">
         <div class="stat-icone">${ICONE_BAIXADAS}</div>
         <div class="valor">${totalBaixados.toLocaleString('pt-BR')}</div>
-        <div class="rotulo">Com foto baixada</div>
+        <div class="rotulo">Com foto no catálogo</div>
         <div class="stat-progress"><div class="stat-progress-fill" style="width:${pctBaixado}%"></div></div>
         <div class="stat-sub">${pctBaixado}% do total</div>
       </div>
       <div class="stat-card stat-card--rico">
         <div class="stat-icone">${ICONE_PENDENTE}</div>
         <div class="valor">${totalPendentes.toLocaleString('pt-BR')}</div>
-        <div class="rotulo">Fotos pendentes</div>
+        <div class="rotulo">Produtos sem foto</div>
         <div class="stat-progress"><div class="stat-progress-fill stat-progress-fill--amber" style="width:${pctPendente}%"></div></div>
         <div class="stat-sub">${pctPendente}% do total</div>
       </div>
@@ -304,7 +312,13 @@
         // backend com a mesma função já usada no agregado por seção).
         const fotosTexto = p.numFotos > 0
           ? `${escapeHtml(p.numFotos)} foto${p.numFotos > 1 ? 's' : ''}`
-          : '—';
+          : p.fotoCatalogo
+            // Produto sem nada no staging do scraper, mas COM foto já
+            // publicada no catálogo (zip antigo ou foto manual) — é essa
+            // que sai no PDF, então a linha precisa dizer isso em vez de
+            // mostrar "—" ao lado de uma miniatura que aparece na tela.
+            ? '<span title="Foto já publicada no catálogo (zip ou envio manual), não baixada nesta rodada">do catálogo</span>'
+            : '—';
         const fotosSuspeitaMarca = p.fotoSuspeita
           ? ` <span class="status-dot-mini alerta" title="Alguma foto abaixo do tamanho mínimo"></span>`
           : '';
@@ -463,6 +477,7 @@
     const data = await res.json();
     secoes = data.secoes;
     totalProdutosUnicos = data.totalProdutosUnicos || 0;
+    totalComFotoUnicos = typeof data.totalComFotoUnicos === 'number' ? data.totalComFotoUnicos : null;
     renderStats();
     renderTabela();
     atualizarResumoSelecao();
@@ -705,7 +720,15 @@
         input.type = 'checkbox';
         input.value = f.nome;
         label.appendChild(input);
-        label.appendChild(document.createTextNode(' ' + f.nome + (f.mecanica ? ' (Mecânica)' : '')));
+        // O `value` dessa opção é um sentinel interno (ver
+        // PSEUDO_FABRICANTE_DIVERSOS em catalogo-x2.service.js) e estava
+        // vazando cru pra tela como "__DIVERSOS_TODOS_FABRICANTES__". O
+        // value continua igual (é o que o backend espera de volta); só o
+        // rótulo vira o nome que o resto do sistema já usa.
+        const rotulo = f.nome === '__DIVERSOS_TODOS_FABRICANTES__'
+          ? 'Diversos (todos os fabricantes)'
+          : f.nome;
+        label.appendChild(document.createTextNode(' ' + rotulo + (f.mecanica ? ' (Mecânica)' : '')));
         box.appendChild(label);
       }
       fabricantesDriveCarregados = true;
@@ -881,13 +904,35 @@
   // usuário). "Em execução agora" reflete o mesmo `rodando` global usado no
   // resto do painel, já que rotina e ação manual compartilham o mesmo
   // executor (só uma coisa roda por vez nesta ferramenta).
+  // Quantas vezes a rotina falhou SEGUIDO, da mais recente pra trás — é o
+  // número que diz "isto está quebrado", não "deu um erro um dia desses".
+  function falhasSeguidas(r) {
+    const h = Array.isArray(r.historico) ? r.historico : [];
+    let n = 0;
+    for (const e of h) { if (e.resultado === 'erro') n += 1; else break; }
+    return n;
+  }
+
   function renderRotinasStats() {
     const hoje = new Date();
     const ativas = rotinas.filter((r) => r.ativa).length;
-    const rodaramHoje = rotinas.filter((r) => r.ultimaExecucao && mesmoDia(new Date(r.ultimaExecucao), hoje));
-    const falhasHoje = rodaramHoje.filter((r) => r.ultimoResultado === 'erro').length;
+    // Conta EXECUÇÕES, não rotinas: uma rotina a cada 5h roda ~4x por dia e
+    // antes aparecia como "1 execução hoje" (só o último resultado era
+    // guardado). Agora vem do histórico, com fallback pro jeito antigo
+    // enquanto as rotinas existentes ainda não têm histórico gravado.
+    let execucoesHoje = 0;
+    let falhasHoje = 0;
+    for (const r of rotinas) {
+      const h = Array.isArray(r.historico) && r.historico.length
+        ? r.historico.filter((e) => e.em && mesmoDia(new Date(e.em), hoje))
+        : (r.ultimaExecucao && mesmoDia(new Date(r.ultimaExecucao), hoje)
+          ? [{ resultado: r.ultimoResultado }]
+          : []);
+      execucoesHoje += h.length;
+      falhasHoje += h.filter((e) => e.resultado === 'erro').length;
+    }
     el('rotinas-stat-ativas').textContent = ativas;
-    el('rotinas-stat-execucoes-hoje').textContent = rodaramHoje.length;
+    el('rotinas-stat-execucoes-hoje').textContent = execucoesHoje;
     el('rotinas-stat-falhas-hoje').textContent = falhasHoje;
     el('rotinas-stat-em-execucao').textContent = rodando ? '1' : '0';
     el('rotinas-stat-falhas-card').classList.toggle('risco', falhasHoje > 0);
@@ -921,7 +966,13 @@
           : `Diária às ${escapeHtml(r.horario)}`;
       let resultadoBadge = '<span class="badge badge-muted">nunca rodou</span>';
       if (r.ultimoResultado === 'sucesso') resultadoBadge = `<span class="badge badge-green" title="${escapeHtml(formatarDataHora(r.ultimaExecucao))}">ok</span>`;
-      else if (r.ultimoResultado === 'erro') resultadoBadge = `<span class="badge badge-red" title="${escapeHtml(r.ultimoErro)}">erro</span>`;
+      else if (r.ultimoResultado === 'erro') {
+        // Uma falha isolada é ruído; falha repetida é rotina parada. O
+        // número de falhas seguidas é o que separa os dois casos.
+        const seguidas = falhasSeguidas(r);
+        const sufixo = seguidas > 1 ? ` ${seguidas}×` : '';
+        resultadoBadge = `<span class="badge badge-red" title="${escapeHtml(r.ultimoErro)}">erro${sufixo}</span>`;
+      }
       return `
         <tr>
           <td>

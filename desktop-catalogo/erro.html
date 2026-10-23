@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>Catálogo Rildon</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src http: https:">
+<style>
+body{margin:0;font-family:Segoe UI,system-ui,sans-serif;background:#f3f5f8;color:#111827;display:flex;align-items:center;justify-content:center;min-height:100vh}
+main{width:min(460px,90vw);background:#fff;border:1px solid #c3cad6;padding:28px}
+h1{margin:0 0 8px;font-size:20px;color:#0b2a5b}p{margin:0 0 16px;font-size:14px;color:#374151}
+label{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
+input{width:100%;box-sizing:border-box;height:40px;border:1px solid #aab3c2;padding:0 10px;font-size:14px}
+.linha{display:flex;gap:10px;margin-top:16px}button{height:40px;padding:0 16px;border:0;font-size:14px;font-weight:600;cursor:pointer}
+.p{background:#0b2a5b;color:#fff}.s{background:#fff;color:#0b2a5b;border:1px solid #0b2a5b}.e{color:#b00020;font-size:13px;margin-top:8px;min-height:18px}
+</style></head><body><main>
+<h1 id="t">Não foi possível abrir o catálogo</h1>
+<p id="d"></p>
+<label for="u">Endereço do servidor</label>
+<input id="u" type="text" spellcheck="false">
+<div class="e" id="e" role="alert"></div>
+<div class="linha"><button class="p" id="salvar">Salvar e abrir</button><button class="s" id="tentar">Tentar de novo</button></div>
+<div id="salvos" style="display:none;margin-top:22px;border-top:1px solid #c3cad6;padding-top:14px">
+<p style="margin:0 0 8px;font-weight:600;color:#0b2a5b">Catálogos salvos neste computador (abrem sem o servidor)</p>
+<div id="lista" style="display:flex;flex-wrap:wrap;gap:8px;max-height:180px;overflow:auto"></div>
+</div>
+</main>
+<script>
+const q = new URLSearchParams(location.search);
+const config = q.get("modo") === "config";
+document.getElementById("u").value = q.get("url") || "";
+if (config) {
+  document.getElementById("t").textContent = "Endereço do servidor";
+  document.getElementById("d").textContent = "Informe o endereço do servidor da loja na rede.";
+  document.getElementById("tentar").style.display = "none";
+} else {
+  document.getElementById("d").textContent = "Confira se o servidor da loja está ligado e se o cabo de rede deste computador está conectado. O programa tenta de novo sozinho. (" + (q.get("motivo") || "sem detalhe") + ")";
+}
+document.getElementById("salvar").onclick = async () => {
+  const r = await window.catalogoLoja.salvarConfig(document.getElementById("u").value);
+  if (!r.ok) document.getElementById("e").textContent = r.erro;
+};
+if (!config) window.catalogoLoja.catalogoLocalListar().then((l) => {
+  if (!l || !l.length) return;
+  document.getElementById("salvos").style.display = "block";
+  const box = document.getElementById("lista");
+  l.forEach((c) => {
+    const b = document.createElement("button");
+    b.className = "s"; b.textContent = c.nome.replace(/-[0-9a-f]{6}$/, "").toUpperCase();
+    b.onclick = () => window.catalogoLoja.catalogoLocalAbrir(c.id);
+    box.appendChild(b);
+  });
+});
+// Volta sozinho assim que o servidor responder (cabo reconectado, servidor religado...).
+if (!config) {
+  const alvo = (q.get("url") || "").replace(/\/+$/, "");
+  let tentando = false;
+  setInterval(async () => {
+    if (tentando || !alvo) return;
+    tentando = true;
+    try {
+      const c = new AbortController();
+      setTimeout(() => c.abort(), 2500);
+      await fetch(alvo + "/", { mode: "no-cors", cache: "no-store", signal: c.signal });
+      window.catalogoLoja.recarregar();
+    } catch (_) { /* ainda fora do ar */ }
+    tentando = false;
+  }, 3000);
+}
+document.getElementById("tentar").onclick = () => window.catalogoLoja.recarregar();
+</script></body></html>

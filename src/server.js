@@ -74,6 +74,11 @@ initSocket(server);
     // 4b. Agendador de campanhas (agendamento único/recorrente do Campanhas)
     startCampaignScheduler();
 
+    // 4c. Catálogos completos em PDF prontos no disco: refaz todos às 20h, fora do
+    // expediente. Assim o programa do balcão abre qualquer catálogo na hora (e baixa a
+    // cópia dele à meia-noite) em vez de esperar o servidor montar o PDF a cada clique.
+    require("./services/catalogo-prontos.service").iniciar({ horaRefazer: 20 });
+
     // 5. Subir servidor HTTP
     await new Promise((resolve) => {
       server.listen(PORT, "0.0.0.0", () => {

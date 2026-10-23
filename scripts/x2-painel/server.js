@@ -34,7 +34,7 @@
  * ─── Como usar ──────────────────────────────────────────────────────────
  *   npm install                    (só na 1ª vez — Playwright, se ainda não tiver)
  *   node scripts/x2-painel/server.js
- *   (ou dê duplo-clique no atalho "Painel Fotos X2.bat" na Área de Trabalho,
+ *   (ou dê duplo-clique no atalho "Lente Rildon.bat" na Área de Trabalho,
  *   ver instruções no fim deste arquivo — mesmo padrão do "Atualizar Fotos
  *   X2.bat" já existente)
  * Abre sozinho em http://localhost:4123 — só funciona na sua máquina
@@ -74,10 +74,10 @@ const ALERTAS_INFO = {
   'drive': { titulo: 'Drive: PDF não atualizado', acao: 'Confira o Drive (token OAuth) e rode: node scripts\\x2-drive-lancamentos.js --verificar' },
   'drive-sem-fabricante': { nivel: 'aviso', titulo: 'Drive: lançamentos sem fabricante', acao: 'Cadastre o fabricante desses códigos no catálogo para eles entrarem no PDF.' },
   'secao-nao-mapeada': { nivel: 'aviso', titulo: 'Lançamentos fora do catálogo', acao: 'A Seção desses códigos não está mapeada. Me envie a Seção para eu incluir.' },
-  'estoque-parado': { titulo: 'Estoque/preço desatualizado', acao: 'Confira se o Painel X2 está aberto e rode "Exportar estoque".' },
-  'estoque-sem': { titulo: 'Estoque nunca importado', acao: 'Rode "Exportar estoque" no Painel X2.' },
-  'acao-estoque': { titulo: 'Estoque: rotina falhou', acao: 'No Chrome do Painel X2, confira se o X2 está logado (faça login se pedir) e clique em "Exportar estoque". Se repetir, me envie o log.' },
-  'acao': { titulo: 'Rotina do Painel X2 falhou', acao: 'Abra o painel (http://127.0.0.1:4123), veja o log da rotina e rode de novo. Se o X2 pedir login, entre antes.' },
+  'estoque-parado': { titulo: 'Estoque/preço desatualizado', acao: 'Confira se o Lente Rildon está aberto e rode "Exportar estoque".' },
+  'estoque-sem': { titulo: 'Estoque nunca importado', acao: 'Rode "Exportar estoque" no Lente Rildon.' },
+  'acao-estoque': { titulo: 'Estoque: rotina falhou', acao: 'No Chrome do Lente Rildon, confira se o X2 está logado (faça login se pedir) e clique em "Exportar estoque". Se repetir, me envie o log.' },
+  'acao': { titulo: 'Rotina do Lente Rildon falhou', acao: 'Abra o painel (http://127.0.0.1:4123), veja o log da rotina e rode de novo. Se o X2 pedir login, entre antes.' },
 };
 const _alertasRecentes = new Map();
 async function alertarFalhaX2(chave, mensagem) {
@@ -90,9 +90,9 @@ async function alertarFalhaX2(chave, mensagem) {
     const info = ALERTAS_INFO[chave] || ALERTAS_INFO[String(chave).split('-').slice(0, 2).join('-')] || ALERTAS_INFO[String(chave).split('-')[0]] || {};
     await enviarAlertaWhatsApp(formatarAlerta({
       nivel: info.nivel || 'erro',
-      titulo: info.titulo || 'Painel X2 — atenção',
+      titulo: info.titulo || 'Lente Rildon — atenção',
       linhas: [mensagem],
-      acao: info.acao || 'Abra o Painel X2 (http://127.0.0.1:4123) e confira o log da última execução.',
+      acao: info.acao || 'Abra o Lente Rildon (http://127.0.0.1:4123) e confira o log da última execução.',
     }));
   } catch (e) {
     console.error('[x2-painel] não consegui enviar alerta WhatsApp:', e.message);
@@ -102,6 +102,9 @@ const qualidadeApenasCadastrados = require('./qualidade-apenas-cadastrados');
 const { listarEntradas } = require('../../src/utils/zip-reader');
 const rotinasStore = require('./rotinas');
 const fotosCodigos = require('./fotos-codigos');
+// Miniatura de produto sem staging (seção só publicada no zip, ou foto manual):
+// o Catálogo do bot lê os mesmos zips/fotos manuais, então serve de reserva.
+const catalogoFotos = require('../../src/services/catalogo-fotos.service');
 const lancamentos = require('./lancamentos');
 
 // dotenv — mesmo padrão do src/server.js — pra X2_USUARIO/X2_SENHA (usados
@@ -152,23 +155,60 @@ app.use(express.static(path.join(__dirname, 'public')));
 // ─── Captura de saída (console.log/process.stdout.write) num "terminal
 // virtual" simples — trata \r como "sobrescreve a linha atual", igual um
 // terminal de verdade faria com a barra de progresso do scraper. ──────────
+// Teto de linhas do terminal virtual (2026-10-17, sessão de testes): a
+// lista crescia sem limite e `texto()` é re-serializado e reenviado por SSE
+// a CADA escrita — num download de 3.000 fotos (20+ min) isso vira tráfego
+// quadrático e o painel engasga justo quando mais precisa estar responsivo.
+// 4.000 linhas cobrem com folga o que cabe na tela + rolagem do log.
+const LIMITE_LINHAS_TERMINAL = 4000;
+
+// Hora local do negócio (mesma referência das rotinas) no formato HH:MM:SS.
+function _horaLog() {
+  return new Date().toLocaleTimeString('pt-BR', {
+    hour12: false,
+    timeZone: process.env.TZ_NEGOCIO || 'America/Maceio',
+  });
+}
+
 class TerminalVirtual {
   constructor() {
     this.linhas = [''];
+    this.cortou = false;
+    this.precisaMarcar = true;
   }
   escrever(texto) {
     for (const ch of String(texto)) {
       if (ch === '\n') {
         this.linhas.push('');
+        this.precisaMarcar = true;
       } else if (ch === '\r') {
+        // Barra de progresso do scraper reescreve a linha: limpa e marca de
+        // novo, pra linha reescrita não ficar sem hora.
         this.linhas[this.linhas.length - 1] = '';
+        this.precisaMarcar = true;
       } else {
+        // Carimbo de hora por linha (2026-10-17, sessão de testes): sem ele
+        // não dava pra saber, num download de 20 minutos, onde a execução
+        // ficou parada nem quanto tempo cada etapa levou — só o texto
+        // corrido. O carimbo entra no primeiro caractere de conteúdo da
+        // linha, então linha em branco continua em branco.
+        if (this.precisaMarcar) {
+          this.linhas[this.linhas.length - 1] += `[${_horaLog()}] `;
+          this.precisaMarcar = false;
+        }
         this.linhas[this.linhas.length - 1] += ch;
       }
     }
+    if (this.linhas.length > LIMITE_LINHAS_TERMINAL) {
+      this.linhas.splice(0, this.linhas.length - LIMITE_LINHAS_TERMINAL);
+      this.cortou = true;
+    }
   }
   texto() {
-    return this.linhas.join('\n');
+    const corpo = this.linhas.join('\n');
+    return this.cortou
+      ? `(log antigo cortado — mostrando as últimas ${LIMITE_LINHAS_TERMINAL} linhas)\n${corpo}`
+      : corpo;
   }
 }
 
@@ -177,7 +217,33 @@ class TerminalVirtual {
 let execucao = null; // { tipo, terminal, rodando, aguardando: {mensagem, resolver} | null, erro }
 const clientesSSE = new Set();
 
-function transmitir() {
+// Throttle do SSE (2026-10-17): o scraper escreve a barra de progresso com
+// \r várias vezes por segundo e cada escrita disparava um envio do log
+// INTEIRO pra todos os clientes. 250ms é imperceptível pra quem olha e
+// derruba o tráfego em uma ordem de grandeza numa execução longa. A última
+// transmissão nunca é perdida: fica agendada e sai no fim da janela.
+let transmitirAgendado = null;
+let transmitirUltimo = 0;
+const INTERVALO_TRANSMISSAO_MS = 250;
+
+function transmitir({ imediato = false } = {}) {
+  if (!execucao) return;
+  const agora = Date.now();
+  if (!imediato && agora - transmitirUltimo < INTERVALO_TRANSMISSAO_MS) {
+    if (!transmitirAgendado) {
+      transmitirAgendado = setTimeout(() => {
+        transmitirAgendado = null;
+        transmitir({ imediato: true });
+      }, INTERVALO_TRANSMISSAO_MS - (agora - transmitirUltimo));
+    }
+    return;
+  }
+  if (transmitirAgendado) { clearTimeout(transmitirAgendado); transmitirAgendado = null; }
+  transmitirUltimo = agora;
+  _transmitirAgora();
+}
+
+function _transmitirAgora() {
   if (!execucao) return;
   const payload = JSON.stringify({
     rodando: execucao.rodando,
@@ -511,6 +577,7 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
   } catch (e) {
     execucaoLocal.erro = e.message;
     execucaoLocal.terminal.escrever(`\n❌ Erro: ${e.message}\n`);
+    transmitir({ imediato: true });
     if (origemRotina) rotinasStore.registrarExecucao(origemRotina, { resultado: 'erro', erro: e.message });
     if (origemRotina || (opcoes && opcoes.automatico)) {
       alertarFalhaX2(`acao-${tipo}`, `A rotina "${rotulo || tipo}" falhou: ${require('../x2-whatsapp-alerta').humanizarErro(e)}`);
@@ -520,7 +587,7 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
     process.stderr.write = origErrorWrite;
     execucaoLocal.rodando = false;
     execucaoLocal.aguardando = null;
-    transmitir();
+    transmitir({ imediato: true });
   }
 
   // Encadeamento automático pós-Lançamentos (ver comentário lá em cima, na
@@ -662,6 +729,36 @@ function totalProdutosUnicos() {
   return codigos.size;
 }
 
+// BUG REAL corrigido (2026-10-17, sessão de testes): o card "Com foto
+// baixada" somava `comFotoReal` seção a seção — a MESMA dedup que
+// totalProdutosUnicos() existe pra evitar. Com peça em 2 seções o total
+// passava do total de produtos (o painel mostrava 19.633 de 17.637, "111%
+// do total") e, pior, "Fotos pendentes" virava Math.max(0, negativo) = 0:
+// o painel afirmava que NENHUM produto estava sem foto enquanto 1.100
+// produtos entravam no PDF sem imagem. Agora conta código único, e conta
+// como "com foto" tanto o que o scraper baixou quanto o que já está
+// publicado no catálogo (zip ou foto manual enviada pelo atendente) — que
+// é exatamente o que decide se o produto sai com imagem no PDF.
+function contarComFotoUnicos() {
+  const comFoto = new Set();
+  for (const slug of Object.keys(SECOES)) {
+    let produtosJson;
+    try {
+      produtosJson = JSON.parse(fs.readFileSync(path.join(CATALOGO_DIR, `${slug}.json`), 'utf8'));
+    } catch { continue; }
+    const progresso = carregarProgresso(slug);
+    for (const p of produtosJson) {
+      const codigo = String(p.codigo).trim();
+      if (comFoto.has(codigo)) continue;
+      const st = progresso[codigo];
+      if ((st && st.status === 'ok' && st.arquivos && st.arquivos.length) || _temFotoNoCatalogo(codigo)) {
+        comFoto.add(codigo);
+      }
+    }
+  }
+  return comFoto.size;
+}
+
 function statusSecoes() {
   return Object.entries(SECOES).map(([slug, label]) => {
     let produtos = 0;
@@ -725,6 +822,7 @@ app.get('/api/status', (req, res) => {
   res.json({
     secoes: statusSecoes(),
     totalProdutosUnicos: totalProdutosUnicos(),
+    totalComFotoUnicos: contarComFotoUnicos(),
     limiteRemocaoSuspeitaPct: Math.round((sync.LIMITE_REMOCAO_SUSPEITA || 0.3) * 100),
     larguraMinimaAviso: LARGURA_MINIMA_AVISO,
     execucao: execucao ? {
@@ -755,6 +853,52 @@ function _extensaoImagem(nome) {
   return null;
 }
 
+// O índice de fotos do catálogo é cacheado em memória pelo service, e este
+// processo (painel) fica dias de pé — depois de um "Montar zip" ou de uma
+// foto manual enviada no painel do bot, o cache daqui ficaria velho e o
+// painel mostraria "sem foto" pra produto que já tem. Antes de usar o
+// índice, confere a assinatura (mtime+tamanho) dos zips e da pasta de
+// fotos manuais; se mudou, manda o service reler. É barato: só stat().
+let _assinaturaFotos = null;
+let _assinaturaVerificadaEm = 0;
+// _temFotoNoCatalogo roda por produto (24 mil chamadas numa varredura
+// completa), então a varredura de stat() só pode acontecer de vez em
+// quando — 5s basta pra pegar um zip recém-montado sem custar nada no
+// meio de um laço.
+const INTERVALO_CHECAGEM_FOTOS_MS = 5000;
+
+function _assinaturaDasFotos() {
+  const partes = [];
+  for (const dir of [FOTOS_DIR, path.join(CATALOGO_DIR, 'fotos-manuais')]) {
+    let nomes;
+    try { nomes = fs.readdirSync(dir); } catch { continue; }
+    for (const nome of nomes) {
+      try {
+        const st = fs.statSync(path.join(dir, nome));
+        partes.push(`${nome}:${st.mtimeMs}:${st.size}`);
+      } catch { /* sumiu no meio da varredura — ignora */ }
+    }
+  }
+  return partes.join('|');
+}
+
+function _garantirIndiceFotosFresco() {
+  const agora = Date.now();
+  if (agora - _assinaturaVerificadaEm < INTERVALO_CHECAGEM_FOTOS_MS) return;
+  _assinaturaVerificadaEm = agora;
+  const atual = _assinaturaDasFotos();
+  if (_assinaturaFotos === atual) return;
+  _assinaturaFotos = atual;
+  try { catalogoFotos.recarregarIndice(); } catch { /* índice segue como está */ }
+}
+
+function _temFotoNoCatalogo(codigo) {
+  try {
+    _garantirIndiceFotosFresco();
+    return catalogoFotos.temAlgumaFoto(codigo);
+  } catch { return false; }
+}
+
 app.get('/api/secoes/:slug/produtos', (req, res) => {
   const { slug } = req.params;
   const label = SECOES[slug];
@@ -775,7 +919,13 @@ app.get('/api/secoes/:slug/produtos', (req, res) => {
       // "pendente" = ainda não passou pelo scraper nenhuma vez (não confundir
       // com "sem_foto" — esse já foi tentado e o X2 não tinha foto real).
       status: st ? st.status : 'pendente',
-      temThumb: !!(st && st.status === 'ok' && st.arquivos && st.arquivos.length),
+      temThumb: !!(st && st.status === 'ok' && st.arquivos && st.arquivos.length) || _temFotoNoCatalogo(p.codigo),
+      // Foto que NÃO veio do scraper: está publicada no catálogo (zip de
+      // uma rodada antiga ou foto manual enviada pelo atendente no painel
+      // do bot). Sem isso a linha se contradizia — miniatura na tela e
+      // "Sem foto" na coluna Status, como aconteceu com as fotos enviadas
+      // à mão em 2026-10-17.
+      fotoCatalogo: !(st && st.status === 'ok' && st.arquivos && st.arquivos.length) && _temFotoNoCatalogo(p.codigo),
       // PEDIDO DO USUÁRIO (2026-09-12, redesign modal): contagem real de
       // arquivos baixados por produto (não é "X de Y esperado" — não temos
       // esse total do X2, só o que foi de fato baixado) + se alguma dessas
@@ -795,13 +945,20 @@ app.get('/api/secoes/:slug/produtos/:codigo/thumb', (req, res) => {
   const progresso = carregarProgresso(slug);
   const st = progresso[codigo];
   const nomeArquivo = st && st.arquivos && st.arquivos[0];
-  if (!nomeArquivo) return res.status(404).end();
-  const caminho = path.join(stagingSecaoDir(slug), codigo, nomeArquivo);
-  const mime = _extensaoImagem(nomeArquivo);
-  if (!mime || !fs.existsSync(caminho)) return res.status(404).end();
-  res.setHeader('Content-Type', mime);
-  res.setHeader('Cache-Control', 'private, max-age=3600');
-  fs.createReadStream(caminho).pipe(res);
+  const caminho = nomeArquivo ? path.join(stagingSecaoDir(slug), codigo, nomeArquivo) : null;
+  const mime = nomeArquivo ? _extensaoImagem(nomeArquivo) : null;
+  if (caminho && mime && fs.existsSync(caminho)) {
+    res.setHeader('Content-Type', mime);
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    return fs.createReadStream(caminho).pipe(res);
+  }
+  // Sem arquivo no staging: usa a foto publicada no Catálogo (zip ou manual).
+  let foto = null;
+  try { foto = catalogoFotos.obterFoto(codigo, 0); } catch { foto = null; }
+  if (!foto) return res.status(404).end();
+  res.setHeader('Content-Type', foto.mimetype);
+  res.setHeader('Cache-Control', 'private, max-age=600');
+  res.end(foto.buffer);
 });
 
 // ─── Busca global de produtos (2026-09-12, mockup "CatálogoPro") — varre
@@ -1243,7 +1400,7 @@ function checarRotinas() {
 const server = http.createServer(app);
 server.listen(PORT, '127.0.0.1', () => {
   const url = `http://localhost:${PORT}`;
-  console.log(`\nPainel Fotos X2 rodando em ${url}`);
+  console.log(`\nLente Rildon rodando em ${url}`);
   console.log('(só acessível nesta máquina — não exposto na rede)\n');
 
   // Abre o navegador sozinho — evita o usuário ter que copiar/colar a URL,

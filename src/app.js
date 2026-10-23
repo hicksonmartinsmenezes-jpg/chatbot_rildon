@@ -30,6 +30,7 @@ const settingsRoutes    = require("./routes/settings.routes");
 const botStatusRoutes   = require("./routes/botStatus.routes");
 const atendenteRoutes   = require("./routes/atendentes.routes");
 const catalogoRoutes    = require("./routes/catalogo.routes");
+const { consultaCatalogoSemLogin } = require("./middlewares/catalogo-consulta");
 // MCP somente-leitura (nova função, pedido do usuário 2026-09-09) —
 // desligado por padrão via MCP_ENABLED, ver comentário no próprio
 // mcp.routes.js/mcp.service.js.
@@ -162,6 +163,14 @@ app.use("/api", authRouter);
 // authSession e nunca era alcançado (o Bearer do MCP não é sessão -> 401).
 // O handler retorna 404 quando MCP_ENABLED não é "true".
 app.use("/api", mcpRoutes);
+
+// Programa Windows da loja: consulta do catálogo sem login (só leitura, só rede
+// interna, só com o cabeçalho do programa) — ver middlewares/catalogo-consulta.js.
+// Precisa vir ANTES do authSession global abaixo.
+app.use("/api", consultaCatalogoSemLogin(catalogoRoutes));
+
+// Avisos internos entre o painel e o contêiner do catálogo (segredo compartilhado + rede interna).
+app.use("/api", require("./routes/interno.routes"));
 
 // A partir daqui tudo exige sessão. authSession roda UMA vez por requisição
 // (antes rodava em cada mount, repetindo a consulta ao banco).

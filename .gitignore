@@ -106,3 +106,9 @@ Claude outputs/
 
 # Configuracao local do Maestri (nao versionar)
 .maestri/
+
+# Catalogos Completos prontos (gerados em segundo plano)
+/catalogos-prontos/
+
+# instalador publicado pro auto-aviso do programa da loja
+catalogo-exe/

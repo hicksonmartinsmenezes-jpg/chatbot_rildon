@@ -1036,7 +1036,7 @@
 
 .catalogo-selecao-limpar-btn {
   padding: 8px 14px;
-  border-radius: var(--radius-full);
+  border-radius: 6px;
   border: 1px solid var(--cat-line);
   background: transparent;
   color: var(--cat-text-dim);
@@ -1061,9 +1061,9 @@
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
-  border-radius: var(--radius-full);
+  border-radius: 6px; /* quadrado, igual aos botões de Critérios de pesquisa */
   border: none;
-  background: var(--primary);
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-2) 100%);
   color: #ffffff;
   font-size: 12.5px;
   font-weight: 700;
@@ -1293,7 +1293,7 @@
   gap: 7px;
   padding: 8px 16px;
   border: none;
-  border-radius: var(--radius-full);
+  border-radius: 6px; /* quadrado, igual aos botões de Critérios de pesquisa */
   background: linear-gradient(135deg, var(--primary) 0%, var(--primary-2) 100%);
   color: #fff;
   font-size: 12.5px;
@@ -1833,3 +1833,73 @@ body.light-theme .catalogo-copy-btn {
   background: #f8fafc;
   color: #475569;
 }
+
+
+/* ─── Modo consulta (programa .exe da loja, URL com ?app=catalogo) ───────────
+   Só a aba Catálogo: some o menu lateral e as demais abas. */
+html.modo-consulta-catalogo .sidebar,
+html.modo-consulta-catalogo .topbar,
+html.modo-consulta-catalogo #login-screen { display: none !important; }
+
+/* Botão principal das buscas (Localizar Produto): azul marinho, igual ao resto do programa. */
+html.modo-consulta-catalogo .catalogo-erp-search-btn { background: #0b2a5b; }
+html.modo-consulta-catalogo .catalogo-erp-search-btn:hover { background: #0e3573; filter: none; }
+
+/* Abas grandes "Consultar" / "Montar Catálogos" — só no modo consulta. */
+.catalogo-consulta-tabs, .catalogo-montar-grid, .catalogo-montar-voltar { display: none; }
+html.modo-consulta-catalogo .catalogo-consulta-tabs { display: flex; gap: 8px; margin-bottom: 10px; }
+html.modo-consulta-catalogo .catalogo-consulta-tab {
+  height: 34px; padding: 0 16px; border: 1px solid #0b2a5b; background: #fff; color: #0b2a5b;
+  font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+}
+html.modo-consulta-catalogo .catalogo-consulta-tab.active { background: #0b2a5b; color: #fff; }
+/* Consultar: só as 3 buscas; Completo/Promocional saem da faixa de abas. */
+html.modo-consulta-catalogo #catalogo-tab-completo,
+html.modo-consulta-catalogo #catalogo-tab-promocional { display: none !important; }
+/* Montar Catálogos: some a faixa de buscas e o formulário do dropdown. */
+html.modo-consulta-catalogo.consulta-montar .catalogo-erp-tabs { display: none !important; }
+html.modo-consulta-catalogo.consulta-montar #catalogo-form-completo .catalogo-erp-box,
+html.modo-consulta-catalogo.consulta-montar #catalogo-form-completo .catalogo-erp-actions { display: none !important; }
+html.modo-consulta-catalogo.consulta-montar .catalogo-montar-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; padding: 6px 2px 16px;
+}
+html.modo-consulta-catalogo.consulta-montar.montar-aberto .catalogo-montar-grid { display: none; }
+.catalogo-montar-card {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; min-height: 130px;
+  background: #fff; border: 1px solid #c3cad6; color: #0b2a5b; font: inherit; font-size: 14px; font-weight: 700;
+  text-align: center; padding: 16px 10px; cursor: pointer;
+}
+.catalogo-montar-card i { font-size: 34px; color: #006fa0; }
+.catalogo-montar-logo { width: 100%; max-width: 150px; height: 64px; object-fit: contain; }
+.catalogo-montar-card:hover, .catalogo-montar-card:focus-visible { border-color: #0b2a5b; box-shadow: 0 4px 14px rgba(11, 42, 91, 0.18); }
+html.modo-consulta-catalogo.consulta-montar.montar-aberto .catalogo-montar-voltar {
+  display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 18px; margin-bottom: 12px;
+  border: 1px solid #0b2a5b; background: #fff; color: #0b2a5b; font: inherit; font-weight: 700; cursor: pointer;
+}
+html.modo-consulta-catalogo.consulta-montar .catalogo-completo-preview-header { display: none; }
+html.modo-consulta-catalogo.consulta-montar .catalogo-completo-preview { margin-top: 0; border: 0; border-radius: 0; background: transparent; }
+html.modo-consulta-catalogo.consulta-montar .catalogo-completo-preview-frame { height: calc(100vh - 170px); min-height: 480px; border: 1px solid #c3cad6; box-shadow: 0 4px 18px rgba(11, 42, 91, 0.12); }
+
+/* Tela inicial do programa: logo centralizada + duas caixas quadradas. */
+.catalogo-home { display: none; }
+html.modo-consulta-catalogo.consulta-inicio .catalogo-home {
+  position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 40px; background: linear-gradient(180deg, #ffffff 0%, #eaf0f8 100%);
+}
+.catalogo-home-logo { width: min(300px, 55vw); height: auto; }
+.catalogo-home-caixas { display: flex; flex-wrap: wrap; gap: 22px; justify-content: center; }
+.catalogo-home-caixa {
+  width: 170px; height: 170px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+  background: #0b2a5b; color: #ffffff; border: 3px solid transparent; border-radius: 0; cursor: pointer;
+  font: inherit; font-size: 16px; font-weight: 700;
+}
+.catalogo-home-caixa i { font-size: 40px; color: #ffffff; }
+.catalogo-home-caixa:hover, .catalogo-home-caixa:focus-visible { border-color: #fdc82f; box-shadow: 0 8px 28px rgba(11, 42, 91, 0.35); outline: none; }
+
+/* Programa da loja: botão para guardar todos os catálogos no computador (uso sem servidor). */
+.catalogo-montar-offline { display: flex; align-items: center; gap: 14px; margin: 0 0 12px; }
+.catalogo-montar-offline.hidden { display: none; }
+.catalogo-montar-voltar-like { height: 40px; padding: 0 16px; border: 1px solid #0b2a5b; background: #fff; color: #0b2a5b; font: inherit; font-weight: 700; cursor: pointer; }
+.catalogo-montar-voltar-like:disabled { opacity: .6; cursor: default; }
+#catalogo-montar-offline-status { font-size: 13px; color: #374151; font-weight: 600; }
+html.modo-consulta-catalogo.consulta-montar.montar-aberto .catalogo-montar-offline { display: none; }

@@ -126,7 +126,7 @@ describe("GET /api/catalogo/buscar", () => {
       .query({ marca: "GM", modelo: "Astra", ano: "2005", categoria: "alternador" });
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ total: 1, produtos: [{ codigo: "P1", duasFotos: false }], pagina: 1, limite: 400 });
+    expect(res.body).toEqual({ total: 1, produtos: [{ codigo: "P1", duasFotos: false, promocao: false, precoPromocao: null }], pagina: 1, limite: 400 });
     expect(buscarProdutosPainel).toHaveBeenCalledWith({
       marca: "GM", modelo: "Astra", ano: 2005, anoInicio: null, anoFim: null, motor: "",
       categoria: "alternador", fabricante: "", tipoCompleto: null,
@@ -168,7 +168,7 @@ describe("GET /api/catalogo/buscar", () => {
       .get("/api/catalogo/buscar")
       .query({ fabricante: "GAUSS", pagina: "2" });
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ total: 566, produtos: [{ codigo: "P900", duasFotos: false }], pagina: 2, limite: 400 });
+    expect(res.body).toEqual({ total: 566, produtos: [{ codigo: "P900", duasFotos: false, promocao: false, precoPromocao: null }], pagina: 2, limite: 400 });
     expect(buscarProdutosPainel).toHaveBeenCalledWith({
       marca: "", modelo: "", ano: null, anoInicio: null, anoFim: null, motor: "",
       categoria: "", fabricante: "GAUSS", tipoCompleto: null,
@@ -191,8 +191,8 @@ describe("GET /api/catalogo/buscar", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.produtos).toEqual([
-      { codigo: "P1", duasFotos: false },
-      { codigo: "P2", duasFotos: true },
+      { codigo: "P1", duasFotos: false, promocao: false, precoPromocao: null },
+      { codigo: "P2", duasFotos: true, promocao: false, precoPromocao: null },
     ]);
     expect(temMultiplasFotos).toHaveBeenCalledWith("P1");
     expect(temMultiplasFotos).toHaveBeenCalledWith("P2");
@@ -277,7 +277,7 @@ describe("GET /api/catalogo/buscar-codigo", () => {
     buscarPorCodigo.mockReturnValue([{ codigo: "P1", nome: "ALOJAMENTO ALTER TESTE" }]);
     const res = await request(buildApp()).get("/api/catalogo/buscar-codigo").query({ codigo: "REF1" });
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ total: 1, produtos: [{ codigo: "P1", nome: "ALOJAMENTO ALTER TESTE", duasFotos: false }] });
+    expect(res.body).toEqual({ total: 1, produtos: [{ codigo: "P1", nome: "ALOJAMENTO ALTER TESTE", duasFotos: false, promocao: false, precoPromocao: null }] });
     expect(buscarPorCodigo).toHaveBeenCalledWith("REF1");
   });
 
@@ -311,7 +311,7 @@ describe("GET /api/catalogo/buscar-nome", () => {
     buscarPorNomePainel.mockReturnValue({ total: 1, produtos: [{ codigo: "P1", nome: "ALTERNADOR TESTE" }] });
     const res = await request(buildApp()).get("/api/catalogo/buscar-nome").query({ nome: "alternador" });
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ total: 1, produtos: [{ codigo: "P1", nome: "ALTERNADOR TESTE", duasFotos: false }] });
+    expect(res.body).toEqual({ total: 1, produtos: [{ codigo: "P1", nome: "ALTERNADOR TESTE", duasFotos: false, promocao: false, precoPromocao: null }] });
     expect(buscarPorNomePainel).toHaveBeenCalledWith("alternador");
   });
 

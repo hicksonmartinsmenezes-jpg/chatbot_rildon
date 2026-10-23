@@ -5,6 +5,7 @@ const { listarFotos, obterFoto, obterFotoPorNome, definirFotoPreferida, ocultarF
 const { buscarProdutosPainel, buscarPorCodigo, buscarPorNomePainel, listarFabricantes, listarFabricantesCatalogoCompleto, listarMarcasVeiculoConhecidas, decodificarFabricanteCompleto, recarregarIndices: recarregarIndicesProdutos, listarLinhasParaEdicaoCategoria, definirLinhaProduto, PSEUDO_FABRICANTE_DIVERSOS } = require("../services/catalogo-x2.service");
 const { listarSecoes, listarLinhasPorSecao } = require("../services/catalogo.service");
 const prontos = require("../services/catalogo-prontos.service");
+const promocionais = require("../services/catalogo-promocionais.service");
 const { gerarPdfCatalogo, gerarPdfCatalogoCompleto, gerarPdfCatalogoPromocional, limparCacheBboxFotos } = require("../services/catalogo-pdf.service");
 const { carregarEstoque, statusCache } = require("../services/estoque.service");
 const { anexarAplicacoesOrganizadas } = require("../services/catalogo-aplicacao-ia.service");
@@ -144,11 +145,16 @@ function _parseCsvPrecos(conteudo) {
 // verdade (binário antigo, pré-2007) cai aqui e estoura na leitura —
 // mensagem de erro abaixo já orienta o usuário a salvar como .xlsx.
 async function _parseXlsxPrecos(buffer) {
+  // .xls de verdade (binário antigo, pré-2007: assinatura OLE2 D0CF11E0)
+  // exceljs não lê — vai pela lib "xlsx" (SheetJS), que entende BIFF.
+  if (buffer && buffer.length > 4 && buffer.readUInt32BE(0) === 0xD0CF11E0) {
+    return _parseXlsPrecos(buffer);
+  }
   const workbook = new ExcelJS.Workbook();
   try {
     await workbook.xlsx.load(buffer);
   } catch {
-    throw new Error('Não consegui ler a planilha. Se for um .xls antigo, salve como .xlsx (Excel: "Salvar como" → "Pasta de Trabalho do Excel") e envie de novo.');
+    throw new Error("Não consegui ler a planilha. Confira se o arquivo é um .xls, .xlsx ou .csv válido.");
   }
   const planilha = workbook.worksheets[0];
   if (!planilha) throw new Error("A planilha enviada está vazia.");
@@ -164,6 +170,22 @@ async function _parseXlsxPrecos(buffer) {
   });
   return _mapaPrecosDeLinhas(linhas, "Planilha");
 }
+
+// .xls antigo (BIFF) via SheetJS — mesmo formato de matriz de linhas.
+function _parseXlsPrecos(buffer) {
+  let linhas;
+  try {
+    const XLSX = require("xlsx");
+    const wb = XLSX.read(buffer, { type: "buffer" });
+    const aba = wb.Sheets[wb.SheetNames[0]];
+    if (!aba) throw new Error("vazia");
+    linhas = XLSX.utils.sheet_to_json(aba, { header: 1, raw: true, defval: "" });
+  } catch {
+    throw new Error("Não consegui ler a planilha. Confira se o arquivo é um .xls, .xlsx ou .csv válido.");
+  }
+  return _mapaPrecosDeLinhas(linhas.filter(l => l.some(c => String(c).trim() !== "")), "Planilha");
+}
+
 
 // GET /api/catalogo/buscar — painel "Catálogo de Produtos" (Task #240-243,
 // pedido do usuário em 2026-07-21): atendente digita marca/modelo/ano (e
@@ -238,6 +260,7 @@ async function buscarProdutosHandler(req, res) {
     const produtosComFlag = (resultado.produtos || []).map(p => ({
       ...p,
       duasFotos: temMultiplasFotos(p.codigo),
+      ...promocionais.infoPromocao(p.codigo),
     }));
 
     res.json({ ...resultado, produtos: produtosComFlag, pagina, limite: LIMITE_PAGINA_PAINEL });
@@ -350,35 +373,30 @@ async function exportarPdfHandler(req, res) {
       produtos = produtos.filter(p => {
         const ehNcp = typeof p.nome === "string" && p.nome.includes("*NCP*");
         if (ehNcp) return !!p.estoque && Number(p.estoque.qtd) > 0;
-        return !!p.estoque && (p.estoque.precoVarejo != null || p.estoque.precoAtacado != null);
+        // 2026-10-22 (pedido do usuário): "sem preço e sem estoque não entra no
+        // catálogo, exclui automaticamente" — só sai quem não tem NEM preço NEM
+        // estoque; tendo um dos dois, entra.
+        if (!p.estoque) return false;
+        const temPreco = p.estoque.precoVarejo != null || p.estoque.precoAtacado != null;
+        return temPreco || Number(p.estoque.qtd) > 0;
       });
       if (!produtos.length) {
         return res.status(404).json({
           error: totalAntesDoFiltroNegocio
-            ? `${totalAntesDoFiltroNegocio} peça(s) encontrada(s) pra "${fabricanteCompleto}", mas nenhuma passou no filtro (itens *NCP* precisam de estoque; os demais precisam de preço cadastrado) — nada pra exportar.`
+            ? `${totalAntesDoFiltroNegocio} peça(s) encontrada(s) pra "${fabricanteCompleto}", mas nenhuma passou no filtro (itens *NCP* precisam de estoque; os demais precisam de preço ou estoque) — nada pra exportar.`
             : "Nenhuma peça encontrada pra exportar com esses critérios.",
         });
       }
 
-      // Pedido do usuário (2026-09-05): também só entra produto com foto.
-      // Aplicado DEPOIS do filtro de preço, com mensagem própria, pra
-      // distinguir no erro qual dos dois filtros zerou o resultado.
-      //
-      // 2026-10-09 (auditoria de performance): este filtro usava
-      // `listarFotos(p.codigo).length > 0`, e o comentário antigo afirmava
-      // que listarFotos era "metadados só, sem ler bytes, barato". ERRADO —
-      // listarFotos chama _reordenarFotos, que EXTRAI OS BYTES de cada foto
-      // (openSync + readSync + inflateRawSync no zip) pra ler as dimensões.
-      // Num fabricante de 1000 produtos isso eram ~900 leituras de arquivo
-      // síncronas num único .filter(), com o event loop travado, ANTES de
-      // qualquer header HTTP — o maior travamento de toda a exportação, e
-      // fora do alcance do _cederEventLoop do gerador. temAlgumaFoto responde
-      // a mesma pergunta olhando só o índice em memória.
+      // 2026-10-23 (pedido do usuário): "preciso garantir que nenhum produto
+      // entre sem foto". Aplicado DEPOIS do filtro de preço/estoque. Usa
+      // temAlgumaFoto (só índice em memória, sem ler arquivo — listarFotos
+      // extrai bytes e travava o event loop; ver catalogo-fotos.service).
       const totalAntesDaFoto = produtos.length;
       produtos = produtos.filter(p => temAlgumaFoto(p.codigo));
       if (!produtos.length) {
         return res.status(404).json({
-          error: `${totalAntesDaFoto} peça(s) com preço encontrada(s) pra "${fabricanteCompleto}", mas nenhuma tem foto cadastrada — nada pra exportar.`,
+          error: `${totalAntesDaFoto} peça(s) com preço/estoque encontrada(s) pra "${fabricanteCompleto}", mas nenhuma tem foto cadastrada — nada pra exportar.`,
         });
       }
     }
@@ -669,6 +687,22 @@ async function exportarPdfPromocionalHandler(req, res) {
     // quebra por um valor inesperado.
     const modo = req.body.modo === "fabricante" ? "fabricante" : "linha";
 
+    // 2026-10-23 (aba "Promocionais" do programa da loja): com `salvarNome` o PDF
+    // não volta no corpo da resposta — fica guardado no servidor, entra na lista
+    // de promocionais de todas as máquinas, e a resposta é só o JSON do item.
+    const salvarNome = String(req.body.salvarNome || "").trim();
+    if (salvarNome) {
+      const destino = promocionais.novoDestino();
+      try {
+        await gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino.stream, modo);
+        const item = await destino.publicar({ nome: salvarNome, itens: produtos.length, modo, codigos: produtos.map(p => p.codigo), precos: Object.fromEntries(produtos.map(p => [String(p.codigo), precosPorCodigo.get(String(p.codigo)) ?? null])) });
+        return res.json({ ok: true, ...item, naoEncontrados });
+      } catch (e) {
+        destino.descartar();
+        throw e;
+      }
+    }
+
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="catalogo-promocional-${Date.now()}.pdf"`);
     if (naoEncontrados.length) {
@@ -812,7 +846,7 @@ async function buscarPorCodigoHandler(req, res) {
     if (!codigo) {
       return res.status(400).json({ error: "Informe o código de fabricante, referência ou código interno da peça." });
     }
-    const produtos = buscarPorCodigo(codigo).map(p => ({ ...p, duasFotos: temMultiplasFotos(p.codigo) }));
+    const produtos = buscarPorCodigo(codigo).map(p => ({ ...p, duasFotos: temMultiplasFotos(p.codigo), ...promocionais.infoPromocao(p.codigo) }));
     res.json({ total: produtos.length, produtos });
   } catch (err) {
     logger.error("❌ Erro ao buscar produto por código:", err.message);
@@ -835,7 +869,7 @@ async function buscarPorNomeHandler(req, res) {
       return res.status(400).json({ error: "Informe o nome ou parte do nome da peça." });
     }
     const resultado = buscarPorNomePainel(nome);
-    const produtosComFlag = (resultado.produtos || []).map(p => ({ ...p, duasFotos: temMultiplasFotos(p.codigo) }));
+    const produtosComFlag = (resultado.produtos || []).map(p => ({ ...p, duasFotos: temMultiplasFotos(p.codigo), ...promocionais.infoPromocao(p.codigo) }));
     res.json({ ...resultado, produtos: produtosComFlag });
   } catch (err) {
     logger.error("❌ Erro ao buscar produto por nome:", err.message);
@@ -1116,10 +1150,19 @@ async function definirLinhaProdutoHandler(req, res) {
 // Protegido por authSession (aplicado em app.js) — aceita tanto sessão de
 // usuário logado quanto o Bearer API_TOKEN (usado pelo script via HTTP,
 // mesmo padrão de scripts/x2-whatsapp-alerta.js).
+// GET /api/catalogo/pronto-versao — versão atual dos catálogos prontos; o
+// programa .exe da loja compara com a da cópia local pra saber se precisa
+// baixar o catálogo de novo.
+function versaoProntosHandler(req, res) {
+  res.json({ versao: prontos.versao() });
+}
+
 async function recarregarEstoqueHandler(req, res) {
   try {
     await carregarEstoque();
-    prontos.limparTodos(); // preços/estoque novos: catálogos refeitos no próximo clique
+    require("../services/espelho.service").avisar("estoque");
+    // 2026-10-22 (pedido do usuário): importar estoque NÃO refaz os PDFs; eles só são
+    // atualizados nas segundas-feiras (ver catalogo-prontos.service.js, iniciar).
     res.json({ ok: true, ...statusCache() });
   } catch (err) {
     logger.error("❌ Erro ao recarregar cache de estoque:", err.message);
@@ -1147,9 +1190,9 @@ async function recarregarCatalogoHandler(req, res) {
     // limparCacheBboxFotos) continuaria servindo o recorte calculado em
     // cima da foto ANTIGA até o processo reiniciar.
     limparCacheBboxFotos();
-    // Fotos/produtos mudaram: descarta os catálogos prontos; cada um é
-    // gerado de novo no próximo clique.
-    prontos.limparTodos();
+    // 2026-10-22 (pedido do usuário): os PDFs prontos só mudam nas segundas-feiras; sincronizar
+    // produtos/fotos NÃO apaga mais os catálogos prontos (antes: prontos.limparTodos()).
+    require("../services/espelho.service").avisar("produtos");
     res.json({ ok: true, produtosComFoto: idx.size });
   } catch (err) {
     logger.error("❌ Erro ao recarregar catálogo/fotos:", err.message);
@@ -1157,7 +1200,30 @@ async function recarregarCatalogoHandler(req, res) {
   }
 }
 
+// GET /api/catalogo/promocionais — lista dos catálogos promocionais já gerados.
+function listarPromocionaisHandler(req, res) {
+  res.json({ itens: promocionais.listar() });
+}
+
+// GET /api/catalogo/promocionais/:id/pdf — o PDF guardado (o programa da loja
+// baixa na 1ª abertura e guarda cópia local; o id nunca muda de conteúdo).
+function pdfPromocionalHandler(req, res) {
+  const arquivo = promocionais.caminhoPdf(req.params.id);
+  if (!arquivo) return res.status(404).json({ error: "Catálogo promocional não encontrado." });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", 'inline; filename="catalogo-promocional.pdf"');
+  res.setHeader("X-Catalogo-Versao", req.params.id);
+  return res.sendFile(arquivo);
+}
+
+// DELETE /api/catalogo/promocionais/:id
+function removerPromocionalHandler(req, res) {
+  if (!promocionais.remover(req.params.id)) return res.status(404).json({ error: "Catálogo promocional não encontrado." });
+  return res.json({ ok: true });
+}
+
 module.exports = {
+  _parseXlsxPrecos,
   listarFotosHandler,
   servirFotoHandler,
   servirFotoPorNomeHandler,
@@ -1168,6 +1234,10 @@ module.exports = {
   buscarProdutosHandler,
   listarMontadorasHandler,
   recarregarEstoqueHandler,
+  versaoProntosHandler,
+  listarPromocionaisHandler,
+  pdfPromocionalHandler,
+  removerPromocionalHandler,
   recarregarCatalogoHandler,
   listarSecoesHandler,
   listarLinhasHandler,

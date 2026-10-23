@@ -24,13 +24,31 @@ describe("consulta do catálogo sem login", () => {
     expect(r.roteador).not.toHaveBeenCalled();
     expect(r.next).toHaveBeenCalled();
   });
-  test.each(["POST", "PUT", "DELETE"])("nunca libera %s", (method) => {
-    expect(chamar({ method, path: "/catalogo/produtos/recarregar" }).roteador).not.toHaveBeenCalled();
+  test.each(["PUT", "DELETE", "PATCH"])("nunca libera %s", (method) => {
+    expect(chamar({ method, path: "/catalogo/produtos/X/linha" }).roteador).not.toHaveBeenCalled();
   });
-  test("não libera rotas fora da consulta nem fotos ocultas", () => {
+  // 2026-10-21: o programa do balcão também edita (fotos e Linha do produto).
+  test.each([
+    "/catalogo/produtos/X1/foto-preferida",
+    "/catalogo/produtos/X1/foto-ocultar",
+    "/catalogo/produtos/X1/linha",
+    "/catalogo/produtos/X1/fotos/upload",
+    "/catalogo/exportar-selecionados-pdf",
+    "/catalogo/promocional/exportar-pdf",
+    "/catalogo/promocional/importar-arquivo"
+  ])("libera POST %s", (path) => {
+    expect(chamar({ method: "POST", path }).roteador).toHaveBeenCalled();
+  });
+  test.each(["/catalogo/produtos/recarregar", "/catalogo/estoque/recarregar"])("POST de manutenção continua exigindo login: %s", (path) => {
+    expect(chamar({ method: "POST", path }).roteador).not.toHaveBeenCalled();
+  });
+  test("POST sem o cabeçalho ou de IP público não entra", () => {
+    expect(chamar({ method: "POST", path: "/catalogo/produtos/X1/linha", headers: {} }).roteador).not.toHaveBeenCalled();
+    expect(chamar({ method: "POST", path: "/catalogo/produtos/X1/linha", ip: "200.10.20.30" }).roteador).not.toHaveBeenCalled();
+  });
+  test("não libera rotas fora da consulta", () => {
     expect(chamar({ path: "/tickets" }).roteador).not.toHaveBeenCalled();
     expect(chamar({ path: "/catalogo/categoria-linhas" }).roteador).not.toHaveBeenCalled();
-    expect(chamar({ path: "/catalogo/produtos/X/fotos", query: { incluirOcultas: "1" } }).roteador).not.toHaveBeenCalled();
   });
   test("não libera IP público nem acesso por proxy/túnel", () => {
     expect(chamar({ ip: "200.10.20.30" }).roteador).not.toHaveBeenCalled();

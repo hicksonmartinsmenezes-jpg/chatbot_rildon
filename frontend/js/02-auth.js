@@ -50,6 +50,15 @@ function apiHeaders(extra = {}, body = null) {
 
 // ─── Fetch autenticado — sempre com credentials: "include" para enviar cookie ─
 async function apiFetch(url, options = {}) {
+  // Modo consulta (.exe da loja): o painel dispara sozinho, ao abrir, buscas de
+  // tickets/histórico/status do bot que não existem aqui (e voltariam 401, com
+  // o aviso "Ação não disponível no modo consulta" logo na abertura). Só o
+  // catálogo é chamado de verdade; o resto responde 403 em silêncio, sem rede.
+  if (MODO_CONSULTA_CATALOGO && !/\/api\/catalogo\//.test(String(url))) {
+    return new Response(JSON.stringify({ error: "Indisponível no modo consulta." }), {
+      status: 403, headers: { "Content-Type": "application/json" }
+    });
+  }
   const timeoutMs = Number(options.timeoutMs || 20000);
   const controller = new AbortController();
   let externalAbortHandler = null;

@@ -169,6 +169,9 @@ app.use("/api", mcpRoutes);
 // Precisa vir ANTES do authSession global abaixo.
 app.use("/api", consultaCatalogoSemLogin(catalogoRoutes));
 
+// Avisos internos entre o painel e o contêiner do catálogo (segredo compartilhado + rede interna).
+app.use("/api", require("./routes/interno.routes"));
+
 // A partir daqui tudo exige sessão. authSession roda UMA vez por requisição
 // (antes rodava em cada mount, repetindo a consulta ao banco).
 app.use("/api", authSession);

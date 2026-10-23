@@ -69,6 +69,7 @@ const fs = require("fs");
 const path = require("path");
 const PDFDocument = require("pdfkit");
 const jpeg = require("jpeg-js");
+const { ehMesmaFoto, limparCacheAhash } = require("./catalogo-foto-duplicada");
 const { obterFoto } = require("./catalogo-fotos.service");
 const { listarMarcasVeiculoConhecidas } = require("./catalogo-x2.service");
 
@@ -1595,6 +1596,7 @@ const _bboxCache = new Map();
 
 function limparCacheBboxFotos() {
   _bboxCache.clear();
+  limparCacheAhash(); // mesma motivação: foto trocada, impressão digital velha não vale mais
 }
 
 function _bboxConteudoFoto(buffer, mimetype, cacheKey = null) {
@@ -1782,50 +1784,18 @@ function _desenharFotoAjustada(doc, buffer, mimetype, x, y, boxWidth, boxHeight,
 // Quando duas fotos são a mesma, fica a MAIOR (melhor resolução no PDF).
 // Olha até 4 fotos por produto pra ainda achar uma 2ª foto diferente quando
 // a 2ª é cópia da 1ª.
-const FOTO_DUP_ASPECTO_TOL = 0.04;
-const FOTO_DUP_RAZAO_MINIATURA = 1.4;
-const FOTO_DUP_HAMMING_MAX = 8;
 const FOTOS_CANDIDATAS_MAX = 4;
-const _ahashFotoCache = new Map();
 
-function _ahashJpeg(foto) {
-  if (_ahashFotoCache.has(foto.cacheKey)) return _ahashFotoCache.get(foto.cacheKey);
-  let bits;
-  try {
-    const im = jpeg.decode(foto.buffer, { useTArray: true, maxMemoryUsageInMB: 256 });
-    const g = [];
-    for (let y = 0; y < 8; y += 1) {
-      for (let x = 0; x < 8; x += 1) {
-        const px = Math.floor(((x + 0.5) * im.width) / 8);
-        const py = Math.floor(((y + 0.5) * im.height) / 8);
-        const i = (py * im.width + px) * 4;
-        g.push((im.data[i] + im.data[i + 1] + im.data[i + 2]) / 3);
-      }
-    }
-    const media = g.reduce((a, b) => a + b, 0) / 64;
-    bits = g.map(v => (v > media ? 1 : 0)).join("");
-  } catch {
-    bits = null; // JPEG que o jpeg-js não decodifica (progressivo exótico etc.) — sem impressão digital
-  }
-  _ahashFotoCache.set(foto.cacheKey, bits);
-  return bits;
-}
-
+// O critério de "mesma foto" mora em catalogo-foto-duplicada.js desde
+// 2026-10-23: o Consultar do programa da loja precisava exatamente da mesma
+// resposta (lá o card mostrava a peça repetida), e duas cópias da regra em
+// arquivos diferentes iam divergir no primeiro ajuste. Aqui fica só a
+// adaptação do formato usado neste arquivo (imagem já aberta pelo pdfkit).
 function _ehMesmaFoto(a, b) {
-  if (a.buffer.length === b.buffer.length && a.buffer.equals(b.buffer)) return true;
-  const ra = a.imagem.width / a.imagem.height;
-  const rb = b.imagem.width / b.imagem.height;
-  if (Math.abs(ra - rb) / Math.max(ra, rb) > FOTO_DUP_ASPECTO_TOL) return false;
-  const ma = Math.max(a.imagem.width, a.imagem.height);
-  const mb = Math.max(b.imagem.width, b.imagem.height);
-  if (Math.max(ma, mb) / Math.min(ma, mb) < FOTO_DUP_RAZAO_MINIATURA) return false;
-  if (a.mimetype !== "image/jpeg" || b.mimetype !== "image/jpeg") return false;
-  const ha = _ahashJpeg(a);
-  const hb = _ahashJpeg(b);
-  if (!ha || !hb) return false;
-  let diferentes = 0;
-  for (let i = 0; i < 64; i += 1) if (ha[i] !== hb[i]) diferentes += 1;
-  return diferentes <= FOTO_DUP_HAMMING_MAX;
+  return ehMesmaFoto(
+    { buffer: a.buffer, mimetype: a.mimetype, largura: a.imagem.width, altura: a.imagem.height, chave: a.cacheKey },
+    { buffer: b.buffer, mimetype: b.mimetype, largura: b.imagem.width, altura: b.imagem.height, chave: b.cacheKey },
+  );
 }
 
 function _fotosUtilizaveis(doc, codigoProduto) {

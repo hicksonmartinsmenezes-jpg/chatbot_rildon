@@ -1,2 +1,5 @@
 node_modules
 dist
+app/vendor/
+pdfjs.tgz
+diag-fotos.txt

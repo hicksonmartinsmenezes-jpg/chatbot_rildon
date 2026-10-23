@@ -326,6 +326,40 @@ async function onCatalogoFabricanteCompletoChange() {
 // fabricante vazaria memória seguindo o blob anterior preso vivo.
 let _catalogoCompletoPreviewUrl = null;
 
+// Programa .exe da loja: o 1º clique baixa o catálogo e guarda uma cópia na
+// própria máquina; nos cliques seguintes abre a cópia local na hora. Só baixa
+// de novo quando o servidor avisa que mudou (versão diferente) — ver
+// /api/catalogo/pronto-versao. Sem o programa (navegador comum), baixa sempre.
+async function _catalogoPdfComCopiaLocal(fabricante, statusEl) {
+  const app = window.catalogoLoja;
+  const temCopia = !!(app && app.catalogoLocalLer && app.catalogoLocalSalvar);
+  let versaoServidor = null;
+  let local = null;
+  if (temCopia) {
+    try {
+      const r = await fetch("/api/catalogo/pronto-versao", { credentials: "include" });
+      if (r.ok) versaoServidor = String((await r.json()).versao || "") || null;
+    } catch (_) { /* servidor fora do ar: usa a cópia local, se houver */ }
+    try { local = await app.catalogoLocalLer(fabricante); } catch (_) { local = null; }
+    if (local && local.bytes && (!versaoServidor || local.versao === versaoServidor)) {
+      return new Blob([local.bytes], { type: "application/pdf" });
+    }
+    if (statusEl) statusEl.textContent = "Baixando o catálogo (só na primeira vez ou quando houver atualização)...";
+  }
+  const res = await fetch(`/api/catalogo/exportar-pdf?fabricante=${encodeURIComponent(fabricante)}`, { credentials: "include" });
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    throw new Error(errBody.error || "Erro ao gerar pré-visualização.");
+  }
+  const buf = await res.arrayBuffer();
+  if (temCopia) {
+    const versao = res.headers.get("X-Catalogo-Versao") || versaoServidor || "";
+    const opt = document.querySelector(`#catalogo-fabricante-completo option[value="${String(fabricante).replace(/"/g, '\\"')}"]`);
+    app.catalogoLocalSalvar(fabricante, versao, new Uint8Array(buf), opt ? opt.textContent.trim() : fabricante).catch(() => {});
+  }
+  return new Blob([buf], { type: "application/pdf" });
+}
+
 async function _atualizarPreviewCatalogoCompleto(fabricante) {
   const wrap = document.getElementById("catalogo-completo-preview");
   const frame = document.getElementById("catalogo-completo-preview-frame");
@@ -350,14 +384,9 @@ async function _atualizarPreviewCatalogoCompleto(fabricante) {
   }
 
   try {
-    const res = await fetch(`/api/catalogo/exportar-pdf?fabricante=${encodeURIComponent(fabricante)}`, { credentials: "include" });
-    if (!res.ok) {
-      const errBody = await res.json().catch(() => ({}));
-      throw new Error(errBody.error || "Erro ao gerar pré-visualização.");
-    }
-    const blob = await res.blob();
+    const blob = await _catalogoPdfComCopiaLocal(fabricante, statusEl);
     _catalogoCompletoPreviewUrl = URL.createObjectURL(blob);
-    if (frame) frame.src = _catalogoCompletoPreviewUrl;
+    if (frame) frame.src = _catalogoCompletoPreviewUrl + (document.documentElement.classList.contains("modo-consulta-catalogo") ? "#navpanes=0&view=Fit" : "");
     if (statusEl) statusEl.classList.add("hidden");
   } catch (err) {
     if (statusEl) {
@@ -2176,6 +2205,14 @@ function _catalogoMontarLogo(valor) {
   return _CATALOGO_LOGOS_MARCAS.has(nome) ? nome : "";
 }
 
+// Sem logo: DIVERSOS mecânica ganha engrenagem/chave, DIVERSOS elétrica ganha raio; o resto segue com o ícone de PDF.
+function _catalogoMontarIcone(valor) {
+  const v = String(valor || "").toUpperCase();
+  if (v === "DIVERSOS::MECANICA") return "fa-gear";
+  if (v === "DIVERSOS::ELETRICA") return "fa-bolt";
+  return "fa-file-pdf";
+}
+
 async function _catalogoMontarRenderGrid() {
   const grid = document.getElementById("catalogo-montar-grid");
   if (!grid) return;
@@ -2185,11 +2222,14 @@ async function _catalogoMontarRenderGrid() {
     grid.innerHTML = '<p class="catalogo-completo-preview-status">Nenhum catálogo disponível no momento.</p>';
     return;
   }
+  const barra = document.getElementById("catalogo-montar-offline");
+  if (barra) barra.classList.toggle("hidden", !(window.catalogoLoja && window.catalogoLoja.catalogoLocalSalvar));
+  window._catalogoMontarOpcoes = opcoes;
   grid.innerHTML = opcoes.map(o => {
     const logo = _catalogoMontarLogo(o.value);
     const visual = logo
       ? `<img class="catalogo-montar-logo" src="logos-marcas/${logo}.png" alt="">`
-      : '<i class="fa-solid fa-file-pdf" aria-hidden="true"></i>';
+      : `<i class="fa-solid ${_catalogoMontarIcone(o.value)}" aria-hidden="true"></i>`;
     return `<button type="button" class="catalogo-montar-card" role="listitem" data-valor="${safe(o.value)}">` +
       `${visual}<span>${safe(o.label)}</span></button>`;
   }).join("");
@@ -2215,4 +2255,21 @@ function catalogoMontarVoltar() {
     select.value = "";
     onCatalogoFabricanteCompletoChange();
   }
+}
+
+// Programa da loja: baixa (um por vez) todos os catálogos que ainda não estão no computador
+// ou estão desatualizados, para poderem ser abertos sem o servidor. Só roda quando a pessoa clica.
+async function catalogoSalvarTodosOffline() {
+  const btn = document.getElementById("catalogo-montar-offline-btn");
+  const st = document.getElementById("catalogo-montar-offline-status");
+  const opcoes = window._catalogoMontarOpcoes || [];
+  if (!opcoes.length || !btn) return;
+  btn.disabled = true;
+  let ok = 0, falhas = 0;
+  for (let i = 0; i < opcoes.length; i++) {
+    if (st) st.textContent = `Salvando ${i + 1} de ${opcoes.length}: ${opcoes[i].label}...`;
+    try { await _catalogoPdfComCopiaLocal(opcoes[i].value, null); ok++; } catch (_) { falhas++; }
+  }
+  btn.disabled = false;
+  if (st) st.textContent = falhas ? `${ok} salvos, ${falhas} não puderam ser baixados.` : `Pronto: ${ok} catálogos salvos neste computador.`;
 }

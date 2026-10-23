@@ -4,8 +4,11 @@
 //
 // Regras (todas precisam valer, senão a requisição segue o fluxo normal, que
 // exige sessão):
-//   1. só leitura (GET/HEAD) e só rotas de CONSULTA do catálogo — nada de
-//      upload/edição/recarregar, nada de PDF promocional (POST);
+//   1. só as rotas do catálogo que o programa usa: leitura (GET/HEAD) e, desde
+//      2026-10-21 (pedido do usuário: "deixa editável também e não apenas
+//      leitura"), as edições feitas pelo balcão — trocar/ocultar/adicionar foto,
+//      corrigir a Linha do produto e os PDFs de seleção/promocional. Continuam
+//      FORA: recarregar estoque e recarregar o catálogo inteiro (manutenção);
 //   2. cabeçalho marcador `X-Consulta-Catalogo: 1` (o programa envia; o painel
 //      web normal não envia, então o login dele continua obrigatório);
 //   3. origem na rede interna (IP privado) e SEM cabeçalhos de proxy/túnel —
@@ -13,9 +16,22 @@
 const net = require("net");
 
 const ROTAS_LEITURA = [
-  /^\/catalogo\/(buscar|secoes|linhas|fabricantes|montadoras|fabricantes-completo|buscar-codigo|buscar-nome|exportar-pdf|fotos-versao)\/?$/,
+  /^\/catalogo\/(buscar|secoes|linhas|fabricantes|montadoras|fabricantes-completo|buscar-codigo|buscar-nome|exportar-pdf|fotos-versao|pronto-versao|promocionais|exe-versao|exe-download)\/?$/,
+  /^\/catalogo\/promocionais\/[a-z0-9]+\/pdf\/?$/,
   /^\/catalogo\/produtos\/[^/]+\/fotos(\/[^/]+(\/[^/]+)?)?\/?$/
 ];
+
+// Edições liberadas para o programa do balcão (POST). Mesma porteira dos GETs:
+// cabeçalho do programa + rede interna + sem proxy.
+const ROTAS_ESCRITA = [
+  /^\/catalogo\/produtos\/[^/]+\/(foto-preferida|foto-ocultar|linha)\/?$/,
+  /^\/catalogo\/produtos\/[^/]+\/fotos\/upload\/?$/,
+  /^\/catalogo\/exportar-selecionados-pdf\/?$/,
+  /^\/catalogo\/promocional\/(exportar-pdf|importar-arquivo)\/?$/
+];
+
+// Apagar um catálogo promocional guardado (aba "Promocionais", 2026-10-23) — único DELETE liberado.
+const ROTAS_APAGAR = [/^\/catalogo\/promocionais\/[a-z0-9]+\/?$/];
 
 function ipPrivado(ip) {
   let v = String(ip || "").replace(/^::ffff:/i, "");
@@ -27,14 +43,16 @@ function ipPrivado(ip) {
 
 function consultaCatalogoSemLogin(catalogoRouter) {
   return function (req, res, next) {
-    if (req.method !== "GET" && req.method !== "HEAD") return next();
+    const leitura = req.method === "GET" || req.method === "HEAD";
+    if (!leitura && req.method !== "POST" && req.method !== "DELETE") return next();
     if (req.get("x-consulta-catalogo") !== "1") return next();
     if (req.get("x-forwarded-for") || req.get("cf-connecting-ip") || req.get("forwarded")) return next();
     if (!ipPrivado(req.socket && req.socket.remoteAddress)) return next();
-    if (!ROTAS_LEITURA.some((re) => re.test(req.path))) return next();
-    if (req.query && req.query.incluirOcultas !== undefined) return next(); // fotos ocultas = só logado
+    const lista = leitura ? ROTAS_LEITURA : req.method === "DELETE" ? ROTAS_APAGAR : ROTAS_ESCRITA;
+    const liberada = lista.some((re) => re.test(req.path));
+    if (!liberada) return next();
     return catalogoRouter(req, res, next);
   };
 }
 
-module.exports = { consultaCatalogoSemLogin, ipPrivado, ROTAS_LEITURA };
+module.exports = { consultaCatalogoSemLogin, ipPrivado, ROTAS_LEITURA, ROTAS_ESCRITA, ROTAS_APAGAR };

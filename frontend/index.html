@@ -23,12 +23,11 @@
   <!-- Fallback para navegadores sem suporte a SVG favicon -->
   <link rel="icon" type="image/png"     href="android-chrome-512x512.png" sizes="512x512">
 
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css">
+  <!-- Fontes e ícones locais (vendor/): o programa da loja precisa funcionar sem internet. -->
+  <link rel="stylesheet" href="vendor/inter/inter.css">
+  <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css">
   <!-- CSS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <link rel="stylesheet" href="dist/bundle.fc054f10ce.css">
+  <link rel="stylesheet" href="dist/bundle.97d15d9c4c.css">
   <!-- CSS_BUNDLE_END -->
 <style>
     /* Centraliza colunas da tabela de histórico */
@@ -2065,7 +2064,7 @@ Como podemos ajudar você hoje?
       </button>
       <button type="button" class="catalogo-home-caixa" onclick="catalogoConsultaMostrar('montar')">
         <i class="fa-solid fa-book-open" aria-hidden="true"></i>
-        <span>Gerar Catálogos</span>
+        <span>Ver Catálogos</span>
       </button>
     </div>
   </div>
@@ -2078,7 +2077,7 @@ Como podemos ajudar você hoje?
       <i class="fa-solid fa-magnifying-glass"></i> Consultar
     </button>
     <button type="button" class="catalogo-consulta-tab" id="catalogo-consulta-tab-montar" onclick="catalogoConsultaMostrar('montar')">
-      <i class="fa-solid fa-book-open"></i> Gerar Catálogos
+      <i class="fa-solid fa-book-open"></i> Ver Catálogos
     </button>
   </div>
 
@@ -2228,6 +2227,10 @@ Como podemos ajudar você hoje?
     <div id="catalogo-form-completo" class="catalogo-erp-body hidden">
       <!-- Modo consulta: ícones dos catálogos prontos (um por fabricante); o
            clique abre o PDF contínuo. Escondido fora do modo consulta. -->
+      <div id="catalogo-montar-offline" class="catalogo-montar-offline hidden">
+        <button type="button" id="catalogo-montar-offline-btn" class="catalogo-montar-voltar-like" onclick="catalogoSalvarTodosOffline()"><i class="fa-solid fa-download"></i> Salvar todos para uso offline</button>
+        <span id="catalogo-montar-offline-status"></span>
+      </div>
       <div id="catalogo-montar-grid" class="catalogo-montar-grid" role="list"></div>
       <button type="button" id="catalogo-montar-voltar" class="catalogo-montar-voltar" onclick="catalogoMontarVoltar()">
         <i class="fa-solid fa-arrow-left"></i> Voltar aos catálogos
@@ -2543,9 +2546,9 @@ Como podemos ajudar você hoje?
     <i class="fa-solid fa-bell" aria-hidden="true"></i>
     <span id="toast-message">Novo atendimento recebido!</span>
   </div>
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <script src="vendor/libs/qrcode.min.js"></script>
   <script src="/socket.io/socket.io.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1"></script>
+  <script src="vendor/libs/chart.umd.js"></script>
   <style id="user-permissions-live-fix">
     .user-permissions-field{display:block!important;grid-column:1/-1!important;margin:14px 0!important;padding:16px!important;border:1px solid var(--border,#334155)!important;border-radius:12px!important;background:var(--panel-2,#111827)!important}
     .user-permissions-header{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:12px!important;margin-bottom:12px!important}
@@ -2565,7 +2568,7 @@ Como podemos ajudar você hoje?
 
 
   <!-- JS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <script src="dist/bundle.ff3a16a925.js"></script>
+  <script src="dist/bundle.02229b89cb.js"></script>
   <!-- JS_BUNDLE_END -->
   <script id="user-permissions-live-fix">
   (() => {

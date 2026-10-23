@@ -1,6 +1,6 @@
 {
   "name": "catalogo-rildon-loja",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Catálogo Rildon Eletropeças — consulta no balcão (versão Loja)",
   "main": "main.js",
   "author": "Rildon Eletropeças",
@@ -22,20 +22,29 @@
     "files": [
       "main.js",
       "preload.js",
+      "icon.ico",
+      "icon.png",
       "erro.html",
+      "app/**/*",
+      "logo-rildon.png",
+      "logos-marcas/*.png",
       "package.json"
     ],
     "win": {
       "target": [
         "nsis"
       ],
-      "icon": "icon.png",
+      "icon": "icon.ico",
       "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true
-    }
+    },
+    "afterPack": "aplicar-icone.js",
+    "asarUnpack": [
+      "app/vendor/pdfjs/**"
+    ]
   }
 }

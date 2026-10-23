@@ -33,6 +33,7 @@ function enviar(res, chave) {
   const { size } = fs.statSync(caminho);
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Length", size);
+  res.setHeader("X-Catalogo-Versao", versao());
   res.setHeader("Content-Disposition", `inline; filename="catalogo-completo.pdf"`);
   return new Promise((resolve, reject) => {
     const leitura = fs.createReadStream(caminho);
@@ -67,7 +68,30 @@ function novoDestino(chave) {
   };
 }
 
+// "Versão" dos catálogos: muda sempre que os PDFs guardados são descartados
+// (foto/produto/estoque atualizado). O programa .exe da loja guarda uma cópia
+// local de cada catálogo com essa versão e só baixa de novo quando ela muda.
+const ARQ_VERSAO = path.join(PASTA, "versao.txt");
+function versao() {
+  try {
+    const v = fs.readFileSync(ARQ_VERSAO, "utf8").trim();
+    if (v) return v;
+  } catch { /* ainda não existe */ }
+  return novaVersao();
+}
+function novaVersao() {
+  const v = String(Date.now());
+  try {
+    fs.mkdirSync(PASTA, { recursive: true });
+    fs.writeFileSync(ARQ_VERSAO, v);
+  } catch (err) {
+    logger.warn(`[Catálogos prontos] não consegui gravar a versão: ${err.message}`);
+  }
+  return v;
+}
+
 function limparTodos() {
+  novaVersao();
   if (!fs.existsSync(PASTA)) return 0;
   let n = 0;
   for (const f of fs.readdirSync(PASTA)) {
@@ -131,20 +155,48 @@ async function aquecerTodos({ forcar = false, pausaMs = 3000 } = {}) {
   return resumo;
 }
 
-// Liga o aquecimento: ao subir (só preenche o que falta) e todo dia de madrugada
-// (refaz tudo — pega preços, fotos e aplicações novas).
-function iniciar({ horaRefazer = 3 } = {}) {
+// Com o catálogo rodando em contêiner próprio (src/catalogo-server.js), quem aquece os PDFs é
+// ELE. O processo do painel só aquece se não achar o contêiner do catálogo no ar.
+async function cederAoCatalogo() {
+  if (process.env.CATALOGO_PROCESSO === "catalogo") return false;
+  try {
+    const { urlDoOutro } = require("./espelho.service");
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 3000);
+    const r = await fetch(urlDoOutro() + "/health", { signal: ctl.signal });
+    clearTimeout(t);
+    return r.ok;
+  } catch { return false; }
+}
+
+// Fuso da loja. ⚠️ Corrigido 2026-10-23 (varredura): o contêiner roda em UTC — conferido ao
+// vivo, `date` devolve "UTC" e new Date().getHours() marcava 15 quando na loja era meio-dia.
+// Como a regra abaixo usava a hora do contêiner, a regeneração de segunda "às 20h" caía às
+// 17h da loja, dentro do expediente — exatamente o que o comentário dizia querer evitar.
+// Agora a hora e o dia da semana são sempre lidos no horário da LOJA, não importa o fuso em
+// que o processo esteja rodando.
+const FUSO_LOJA = process.env.FUSO_LOJA || "America/Sao_Paulo";
+
+function agoraNaLoja(quando = new Date()) {
+  return new Date(quando.toLocaleString("en-US", { timeZone: FUSO_LOJA }));
+}
+
+// Liga o aquecimento. Por padrão NÃO aquece ao subir (gerar 100+ catálogos no meio do
+// expediente deixa o servidor lento); refaz tudo SÓ nas segundas-feiras às 20h da loja
+// (pedido do usuário, 2026-10-22), com folga até as 00h, quando os programas da loja baixam
+// os catálogos atualizados (ver desktop-catalogo/main.js).
+function iniciar({ horaRefazer = 20, diaRefazer = 1, aquecerAoSubir = false } = {}) {
   if (process.env.CATALOGOS_PRONTOS_AUTO === "0") return;
-  setTimeout(() => aquecerTodos(), 90 * 1000);
+  if (aquecerAoSubir) setTimeout(() => aquecerTodos(), 90 * 1000);
   let ultimoDia = null;
   setInterval(() => {
-    const agora = new Date();
+    const agora = agoraNaLoja();
     const dia = agora.toDateString();
-    if (agora.getHours() === horaRefazer && ultimoDia !== dia) {
+    if (agora.getDay() === diaRefazer && agora.getHours() === horaRefazer && ultimoDia !== dia) {
       ultimoDia = dia;
-      aquecerTodos({ forcar: true });
+      cederAoCatalogo().then((ceder) => { if (!ceder) aquecerTodos({ forcar: true }); });
     }
   }, 10 * 60 * 1000).unref();
 }
 
-module.exports = { arquivo, existe, enviar, novoDestino, limparTodos, contar, aquecerTodos, iniciar };
+module.exports = { versao, arquivo, existe, enviar, novoDestino, limparTodos, contar, aquecerTodos, iniciar, agoraNaLoja, FUSO_LOJA };

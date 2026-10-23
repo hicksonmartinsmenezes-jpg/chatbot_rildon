@@ -10,6 +10,10 @@ const {
   ocultarFotoHandler,
   adicionarFotoHandler,
   versaoFotosHandler,
+  versaoProntosHandler,
+  listarPromocionaisHandler,
+  pdfPromocionalHandler,
+  removerPromocionalHandler,
   buscarProdutosHandler,
   listarSecoesHandler,
   listarLinhasHandler,
@@ -176,5 +180,36 @@ router.get("/catalogo/categoria-linhas", listarCategoriaLinhasHandler);
 // em toda URL de foto pra garantir cache-busting real (ver comentário em
 // versaoFotosHandler/catalogo-fotos.service.js).
 router.get("/catalogo/fotos-versao", versaoFotosHandler);
+router.get("/catalogo/pronto-versao", versaoProntosHandler);
+// Catálogos promocionais guardados (aba "Promocionais" do programa da loja).
+router.get("/catalogo/promocionais", listarPromocionaisHandler);
+router.get("/catalogo/promocionais/:id/pdf", pdfPromocionalHandler);
+router.delete("/catalogo/promocionais/:id", removerPromocionalHandler);
+
+// Atualização do programa da loja (2026-10-23): o programa pergunta qual é a versão mais nova do
+// instalador guardado em catalogo-exe/ (versao.json + .exe, colocados por publicar-exe.ps1) e, se for maior
+// que a dele, mostra o aviso "Baixar nova versão".
+const path = require("path");
+const fs = require("fs");
+const PASTA_EXE = path.join(__dirname, "..", "..", "catalogo-exe");
+function _infoExe() {
+  try {
+    const info = JSON.parse(fs.readFileSync(path.join(PASTA_EXE, "versao.json"), "utf8"));
+    const arquivo = path.basename(String(info.arquivo || ""));
+    const caminho = path.join(PASTA_EXE, arquivo);
+    if (!/^\d+\.\d+\.\d+$/.test(String(info.versao)) || !arquivo.toLowerCase().endsWith(".exe") || !fs.existsSync(caminho)) return null;
+    return { versao: String(info.versao), notas: String(info.notas || "").slice(0, 300), caminho, tamanho: fs.statSync(caminho).size };
+  } catch { return null; }
+}
+router.get("/catalogo/exe-versao", (_req, res) => {
+  const i = _infoExe();
+  if (!i) return res.status(404).json({ error: "Nenhuma versão publicada." });
+  res.json({ versao: i.versao, notas: i.notas, tamanho: i.tamanho });
+});
+router.get("/catalogo/exe-download", (_req, res) => {
+  const i = _infoExe();
+  if (!i) return res.status(404).json({ error: "Nenhuma versão publicada." });
+  res.download(i.caminho, "Catalogo Rildon Setup.exe");
+});
 
 module.exports = router;

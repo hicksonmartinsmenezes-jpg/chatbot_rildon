@@ -1841,6 +1841,10 @@ html.modo-consulta-catalogo .sidebar,
 html.modo-consulta-catalogo .topbar,
 html.modo-consulta-catalogo #login-screen { display: none !important; }
 
+/* Botão principal das buscas (Localizar Produto): azul marinho, igual ao resto do programa. */
+html.modo-consulta-catalogo .catalogo-erp-search-btn { background: #0b2a5b; }
+html.modo-consulta-catalogo .catalogo-erp-search-btn:hover { background: #0e3573; filter: none; }
+
 /* Abas grandes "Consultar" / "Montar Catálogos" — só no modo consulta. */
 .catalogo-consulta-tabs, .catalogo-montar-grid, .catalogo-montar-voltar { display: none; }
 html.modo-consulta-catalogo .catalogo-consulta-tabs { display: flex; gap: 8px; margin-bottom: 10px; }
@@ -1872,7 +1876,9 @@ html.modo-consulta-catalogo.consulta-montar.montar-aberto .catalogo-montar-volta
   display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 18px; margin-bottom: 12px;
   border: 1px solid #0b2a5b; background: #fff; color: #0b2a5b; font: inherit; font-weight: 700; cursor: pointer;
 }
-html.modo-consulta-catalogo.consulta-montar .catalogo-completo-preview-frame { height: calc(100vh - 230px); min-height: 480px; }
+html.modo-consulta-catalogo.consulta-montar .catalogo-completo-preview-header { display: none; }
+html.modo-consulta-catalogo.consulta-montar .catalogo-completo-preview { margin-top: 0; border: 0; border-radius: 0; background: transparent; }
+html.modo-consulta-catalogo.consulta-montar .catalogo-completo-preview-frame { height: calc(100vh - 170px); min-height: 480px; border: 1px solid #c3cad6; box-shadow: 0 4px 18px rgba(11, 42, 91, 0.12); }
 
 /* Tela inicial do programa: logo centralizada + duas caixas quadradas. */
 .catalogo-home { display: none; }
@@ -1889,3 +1895,11 @@ html.modo-consulta-catalogo.consulta-inicio .catalogo-home {
 }
 .catalogo-home-caixa i { font-size: 40px; color: #ffffff; }
 .catalogo-home-caixa:hover, .catalogo-home-caixa:focus-visible { border-color: #fdc82f; box-shadow: 0 8px 28px rgba(11, 42, 91, 0.35); outline: none; }
+
+/* Programa da loja: botão para guardar todos os catálogos no computador (uso sem servidor). */
+.catalogo-montar-offline { display: flex; align-items: center; gap: 14px; margin: 0 0 12px; }
+.catalogo-montar-offline.hidden { display: none; }
+.catalogo-montar-voltar-like { height: 40px; padding: 0 16px; border: 1px solid #0b2a5b; background: #fff; color: #0b2a5b; font: inherit; font-weight: 700; cursor: pointer; }
+.catalogo-montar-voltar-like:disabled { opacity: .6; cursor: default; }
+#catalogo-montar-offline-status { font-size: 13px; color: #374151; font-weight: 600; }
+html.modo-consulta-catalogo.consulta-montar.montar-aberto .catalogo-montar-offline { display: none; }

@@ -175,7 +175,12 @@ async function _parseXlsxPrecos(buffer) {
 function _parseXlsPrecos(buffer) {
   let linhas;
   try {
-    const XLSX = require("xlsx");
+    // SheetJS: o pacote "xlsx" no npm parou na 0.18.5 e carrega duas falhas
+    // conhecidas sem correção lá (prototype pollution e ReDoS) — a auditoria
+    // do CI barra deps de produção com falha alta. "@e965/xlsx" é o espelho
+    // mantido da mesma biblioteca (0.20.x, onde as duas já estão corrigidas),
+    // publicado no npm porque a SheetJS hoje só distribui pelo site dela.
+    const XLSX = require("@e965/xlsx");
     const wb = XLSX.read(buffer, { type: "buffer" });
     const aba = wb.Sheets[wb.SheetNames[0]];
     if (!aba) throw new Error("vazia");

@@ -1,4 +1,4 @@
-const XLSX = require("xlsx");
+const XLSX = require("@e965/xlsx");
 const { _parseXlsxPrecos } = require("../src/controllers/catalogo.controller");
 
 function xlsBuffer(linhas) {

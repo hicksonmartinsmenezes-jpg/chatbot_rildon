@@ -117,9 +117,9 @@ function salvarRotinas(lista) {
 // "cortes-produtos"/"produtos-parados" (2026-08-10, alertas de WhatsApp) não
 // usam `secoes` — exportam/capturam/diffam tudo de uma vez, não seção por
 // seção como baixar/sync.
-const TIPOS_SEM_SECOES = ['estoque', 'painel-produtos', 'diff-estoque', 'cortes-produtos', 'produtos-parados', 'lancamentos-x2', 'drive-enviar'];
+const TIPOS_SEM_SECOES = ['estoque', 'painel-produtos', 'diff-estoque', 'cortes-produtos', 'produtos-parados', 'lancamentos-x2', 'drive-enviar', 'drive-enviar-semana'];
 
-const TIPOS_VALIDOS = ['baixar', 'sync', 'estoque', 'painel-produtos', 'diff-estoque', 'cortes-produtos', 'produtos-parados', 'lancamentos-x2', 'drive-enviar'];
+const TIPOS_VALIDOS = ['baixar', 'sync', 'estoque', 'painel-produtos', 'diff-estoque', 'cortes-produtos', 'produtos-parados', 'lancamentos-x2', 'drive-enviar', 'drive-enviar-semana'];
 
 // PEDIDO DO USUÁRIO (2026-09-11): "a proposta de exportar relatorio csv é
 // capturar preços e estoque atualizados de 5 em 5 horas" — até aqui só

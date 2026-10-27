@@ -942,7 +942,7 @@
   // Rotinas (coluna "Ação") quanto no status "Rodando: ..." (ver
   // aplicarEstadoExecucao). Extraído pra uma constante só (2026-09-11) pra
   // não duplicar o mapa nos dois lugares.
-  const ROTULOS_TIPO_ACAO = { baixar: 'Baixar fotos', sync: 'Sync', estoque: 'Exportar estoque', 'painel-produtos': 'Snapshot Painel', 'diff-estoque': 'Diff Estoque', 'cortes-produtos': 'Alerta: Cortes', 'produtos-parados': 'Alerta: Parados', 'lancamentos-x2': 'Lançamentos X2' };
+  const ROTULOS_TIPO_ACAO = { baixar: 'Baixar fotos', sync: 'Sync', estoque: 'Exportar estoque', 'painel-produtos': 'Snapshot Painel', 'diff-estoque': 'Diff Estoque', 'cortes-produtos': 'Alerta: Cortes', 'produtos-parados': 'Alerta: Parados', 'lancamentos-x2': 'Lançamentos X2', 'drive-enviar-semana': 'Reenviar Drive (semana)' };
 
   function renderTabelaRotinas() {
     el('contador-rotinas').textContent = rotinas.length;
@@ -1306,6 +1306,27 @@
       return;
     }
     // acompanha o progresso na aba Catálogo (mesmo mecanismo de SSE das outras ações)
+    el('top-tabs').querySelector('[data-top-tab="fotos"]').click();
+  });
+
+  // PEDIDO DO USUÁRIO (2026-10-27): reenviar ao Drive, na hora, só os
+  // fabricantes da ÚLTIMA captura de lançamentos já salva (sem buscar de
+  // novo no X2) — pra poder refazer o envio da semana sozinho, sem precisar
+  // esperar a rotina automática de segunda à noite nem pedir pra alguém
+  // rodar por SSH.
+  document.addEventListener('click', async (ev) => {
+    if (!ev.target.closest('[data-action="drive-enviar-semana"]')) return;
+    const res = await fetch('/api/acao', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tipo: 'drive-enviar-semana', secoes: [] }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      mostrarToast(data.error || 'Erro ao iniciar o reenvio ao Drive.', 'erro');
+      return;
+    }
+    mostrarToast('Reenviando ao Drive os fabricantes da semana — acompanhe em "Rotinas".', 'sucesso');
     el('top-tabs').querySelector('[data-top-tab="fotos"]').click();
   });
 

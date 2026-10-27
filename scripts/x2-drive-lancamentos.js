@@ -101,8 +101,26 @@ async function _descobrirFabricantes(codigos, { baseUrl, apiToken }) {
 // painel do bot usa manualmente (GET /catalogo/exportar-pdf?fabricante=X) —
 // reaproveita 100% da regra de negócio (filtro NCP/preço, layout oficial),
 // zero duplicação de lógica de geração de PDF aqui.
-async function _baixarPdfFabricante(fabricante, { baseUrl, apiToken }) {
-  const resposta = await fetch(`${baseUrl}/api/catalogo/exportar-pdf?fabricante=${encodeURIComponent(fabricante)}`, {
+//
+// ACHADO 2026-10-27 (usuário: "dni tenho varios e varios produtos, no pdf
+// so tem 1"): sem `fresco`, um pedido só com ?fabricante=X é servido do
+// "Catálogo Completo PRONTO" — arquivo gerado 1x por semana (segunda 20h,
+// ver catalogo-prontos.service.js) e reaproveitado o resto da semana, pra
+// abrir na hora. O reenvio ao Drive de um lançamento no MEIO da semana
+// (rodarUploadDrive, chamado automaticamente após Lançamentos/Fotos e pelo
+// botão "Reenviar ao Drive (semana)") pegava esse arquivo requentado —
+// sem os produtos cadastrados depois da última segunda. `fresco: true`
+// soma um parâmetro extra que NÃO está na lista de permitidos do pronto
+// (fabricante/_/t, ver exportarPdfHandler em catalogo.controller.js) e por
+// isso o handler ignora o cache e gera o PDF na hora, com os dados atuais
+// — mais lento que o pronto, mas correto. Não mexe no arquivo em cache:
+// o reenvio semanal completo (rodarUploadTodosFabricantes, que já roda
+// depois do reaquecimento de segunda) continua usando o pronto normal.
+async function _baixarPdfFabricante(fabricante, { baseUrl, apiToken, fresco = false }) {
+  const query = fresco
+    ? `fabricante=${encodeURIComponent(fabricante)}&semCache=${Date.now()}`
+    : `fabricante=${encodeURIComponent(fabricante)}`;
+  const resposta = await fetch(`${baseUrl}/api/catalogo/exportar-pdf?${query}`, {
     headers: { Authorization: `Bearer ${apiToken}` },
   });
   if (!resposta.ok) {
@@ -235,7 +253,7 @@ async function rodarUploadDrive(codigos) {
   for (const fabricante of fabricantes) {
     try {
       const valorPdf = mecanica.has(fabricante) ? `${fabricante}::mecanica` : fabricante;
-      const bufferPdf = await _baixarPdfFabricante(valorPdf, { baseUrl: BASE_URL, apiToken: config.apiToken });
+      const bufferPdf = await _baixarPdfFabricante(valorPdf, { baseUrl: BASE_URL, apiToken: config.apiToken, fresco: true });
       const envio = await _enviarPdfParaDrive(drive, config.pastaId, fabricante, bufferPdf);
       resultado.enviados.push(envio);
       console.log(`[x2-drive] ${fabricante}.pdf — ${envio.acao} no Drive.`);

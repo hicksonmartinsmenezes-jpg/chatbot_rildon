@@ -517,11 +517,14 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
       } else if (tipo === 'drive-enviar') {
         // Enviar catálogo ao Drive, por fabricante (escolhidos no painel).
         // Só fala com o bot + Drive — não abre Chrome nem mexe no X2.
+        // `opcoes.todos` (rotina semanal de segunda à noite, pedido de
+        // 2026-10-27): reenvia TODOS os fabricantes, 1 por vez, com a pausa
+        // padrão de 20 s que protege o bot/painel de atendimento.
         const fabricantes = Array.isArray(opcoes.fabricantes) ? opcoes.fabricantes.map(String).filter(Boolean) : [];
-        if (!fabricantes.length) throw new Error('Escolha pelo menos 1 fabricante.');
+        if (!opcoes.todos && !fabricantes.length) throw new Error('Escolha pelo menos 1 fabricante.');
         const resultado = await driveLancamentos.rodarUploadTodosFabricantes({
-          so: fabricantes,
-          pausaSegundos: opcoes.dryRun ? 0 : 5,
+          so: opcoes.todos ? null : fabricantes,
+          pausaSegundos: opcoes.dryRun ? 0 : (opcoes.todos ? 20 : 5),
           dryRun: !!opcoes.dryRun,
         });
         if (!opcoes.dryRun) {

@@ -119,7 +119,7 @@ function salvarRotinas(lista) {
 // seção como baixar/sync.
 const TIPOS_SEM_SECOES = ['estoque', 'painel-produtos', 'diff-estoque', 'cortes-produtos', 'produtos-parados', 'lancamentos-x2', 'drive-enviar'];
 
-const TIPOS_VALIDOS = ['baixar', 'sync', 'estoque', 'painel-produtos', 'diff-estoque', 'cortes-produtos', 'produtos-parados', 'lancamentos-x2'];
+const TIPOS_VALIDOS = ['baixar', 'sync', 'estoque', 'painel-produtos', 'diff-estoque', 'cortes-produtos', 'produtos-parados', 'lancamentos-x2', 'drive-enviar'];
 
 // PEDIDO DO USUÁRIO (2026-09-11): "a proposta de exportar relatorio csv é
 // capturar preços e estoque atualizados de 5 em 5 horas" — até aqui só

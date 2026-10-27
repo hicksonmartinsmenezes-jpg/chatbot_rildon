@@ -532,6 +532,34 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
           for (const e of resultado.erros) console.log(`  ✗ ${e.fabricante || '(config)'}: ${e.erro}`);
           if (resultado.erros.length) throw new Error(`${resultado.erros.length} catálogo(s) não foram enviados — veja o log acima.`);
         }
+      } else if (tipo === 'drive-enviar-semana') {
+        // PEDIDO DO USUÁRIO (2026-10-27): botão manual pra reenviar ao Drive
+        // só os fabricantes tocados pela última captura de "Lançamentos da
+        // Semana" (os mesmos que o encadeamento automático pós-Lançamentos já
+        // cobre — ver rodarUploadDrive logo depois do `finally` acima), sem
+        // precisar esperar a rotina automática nem pedir reenvio manual via
+        // SSH. Reusa a MESMA captura salva em disco (carregarUltimaCaptura),
+        // não dispara uma nova busca no X2.
+        const captura = lancamentosX2.carregarUltimaCaptura();
+        if (!captura) throw new Error('Nenhuma captura de lançamentos ainda — clique em "Buscar lançamentos no X2" primeiro.');
+        const codigosSemana = (captura.produtos || []).map((p) => p.codigo).filter(Boolean);
+        if (!codigosSemana.length) throw new Error('A última captura de lançamentos não tem produtos.');
+        console.log(`Reenviando ao Drive os fabricantes dos ${codigosSemana.length} produto(s) da última captura de lançamentos...`);
+        const resultadoSemana = await driveLancamentos.rodarUploadDrive(codigosSemana);
+        console.log(`\nResumo: ${resultadoSemana.enviados.length} enviado(s), ${resultadoSemana.erros.length} com erro, ${resultadoSemana.fabricantes.length} fabricante(s) identificado(s).`);
+        if (resultadoSemana.semFabricante.length) {
+          console.log(`${resultadoSemana.semFabricante.length} código(s) sem fabricante identificado: ${resultadoSemana.semFabricante.slice(0, 10).join(', ')}`);
+        }
+        for (const e of resultadoSemana.erros) console.log(`  ✗ ${e.fabricante || '(config)'}: ${e.erro}`);
+        // Importante: NÃO deixar passar como "sucesso" silencioso quando
+        // nenhum fabricante foi identificado (mesmo bug que causou um
+        // reenvio completo "falso-sucesso" de 0 catálogos em 27/10/2026 —
+        // ver drive-enviar acima, que tem a mesma lacuna em
+        // rodarUploadTodosFabricantes).
+        if (!resultadoSemana.fabricantes.length) {
+          throw new Error('Nenhum fabricante foi identificado nos códigos da última captura — nada foi enviado ao Drive. Confira se o cadastro/fotos da semana já rodaram.');
+        }
+        if (resultadoSemana.erros.length) throw new Error(`${resultadoSemana.erros.length} catálogo(s) não foram enviados — veja o log acima.`);
       } else if (tipo === 'lancamentos-x2') {
         // PEDIDO DO USUÁRIO (2026-08-11): a aba Lançamentos deduzia "produto
         // novo" comparando CSVs de estoque (ver x2-painel/lancamentos.js) —

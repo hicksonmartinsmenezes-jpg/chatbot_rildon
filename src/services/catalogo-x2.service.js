@@ -161,6 +161,10 @@ function _extrairFabricante(nome) {
 // escaneando os 17.417 produtos em 2026-07-23) — mapeado pro nome canônico
 // mais frequente, senão o dropdown de fabricante mostraria a mesma marca 2-3
 // vezes.
+// Ver comentário acima, em _carregarIndices, sobre por que estas marcas
+// precisam de seed manual (nunca aparecem no padrão de 3 blocos).
+const FABRICANTES_FALLBACK_MANUAIS = ["DNI"];
+
 const FABRICANTE_ALIASES = {
   "MULTI QUALITA": "MULTIQUALITA",
   "MQ": "MULTIQUALITA",
@@ -712,6 +716,14 @@ function _carregarIndices() {
   fabricantesParaFallback = new Set(
     [...contagem3].filter(([f, n]) => n >= FABRICANTE_MIN_PARA_FALLBACK && !/\s/.test(f)).map(([f]) => f)
   );
+  // Marcas conhecidas que NUNCA aparecem no padrão de 3 blocos (pedido do
+  // usuário 2026-10-27: "DNI é um catálogo e temos vários itens dele") —
+  // escaneando os 701 produtos "DNI" do catálogo (2026-10-27), 634 estão no
+  // padrão de 2 blocos "<descrição> - DNI 5220" e os 59 que caem em 3 blocos
+  // têm sempre uma nota de embalagem no meio ("PCT C/ 10", "*NCP*", "KIT 15
+  // PCS"), nunca "DNI" — por isso a contagem automática acima nunca aprende
+  // essa marca sozinha. Seed manual, mesmo espírito de FABRICANTE_ALIASES.
+  for (const f of FABRICANTES_FALLBACK_MANUAIS) fabricantesParaFallback.add(f);
   _fallbackFabricanteContagem = 0;
 
   for (const p of melhorPorCodigo.values()) {

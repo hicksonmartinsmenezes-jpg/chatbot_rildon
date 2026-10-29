@@ -321,8 +321,14 @@ function buscarServidor(rota, binario) {
   });
 }
 
-async function sincronizarCatalogos() {
-  if (sincronizando) return false;
+function _enviarSyncProgresso(info) {
+  if (janela && !janela.isDestroyed()) janela.webContents.send("catalogo:sync-progresso", info);
+}
+
+// manual=true: veio do botão "Verificar atualizações" (Ver Catálogos), não da rotina da meia-noite —
+// mesma função, só muda quem chamou e o evento de progresso que a tela escuta.
+async function sincronizarCatalogos(manual) {
+  if (sincronizando) return { ok: false, jaEmAndamento: true };
   gravarSync({ iniciouEm: Date.now() });
   sincronizando = true;
   let servidorOk = false;
@@ -332,12 +338,15 @@ async function sincronizarCatalogos() {
     const versao = String((await buscarServidor("/api/catalogo/pronto-versao")).versao || "");
     servidorOk = true;
     const limite = Number(process.env.CATALOGO_SYNC_LIMITE) || Infinity; // só para testes
-    for (const o of (lista.opcoes || []).slice(0, limite)) {
+    const opcoes = (lista.opcoes || []).slice(0, limite);
+    let feito = 0;
+    for (const o of opcoes) {
       try {
         const base = arquivoCatalogoLocal(o.value);
         let atual = "";
         try { if (fs.existsSync(base + ".pdf")) atual = String(JSON.parse(fs.readFileSync(base + ".json", "utf8")).versao || ""); } catch { /* refaz */ }
-        if (atual && versao && atual === versao) continue;
+        if (atual && versao && atual === versao) { feito++; continue; }
+        if (manual) _enviarSyncProgresso({ feito, total: opcoes.length, atual: o.label || o.value });
         const r = await buscarServidor("/api/catalogo/exportar-pdf?fabricante=" + encodeURIComponent(o.value), true);
         if (gravarCatalogoLocal(o.value, r.versao || versao, r.buf, o.label)) baixados++; else falhas++;
       } catch (e) {
@@ -346,14 +355,18 @@ async function sincronizarCatalogos() {
         if (e && e.statusCode === 404) {
           vazios++;
           try { const b = arquivoCatalogoLocal(o.value); fs.rmSync(b + ".pdf", { force: true }); fs.rmSync(b + ".json", { force: true }); } catch { /* ignora */ }
-          continue;
+          feito++; continue;
         }
-        falhas++; gravarSync({ erroItem: o.value + ": " + String((e && e.message) || e) }); }
+        falhas++; gravarSync({ erroItem: o.value + ": " + String((e && e.message) || e) });
+      }
+      feito++;
     }
   } catch (e) { gravarSync({ erro: String((e && e.message) || e), erroEm: Date.now() }); /* servidor fora do ar */ }
   sincronizando = false;
   if (servidorOk) gravarSync({ ultima: Date.now(), baixados, falhas, vazios, erroItem: falhas ? lerSync().erroItem : "" });
-  return servidorOk && falhas === 0;
+  const resultado = { ok: servidorOk && falhas === 0, servidorOk, baixados, falhas, vazios };
+  if (manual) _enviarSyncProgresso({ concluido: true, ...resultado });
+  return resultado;
 }
 
 function agendarSync() {
@@ -363,10 +376,14 @@ function agendarSync() {
   proximaSync = !ult || ult >= ultimaMeiaNoite() ? proximaMeiaNoite() : Date.now() + 20000;
   setInterval(async () => {
     if (sincronizando || Date.now() < proximaSync) return;
-    const ok = await sincronizarCatalogos();
-    proximaSync = ok ? proximaMeiaNoite() : Date.now() + 30 * 60 * 1000;
+    const r = await sincronizarCatalogos(false);
+    proximaSync = r.ok ? proximaMeiaNoite() : Date.now() + 30 * 60 * 1000;
   }, 60000);
 }
+
+// Botão "Verificar atualizações" em Ver Catálogos (pedido do usuário, 2026-10-29): mesma lógica da
+// meia-noite, só que sob demanda. Não mexe no agendamento automático.
+ipcMain.handle("catalogo:sincronizar-agora", () => sincronizarCatalogos(true));
 
 // ─── Aviso de nova versão do programa ──────────────────────────────────────────
 // Ao abrir (e a cada 6 h) pergunta ao servidor qual a versão mais nova do instalador. Se for maior que

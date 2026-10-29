@@ -22,6 +22,22 @@ html.consulta-montar.montar-aberto .catalogo-montar-busca { display: none; }
 #catalogo-montar-contagem { font-size: 13px; color: #6b7280; font-weight: 600; white-space: nowrap; }
 .catalogo-montar-card.oculto-busca { display: none !important; }
 
+/* Botão "Verificar atualizações" (Ver Catálogos, pedido do usuário 2026-10-29) */
+.catalogo-montar-sync-btn {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: 34px; height: 34px; border: 1px solid #c3cad6; border-radius: 8px;
+  background: #fff; color: #0b2a5b; cursor: pointer; transition: background .15s, border-color .15s;
+}
+.catalogo-montar-sync-btn:hover:not(:disabled) { background: #eef2ff; border-color: #0b2a5b; }
+.catalogo-montar-sync-btn:disabled { opacity: .55; cursor: default; }
+.catalogo-montar-sync-btn.girando i { animation: btnSpin 1s linear infinite; display: inline-block; }
+.catalogo-montar-sync-status {
+  margin: -6px 0 14px; font-size: 13px; font-weight: 600; color: #0b2a5b;
+}
+.catalogo-montar-sync-status.hidden { display: none; }
+.catalogo-montar-sync-status-ok { color: #157a3d; }
+.catalogo-montar-sync-status-erro { color: #b4232c; }
+
 /* ─────────────────────────────────────────────────────────────────────────
    Padrão visual do programa do balcão (pedido do Hickson, 2026-10-21):
    todo botão em azul marinho, ícones de fabricante e faixa de estoque/preço
@@ -129,7 +145,7 @@ html.consulta-montar.montar-aberto .catalogo-montar-busca { display: none; }
 #_global-modal-overlay .catalogo-modal-tab-btn { color: var(--rildon-texto-fraco) !important; }
 #_global-modal-overlay .catalogo-modal-tab-btn:hover,
 #_global-modal-overlay .catalogo-modal-tab-btn.active { color: var(--rildon-azul) !important; border-color: var(--rildon-azul) !important; }
-#_global-modal-overlay .catalogo-modal-photo { background: var(--rildon-cinza) !important; }
+#_global-modal-overlay .catalogo-modal-photo { background: #ffffff !important; }
 #_global-modal-overlay .modal-input { background: #ffffff !important; border: 1px solid var(--rildon-cinza-borda) !important; color: var(--rildon-texto) !important; }
 
 /* Card: código interno ao lado da referência do fabricante (sem a linha azul de seção/linha) */
@@ -176,7 +192,8 @@ html.modo-consulta-catalogo.consulta-promo.promo-aberto .catalogo-promo-leitor {
 .catalogo-card-estoque { display: flex !important; flex-direction: column !important; flex-wrap: nowrap !important; align-items: stretch !important; justify-content: flex-start !important; gap: 3px !important; }
 .catalogo-card-estoque .catalogo-preco-linha { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; }
 .catalogo-card-estoque .catalogo-preco-label { font-size: 9px; min-width: 56px; }
-.catalogo-card-estoque .catalogo-preco-valor { font-size: 12px; white-space: nowrap; }
+.catalogo-estoque-rodape .catalogo-preco-linha { flex: 0 1 auto; }
+.catalogo-card-estoque .catalogo-preco-valor { font-size: 11px; white-space: nowrap; }
 .catalogo-estoque-rodape { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .catalogo-card-estoque .catalogo-badge { margin: 0 0 0 auto !important; font-size: 11px; white-space: nowrap; }
 .catalogo-card-estoque .catalogo-preco-promocao .catalogo-preco-label,
@@ -186,3 +203,21 @@ html.modo-consulta-catalogo.consulta-promo.promo-aberto .catalogo-promo-leitor {
 #catalogo-atualizacao{position:fixed;left:0;right:0;bottom:0;z-index:99999;display:flex;align-items:center;justify-content:center;gap:14px;padding:8px 12px;background:#fdc82f;color:#3b2a00;font-weight:600;font-size:14px;box-shadow:0 -2px 8px rgba(0,0,0,.2)}
 #catalogo-atualizacao button{border:0;border-radius:6px;padding:6px 14px;background:#3b2a00;color:#fff;font-weight:700;cursor:pointer}
 #catalogo-atualizacao button:disabled{opacity:.7;cursor:default}
+
+/* Fotos do produto (2026-10-24): o modal do programa é claro — o tile "Adicionar foto" e as fotos ocultas
+   usavam branco translúcido e ficavam invisíveis. */
+.catalogo-foto-opcao-adicionar { background: #eef3fb !important; border: 2px dashed #0b2a5b !important; color: #0b2a5b !important; font-size: 12px !important; font-weight: 700 !important; }
+.catalogo-foto-opcao-adicionar i { font-size: 22px !important; }
+.catalogo-foto-opcao-adicionar:hover { background: #0b2a5b !important; color: #fff !important; border-color: #0b2a5b !important; }
+.catalogo-foto-opcao-escolher { border-color: #c5cfe0 !important; }
+.catalogo-foto-opcao-oculta { background: #f1f5f9 !important; border-color: #94a3b8 !important; }
+
+/* Card de preços no formato da referência (2026-10-24) */
+.catalogo-card-estoque { background: #f1f2f4 !important; border: 1px solid #d3d6dc !important; border-radius: 10px !important; padding: 8px 12px !important; gap: 4px !important; }
+.catalogo-card-estoque .catalogo-preco-linha { align-items: center; gap: 10px; }
+.catalogo-card-estoque .catalogo-preco-label { font-size: 10px !important; font-weight: 700 !important; letter-spacing: .02em; text-transform: uppercase; color: #1e2b50 !important; min-width: 62px !important; }
+.catalogo-card-estoque .catalogo-preco-valor { font-size: 13px !important; font-weight: 800 !important; color: #22b95c !important; }
+.catalogo-card-estoque .catalogo-estoque-rodape { justify-content: flex-start; border-top: 1px solid #d3d6dc; margin-top: 4px; padding-top: 6px; }
+.catalogo-card-estoque .catalogo-badge { margin: 0 !important; padding: 0 !important; background: transparent !important; border: 0 !important; font-size: 12px !important; font-weight: 700 !important; color: #1e2b50 !important; }
+.catalogo-card-estoque .catalogo-badge.catalogo-badge-estoque-ok { color: #15803d !important; }
+.catalogo-card-estoque .catalogo-preco-promocao .catalogo-preco-valor { color: #b45309 !important; }

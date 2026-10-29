@@ -282,7 +282,7 @@ async function exportarCatalogoPDF(btnEl) {
   }
 
   try {
-    const res = await fetch(`/api/catalogo/exportar-pdf?${query}`, { credentials: "include" });
+    const res = await fetch(`/api/catalogo/exportar-pdf?${query}&semCache=${Date.now()}`, { credentials: "include" });
     if (!res.ok) {
       const errBody = await res.json().catch(() => ({}));
       throw new Error(errBody.error || "Erro ao gerar PDF do catálogo.");
@@ -492,7 +492,7 @@ async function gerarCatalogoCompletoPDF(btnEl) {
   }
 
   try {
-    const res = await fetch(`/api/catalogo/exportar-pdf?fabricante=${encodeURIComponent(fabricante)}`, { credentials: "include" });
+    const res = await fetch(`/api/catalogo/exportar-pdf?fabricante=${encodeURIComponent(fabricante)}&semCache=${Date.now()}`, { credentials: "include" });
     if (!res.ok) {
       const errBody = await res.json().catch(() => ({}));
       throw new Error(errBody.error || "Erro ao gerar PDF do catálogo completo.");
@@ -1071,20 +1071,21 @@ function _catalogoEstoqueHTML(estoque, produto) {
   // separadas e valor em destaque — o badge de estoque continua do lado,
   // mas cada um tem seu espaço.
   const linha = (rotulo, valor, extra = "") =>
-    `<div class="catalogo-preco-linha${extra}"><span class="catalogo-preco-label">${rotulo}</span>${valor ? `<strong class="catalogo-preco-valor">${valor}</strong>` : ""}</div>`;
+    `<div class="catalogo-preco-linha${extra}"><span class="catalogo-preco-label">${rotulo}:</span>${valor ? `<strong class="catalogo-preco-valor">${valor}</strong>` : ""}</div>`;
   // Layout (pedido do Hickson, 2026-10-23): uma linha por preço — Varejo, Atacado e, quando o
   // produto está em catálogo promocional, Promoção (sem valor no promocional, só o rótulo) —
   // com o estoque na última linha, à direita.
   const linhaPromo = promocao ? linha("Promoção", precoPromo, " catalogo-preco-promocao") : "";
 
+  // Layout (referência enviada pelo Hickson, 2026-10-24): Varejo e Atacado (e Promoção, se houver)
+  // um por linha, rótulo em maiúsculas + valor em verde; linha divisória e, embaixo, o estoque.
+  const badge = `<span class="catalogo-badge ${badgeClasse}"><i class="${badgeIcone}"></i> ${badgeTexto}</span>`;
   return `
     <div class="catalogo-card-estoque">
       ${precoVarejo ? linha("Varejo", precoVarejo) : ""}
       ${precoAtacado ? linha("Atacado", precoAtacado) : ""}
-      <div class="catalogo-estoque-rodape">
-        ${linhaPromo || "<span></span>"}
-        <span class="catalogo-badge ${badgeClasse}"><i class="${badgeIcone}"></i> ${badgeTexto}</span>
-      </div>
+      ${linhaPromo}
+      <div class="catalogo-estoque-rodape">${badge}</div>
     </div>
   `;
 }
@@ -1347,7 +1348,6 @@ async function abrirSeletorFotoCatalogo(codigo) {
       <button class="modal-close-btn" type="button" data-modal-close aria-label="Fechar modal">&times;</button>
     </div>
     <div class="modal-body">
-      <p style="margin-bottom:12px;">Clique na foto certa pra usar como principal, no ícone de lixeira pra ocultar uma foto errada (não apaga do X2 — dá pra restaurar depois), ou em "Adicionar foto" pra enviar uma foto do seu computador.</p>
       <div class="catalogo-foto-opcoes-grid">${grade}</div>
       <input type="file" accept="image/jpeg,image/png" class="catalogo-foto-upload-input" style="display:none;">
     </div>
@@ -2452,6 +2452,60 @@ async function _catalogoMontarRenderGrid() {
   };
   catalogoMontarFiltrar();
 }
+
+// Botão "Verificar atualizações" em Ver Catálogos (pedido do usuário, 2026-10-29). Roda a
+// mesma sincronização da meia-noite, só que na hora: compara a versão de cada catálogo salvo
+// neste computador com a do servidor e baixa só o que mudou. A tela só mostra o resultado —
+// quem decide o que baixar continua sendo o main.js (sincronizarCatalogos).
+function _catalogoSyncStatus(txt, cls) {
+  const el = document.getElementById("catalogo-montar-sync-status");
+  if (!el) return;
+  el.textContent = txt;
+  el.className = "catalogo-montar-sync-status" + (cls ? " " + cls : "");
+  if (!txt) el.classList.add("hidden");
+}
+
+let _catalogoSyncEmAndamento = false;
+
+async function catalogoVerificarAtualizacoes() {
+  const api = window.catalogoLoja;
+  const btn = document.getElementById("catalogo-montar-sync-btn");
+  if (!api || !api.sincronizarCatalogosAgora || _catalogoSyncEmAndamento) return;
+  if (window.servidorOnline === false) { _catalogoSyncStatus("Sem conexão com o servidor da loja — tente de novo quando voltar."); return; }
+  _catalogoSyncEmAndamento = true;
+  if (btn) { btn.disabled = true; btn.classList.add("girando"); }
+  _catalogoSyncStatus("Verificando catálogos no servidor...");
+  try {
+    const r = await api.sincronizarCatalogosAgora();
+    if (!r) { _catalogoSyncStatus("Não foi possível verificar agora."); return; }
+    if (r.jaEmAndamento) { _catalogoSyncStatus("Já tem uma verificação em andamento..."); return; }
+    if (!r.servidorOk) { _catalogoSyncStatus("Servidor fora do ar — tente de novo mais tarde."); return; }
+    if (r.baixados) {
+      _catalogoSyncStatus(`${r.baixados} catálogo${r.baixados === 1 ? "" : "s"} atualizado${r.baixados === 1 ? "" : "s"}.`, "catalogo-montar-sync-status-ok");
+      _catalogoMontarRenderGrid();
+    } else if (r.falhas) {
+      _catalogoSyncStatus(`Verificado, mas ${r.falhas} catálogo${r.falhas === 1 ? "" : "s"} não baixou — tente de novo.`, "catalogo-montar-sync-status-erro");
+    } else {
+      _catalogoSyncStatus("Os catálogos já estavam atualizados.", "catalogo-montar-sync-status-ok");
+    }
+  } catch (e) {
+    _catalogoSyncStatus("Não foi possível verificar agora.");
+  } finally {
+    _catalogoSyncEmAndamento = false;
+    if (btn) { btn.disabled = false; btn.classList.remove("girando"); }
+    setTimeout(() => _catalogoSyncStatus(""), 6000);
+  }
+}
+
+(function () {
+  const api = window.catalogoLoja;
+  if (api && api.aoProgressoSincronizacao) {
+    api.aoProgressoSincronizacao((p) => {
+      if (!p || p.concluido) return; // resultado final já tratado em catalogoVerificarAtualizacoes
+      if (p.total) _catalogoSyncStatus(`Baixando ${p.feito + 1} de ${p.total}: ${p.atual || ""}`.trim());
+    });
+  }
+})();
 
 // Busca de catálogo pelo nome, dentro de "Ver Catálogos" (pedido do usuário, 2026-10-21).
 function _catalogoTextoSimples(txt) {

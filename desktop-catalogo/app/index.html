@@ -202,7 +202,11 @@
         <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
         <input type="search" id="catalogo-montar-busca" placeholder="Buscar catálogo pelo nome (ex.: Bosch)" autocomplete="off" oninput="catalogoMontarFiltrar()">
         <span id="catalogo-montar-contagem"></span>
+        <button type="button" class="catalogo-montar-sync-btn" id="catalogo-montar-sync-btn" onclick="catalogoVerificarAtualizacoes()" title="Verificar se há catálogos atualizados no servidor">
+          <i class="fa-solid fa-rotate" aria-hidden="true"></i>
+        </button>
       </div>
+      <p id="catalogo-montar-sync-status" class="catalogo-montar-sync-status hidden"></p>
       <div id="catalogo-montar-grid" class="catalogo-montar-grid" role="list"></div>
       <div class="catalogo-erp-box catalogo-erp-box-codigo">
         <div class="catalogo-box-header">

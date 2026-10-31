@@ -24,7 +24,7 @@
  *   node scripts/x2-fotos-scraper.js --secao=componentes-eletricos --build-zip  (só depois que TODOS os produtos da seção estiverem processados)
  *   node scripts/x2-fotos-scraper.js --secoes=farois,filtros,lampadas          (várias seções escolhidas, 1 login só)
  *   node scripts/x2-fotos-scraper.js --todas                                   (as 26 seções, uma atrás da outra, 1 login só)
- *   node scripts/x2-fotos-scraper.js --secao=gerador --retry-sem-foto           (tenta de novo os já marcados sem_foto/placeholder, caso o X2 tenha cadastrado a foto depois — não descobre produto NOVO)
+ *   node scripts/x2-fotos-scraper.js --secao=gerador --retry-sem-foto           (tenta de novo os já marcados sem_foto/placeholder/erro/nao_encontrado_na_tabela/frame_foto_nao_bateu, caso o X2 tenha cadastrado a foto depois ou a busca tenha falhado por instabilidade — não descobre produto NOVO)
  *   node scripts/x2-fotos-scraper.js --secao=gerador --reiniciar                (PEDIDO DO USUÁRIO 2026-07-30: apaga o progresso salvo e o staging dessa seção, baixa tudo de novo do zero — ignora o que já tinha sido feito)
  *   node scripts/x2-fotos-scraper.js --secao=gerador --exportar-fotos          (só depois que TODOS os produtos da seção estiverem processados — copia as fotos soltas, sem zip, pra src/config/catalogo-x2/fotos/<secao>/<codigo>/)
  *
@@ -704,6 +704,19 @@ function calcularFila(codigos, progresso, { limit, retrySemFoto, codigosEspecifi
     // progresso da seção (inclusive as fotos boas já baixadas) só pra
     // reprocessar um punhado de erros. Agora "erro" entra no mesmo retry.
     if (retrySemFoto && (progresso[c].status === 'sem_foto' || progresso[c].status === 'placeholder' || progresso[c].status === 'erro')) return true;
+    // BUG REAL corrigido (2026-10-31, achado analisando os checkpoints de
+    // instrumento-painel/gerador/consumo — 88%/98%/97% travados aqui):
+    // "nao_encontrado_na_tabela" (código não apareceu na tabela de
+    // resultado da seção nem via fallback por código) NUNCA voltava à
+    // fila numa rodada normal de --retry-sem-foto — só voltava no fluxo
+    // restrito a codigosEspecificos (pós-Lançamentos, linha acima). Pro
+    // usuário rodar a recaptura manual de uma seção inteira e de fato
+    // reprocessar esse backlog (em vez de "Nada pendente nesta seção"
+    // mesmo com milhares faltando), esse status entra no mesmo retry
+    // geral — junto com "frame_foto_nao_bateu" (também só retryable antes
+    // via codigosEspecificos), que é tipicamente um soluço de timing, não
+    // um "sem foto" permanente.
+    if (retrySemFoto && (progresso[c].status === 'nao_encontrado_na_tabela' || progresso[c].status === 'frame_foto_nao_bateu')) return true;
     return false;
   });
   // Renovação de fotos (auditoria 2026-09-30): "ok" nunca voltava à fila, então
@@ -740,7 +753,7 @@ async function processarSecaoComPopup(popup, secaoSlug, { limit, retrySemFoto, d
   const fila = calcularFila(codigos, progresso, { limit, retrySemFoto, codigosEspecificos, renovarAposDias, renovarLimite });
 
   console.log(`\n=== Seção ${labelSecao} (${secaoSlug}) ===`);
-  console.log(`${codigos.length} produtos no total, ${Object.keys(progresso).length} já processados, ${fila.length} nesta execução${retrySemFoto ? ' (incluindo retry de sem_foto/placeholder/erro)' : ''}${codigosEspecificos && codigosEspecificos.length ? ` (restrito aos ${codigosEspecificos.length} código(s) informado(s))` : ''}.`);
+  console.log(`${codigos.length} produtos no total, ${Object.keys(progresso).length} já processados, ${fila.length} nesta execução${retrySemFoto ? ' (incluindo retry de sem_foto/placeholder/erro/nao_encontrado/frame_foto_nao_bateu)' : ''}${codigosEspecificos && codigosEspecificos.length ? ` (restrito aos ${codigosEspecificos.length} código(s) informado(s))` : ''}.`);
   if (!fila.length) {
     console.log('Nada pendente nesta seção.');
     return { secaoSlug, totalFeitos: Object.keys(progresso).length, total: codigos.length, pulada: true };

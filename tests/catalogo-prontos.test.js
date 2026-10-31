@@ -36,12 +36,19 @@ describe("catalogo-prontos.service", () => {
 
   test("versão persiste e muda quando os prontos são descartados", () => {
     const v1 = prontos.versao();
-    expect(v1).toMatch(/^\d+$/);
+    expect(v1).toMatch(/^2026-10-29-sem-foto-v1-\d+$/);
     expect(prontos.versao()).toBe(v1);
     const antes = Date.now();
     while (Date.now() === antes) { /* garante timestamp diferente */ }
     prontos.limparTodos();
     expect(prontos.versao()).not.toBe(v1);
+  });
+
+  test("invalida versao legada para forcar download do catalogo atualizado", () => {
+    const arquivoVersao = path.join(process.env.CATALOGOS_PRONTOS_DIR, "versao.txt");
+    fs.writeFileSync(arquivoVersao, "12345");
+
+    expect(prontos.versao()).toMatch(/^2026-10-29-sem-foto-v1-\d+$/);
   });
 });
 

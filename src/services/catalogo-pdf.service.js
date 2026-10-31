@@ -1798,7 +1798,69 @@ function _ehMesmaFoto(a, b) {
   );
 }
 
+// 2026-10-29 (bug reportado pelo usuário: catálogo 12M com produtos "sem
+// foto" mesmo com foto válida indexada): alguns JPEGs trazem um segmento
+// APP1/EXIF (metadado de câmera/celular) que o parser de imagem do pdfkit
+// não sabe ler — doc.openImage() lança "The value of 'offset' is out of
+// range" mesmo o arquivo sendo um JPEG íntegro (medido: 10/10 exemplos do
+// 12M eram JPEGs válidos de 260-470KB, só com esse bloco). Como
+// temAlgumaFoto() (catalogo-fotos.service.js) só confere se a foto está
+// indexada — não se ela abre de verdade —, o produto passa no filtro do
+// Catálogo Completo e entra na lista, mas aqui a foto falhava e o produto
+// virava "sem foto" no PDF. O EXIF não faz falta nenhuma pro catálogo (só
+// desenhamos a imagem), então a correção remove esse segmento específico
+// do JPEG e tenta abrir de novo antes de desistir da foto.
+function _removerExifJpeg(buffer) {
+  if (!buffer || buffer.length < 4 || buffer[0] !== 0xff || buffer[1] !== 0xd8) return null;
+  const partes = [buffer.subarray(0, 2)];
+  let pos = 2;
+  let removeu = false;
+  while (pos + 4 <= buffer.length) {
+    if (buffer[pos] !== 0xff) break; // marcador inesperado — desiste, formato fora do padrão
+    const marcador = buffer[pos + 1];
+    if (marcador === 0xd8 || marcador === 0xd9) break; // SOI/EOI não deveriam aparecer aqui
+    if (marcador === 0xda) {
+      // Start of Scan: o resto do arquivo é dado de imagem (sem mais
+      // marcadores de segmento confiáveis) — copia tudo e para.
+      partes.push(buffer.subarray(pos));
+      pos = buffer.length;
+      break;
+    }
+    if (pos + 4 > buffer.length) break;
+    const tamanhoSegmento = buffer.readUInt16BE(pos + 2);
+    const fimSegmento = pos + 2 + tamanhoSegmento;
+    if (tamanhoSegmento < 2 || fimSegmento > buffer.length) break;
+    if (marcador === 0xe1) {
+      removeu = true; // APP1 (EXIF) — descarta este segmento
+    } else {
+      partes.push(buffer.subarray(pos, fimSegmento));
+    }
+    pos = fimSegmento;
+  }
+  if (!removeu || pos < buffer.length - 1) {
+    // Não achou EXIF pra remover, ou o laço parou cedo (formato que não
+    // soubemos percorrer até o fim) — mais seguro desistir do que devolver
+    // um JPEG cortado no meio.
+    if (!removeu) return null;
+    if (pos < buffer.length) partes.push(buffer.subarray(pos));
+  }
+  return Buffer.concat(partes);
+}
+
+// Parse de cada foto é síncrono e pode ser caro. O catálogo completo faz uma
+// pré-seleção das peças antes do índice/paginação; guardar o resultado por
+// documento evita abrir as mesmas imagens de novo ao desenhar os cards.
+const _fotosUtilizaveisPorDocumento = new WeakMap();
+
 function _fotosUtilizaveis(doc, codigoProduto) {
+  let cache = _fotosUtilizaveisPorDocumento.get(doc);
+  if (!cache) {
+    cache = new Map();
+    _fotosUtilizaveisPorDocumento.set(doc, cache);
+  }
+  const chaveProduto = String(codigoProduto);
+  if (cache.has(chaveProduto)) return cache.get(chaveProduto);
+
   const utilizaveis = [];
   for (const indice of Array.from({ length: FOTOS_CANDIDATAS_MAX }, (_, i) => i)) {
     let foto;
@@ -1813,7 +1875,17 @@ function _fotosUtilizaveis(doc, codigoProduto) {
     try {
       imagem = doc.openImage(foto.buffer);
     } catch {
-      continue; // arquivo indexado mas ilegível (EXIF quebrado etc.)
+      // Ver _removerExifJpeg acima — antes de desistir da foto, tenta sem
+      // o bloco EXIF (só faz diferença pra JPEG; PNG nunca cai aqui pelo
+      // filtro de mimetype acima).
+      try {
+        const semExif = foto.mimetype === "image/jpeg" ? _removerExifJpeg(foto.buffer) : null;
+        imagem = semExif ? doc.openImage(semExif) : null;
+        if (imagem) foto = { ...foto, buffer: semExif };
+      } catch {
+        imagem = null;
+      }
+      if (!imagem) continue; // mesmo sem EXIF não abre — desiste dessa foto
     }
     if (!imagem || !imagem.width || !imagem.height) continue;
     utilizaveis.push({
@@ -1839,7 +1911,9 @@ function _fotosUtilizaveis(doc, codigoProduto) {
       escolhidas[k] = candidata;
     }
   }
-  return escolhidas.slice(0, 2);
+  const resultado = escolhidas.slice(0, 2);
+  cache.set(chaveProduto, resultado);
+  return resultado;
 }
 
 // Rede de segurança por FOTO: o parse já passou em _fotosUtilizaveis, mas se
@@ -3774,6 +3848,19 @@ async function gerarPdfCatalogoCompleto(produtos, fabricante, destino, tipoCompl
   // Fonte do número de página no rodapé (pedido do usuário, 2026-09-08) —
   // ver comentário em RODAPE_NUMERO_FONTE acima.
   doc.registerFont(RODAPE_NUMERO_FONTE, RODAPE_NUMERO_FONTE_ARQUIVO);
+
+  // Issue #57: produto só pode entrar no catálogo se pelo menos uma foto
+  // realmente abrir no PDFKit. `temAlgumaFoto` no controller só verifica o
+  // índice e deixava passar arquivos corrompidos ou em formato inválido; o
+  // cartão acabava sendo impresso com o rótulo "sem foto". Filtrar aqui,
+  // antes de agrupar e calcular índice/páginas, mantém esses totais corretos.
+  const produtosComFoto = [];
+  for (let i = 0; i < produtos.length; i++) {
+    const produto = produtos[i];
+    if (_fotosUtilizaveis(doc, produto.codigo).length > 0) produtosComFoto.push(produto);
+    if (i > 0 && i % CEDER_A_CADA_N_BLOCOS === 0) await _cederEventLoop();
+  }
+  produtos = produtosComFoto;
 
   const grupos = agruparPorMarca
     ? _agruparPorMarca(produtos).map(({ marca, produtos: itens }) => ({ linha: marca, itens }))

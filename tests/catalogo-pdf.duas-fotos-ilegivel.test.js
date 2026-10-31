@@ -117,17 +117,30 @@ async function gerarCom(fotos) {
 }
 
 describe('catálogo completo — layout do card quando uma das fotos não abre', () => {
-  // A arte fixa da página (cabeçalho/rodapé) também passa por doc.image.
-  // Medindo o cenário sem nenhuma foto, sobra a linha de base pra isolar as
-  // fotos de PRODUTO nos outros cenários.
-  let arteDaPagina;
+  // A arte fixa da página (cabeçalho/rodapé) também passa por doc.image, e
+  // não é a mesma em todo cenário: com 0 produtos SÓ a página de índice é
+  // desenhada (2 imagens: cabeçalho+rodapé dela); assim que há 1 produto
+  // com ao menos 1 foto utilizável, a página de CONTEÚDO também entra (mais
+  // 2 imagens: seu próprio cabeçalho+rodapé) — 4 no total, antes de
+  // qualquer foto de produto. Dois baselines, um pra cada formato de
+  // cenário: "sem produto" é o mesmo usado pelo Issue #57 (produto
+  // irrecuperável = omitido = só a página de índice); "com produto" é o
+  // usado quando a foto (original ou recuperada via _removerExifJpeg)
+  // sobrevive e o produto aparece de verdade no catálogo.
+  let arteDaPaginaSemProduto;
+  let arteDaPaginaComProduto;
   let larguraFotoUnica;
   let larguraFotoMetade;
 
   beforeAll(async () => {
-    arteDaPagina = (await gerarCom([])).imagens.length;
-    larguraFotoUnica = (await gerarCom([FOTO_A])).imagens.slice(arteDaPagina);
-    larguraFotoMetade = (await gerarCom([FOTO_A, FOTO_B])).imagens.slice(arteDaPagina);
+    arteDaPaginaSemProduto = (await gerarCom([])).imagens.length;
+    const refUnica = await gerarCom([FOTO_A]);
+    // 1 produto com 1 foto: a diferença entre o total e as fotos de fato
+    // desenhadas (1, nesse cenário de referência) dá a arte fixa real
+    // quando o produto sobrevive ao filtro do Issue #57.
+    arteDaPaginaComProduto = refUnica.imagens.length - 1;
+    larguraFotoUnica = refUnica.imagens.slice(arteDaPaginaComProduto);
+    larguraFotoMetade = (await gerarCom([FOTO_A, FOTO_B])).imagens.slice(arteDaPaginaComProduto);
   });
 
   test('cenários de referência: 1 foto ocupa a largura cheia, 2 fotos ocupam metade cada', () => {
@@ -141,7 +154,7 @@ describe('catálogo completo — layout do card quando uma das fotos não abre',
 
   test('2ª foto ilegível: desenha a 1ª em largura CHEIA e NÃO escreve "sem foto"', async () => {
     const resultado = await gerarCom([FOTO_A, FOTO_ILEGIVEL]);
-    const fotosDoProduto = resultado.imagens.slice(arteDaPagina);
+    const fotosDoProduto = resultado.imagens.slice(arteDaPaginaComProduto);
 
     expect(fotosDoProduto).toEqual(larguraFotoUnica);
     // O sintoma relatado: foto encolhida pra metade (como se houvesse 2) com
@@ -153,21 +166,37 @@ describe('catálogo completo — layout do card quando uma das fotos não abre',
   test('1ª foto ilegível e 2ª boa: usa a 2ª em largura cheia em vez de "sem foto"', async () => {
     const resultado = await gerarCom([FOTO_ILEGIVEL, FOTO_B]);
 
-    expect(resultado.imagens.slice(arteDaPagina)).toEqual(larguraFotoUnica);
+    expect(resultado.imagens.slice(arteDaPaginaComProduto)).toEqual(larguraFotoUnica);
     expect(resultado.semFoto).toBe(0);
   });
 
-  test('as duas ilegíveis: nenhuma foto desenhada e um único "sem foto"', async () => {
+  // 2026-10-29 (Issue #57, mesmo bug de fundo desta suíte): antes, um
+  // produto sem nenhuma foto utilizável sobrevivia até aqui e ganhava o
+  // placeholder "sem foto" escrito por cima — era exatamente esse texto
+  // que, combinado com o bug de layout acima, confundia o usuário. Agora
+  // gerarPdfCatalogoCompleto pré-filtra os produtos por _fotosUtilizaveis
+  // ANTES de montar índice/corpo: um produto sem foto de verdade (nem
+  // mesmo depois de tentar _removerExifJpeg) não entra mais no catálogo —
+  // não aparece, em vez de aparecer com "sem foto". A foto ilegível aqui
+  // não tem segmento EXIF de verdade pra _removerExifJpeg remover (é um
+  // JPEG sintético do jpeg-js), então o teste segue cobrindo exatamente o
+  // caso "mesmo tentando, não teve jeito" (irrecuperável) — ver
+  // verificar-fix-exif.js para a cobertura do caso recuperável, validada
+  // contra fotos reais do acervo (10/10 do fabricante 12M).
+  test('as duas ilegíveis (irrecuperável mesmo após tentar remover EXIF): produto some do catálogo, sem placeholder', async () => {
     const resultado = await gerarCom([FOTO_ILEGIVEL, FOTO_ILEGIVEL]);
 
-    expect(resultado.imagens).toHaveLength(arteDaPagina);
-    expect(resultado.semFoto).toBe(1);
+    // Produto sem nenhuma foto utilizável é filtrado ANTES da página de
+    // conteúdo existir — só sobra a arte da página de índice (ver
+    // comentário no beforeAll acima).
+    expect(resultado.imagens).toHaveLength(arteDaPaginaSemProduto);
+    expect(resultado.semFoto).toBe(0);
   });
 
-  test('sem nenhuma foto cadastrada: segue caindo no "sem foto"', async () => {
+  test('sem nenhuma foto cadastrada: produto também some do catálogo (Issue #57), sem placeholder', async () => {
     const resultado = await gerarCom([]);
 
-    expect(resultado.imagens).toHaveLength(arteDaPagina);
-    expect(resultado.semFoto).toBe(1);
+    expect(resultado.imagens).toHaveLength(arteDaPaginaSemProduto);
+    expect(resultado.semFoto).toBe(0);
   });
 });

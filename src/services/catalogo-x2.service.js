@@ -157,6 +157,27 @@ function _extrairFabricante(nome) {
   return partes[1].trim();
 }
 
+// 2026-10-28 (ver DIVISOES_MARCA_POR_FABRICANTE abaixo): mesmo parsing de
+// _extrairFabricante acima ("<descrição> - <FABRICANTE> - <código>"), só
+// que devolve o 3º bloco em vez do 2º — é o código que o PRÓPRIO
+// fabricante usa pra peça (ex. "PL70080122", "IL7026"), usado só pra
+// decidir a sub-marca de fabricantes com entrada em
+// DIVISOES_MARCA_POR_FABRICANTE. NÃO dá pra reaproveitar `ficha.referencia`
+// pra isso — conferido ao vivo em 2026-10-28 (586 produtos PRADOLUX reais
+// via /api/catalogo/buscar): `referencia` vem `null` pra praticamente
+// todos eles (não é um campo que o X2 preenche pra esse fornecedor), o
+// código só existe dentro do próprio `nome`. Reaproveita a MESMA
+// normalização de hífen de _extrairFabricante de propósito — assim, todo
+// produto cujo fabricante já foi resolvido com sucesso (ou seja, caiu no
+// ramo de 3 blocos) também tem código resolvido aqui, sem divergência
+// possível entre os dois (mesmo split, mesmos 3 blocos).
+function _extrairCodigoFabricanteDoNome(nome) {
+  const normalizado = String(nome || "").replace(/(?<=\S)-(?=\s)/g, " -");
+  const partes = normalizado.split(" - ");
+  if (partes.length !== 3) return null;
+  return partes[2].trim();
+}
+
 // Mesma marca grafada de formas diferentes no catálogo real (achado
 // escaneando os 17.417 produtos em 2026-07-23) — mapeado pro nome canônico
 // mais frequente, senão o dropdown de fabricante mostraria a mesma marca 2-3
@@ -164,6 +185,28 @@ function _extrairFabricante(nome) {
 // Ver comentário acima, em _carregarIndices, sobre por que estas marcas
 // precisam de seed manual (nunca aparecem no padrão de 3 blocos).
 const FABRICANTES_FALLBACK_MANUAIS = ["DNI"];
+
+// PARCERIA DE MARCA (pedido do usuário, 2026-10-28): Inova e Pradolux são
+// marcas parceiras — o X2 não tem "INOVA" cadastrado como fabricante
+// próprio (confirmado consultando /api/catalogo/fabricantes-completo ao
+// vivo: só existe "PRADOLUX", com 586 produtos), então hoje todo produto
+// desse fornecedor (seja Inova ou Pradolux de verdade) cai junto no mesmo
+// catálogo "PRADOLUX", sem distinção nenhuma. O usuário mandou o catálogo
+// de referência do PRÓPRIO fornecedor (pradolux.pdf, Google Drive) pra
+// mostrar como ele divide as duas marcas dentro de um catálogo só —
+// conferido: 413 produtos com referência "PL..." (Pradolux) e 40 com
+// "IL..." (Inova), inclusive com referência cruzada tipo "SIMILAR:
+// PL06551243" ligando um produto Inova ao equivalente Pradolux. Pedido:
+// "precisamos montar do mesmo esquema" — o Catálogo Completo do fabricante
+// PRADOLUX passa a abrir dividido no mesmo critério (prefixo da
+// `referencia` do produto, já indexado em _indexarProduto/_extrairFabricante
+// acima), capítulo INOVA primeiro — mesma ordem do catálogo do fornecedor —
+// depois PRADOLUX com o resto. Usado em catalogo-pdf.service.js
+// (gerarPdfCatalogoCompleto) — fabricante sem entrada aqui não muda em
+// nada (continua agrupado por Linha, como sempre foi).
+const DIVISOES_MARCA_POR_FABRICANTE = {
+  PRADOLUX: [{ prefixo: "IL", marca: "INOVA" }],
+};
 
 const FABRICANTE_ALIASES = {
   "MULTI QUALITA": "MULTIQUALITA",
@@ -283,6 +326,11 @@ function _indexarProduto(p) {
   const base = {
     codigo: p.codigo, nome: p.nome, secao: p.secao, linha: p.linha,
     referencia: ficha.referencia || null, fabricante,
+    // Usado só pela divisão de sub-marca (DIVISOES_MARCA_POR_FABRICANTE em
+    // catalogo-pdf.service.js) — ver comentário de
+    // _extrairCodigoFabricanteDoNome acima sobre por que não dá pra usar
+    // `referencia` pra isso.
+    codigoFabricante: _extrairCodigoFabricanteDoNome(p.nome),
     equivalentes, referenciasCruzadas,
     // BUG REAL corrigido 2026-09-04 (usuário reportou aba "Especificação
     // Técnica" do modal sempre vazia, mesmo com dado real no X2 — ex:
@@ -1456,6 +1504,12 @@ function buscarProdutosPainel({ marca = "", modelo = "", ano = null, anoInicio =
       linha: p.linha,
       referencia: p.referencia,
       fabricante: p.fabricante,
+      // Ver DIVISOES_MARCA_POR_FABRICANTE/_extrairCodigoFabricanteDoNome
+      // acima — faltava aqui (bug real 2026-10-28, achado ao vivo: 611/611
+      // produtos PRADOLUX voltavam com codigoFabricante undefined pro
+      // Catálogo Completo, porque esta função mapeia os campos retornados
+      // na mão e tinha esquecido este).
+      codigoFabricante: p.codigoFabricante,
       aplicacao: p.aplicacao,
       aplicacaoOrganizada: _aplicacaoOrganizadaCache(p.aplicacao),
       dadosTecnicos: p.dadosTecnicos || null,
@@ -1544,6 +1598,8 @@ function buscarProdutosPainel({ marca = "", modelo = "", ano = null, anoInicio =
     linha: p.linha,
     referencia: p.referencia,
     fabricante: p.fabricante,
+    // Ver comentário equivalente no outro mapeamento acima (modo navegação).
+    codigoFabricante: p.codigoFabricante,
     aplicacao: p.aplicacao,
     aplicacaoOrganizada: _aplicacaoOrganizadaCache(p.aplicacao),
     equivalentes: p.equivalentes || [],
@@ -1573,4 +1629,5 @@ module.exports = {
   listarLinhasParaEdicaoCategoria,
   definirLinhaProduto,
   PSEUDO_FABRICANTE_DIVERSOS,
+  DIVISOES_MARCA_POR_FABRICANTE,
 };

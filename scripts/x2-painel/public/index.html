@@ -139,7 +139,7 @@
                 <svg class="acao-rapida-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
               </div>
               <div class="acao-rapida-painel">
-                <label><input type="checkbox" id="opt-retry-sem-foto"> Tentar de novo os "sem foto"/placeholder/erro</label>
+                <label><input type="checkbox" id="opt-retry-sem-foto"> Tentar de novo os "sem foto"/placeholder/erro/não encontrado</label>
                 <label title="Baixa de novo todas as fotos da seção, trocando só as que vierem do X2 (foto trocada ou adicionada é atualizada). Não apaga nada antes; se parar no meio, é só rodar de novo que continua de onde parou (pula o que foi baixado nas últimas 12h)."><input type="checkbox" id="opt-rebaixar-tudo"> Rebaixar tudo das selecionadas (seguro, retomável)</label>
                 <label><input type="checkbox" id="opt-reiniciar"> Reiniciar do zero (apaga progresso salvo)</label>
                 <!-- PEDIDO DO USUÁRIO (2026-09-12): removidos "Limite por
@@ -570,6 +570,7 @@
               <label class="form-field">De <input type="date" class="search-input" id="lancamentos-x2-desde" title="Deixe em branco pra usar a última semana completa (segunda a sábado)."></label>
               <label class="form-field">Até <input type="date" class="search-input" id="lancamentos-x2-ate"></label>
               <button class="primary" data-action="lancamentos-x2-rodar">Buscar lançamentos no X2</button>
+              <button class="small ghost" data-action="drive-enviar-semana" title="Reenvia ao Drive os PDFs dos fabricantes que tiveram produto novo na última captura acima, sem buscar de novo no X2.">Reenviar ao Drive (semana)</button>
             </div>
           </div>
           <!-- PEDIDO DO USUÁRIO (2026-09-08): "quando utilizar a ferramenta

@@ -110,6 +110,27 @@ describe('x2-fotos-scraper.calcularFila — pedido do usuário 2026-07-28: "retr
     expect(scraper.calcularFila(codigos, progresso)).toEqual(['555']);
   });
 
+  // BUG REAL corrigido em 2026-10-31 (achado inspecionando os checkpoints
+  // reais de instrumento-painel/gerador/consumo — 88%/98%/97% travados
+  // aqui): "nao_encontrado_na_tabela" e "frame_foto_nao_bateu" nunca
+  // voltavam à fila numa rodada normal de --retry-sem-foto (só no fluxo
+  // restrito a codigosEspecificos, pós-Lançamentos). Na prática isso
+  // travava a seção pra sempre: toda rodada seguinte via "já processado"
+  // e não tentava de novo, mesmo com milhares de produtos sem foto.
+  test('com retrySemFoto: nao_encontrado_na_tabela e frame_foto_nao_bateu também voltam à fila', () => {
+    const codigos2 = ['111', '222', '666', '777'];
+    const progresso2 = {
+      111: { status: 'ok' },
+      222: { status: 'sem_foto' },
+      666: { status: 'nao_encontrado_na_tabela' },
+      777: { status: 'frame_foto_nao_bateu' },
+    };
+    expect(scraper.calcularFila(codigos2, progresso2)).toEqual([]); // sem retry, nada volta (já tentado)
+    const fila = scraper.calcularFila(codigos2, progresso2, { retrySemFoto: true });
+    expect(fila.sort()).toEqual(['222', '666', '777'].sort());
+    expect(fila).not.toContain('111'); // "ok" continua de fora
+  });
+
   // BUG REAL corrigido em 2026-08-13 (achado analisando os 1209 erros de
   // MECÂNICA): "erro" ficava preso pra sempre, só "sem_foto"/"placeholder"
   // entravam de novo com retrySemFoto. Único jeito de tentar de novo era

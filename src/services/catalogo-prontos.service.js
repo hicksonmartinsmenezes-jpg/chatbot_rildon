@@ -11,12 +11,15 @@ const crypto = require("crypto");
 const logger = require("../utils/logger");
 
 const PASTA = process.env.CATALOGOS_PRONTOS_DIR || path.join(__dirname, "..", "..", "catalogos-prontos");
+// Incrementar quando uma mudança no gerador exigir descartar PDFs já prontos.
+// A revisão também invalida as cópias locais do programa da loja.
+const REVISAO_PDF = "2026-10-29-sem-foto-v1";
 
 function arquivo(chave) {
   const texto = String(chave || "");
   const slug = texto.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "catalogo";
   const hash = crypto.createHash("md5").update(texto).digest("hex").slice(0, 6);
-  return path.join(PASTA, `${slug}-${hash}.pdf`);
+  return path.join(PASTA, `${slug}-${hash}-${REVISAO_PDF}.pdf`);
 }
 
 function existe(chave) {
@@ -75,12 +78,12 @@ const ARQ_VERSAO = path.join(PASTA, "versao.txt");
 function versao() {
   try {
     const v = fs.readFileSync(ARQ_VERSAO, "utf8").trim();
-    if (v) return v;
+    if (v.startsWith(`${REVISAO_PDF}-`)) return v;
   } catch { /* ainda não existe */ }
   return novaVersao();
 }
 function novaVersao() {
-  const v = String(Date.now());
+  const v = `${REVISAO_PDF}-${Date.now()}`;
   try {
     fs.mkdirSync(PASTA, { recursive: true });
     fs.writeFileSync(ARQ_VERSAO, v);

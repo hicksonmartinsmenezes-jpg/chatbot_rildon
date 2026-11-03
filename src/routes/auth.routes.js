@@ -525,8 +525,8 @@ function requireAdmin(req, res, next) {
 // compartilhado só por isso (evitar overengineering, CLAUDE.md) porque
 // frontend/backend não compartilham módulo hoje.
 const PROFILE_DEFAULT_SCREENS = {
-  atendente: new Set(["dashboard", "conversations", "history", "contacts", "catalogo"]),
-  supervisor: new Set(["dashboard", "conversations", "history", "contacts", "catalogo", "channels", "metrics"])
+  atendente: new Set(["dashboard", "conversations", "history", "contacts"]),
+  supervisor: new Set(["dashboard", "conversations", "history", "contacts", "channels", "metrics"])
 };
 
 // Perfil sugere um padrão (PROFILE_DEFAULT_SCREENS acima), mas a permissão

@@ -1,11 +1,23 @@
-// Rotas internas entre os dois processos do servidor (painel e catálogo). Nunca públicas:
-// exigem o segredo compartilhado (X-Interno-Token) e origem na rede interna.
+// Rotas internas entre os dois processos (painel e o serviço catalogo-rildon,
+// repositório próprio desde 2026-11-03). Nunca públicas: exigem o segredo
+// compartilhado (X-Interno-Token) e origem na rede interna.
 const express = require("express");
 const crypto = require("crypto");
+const net = require("net");
 const logger = require("../utils/logger");
-const { ipPrivado } = require("../middlewares/catalogo-consulta");
 
 const router = express.Router();
+
+// Mesma função usada pelo catalogo-rildon (src/middlewares/catalogo-consulta.js)
+// — duplicada aqui de propósito, igual outros utilitários pequenos
+// compartilhados entre os dois repositórios (ver CLAUDE.md).
+function ipPrivado(ip) {
+  let v = String(ip || "").replace(/^::ffff:/i, "");
+  if (net.isIPv6(v)) return v === "::1" || /^f[cd][0-9a-f]{2}:/i.test(v);
+  if (!net.isIPv4(v)) return false;
+  const [a, b] = v.split(".").map(Number);
+  return a === 10 || a === 127 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31);
+}
 
 function tokenValido(recebido) {
   const esperado = process.env.INTERNO_TOKEN || process.env.API_TOKEN || "";
@@ -23,11 +35,11 @@ router.post("/interno/recarregar", async (req, res) => {
     if (tipo === "estoque") {
       await require("../services/estoque.service").carregarEstoque();
     } else if (tipo === "fotos") {
-      require("../services/catalogo-fotos.service").recarregarDoDisco();
+      // Sem efeito aqui: o painel não mantém cache de fotos/PDF (isso agora
+      // vive só em catalogo-rildon) — só confirma recebido pro outro lado
+      // não ficar reenviando.
     } else if (tipo === "produtos") {
       require("../services/catalogo-x2.service").recarregarIndices();
-      require("../services/catalogo-fotos.service").recarregarDoDisco();
-      require("../services/catalogo-pdf.service").limparCacheBboxFotos();
     } else {
       return res.status(400).json({ error: "tipo inválido" });
     }

@@ -55,7 +55,6 @@ const JS_FILES = [
   'js/15-modal.js',
   'js/contacts/contacts-utils.js',
   'js/16-contacts.js',
-  'js/18-catalogo.js',
   'js/13-main.js',
   'js/17-ui-events.js',
 ];
@@ -77,7 +76,6 @@ const CSS_FILES = [
   'css/12-ux-global.css',
   'css/14-contacts.css',
   'css/16-metrics.css',
-  'css/17-catalogo.css',
   'css/19-motion.css',
   'css/09-wa-recovery.css',
   'css/15-light-theme.css', // tema claro deve ser o último (sobrescreve os demais)

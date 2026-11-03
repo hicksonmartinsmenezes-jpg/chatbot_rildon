@@ -6,7 +6,6 @@ const PANEL_SCREEN_PERMISSIONS = [
   { id: "conversations", label: "Atendimentos", icon: "fa-headset", group: "Atendimento" },
   { id: "history", label: "Histórico", icon: "fa-clock-rotate-left", group: "Atendimento" },
   { id: "contacts", label: "Contatos", icon: "fa-address-book", group: "Atendimento" },
-  { id: "catalogo", label: "Catálogo", icon: "fa-book", group: "Operação" },
   { id: "channels", label: "Campanhas", icon: "fa-bullhorn", group: "Gestão" },
   { id: "metrics", label: "Métricas", icon: "fa-chart-line", group: "Gestão" },
   { id: "chatbot", label: "Chatbot", icon: "fa-robot", group: "Administração" },
@@ -17,7 +16,7 @@ function discoverPanelScreenPermissions() {
   const known = new Set(PANEL_SCREEN_PERMISSIONS.map(screen => screen.id));
   const icons = {
     dashboard: "fa-desktop", conversations: "fa-headset", history: "fa-clock-rotate-left",
-    leads: "fa-list", contacts: "fa-address-book", catalogo: "fa-book",
+    leads: "fa-list", contacts: "fa-address-book",
     channels: "fa-bullhorn", metrics: "fa-chart-line", chatbot: "fa-robot", settings: "fa-gear"
   };
 
@@ -54,8 +53,8 @@ const DEFAULT_SCREEN_PERMISSIONS = {
   // pode ser marcada individualmente pra qualquer perfil, inclusive
   // Chatbot/Configurações pra um atendente. Mesma lógica espelhada em
   // normalizeScreenPermissions (src/services/user.service.js).
-  atendente: { dashboard:true, conversations:true, history:true, contacts:true, catalogo:true },
-  supervisor: { dashboard:true, conversations:true, history:true, contacts:true, catalogo:true, channels:true, metrics:true },
+  atendente: { dashboard:true, conversations:true, history:true, contacts:true },
+  supervisor: { dashboard:true, conversations:true, history:true, contacts:true, channels:true, metrics:true },
   admin: Object.fromEntries(PANEL_SCREEN_PERMISSIONS.map(screen => [screen.id, true]))
 };
 

@@ -29,8 +29,6 @@ const contactRoutes  = require("./routes/contact.routes");
 const settingsRoutes    = require("./routes/settings.routes");
 const botStatusRoutes   = require("./routes/botStatus.routes");
 const atendenteRoutes   = require("./routes/atendentes.routes");
-const catalogoRoutes    = require("./routes/catalogo.routes");
-const { consultaCatalogoSemLogin } = require("./middlewares/catalogo-consulta");
 // MCP somente-leitura (nova função, pedido do usuário 2026-09-09) —
 // desligado por padrão via MCP_ENABLED, ver comentário no próprio
 // mcp.routes.js/mcp.service.js.
@@ -164,12 +162,7 @@ app.use("/api", authRouter);
 // O handler retorna 404 quando MCP_ENABLED não é "true".
 app.use("/api", mcpRoutes);
 
-// Programa Windows da loja: consulta do catálogo sem login (só leitura, só rede
-// interna, só com o cabeçalho do programa) — ver middlewares/catalogo-consulta.js.
-// Precisa vir ANTES do authSession global abaixo.
-app.use("/api", consultaCatalogoSemLogin(catalogoRoutes));
-
-// Avisos internos entre o painel e o contêiner do catálogo (segredo compartilhado + rede interna).
+// Avisos internos entre o painel e o serviço catalogo-rildon (segredo compartilhado + rede interna).
 app.use("/api", require("./routes/interno.routes"));
 
 // A partir daqui tudo exige sessão. authSession roda UMA vez por requisição
@@ -209,7 +202,6 @@ function gateQuickReplies(req, res, next) {
 app.use("/api", gate(["/contacts"], "contacts", "channels"), contactRoutes);
 app.use("/api", gate(["/tickets"], "dashboard", "conversations"), ticketRoutes);
 app.use("/api", gate(["/history"], "dashboard", "conversations", "history"), historyRoutes);
-app.use("/api", gate(["/catalogo"], "catalogo"), catalogoRoutes);
 app.use("/api", gate(["/messages", "/whatsapp"], "conversations"), messageRoutes);
 app.use("/api", gate(["/settings"], "chatbot", "settings"), settingsRoutes);
 app.use("/api", gateQuickReplies, quickReplyRoutes);

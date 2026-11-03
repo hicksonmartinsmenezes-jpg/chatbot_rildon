@@ -9,14 +9,16 @@ const userRepository =
 const SALT_ROUNDS = 10;
 
 // Lista canônica das telas do menu — espelha PANEL_SCREEN_PERMISSIONS em
-// frontend/js/09-users.js (mesmos 9 ids). Cada perfil sugere um conjunto
-// PADRÃO de telas (PROFILE_SCREEN_ACCESS abaixo), mas a permissão
-// individual sempre pode sobrepor em qualquer direção — LIBERAR uma tela
-// fora do padrão do perfil (pedido do usuário, 2026-09-19: "não consigo dar
-// permissão... mesmo que seja atendente ou supervisor") ou RETIRAR uma tela
-// que o perfil teria por padrão (comportamento que já existia antes).
+// frontend/js/09-users.js (mesmos 8 ids — "catalogo" removido em 2026-11-03,
+// quando o Catálogo ganhou repositório/serviço próprio, ver catalogo-rildon).
+// Cada perfil sugere um conjunto PADRÃO de telas (PROFILE_SCREEN_ACCESS
+// abaixo), mas a permissão individual sempre pode sobrepor em qualquer
+// direção — LIBERAR uma tela fora do padrão do perfil (pedido do usuário,
+// 2026-09-19: "não consigo dar permissão... mesmo que seja atendente ou
+// supervisor") ou RETIRAR uma tela que o perfil teria por padrão
+// (comportamento que já existia antes).
 const ALL_SCREEN_IDS = [
-  "dashboard", "conversations", "history", "contacts", "catalogo",
+  "dashboard", "conversations", "history", "contacts",
   "channels", "metrics", "chatbot", "settings"
 ];
 
@@ -25,8 +27,8 @@ const ALL_SCREEN_IDS = [
 // tem entrada aqui de propósito (normalizeScreenPermissions trata perfil
 // "admin" à parte, sempre liberando tudo).
 const PROFILE_SCREEN_ACCESS = {
-  atendente: new Set(["dashboard", "conversations", "history", "contacts", "catalogo"]),
-  supervisor: new Set(["dashboard", "conversations", "history", "contacts", "catalogo", "channels", "metrics"])
+  atendente: new Set(["dashboard", "conversations", "history", "contacts"]),
+  supervisor: new Set(["dashboard", "conversations", "history", "contacts", "channels", "metrics"])
 };
 
 function normalizeScreenPermissions(perfil, permissions = {}) {

@@ -396,7 +396,10 @@ async function rodarUploadTodosFabricantes({ exceto = [], so = null, limite = 0,
       break;
     }
     try {
-      const bufferPdf = await _baixarPdfFabricante(opcao.value, { baseUrl: BASE_URL, apiToken: config.apiToken });
+      // Reenvio completo manual/agendado precisa refletir o catálogo atual.
+      // Sem `fresco`, o endpoint pode devolver o PDF semanal em cache, que
+      // ainda não inclui produtos DNI recém reconhecidos pelo parser.
+      const bufferPdf = await _baixarPdfFabricante(opcao.value, { baseUrl: BASE_URL, apiToken: config.apiToken, fresco: true });
       const envio = await _enviarPdfParaDrive(drive, config.pastaId, nome, bufferPdf);
       resultado.enviados.push(envio);
       console.log(`[x2-drive] ${nome}.pdf — ${envio.acao} no Drive.`);

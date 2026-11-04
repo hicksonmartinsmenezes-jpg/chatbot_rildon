@@ -243,7 +243,7 @@ async function exportarCatalogoPDF(btnEl) {
   }
 
   try {
-    const res = await fetch(`/api/catalogo/exportar-pdf?${query}`, { credentials: "include" });
+    const res = await fetch(`/api/catalogo/exportar-pdf?${query}&semCache=${Date.now()}`, { credentials: "include" });
     if (!res.ok) {
       const errBody = await res.json().catch(() => ({}));
       throw new Error(errBody.error || "Erro ao gerar PDF do catálogo.");
@@ -408,7 +408,7 @@ async function gerarCatalogoCompletoPDF(btnEl) {
   }
 
   try {
-    const res = await fetch(`/api/catalogo/exportar-pdf?fabricante=${encodeURIComponent(fabricante)}`, { credentials: "include" });
+    const res = await fetch(`/api/catalogo/exportar-pdf?fabricante=${encodeURIComponent(fabricante)}&semCache=${Date.now()}`, { credentials: "include" });
     if (!res.ok) {
       const errBody = await res.json().catch(() => ({}));
       throw new Error(errBody.error || "Erro ao gerar PDF do catálogo completo.");

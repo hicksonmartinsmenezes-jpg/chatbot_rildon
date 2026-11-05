@@ -4,24 +4,29 @@
 // ─── Painel WhatsApp / QR Code ────────────────────────────────────────────────
 let _waQrTimer = null;
 
-// BUG CORRIGIDO (usuário: "meu QR Code ainda não aparece na tela"): esta
-// função só sabia desenhar o QR chamando QRCode.toCanvas() no navegador —
-// dependia de window.QRCode (vendor/libs/qrcode.min.js) estar presente e
-// funcionando. Quando essa lib falhava silenciosamente (callback com err,
-// ou window.QRCode nunca definido), a função simplesmente retornava sem
-// fazer nada: a área de QR nunca saía de "hidden" e o painel ficava preso
-// em "Aguardando QR Code..." pra sempre, mesmo o backend tendo gerado e
-// emitido o QR normalmente (visível nos logs do servidor).
+// O QR é SEMPRE desenhado a partir de `qrImage` — a imagem PNG (data URL)
+// que o backend já gera em GET /api/whatsapp/status usando o pacote
+// "qrcode" do servidor. Não existe mais fallback client-side aqui, e isso
+// é proposital.
 //
-// O backend já gera a imagem do QR pronta (ver GET /api/whatsapp/status
-// em message.routes.js, usando o pacote "qrcode" no servidor — comentário
-// de lá: "elimina a dependência do CDN da biblioteca QRCode no navegador
-// para o pareamento funcionar") mas o frontend nunca tinha sido
-// atualizado pra consumir isso — só usava o `qr` (string crua) com a lib
-// client-side. Agora prioriza `qrImage` (data URL PNG já renderizada no
-// servidor, desenhada aqui num <img> temporário e copiada pro canvas) e
-// só cai no caminho antigo (client-side) se por algum motivo não vier
-// qrImage nenhuma, como fallback de compatibilidade.
+// Histórico (Issues #68 e #70, causa raiz achada só depois): o código
+// original desenhava chamando QRCode.toCanvas(), assumindo a API da lib
+// node-qrcode. Mas o arquivo realmente servido em
+// vendor/libs/qrcode.min.js é a davidshimjs/qrcodejs — outra biblioteca,
+// com API de construtor (`new QRCode(el, opts)` + makeCode/makeImage),
+// que NÃO tem toCanvas nem toDataURL. Resultado: o guard
+// `typeof QRCode !== "undefined"` passava (a lib existe, só é a errada) e
+// a linha seguinte estourava "TypeError: QRCode.toCanvas is not a
+// function" — erro engolido por catch silencioso em quem chamava, então o
+// painel ficava preso em "Aguardando QR Code..." sem nenhum sinal.
+// Confirmado ao vivo no painel da loja: QRCode.toCanvas === undefined.
+//
+// Esse fallback nunca funcionaria, e a lib nem é versionada no git (não
+// existiria num checkout limpo). O backend já foi construído pra eliminar
+// essa dependência — ver comentário em message.routes.js: "elimina a
+// dependência do CDN da biblioteca QRCode no navegador para o pareamento
+// funcionar". Então o caminho client-side foi removido de vez, em vez de
+// consertar a chamada pra uma lib que não precisamos.
 function renderWaQr(qr, qrImage) {
   const canvas   = document.getElementById("wa-qr-canvas");
   const area     = document.getElementById("wa-qr-area");
@@ -35,29 +40,25 @@ function renderWaQr(qr, qrImage) {
     connArea?.classList.add("hidden");
   };
 
-  if (qrImage) {
-    const img = new Image();
-    img.onload = () => {
-      const ctx = canvas.getContext("2d");
-      canvas.width  = img.naturalWidth  || 220;
-      canvas.height = img.naturalHeight || 220;
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      mostrarAreaQr();
-    };
-    img.onerror = () => {
-      console.warn("[WA-QR] Falha ao carregar qrImage do backend, tentando fallback client-side.");
-      if (typeof QRCode !== "undefined" && qr) {
-        QRCode.toCanvas(canvas, qr, { width: 220, margin: 2 }, (err) => { if (!err) mostrarAreaQr(); });
-      }
-    };
-    img.src = qrImage;
-  } else if (typeof QRCode !== "undefined" && qr) {
-    QRCode.toCanvas(canvas, qr, { width: 220, margin: 2 }, (err) => {
-      if (!err) mostrarAreaQr();
-    });
-  } else {
-    return; // nada disponível pra desenhar ainda.
+  if (!qrImage) {
+    // Sem imagem do backend não há o que desenhar. O polling de status
+    // (12-wa-recovery.js) tenta de novo em ~1.5s.
+    console.warn("[WA-QR] Status sem qrImage; aguardando próximo ciclo.");
+    return;
   }
+
+  const img = new Image();
+  img.onload = () => {
+    const ctx = canvas.getContext("2d");
+    canvas.width  = img.naturalWidth  || 220;
+    canvas.height = img.naturalHeight || 220;
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    mostrarAreaQr();
+  };
+  img.onerror = () => {
+    console.error("[WA-QR] Falha ao carregar a imagem do QR gerada pelo backend.");
+  };
+  img.src = qrImage;
 
   // Contagem regressiva de 60s (QR expira)
   clearInterval(_waQrTimer);

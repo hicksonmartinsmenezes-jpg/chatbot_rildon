@@ -232,7 +232,12 @@ async function onConnectionUpdate({ connection, lastDisconnect, qr }) {
       code !== 401 &&
       code !== 440;
 
-    logger.warn(`Conexão encerrada (código ${code})`);
+    // DIAGNÓSTICO (Issue #66 — QR nunca completa pareamento, cai com código
+    // 408 repetidamente): o log só mostrava o código, sem a mensagem de erro
+    // real do lastDisconnect — impossível distinguir "QR expirou sem scan"
+    // de "WebSocket caiu por instabilidade de rede/infra" só pelo código.
+    const motivo = lastDisconnect?.error?.message || lastDisconnect?.error?.toString?.() || "sem detalhe";
+    logger.warn(`Conexão encerrada (código ${code}): ${motivo}`);
     if (code === 401 || code === 440) {
       try {
         fs.rmSync(

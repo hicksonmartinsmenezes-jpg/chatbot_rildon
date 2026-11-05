@@ -37,7 +37,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.20.1",
     "@sentry/node": "^10.63.0",
-    "@whiskeysockets/baileys": "^6.7.23",
+    "@whiskeysockets/baileys": "^6.7.24",
     "axios": "^1.16.1",
     "bcrypt": "^6.0.0",
     "cookie-parser": "^1.4.7",

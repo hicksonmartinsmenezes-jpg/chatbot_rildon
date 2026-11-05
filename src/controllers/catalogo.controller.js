@@ -6,7 +6,7 @@ const { buscarProdutosPainel, buscarPorCodigo, buscarPorNomePainel, listarFabric
 const { listarSecoes, listarLinhasPorSecao } = require("../services/catalogo.service");
 const prontos = require("../services/catalogo-prontos.service");
 const promocionais = require("../services/catalogo-promocionais.service");
-const { gerarPdfCatalogo, gerarPdfCatalogoCompleto, gerarPdfCatalogoPromocional, limparCacheBboxFotos } = require("../services/catalogo-pdf.service");
+const { gerarPdfCatalogo, gerarPdfCatalogoCompleto, gerarPdfCatalogoPromocional, carregarLogoPromocional, limparCacheBboxFotos } = require("../services/catalogo-pdf.service");
 const { carregarEstoque, statusCache } = require("../services/estoque.service");
 const { anexarAplicacoesOrganizadas } = require("../services/catalogo-aplicacao-ia.service");
 
@@ -692,6 +692,13 @@ async function exportarPdfPromocionalHandler(req, res) {
     // quebra por um valor inesperado.
     const modo = req.body.modo === "fabricante" ? "fabricante" : "linha";
 
+    // Issue #74: título fixo e logo opcionais (ver gerarPdfCatalogoPromocional).
+    // `logo` é só uma chave de lista fixa; chave desconhecida → sem logo.
+    const opcoesPromo = {
+      titulo: String(req.body.titulo || "").trim().slice(0, 60),
+      logo: carregarLogoPromocional(req.body.logo),
+    };
+
     // 2026-10-23 (aba "Promocionais" do programa da loja): com `salvarNome` o PDF
     // não volta no corpo da resposta — fica guardado no servidor, entra na lista
     // de promocionais de todas as máquinas, e a resposta é só o JSON do item.
@@ -699,7 +706,7 @@ async function exportarPdfPromocionalHandler(req, res) {
     if (salvarNome) {
       const destino = promocionais.novoDestino();
       try {
-        await gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino.stream, modo);
+        await gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino.stream, modo, opcoesPromo);
         const item = await destino.publicar({ nome: salvarNome, itens: produtos.length, modo, codigos: produtos.map(p => p.codigo), precos: Object.fromEntries(produtos.map(p => [String(p.codigo), precosPorCodigo.get(String(p.codigo)) ?? null])) });
         return res.json({ ok: true, ...item, naoEncontrados });
       } catch (e) {
@@ -717,7 +724,7 @@ async function exportarPdfPromocionalHandler(req, res) {
       // que a UI adicionou ele à lista).
       res.setHeader("X-Catalogo-Codigos-Nao-Encontrados", naoEncontrados.join(","));
     }
-    await gerarPdfCatalogoPromocional(produtos, precosPorCodigo, res, modo);
+    await gerarPdfCatalogoPromocional(produtos, precosPorCodigo, res, modo, opcoesPromo);
   } catch (err) {
     logger.error("❌ Erro ao exportar catálogo promocional em PDF:", err.message);
     if (!res.headersSent) res.status(500).json({ error: "Erro ao gerar PDF do catálogo promocional." });

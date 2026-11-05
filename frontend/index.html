@@ -2546,7 +2546,11 @@ Como podemos ajudar você hoje?
     <i class="fa-solid fa-bell" aria-hidden="true"></i>
     <span id="toast-message">Novo atendimento recebido!</span>
   </div>
-  <script src="vendor/libs/qrcode.min.js"></script>
+  <!-- vendor/libs/qrcode.min.js removido (Issues #68/#70): era a
+       davidshimjs/qrcodejs, incompatível com as chamadas QRCode.toCanvas /
+       QRCode.toDataURL que o painel fazia (API da node-qrcode), e o arquivo
+       nem era versionado no git. O QR agora vem pronto do backend em
+       GET /api/whatsapp/status (campo qrImage). -->
   <script src="/socket.io/socket.io.js"></script>
   <script src="vendor/libs/chart.umd.js"></script>
   <style id="user-permissions-live-fix">
@@ -2568,7 +2572,7 @@ Como podemos ajudar você hoje?
 
 
   <!-- JS_BUNDLE_START (gerado por scripts/build-frontend.js — não editar à mão) -->
-  <script src="dist/bundle.d92b72b604.js"></script>
+  <script src="dist/bundle.e65fdf6ae7.js"></script>
   <!-- JS_BUNDLE_END -->
   <script id="user-permissions-live-fix">
   (() => {

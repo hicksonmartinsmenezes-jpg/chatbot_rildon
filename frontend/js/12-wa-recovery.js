@@ -36,27 +36,21 @@
   function showRecoveryWidget() { ensureRecoveryWidget(); document.getElementById("wa-recovery-widget")?.classList.remove("hidden"); }
   function hideRecoveryWidget() { document.getElementById("wa-recovery-widget")?.classList.add("hidden"); }
 
-  function renderRecoveryQr(qr, qrImage) {
-    if (!qr && !qrImage) return;
+  // Igual a renderWaQr (ver comentário longo em 12-socket.js): desenha só a
+  // partir de `qrImage` do backend. O fallback client-side que existia aqui
+  // (QRCode.toDataURL) chamava uma função inexistente na lib realmente
+  // servida em vendor/libs/qrcode.min.js — davidshimjs/qrcodejs, que tem API
+  // de construtor, não toDataURL — e só gerava TypeError silencioso.
+  function renderRecoveryQr(qrImage) {
+    if (!qrImage) return;
     ensureRecoveryWidget(); showRecoveryWidget();
     const image = document.getElementById("wa-recovery-qr-image");
     const area = document.getElementById("wa-recovery-qr-area");
     const waiting = document.getElementById("wa-recovery-waiting");
     if (!image) return;
-    if (qrImage) {
-      image.src = qrImage;
-      area?.classList.remove("hidden");
-      waiting?.classList.add("hidden");
-      return;
-    }
-    if (typeof QRCode !== "undefined") {
-      QRCode.toDataURL(qr, { width: 260, margin: 2 }, (err, url) => {
-        if (err || !url) return;
-        image.src = url;
-        area?.classList.remove("hidden");
-        waiting?.classList.add("hidden");
-      });
-    }
+    image.src = qrImage;
+    area?.classList.remove("hidden");
+    waiting?.classList.add("hidden");
   }
 
   async function refreshWaStatus() {
@@ -71,12 +65,25 @@
       waConectado = false;
       if (info.qr || info.qrImage) {
         updateWaStatusPanel("qr");
-        if (info.qr) renderWaQr(info.qr);
-        renderRecoveryQr(info.qr, info.qrImage);
+        // BUG CORRIGIDO (causa raiz das Issues #68/#70): esta linha chamava
+        // renderWaQr(info.qr) SEM passar info.qrImage. Sem a imagem, a
+        // renderWaQr antiga caía no fallback QRCode.toCanvas() — função que
+        // não existe na lib servida (davidshimjs/qrcodejs) — e estourava
+        // TypeError. Como a exceção acontecia ANTES de renderRecoveryQr(), o
+        // widget de recuperação nunca era atualizado; e como todo o corpo
+        // está dentro de um try/catch, o erro era engolido sem nenhum log,
+        // a cada ciclo de polling (1.5s), indefinidamente.
+        renderWaQr(info.qr, info.qrImage);
+        renderRecoveryQr(info.qrImage);
         return true;
       }
       updateWaStatusPanel("disconnected"); showRecoveryWidget(); return true;
-    } catch (_) { return false; }
+    } catch (err) {
+      // Nunca mais engolir erro em silêncio aqui: foi exatamente isso que
+      // escondeu a causa raiz acima por semanas.
+      console.error("[WA-QR] Falha ao atualizar status do WhatsApp:", err);
+      return false;
+    }
   }
 
   function startWaStatusPolling() {
@@ -106,14 +113,12 @@
     if (typeof socket === "undefined" || !socket) return;
     socket.on("qr_code", ({ qr } = {}) => {
       if (!qr) return;
-      // BUG CORRIGIDO (Issue #68, mesma causa do card principal): o evento
-      // socket "qr_code" só traz a string crua do QR, nunca `qrImage` — esse
-      // campo só existe na resposta de GET /api/whatsapp/status (gerado no
-      // backend via QRCode.toDataURL). Chamar renderRecoveryQr(qr, undefined)
-      // direto aqui caía no fallback client-side (QRCode.toCanvas/toDataURL
-      // da lib vendor/libs/qrcode.min.js, não rastreada em git e aparentemente
-      // quebrada) — por isso o widget de recuperação nunca desenhava o QR
-      // mesmo depois do card principal já ter sido corrigido. refreshWaStatus()
+      // O evento socket "qr_code" só traz a string crua do QR, nunca
+      // `qrImage` — esse campo só existe na resposta de
+      // GET /api/whatsapp/status (gerado no backend pelo pacote "qrcode").
+      // Como o desenho agora depende exclusivamente de qrImage (ver
+      // comentário em renderWaQr, 12-socket.js), o handler não tenta
+      // desenhar nada a partir do evento: refreshWaStatus()
       // busca o status completo (com qrImage) e já chama renderRecoveryQr()
       // com a imagem pronta — mesmo caminho confiável usado em todo o resto.
       updateWaStatusPanel("qr");

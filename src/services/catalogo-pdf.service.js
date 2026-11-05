@@ -185,7 +185,11 @@ const PROMO_TITULO_AREA = {
 // dentro da faixa azul-clara do canto direito da arte (medido pixel a pixel:
 // a faixa vai de x≈567/727 a 726/727 e y≈21/127 a 95/127, com a diagonal
 // recuando à esquerda conforme desce — o retângulo abaixo fica sempre dentro).
-const PROMO_LOGO_AREA = { xFrac0: 0.80, xFrac1: 0.985, yFrac0: 0.19, yFrac1: 0.72 };
+// Ajuste (Issue #76): centrada na faixa visível (borda diagonal à esquerda,
+// borda da página à direita → centro ≈ 0.8675 da largura), não colada à direita.
+const PROMO_LOGO_AREA = { xFrac0: 0.785, xFrac1: 0.95, yFrac0: 0.19, yFrac1: 0.72 };
+// Título fixo (ex.: "Promocional") sai maior que o nome de fabricante (24).
+const PROMO_TITULO_TAMANHO_FIXO = 36;
 const PROMO_LOGOS_DIR = path.join(__dirname, "../assets/marcas-promocional");
 
 // `chave` vem do cliente (campo `logo` do form): só aceita [a-z0-9-] e só
@@ -2525,7 +2529,7 @@ function _desenharRodape(doc, numeroPagina, estilo = "eletrica") {
 // (os 4 arquivos já vêm sem margem branca, ver comentário acima) e com
 // título/"Página N" desenhados dentro da área seguro medida em
 // PROMO_TITULO_AREA/PROMO_PAGINA_AREA.
-function _desenharCabecalhoPromo(doc, titulo, modo, logo = null) {
+function _desenharCabecalhoPromo(doc, titulo, modo, logo = null, tituloFixo = false) {
   const w = doc.page.width;
   const ehFabricante = modo === "fabricante";
   const img = ehFabricante ? PROMO_CABECALHO_FABRICANTE_IMG : PROMO_CABECALHO_LINHA_IMG;
@@ -2533,7 +2537,10 @@ function _desenharCabecalhoPromo(doc, titulo, modo, logo = null) {
   const h = w / ratio;
   doc.image(img, 0, 0, { width: w, height: h });
 
-  const area = ehFabricante ? PROMO_TITULO_AREA.fabricante : PROMO_TITULO_AREA.linha;
+  // Título fixo: centraliza na parte azul-escura da arte (acima da faixa
+  // branca, y ≈ 0.08–0.60 da altura) em vez da área toda (que desce até a faixa).
+  const areaBase = ehFabricante ? PROMO_TITULO_AREA.fabricante : PROMO_TITULO_AREA.linha;
+  const area = tituloFixo ? { ...areaBase, yFrac0: 0.08, yFrac1: 0.60 } : areaBase;
   const x = w * area.xFrac0;
   const larguraTexto = w * (area.xFrac1 - area.xFrac0);
   const yTopo = h * area.yFrac0;
@@ -2555,7 +2562,7 @@ function _desenharCabecalhoPromo(doc, titulo, modo, logo = null) {
   // escolheu fonte máxima menor e fixa (PROMO_TITULO_TAMANHO_FABRICANTE,
   // 24) + alinhado à esquerda (não centralizado) — mais parecido com o
   // peso visual do mockup mesmo em nomes de fabricante longos.
-  const tamanhoMaximo = ehFabricante ? PROMO_TITULO_TAMANHO_FABRICANTE : PROMO_TITULO_TAMANHO;
+  const tamanhoMaximo = tituloFixo ? PROMO_TITULO_TAMANHO_FIXO : (ehFabricante ? PROMO_TITULO_TAMANHO_FABRICANTE : PROMO_TITULO_TAMANHO);
   const alinhamento = ehFabricante ? "left" : "center";
   let fonte = Math.min(tamanhoMaximo, alturaArea * 0.9);
   doc.font(PROMO_TITULO_FONTE);
@@ -4303,7 +4310,7 @@ async function gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino, m
       paginaLocalAtual = pos.pagina;
       doc.addPage();
       pagina += 1;
-      _desenharCabecalhoPromo(doc, bloco.linha, modo, logoCabecalho);
+      _desenharCabecalhoPromo(doc, bloco.linha, modo, logoCabecalho, !!tituloFixo);
       _desenharRodapePromo(doc, pagina, modo);
     }
 

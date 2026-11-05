@@ -181,6 +181,22 @@ const PROMO_TITULO_AREA = {
   linha: { xFrac0: 0.014, yFrac0: 0.053, xFrac1: 0.746, yFrac1: 0.642, cor: "#ffffff" },
   fabricante: { xFrac0: 0.02, yFrac0: 0.06, xFrac1: 0.67, yFrac1: 0.94, cor: "#ffffff" },
 };
+// Logo opcional no cabeçalho do modo "fabricante" (Issue #74): retângulo
+// dentro da faixa azul-clara do canto direito da arte (medido pixel a pixel:
+// a faixa vai de x≈567/727 a 726/727 e y≈21/127 a 95/127, com a diagonal
+// recuando à esquerda conforme desce — o retângulo abaixo fica sempre dentro).
+const PROMO_LOGO_AREA = { xFrac0: 0.80, xFrac1: 0.985, yFrac0: 0.19, yFrac1: 0.72 };
+const PROMO_LOGOS_DIR = path.join(__dirname, "../assets/marcas-promocional");
+
+// `chave` vem do cliente (campo `logo` do form): só aceita [a-z0-9-] e só
+// devolve arquivo que existe na pasta fixa acima — nunca um caminho livre.
+function carregarLogoPromocional(chave) {
+  const k = String(chave || "").trim().toLowerCase();
+  if (!/^[a-z0-9-]{1,40}$/.test(k)) return null;
+  const arquivo = path.join(PROMO_LOGOS_DIR, `${k}.png`);
+  try { return fs.readFileSync(arquivo); } catch { return null; }
+}
+
 // Centro do texto "Página N" (fração da largura/altura do rodapé) — mesma
 // técnica de RODAPE_NUM_X_FRACAO/Y_FRACAO, mas aqui o texto é "Página N"
 // (não só o número) pra bater exatamente com o mockup original, na mesma
@@ -2509,7 +2525,7 @@ function _desenharRodape(doc, numeroPagina, estilo = "eletrica") {
 // (os 4 arquivos já vêm sem margem branca, ver comentário acima) e com
 // título/"Página N" desenhados dentro da área seguro medida em
 // PROMO_TITULO_AREA/PROMO_PAGINA_AREA.
-function _desenharCabecalhoPromo(doc, titulo, modo) {
+function _desenharCabecalhoPromo(doc, titulo, modo, logo = null) {
   const w = doc.page.width;
   const ehFabricante = modo === "fabricante";
   const img = ehFabricante ? PROMO_CABECALHO_FABRICANTE_IMG : PROMO_CABECALHO_LINHA_IMG;
@@ -2549,6 +2565,14 @@ function _desenharCabecalhoPromo(doc, titulo, modo) {
   const yTexto = yTopo + (alturaArea - fonte) / 2;
   doc.fillColor(area.cor).font(PROMO_TITULO_FONTE).fontSize(fonte)
     .text(tituloTexto, x, yTexto, { width: larguraTexto, height: fonte * 1.3, align: alinhamento, ellipsis: true, lineBreak: false });
+
+  if (logo && ehFabricante) {
+    const bx = w * PROMO_LOGO_AREA.xFrac0;
+    const by = h * PROMO_LOGO_AREA.yFrac0;
+    const bw = w * (PROMO_LOGO_AREA.xFrac1 - PROMO_LOGO_AREA.xFrac0);
+    const bh = h * (PROMO_LOGO_AREA.yFrac1 - PROMO_LOGO_AREA.yFrac0);
+    doc.image(logo, bx, by, { fit: [bw, bh], align: "center", valign: "center" });
+  }
 
   doc.fillColor("#111827").font("Helvetica");
 }
@@ -4157,7 +4181,7 @@ async function gerarPdfCatalogoCompleto(produtos, fabricante, destino, tipoCompl
  * que agora ele carrega o nome do Fabricante quando `modo==="fabricante"`
  * (mesmo campo, significado diferente por modo — ver _agruparPorFabricante).
  */
-async function gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino, modo = "linha") {
+async function gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino, modo = "linha", opcoes = {}) {
   // 2026-10-09 (auditoria de performance): `bufferPages: true` REMOVIDO.
   // Com ela, o pdfkit não finaliza nenhuma página no addPage: guarda todas em
   // _pageBuffer e, só no doc.end(), roda um zlib.deflateSync POR PÁGINA de uma
@@ -4191,7 +4215,16 @@ async function gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino, m
   const produtosOrdenados = [...produtos].sort((a, b) =>
     String(a.codigo ?? "").localeCompare(String(b.codigo ?? ""), "pt-BR", { numeric: true })
   );
-  const grupos = modo === "fabricante" ? _agruparPorFabricante(produtosOrdenados) : _agruparPorLinha(produtosOrdenados);
+  // Issue #74: `opcoes.titulo` troca o agrupamento por UM grupo só com esse
+  // título (ex.: "Promocional") — sem páginas separadas por fabricante/linha
+  // e sem nomes de grupo ("CHEVROLET", "SEM FABRICANTE IDENTIFICADO") que não
+  // são o assunto do catálogo. `opcoes.logo` (Buffer PNG) vai na faixa azul
+  // do canto direito do cabeçalho (só no modo "fabricante").
+  const tituloFixo = String(opcoes?.titulo || "").trim();
+  const logoCabecalho = opcoes?.logo || null;
+  const grupos = tituloFixo
+    ? [{ linha: tituloFixo, itens: produtosOrdenados }]
+    : (modo === "fabricante" ? _agruparPorFabricante(produtosOrdenados) : _agruparPorLinha(produtosOrdenados));
 
   // 2026-08-31 (pedido do usuário: "remova sumario"): Catálogo Promocional
   // não tem mais páginas de índice/sumário — vai direto pro conteúdo. Isso
@@ -4270,7 +4303,7 @@ async function gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino, m
       paginaLocalAtual = pos.pagina;
       doc.addPage();
       pagina += 1;
-      _desenharCabecalhoPromo(doc, bloco.linha, modo);
+      _desenharCabecalhoPromo(doc, bloco.linha, modo, logoCabecalho);
       _desenharRodapePromo(doc, pagina, modo);
     }
 
@@ -4310,4 +4343,4 @@ function _interno() {
   };
 }
 
-module.exports = { gerarPdfCatalogo, gerarPdfCatalogoCompleto, gerarPdfCatalogoPromocional, limparCacheBboxFotos };
+module.exports = { gerarPdfCatalogo, gerarPdfCatalogoCompleto, gerarPdfCatalogoPromocional, carregarLogoPromocional, limparCacheBboxFotos };

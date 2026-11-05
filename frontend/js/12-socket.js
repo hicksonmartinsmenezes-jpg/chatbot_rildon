@@ -4,21 +4,60 @@
 // ─── Painel WhatsApp / QR Code ────────────────────────────────────────────────
 let _waQrTimer = null;
 
-function renderWaQr(qr) {
+// BUG CORRIGIDO (usuário: "meu QR Code ainda não aparece na tela"): esta
+// função só sabia desenhar o QR chamando QRCode.toCanvas() no navegador —
+// dependia de window.QRCode (vendor/libs/qrcode.min.js) estar presente e
+// funcionando. Quando essa lib falhava silenciosamente (callback com err,
+// ou window.QRCode nunca definido), a função simplesmente retornava sem
+// fazer nada: a área de QR nunca saía de "hidden" e o painel ficava preso
+// em "Aguardando QR Code..." pra sempre, mesmo o backend tendo gerado e
+// emitido o QR normalmente (visível nos logs do servidor).
+//
+// O backend já gera a imagem do QR pronta (ver GET /api/whatsapp/status
+// em message.routes.js, usando o pacote "qrcode" no servidor — comentário
+// de lá: "elimina a dependência do CDN da biblioteca QRCode no navegador
+// para o pareamento funcionar") mas o frontend nunca tinha sido
+// atualizado pra consumir isso — só usava o `qr` (string crua) com a lib
+// client-side. Agora prioriza `qrImage` (data URL PNG já renderizada no
+// servidor, desenhada aqui num <img> temporário e copiada pro canvas) e
+// só cai no caminho antigo (client-side) se por algum motivo não vier
+// qrImage nenhuma, como fallback de compatibilidade.
+function renderWaQr(qr, qrImage) {
   const canvas   = document.getElementById("wa-qr-canvas");
   const area     = document.getElementById("wa-qr-area");
   const waiting  = document.getElementById("wa-waiting-area");
   const connArea = document.getElementById("wa-connected-area");
   if (!canvas) return;
 
-  if (typeof QRCode === "undefined") return;
-
-  QRCode.toCanvas(canvas, qr, { width: 220, margin: 2 }, (err) => {
-    if (err) return;
+  const mostrarAreaQr = () => {
     area?.classList.remove("hidden");
     waiting?.classList.add("hidden");
     connArea?.classList.add("hidden");
-  });
+  };
+
+  if (qrImage) {
+    const img = new Image();
+    img.onload = () => {
+      const ctx = canvas.getContext("2d");
+      canvas.width  = img.naturalWidth  || 220;
+      canvas.height = img.naturalHeight || 220;
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      mostrarAreaQr();
+    };
+    img.onerror = () => {
+      console.warn("[WA-QR] Falha ao carregar qrImage do backend, tentando fallback client-side.");
+      if (typeof QRCode !== "undefined" && qr) {
+        QRCode.toCanvas(canvas, qr, { width: 220, margin: 2 }, (err) => { if (!err) mostrarAreaQr(); });
+      }
+    };
+    img.src = qrImage;
+  } else if (typeof QRCode !== "undefined" && qr) {
+    QRCode.toCanvas(canvas, qr, { width: 220, margin: 2 }, (err) => {
+      if (!err) mostrarAreaQr();
+    });
+  } else {
+    return; // nada disponível pra desenhar ainda.
+  }
 
   // Contagem regressiva de 60s (QR expira)
   clearInterval(_waQrTimer);
@@ -76,7 +115,7 @@ async function loadWaStatus() {
       updateWaStatusPanel("connected");
     } else if (info.qr) {
       updateWaStatusPanel("qr");
-      renderWaQr(info.qr);
+      renderWaQr(info.qr, info.qrImage);
     } else {
       updateWaStatusPanel("disconnected");
     }
@@ -499,11 +538,16 @@ socket.on("typing", data => {
   });
 
   // QR Code do WhatsApp emitido pelo backend
-  socket.on("qr_code", ({ qr }) => {
+  socket.on("qr_code", () => {
     const badge = document.getElementById("status-badge");
     if (badge) { badge.textContent = "⏳ Aguardando QR"; badge.className = "badge badge-off"; }
     showToast("📱 QR Code disponível em Configurações → WhatsApp.");
-    renderWaQr(qr);
+    // BUG CORRIGIDO: este evento socket só trazia a string crua do QR (`qr`),
+    // que exigia a lib client-side (vendor/libs/qrcode.min.js) pra desenhar.
+    // Agora busca o status completo (que já inclui `qrImage`, renderizada no
+    // backend) e deixa renderWaQr() desenhar a partir dela — mesmo caminho
+    // confiável usado por loadWaStatus() ao abrir a aba.
+    loadWaStatus();
   });
 
   socket.on("whatsapp_status", ({ status }) => {

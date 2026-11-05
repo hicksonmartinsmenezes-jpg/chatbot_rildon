@@ -104,11 +104,20 @@
 
   function bindQrSocket() {
     if (typeof socket === "undefined" || !socket) return;
-    socket.on("qr_code", ({ qr, qrImage } = {}) => {
-      if (!qr && !qrImage) return;
+    socket.on("qr_code", ({ qr } = {}) => {
+      if (!qr) return;
+      // BUG CORRIGIDO (Issue #68, mesma causa do card principal): o evento
+      // socket "qr_code" só traz a string crua do QR, nunca `qrImage` — esse
+      // campo só existe na resposta de GET /api/whatsapp/status (gerado no
+      // backend via QRCode.toDataURL). Chamar renderRecoveryQr(qr, undefined)
+      // direto aqui caía no fallback client-side (QRCode.toCanvas/toDataURL
+      // da lib vendor/libs/qrcode.min.js, não rastreada em git e aparentemente
+      // quebrada) — por isso o widget de recuperação nunca desenhava o QR
+      // mesmo depois do card principal já ter sido corrigido. refreshWaStatus()
+      // busca o status completo (com qrImage) e já chama renderRecoveryQr()
+      // com a imagem pronta — mesmo caminho confiável usado em todo o resto.
       updateWaStatusPanel("qr");
-      if (qr) renderWaQr(qr);
-      renderRecoveryQr(qr, qrImage);
+      refreshWaStatus();
       waitForWaQr();
     });
     socket.on("whatsapp_status", ({ status } = {}) => {

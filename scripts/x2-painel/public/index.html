@@ -45,6 +45,13 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>
           <span class="top-tab-label">Qualidade Cadastral</span>
         </span>
+        <!-- PEDIDO DO USUÁRIO (2026-11-09): "Localizar" — busca automatizada
+             de Endereçamento (produtos sem foto + com estoque), substituindo
+             a varredura manual feita antes. Ver scripts/x2-localizacao-scraper.js. -->
+        <span class="top-tab" data-top-tab="localizar" title="Localizar — Endereçamento (sem foto + com estoque)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-5.2-7-11a7 7 0 1 1 14 0c0 5.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>
+          <span class="top-tab-label">Localizar</span>
+        </span>
       </div>
       <!-- "Alertas WhatsApp" (Cortes de Produtos / Produtos Parados) deixou de
            ser aba própria (2026-09-11, pedido do usuário — "deixe mais
@@ -637,6 +644,50 @@
           <div id="qualidade-paineis"></div>
         </div>
       </div><!-- /top-painel qualidade -->
+
+      <!-- PEDIDO DO USUÁRIO (2026-11-09): "Localizar" — busca automatizada
+           de Endereçamento, só produtos sem foto + com estoque + ainda
+           pendentes (nunca reprocessa um código já resolvido). Mesmo
+           layout da aba Estoque: tabela à esquerda, ações à direita. -->
+      <div class="top-painel" data-top-painel="localizar">
+        <div class="layout">
+
+          <div class="card">
+            <h2>Fila pendente <span class="contador" id="contador-localizacao-pendentes">0</span></h2>
+            <p class="descricao">Produtos sem foto e com estoque que ainda não têm Endereçamento resolvido no X2. Um código some desta fila depois de ser encontrado ou confirmado "sem endereçamento" — nunca é buscado de novo.</p>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>Código</th><th>Nome</th><th>Qtd. Estoque</th><th>Última tentativa</th></tr>
+                </thead>
+                <tbody id="tabela-localizacao-fila"><tr><td colspan="4" class="skeleton">Carregando...</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="coluna-direita">
+            <div class="card">
+              <h2>Buscar localizações</h2>
+              <div class="execucao-resumo-grid" style="display:grid; margin-bottom:12px;">
+                <div><span class="rotulo">Encontrados</span><strong id="localizacao-encontrados">0</strong></div>
+                <div><span class="rotulo">Sem endereçamento</span><strong id="localizacao-sem-endereco">0</strong></div>
+                <div><span class="rotulo">Erro</span><strong id="localizacao-erros">0</strong></div>
+              </div>
+              <p class="descricao">Busca no X2 (☰ &gt; Logística &gt; Localização de Produto), 1 código por vez, só os ainda pendentes na fila ao lado.</p>
+              <label class="form-field">Limite nesta rodada
+                <select class="search-input" id="localizacao-limite">
+                  <option value="">Fila inteira</option>
+                  <option value="10">Primeiros 10 (teste)</option>
+                  <option value="50">Primeiros 50</option>
+                  <option value="100">Primeiros 100</option>
+                </select>
+              </label>
+              <button class="primary full" data-action="localizacao-buscar-agora">Buscar Localizações</button>
+            </div>
+          </div>
+
+        </div>
+      </div><!-- /top-painel localizar -->
 
     </main>
   </div><!-- /app-shell -->

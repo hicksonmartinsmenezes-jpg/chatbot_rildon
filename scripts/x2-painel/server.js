@@ -57,6 +57,10 @@ const painelProdutosSnapshot = require('../x2-painel-produtos-snapshot');
 const cortesProdutos = require('../x2-cortes-produtos-scraper');
 const curvaAbcParados = require('../x2-curva-abc-parados-scraper');
 const lancamentosX2 = require('../x2-lancamentos-scraper');
+// PEDIDO DO USUÁRIO (2026-11-09): aba nova "Localizar" — busca automatizada
+// de Endereçamento (produtos sem foto + com estoque), ver cabeçalho de
+// scripts/x2-localizacao-scraper.js.
+const localizacaoScraper = require('../x2-localizacao-scraper');
 // PEDIDO DO USUÁRIO (2026-09-11): 3º elo do encadeamento pós-Lançamentos —
 // gerar PDF por fabricante e subir/atualizar no Drive (ver comentário no
 // topo de x2-drive-lancamentos.js). Só exige 'googleapis' dentro da função
@@ -501,6 +505,20 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
           modoAutomatico,
           semAlerta: !!opcoes.semAlerta,
           numeroAlerta: opcoes.numeroAlerta || undefined,
+        });
+      } else if (tipo === 'localizacao') {
+        // PEDIDO DO USUÁRIO (2026-11-09): aba "Localizar" — busca
+        // Endereçamento só dos produtos sem foto + com estoque + ainda
+        // pendentes (ver obterCodigosPendentes em x2-localizacao-scraper.js).
+        // opcoes.limite (opcional, vindo do painel) processa só os N
+        // primeiros da fila numa rodada — útil pra testar/ir aos poucos em
+        // vez de travar o painel numa fila grande de uma vez só.
+        await localizacaoScraper.rodar({
+          channel: 'chrome',
+          confirmar: modoAutomatico ? undefined : confirmarFactory(),
+          modoAutomatico,
+          deveParar,
+          limite: opcoes.limite ? Number(opcoes.limite) : undefined,
         });
       } else if (tipo === 'produtos-parados') {
         // Alerta de produtos parados (2026-08-10) — ver
@@ -1024,6 +1042,30 @@ app.get('/api/produtos/buscar', (req, res) => {
 // ─── Estoque (2026-08-06) — só lista/serve os CSVs já baixados por
 // x2-estoque-export.js; nenhum parsing/estrutura ainda (decisão do
 // usuário: "só baixar e guardar o arquivo por enquanto").
+// PEDIDO DO USUÁRIO (2026-11-09): aba "Localizar" — lista pro painel o
+// progresso da fila (sem foto + com estoque): quantos já foram resolvidos
+// (encontrado/sem_enderecamento), quantos ainda faltam, e o resultado de
+// cada um já tentado. Lê do MESMO arquivo local que o scraper escreve
+// (resultadosPath) — o painel nunca consulta o Postgres direto do host
+// (ver aviso no topo de x2-localizacao-scraper.js).
+app.get('/api/localizacoes', (req, res) => {
+  try {
+    const pendentes = localizacaoScraper.obterCodigosPendentes();
+    const resultados = localizacaoScraper.carregarResultados();
+    const porCodigo = new Map(resultados.map((r) => [r.codigo, r]));
+    res.json({
+      pendentes: pendentes.length,
+      encontrados: resultados.filter((r) => r.status === 'encontrado').length,
+      semEnderecamento: resultados.filter((r) => r.status === 'sem_enderecamento').length,
+      erros: resultados.filter((r) => r.status === 'erro').length,
+      fila: pendentes.map((p) => ({ ...p, ultimaTentativa: porCodigo.get(p.codigo) || null })),
+      resultados,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/estoque/exports', (req, res) => {
   res.json({ exports: estoqueExport.carregarExports() });
 });

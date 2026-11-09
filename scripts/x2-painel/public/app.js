@@ -874,6 +874,7 @@
     if (tab.dataset.topTab === 'estoque') carregarEstoqueExports();
     if (tab.dataset.topTab === 'lancamentos') carregarLancamentosX2();
     if (tab.dataset.topTab === 'qualidade') carregarQualidadeCadastral();
+    if (tab.dataset.topTab === 'localizar') carregarLocalizacoes();
   });
 
   // ─── Rotinas (2026-08-06) ──────────────────────────────────────────
@@ -1146,6 +1147,64 @@
       if ([...selectCsv.options].some((o) => o.value === valorAtual)) selectCsv.value = valorAtual;
     });
   }
+
+  // ─── Localizar (2026-11-09) — busca automatizada de Endereçamento,
+  // só produtos sem foto + com estoque + ainda pendentes. Mesmo padrão de
+  // carregarEstoqueExports/estoque-baixar-agora acima. ──────────────────
+  async function carregarLocalizacoes() {
+    const res = await fetch('/api/localizacoes');
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      el('tabela-localizacao-fila').innerHTML = `<tr><td colspan="4" class="table-empty">${escapeHtml(data.error || 'Erro ao carregar.')}</td></tr>`;
+      return;
+    }
+    const data = await res.json();
+    el('contador-localizacao-pendentes').textContent = data.pendentes;
+    el('localizacao-encontrados').textContent = data.encontrados;
+    el('localizacao-sem-endereco').textContent = data.semEnderecamento;
+    el('localizacao-erros').textContent = data.erros;
+
+    const tbody = el('tabela-localizacao-fila');
+    const fila = data.fila || [];
+    if (!fila.length) {
+      tbody.innerHTML = '<tr><td colspan="4" class="table-empty">Nenhum código pendente — fila vazia.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = fila.slice(0, 500).map((p) => {
+      const ultima = p.ultimaTentativa;
+      const tentativa = !ultima ? '—'
+        : ultima.status === 'erro' ? `<span class="badge badge-red" title="${escapeHtml(String(ultima.erro || ''))}">erro</span>`
+        : ultima.status === 'sem_enderecamento' ? '<span class="badge badge-amber">sem endereçamento</span>'
+        : `<span class="badge badge-muted">${escapeHtml(ultima.status)}</span>`;
+      return `
+        <tr>
+          <td>${escapeHtml(p.codigo)}</td>
+          <td>${escapeHtml(p.nome || '—')}</td>
+          <td>${escapeHtml(String(p.qtdEstoque))}</td>
+          <td>${tentativa}</td>
+        </tr>
+      `;
+    }).join('') + (fila.length > 500 ? `<tr><td colspan="4" class="table-empty">+ ${fila.length - 500} código(s) a mais (não exibidos — a busca processa a fila inteira mesmo assim).</td></tr>` : '');
+  }
+
+  document.addEventListener('click', async (ev) => {
+    const btnLocalizacao = ev.target.closest('[data-action="localizacao-buscar-agora"]');
+    if (!btnLocalizacao) return;
+    const selectLimite = btnLocalizacao.closest('.card')?.querySelector('#localizacao-limite');
+    const limite = selectLimite && selectLimite.value ? Number(selectLimite.value) : undefined;
+    const res = await fetch('/api/acao', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tipo: 'localizacao', secoes: [], opcoes: { limite, automatico: true } }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      mostrarToast(data.error || 'Erro ao iniciar a busca de localizações.', 'erro');
+      return;
+    }
+    // acompanha o progresso na mesma "Execução" da aba Fotos (mesmo mecanismo de SSE)
+    el('top-tabs').querySelector('[data-top-tab="fotos"]').click();
+  });
 
   document.addEventListener('click', async (ev) => {
     const btnEstoque = ev.target.closest('[data-action="estoque-baixar-agora"]');

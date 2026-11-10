@@ -133,7 +133,7 @@ async function updateSession(userId, data, { skipTimer = false } = {}) {
   if (skipTimer) {
     cancelTimer(userId);
   } else {
-    resetTimer(userId);
+    await resetTimer(userId);
   }
 }
 
@@ -253,64 +253,79 @@ async function isBotAtivo() {
   return !(botConfig.ativo === false || botConfig.ativo === "false");
 }
 
-function resetTimer(userId) {
+// Issue #83: antes era fire-and-forget (getTimeouts().then(...) sem await,
+// chamada por updateSession() também sem await). Isso abria uma janela de
+// corrida real: cancelTimer(userId) de uma chamada concorrente (ex:
+// finalizarComTicket -> updateSession(..., {skipTimer:true})) podia rodar
+// ANTES de timers[userId] ser populado aqui, não cancelando nada; quando
+// essa promise finalmente resolvia, ela sobrescrevia timers[userId] com
+// timers novos e nunca cancelados, que disparavam do mesmo jeito. Sob carga
+// (CI com Jest paralelo) essa janela ficava grande o suficiente pra isso
+// acontecer de fato (teste "finalizarComTicket cancela um timer de aviso
+// que já estava pendente" falhando intermitentemente). Agora é async com
+// await logo no início, e updateSession() espera essa função terminar antes
+// de retornar — fecha a janela.
+async function resetTimer(userId) {
   cancelTimer(userId);
 
-  // CORRIGIDO: bloco de guarda duplicado removido — apenas uma verificação
-  getTimeouts().then((timeouts) => {
-    const avisoMs = timeouts.avisoMs;
-    let timeoutMs = timeouts.timeoutMs;
-
-    if (timeoutMs <= avisoMs) {
-      logger.warn(
-        "[Session] timeoutEncerramento menor ou igual ao timeoutAviso. Ajustando automaticamente."
-      );
-      timeoutMs = avisoMs + 60_000;
-    }
-
-    const aviso = setTimeout(async () => {
-      if (!_sendMessage || !sessions[userId]) return;
-
-      try {
-        if (!(await isBotAtivo())) {
-          logger.warn("Bot desativado. Aviso de inatividade ignorado.");
-          return;
-        }
-
-        await _sendMessage(
-          userId,
-          `⏳ Ainda está aí? Não recebi resposta nos últimos ${avisoMs / 60000} minutos.\n\nSe precisar de ajuda, é só digitar *0* para voltar ao menu.\n\nVou encerrar o atendimento em mais ${(timeoutMs - avisoMs) / 60000} minuto(s) caso não haja resposta.`
-        );
-      } catch (err) {
-        logger.error("Erro ao enviar aviso de inatividade:", err.message);
-      }
-    }, avisoMs);
-
-    const fim = setTimeout(async () => {
-      if (!_sendMessage || !sessions[userId]) return;
-
-      try {
-        if (!(await isBotAtivo())) {
-          logger.warn("Bot desativado. Encerramento por inatividade ignorado.");
-          return;
-        }
-
-        await _sendMessage(
-          userId,
-          "👋 Atendimento encerrado por inatividade.\n\nQuando quiser, é só mandar uma mensagem que estaremos aqui! 😊"
-        );
-      } catch (err) {
-        logger.error("Erro ao enviar mensagem de encerramento:", err.message);
-      } finally {
-        await clearSession(userId);
-      }
-    }, timeoutMs);
-
-    timers[userId] = { aviso, fim };
-
-  }).catch(err => {
+  let timeouts;
+  try {
+    timeouts = await getTimeouts();
+  } catch (err) {
     logger.warn(`[Session] Falha ao carregar timeouts: ${err.message}`);
-  });
+    return;
+  }
+
+  const avisoMs = timeouts.avisoMs;
+  let timeoutMs = timeouts.timeoutMs;
+
+  // CORRIGIDO: bloco de guarda duplicado removido — apenas uma verificação
+  if (timeoutMs <= avisoMs) {
+    logger.warn(
+      "[Session] timeoutEncerramento menor ou igual ao timeoutAviso. Ajustando automaticamente."
+    );
+    timeoutMs = avisoMs + 60_000;
+  }
+
+  const aviso = setTimeout(async () => {
+    if (!_sendMessage || !sessions[userId]) return;
+
+    try {
+      if (!(await isBotAtivo())) {
+        logger.warn("Bot desativado. Aviso de inatividade ignorado.");
+        return;
+      }
+
+      await _sendMessage(
+        userId,
+        `⏳ Ainda está aí? Não recebi resposta nos últimos ${avisoMs / 60000} minutos.\n\nSe precisar de ajuda, é só digitar *0* para voltar ao menu.\n\nVou encerrar o atendimento em mais ${(timeoutMs - avisoMs) / 60000} minuto(s) caso não haja resposta.`
+      );
+    } catch (err) {
+      logger.error("Erro ao enviar aviso de inatividade:", err.message);
+    }
+  }, avisoMs);
+
+  const fim = setTimeout(async () => {
+    if (!_sendMessage || !sessions[userId]) return;
+
+    try {
+      if (!(await isBotAtivo())) {
+        logger.warn("Bot desativado. Encerramento por inatividade ignorado.");
+        return;
+      }
+
+      await _sendMessage(
+        userId,
+        "👋 Atendimento encerrado por inatividade.\n\nQuando quiser, é só mandar uma mensagem que estaremos aqui! 😊"
+      );
+    } catch (err) {
+      logger.error("Erro ao enviar mensagem de encerramento:", err.message);
+    } finally {
+      await clearSession(userId);
+    }
+  }, timeoutMs);
+
+  timers[userId] = { aviso, fim };
 }
 
 module.exports = {

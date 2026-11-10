@@ -75,7 +75,7 @@ describe("session.service — timers de inatividade x finalizarComTicket", () =>
       "user-fluxo-normal",
       expect.stringContaining("Ainda está aí")
     );
-  }, 10000);
+  }, 20000);
 
   test("finalizarComTicket NÃO agenda aviso de inatividade (ticket já registrado, bot não espera resposta)", async () => {
     await sessionService.finalizarComTicket("user-pos-ticket", {
@@ -85,7 +85,7 @@ describe("session.service — timers de inatividade x finalizarComTicket", () =>
     await esperar(700);
 
     expect(sendMessage).not.toHaveBeenCalled();
-  }, 10000);
+  }, 20000);
 
   test("finalizarComTicket cancela um timer de aviso que já estava pendente daquele mesmo cliente", async () => {
     // Cliente estava no meio do fluxo (timer de aviso agendado pra 300ms)...
@@ -106,7 +106,7 @@ describe("session.service — timers de inatividade x finalizarComTicket", () =>
     await esperar(700);
 
     expect(sendMessage).not.toHaveBeenCalled();
-  }, 10000);
+  }, 20000);
 
   test("aiHistorico e customerName continuam preservados após finalizarComTicket (comportamento pré-existente não deve quebrar)", async () => {
     await sessionService.updateSession("user-historico", {

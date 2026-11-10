@@ -458,7 +458,19 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
           });
         }
       } else if (tipo === 'zip') {
-        for (const slug of opcoes.secoes) await montarZipFinal(slug);
+        // ⚠️ Issue #81: antes deste fix, este loop nunca checava `deveParar`
+        // — diferente de todos os outros tipos (ver 'baixar'/'sync' acima).
+        // Clicar "Cancelar" marcava `execucao.erro` e a tela mostrava isso
+        // na hora (via SSE), mas o zip de TODAS as seções continuava sendo
+        // montado do mesmo jeito até o fim — cancelamento nunca tinha efeito
+        // real nessa ação, só a aparência de ter tido.
+        for (const slug of opcoes.secoes) {
+          if (deveParar()) {
+            console.log(`\n⏹ Cancelado — parando antes de montar o zip de "${slug}".`);
+            break;
+          }
+          await montarZipFinal(slug);
+        }
       } else if (tipo === 'exportar') {
         for (const slug of opcoes.secoes) await exportarFotosSoltas(slug);
       } else if (tipo === 'estoque') {

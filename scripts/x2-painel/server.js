@@ -480,7 +480,10 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
             console.log(`\n⏹ Cancelado — parando antes de montar o zip de "${slug}".`);
             break;
           }
-          await montarZipFinal(slug);
+          // Botão manual "Montar zip" promete publicar o que já foi baixado
+          // (card em index.html): parcial preserva fotos do zip atual e só
+          // acrescenta as novas, em vez de recusar seção < 100%.
+          await montarZipFinal(slug, { parcial: true });
         }
       } else if (tipo === 'exportar') {
         for (const slug of opcoes.secoes) await exportarFotosSoltas(slug);

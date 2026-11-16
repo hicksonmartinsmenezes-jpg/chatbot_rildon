@@ -1211,45 +1211,6 @@ app.get('/api/painel-produtos/qualidade-cadastral/:chave', (req, res) => {
   res.json(lista);
 });
 
-// ─── TEMPORÁRIO (2026-08-07, sessão de debug) — serve o diagnóstico salvo
-// quando abrirPainelProdutos() falha achar a aba "Painel". Remover depois
-// que o bug de navegação for corrigido e confirmado.
-app.get('/api/debug/painel-produtos-falha.json', (req, res) => {
-  const p = require('path').join(painelProdutosSnapshot.QUALIDADE_DIR, '..', 'debug-ultima-falha.json');
-  if (!require('fs').existsSync(p)) return res.status(404).json({ error: 'sem diagnóstico salvo ainda' });
-  res.sendFile(p);
-});
-app.get('/api/debug/painel-produtos-falha.png', (req, res) => {
-  const p = require('path').join(painelProdutosSnapshot.QUALIDADE_DIR, '..', 'debug-ultima-falha.png');
-  if (!require('fs').existsSync(p)) return res.status(404).send('sem screenshot ainda');
-  res.sendFile(p);
-});
-// Dispara a investigação pontual do botão "Imprimir Itens" (não clica nele,
-// só reporta atributos — ver comentário em investigarBotaoImprimir).
-app.post('/api/debug/investigar-imprimir', (req, res) => {
-  if (execucao && execucao.rodando) {
-    return res.status(409).json({ error: 'Já tem uma ação rodando.' });
-  }
-  execucao = { tipo: 'investigar-imprimir', terminal: new TerminalVirtual(), rodando: true, aguardando: null, erro: null };
-  transmitir();
-  const origWrite = process.stdout.write.bind(process.stdout);
-  const capturar = (texto) => { execucao.terminal.escrever(texto); transmitir(); return true; };
-  process.stdout.write = capturar;
-  painelProdutosSnapshot.investigarBotaoImprimir({ channel: 'chrome' })
-    .catch((e) => { execucao.erro = e.message; console.error('Erro:', e.message); })
-    .finally(() => { process.stdout.write = origWrite; execucao.rodando = false; transmitir(); });
-  res.status(202).json({ ok: true });
-});
-// Genérico — serve qualquer debug-<sufixo>.json/.png salvo em
-// PAINEL_PRODUTOS_DIR (ex: debug-sem-metricas.json).
-app.get('/api/debug/:arquivo', (req, res) => {
-  const nome = req.params.arquivo;
-  if (!/^debug-[a-zA-Z0-9-]+\.(json|png)$/.test(nome)) return res.status(400).json({ error: 'nome inválido' });
-  const p = require('path').join(painelProdutosSnapshot.QUALIDADE_DIR, '..', nome);
-  if (!require('fs').existsSync(p)) return res.status(404).json({ error: 'sem diagnóstico salvo ainda' });
-  res.sendFile(p);
-});
-
 // ─── Lançamentos (2026-08-07) — produtos novos detectados por diff entre
 // snapshots do CSV de estoque já baixados (ver scripts/x2-painel/
 // lancamentos.js). 100% arquivo local, não toca em banco nenhum.

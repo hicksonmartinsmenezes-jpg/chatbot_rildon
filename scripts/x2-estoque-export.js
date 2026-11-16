@@ -843,11 +843,43 @@ async function _copiarEImportarNoDocker(caminhoCsvOrigem, empresa) {
           console.log('Estoque importado pro banco.');
           if (stdout) console.log(stdout.trim());
           await _forcarReloadCacheEstoque();
+          await _enviarParaVps(caminhoCsvOrigem, empresa);
           resolve('importado');
         }
       }
     );
   });
+}
+
+// Envia o CSV já importado no banco da loja para o catálogo na VPS (o catalogo.exe lê o banco
+// da VPS, que não recebia nenhuma atualização de estoque). Best-effort: sem CATALOGO_VPS_URL e
+// CATALOGO_VPS_TOKEN no .env, ou com falha de rede, só registra no log — o import local já valeu.
+async function _enviarParaVps(caminhoCsv, empresa) {
+  const base = String(process.env.CATALOGO_VPS_URL || '').replace(/\/+$/, '');
+  const token = process.env.CATALOGO_VPS_TOKEN || '';
+  if (!base || !token) {
+    console.log('(CATALOGO_VPS_URL/CATALOGO_VPS_TOKEN não configurados no .env — estoque NÃO enviado ao catálogo da VPS.)');
+    return 'vps_nao_configurada';
+  }
+  try {
+    const corpo = fs.readFileSync(caminhoCsv);
+    const resposta = await fetch(`${base}/api/catalogo/estoque/importar?empresa=${encodeURIComponent(empresa || 'MATRIZ')}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/csv', 'X-Interno-Token': token },
+      body: corpo,
+      signal: AbortSignal.timeout(120000),
+    });
+    const json = await resposta.json().catch(() => ({}));
+    if (!resposta.ok) {
+      console.log(`(VPS recusou o estoque de ${empresa || 'MATRIZ'}: HTTP ${resposta.status} — ${json.error || 'sem detalhe'}.)`);
+      return 'vps_recusou';
+    }
+    console.log(`Estoque de ${json.empresa} enviado ao catálogo da VPS (${json.total} produtos).`);
+    return 'vps_ok';
+  } catch (e) {
+    console.log(`(não consegui enviar o estoque de ${empresa || 'MATRIZ'} à VPS: ${e.message})`);
+    return 'vps_falha';
+  }
 }
 
 // PEDIDO DO USUÁRIO (2026-08-10): "sincronize em tempo real, quando eu baixo
@@ -949,6 +981,7 @@ module.exports = {
   nomeArquivoTimestamp,
   escolherOpcaoEmpresa,
   pastaDaEmpresa,
+  _enviarParaVps,
   validarCompletudeCsv,
   nomeArquivoExecucao,
   executarComLockArquivo,

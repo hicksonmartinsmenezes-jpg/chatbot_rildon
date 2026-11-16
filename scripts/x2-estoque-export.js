@@ -87,6 +87,29 @@ const LOGIN_URL = 'https://sistemas7.xprocess.com.br/seguranca/www/login_form.js
 // Confirmado ao vivo 2026-08-06 (ver cabeçalho do arquivo).
 const ESTOQUE_HREF_MARK = 'estoque_produto.jsp';
 
+// Relatório de Estoque Multiempresas (Issue: estoque nas 3 unidades). O select
+// "Empresa" do X2 não tem "Todas": roda-se o relatório uma vez por empresa.
+const TEXTO_LINK_MULTIEMPRESAS = 'Relatório de Estoque Multiempresas';
+const EMPRESAS_MULTIEMPRESAS = ['MATRIZ', 'DIST', 'EC'];
+
+// Escolhe, entre as opções do select "Empresa", a que corresponde à empresa
+// pedida. O X2 rotula as filiais com sufixo "(DIST)" / "(EC)"; a Matriz é a
+// opção sem nenhum dos dois. Devolve o `value` ou null (ambíguo/não achou).
+function escolherOpcaoEmpresa(opcoes, empresa) {
+  const lista = (opcoes || []).filter((o) => o && String(o.text || '').trim() && !/^(selecione|todas?)\b/i.test(String(o.text).trim()));
+  const ehDist = (o) => /\(\s*DIST\s*\)/i.test(o.text);
+  const ehEc = (o) => /\(\s*EC\s*\)/i.test(o.text);
+  const achadas = lista.filter((o) => (empresa === 'DIST' ? ehDist(o) : empresa === 'EC' ? ehEc(o) : !ehDist(o) && !ehEc(o)));
+  return achadas.length === 1 ? achadas[0].value : null;
+}
+
+// CSVs de DIST/EC ficam numa subpasta: outras telas do painel (Qualidade,
+// Localização, sync do catálogo) tratam "o CSV mais recente de ESTOQUE_DIR"
+// como o estoque da Matriz — não podem pegar o da Distribuidora por engano.
+function pastaDaEmpresa(empresa) {
+  return empresa && empresa !== 'MATRIZ' ? path.join(ESTOQUE_DIR, 'multiempresas') : ESTOQUE_DIR;
+}
+
 const OPCOES_ESTOQUE_VALIDAS = ['Com e sem estoque', 'Apenas com estoque', 'Apenas sem estoque'];
 
 const LIMIAR_COMPLETUDE_EXPORT = 0.9;
@@ -163,13 +186,17 @@ function mensagemFalhaMenuLogistica({ estado, diag, mensagensDoX2 }) {
 
 // Navega até a tela "Relatório de Estoque" clicando pelo menu de verdade
 // (nunca por URL direta — ver aviso no topo do arquivo).
-async function abrirRelatorioEstoque(page, { modoAutomatico } = {}) {
+async function abrirRelatorioEstoque(page, { modoAutomatico, multiempresas = false } = {}) {
   // Registrado ANTES do primeiro login: o aviso "senha inicial" aparece
   // justamente nele, e sem listener o Playwright descarta o diálogo sem deixar
-  // rastro. Guarda também o tipo (alert/confirm) pra diagnóstico.
-  const mensagensDoX2 = [];
-  page.on('dialog', (d) => { mensagensDoX2.push(`${d.type()}: ${String(d.message()).slice(0, 200)}`); d.dismiss().catch(() => {}); });
-  if (modoAutomatico) {
+  // rastro. Guarda também o tipo (alert/confirm) pra diagnóstico. Reabrir o
+  // relatório (Multiempresas, 1x por empresa) reaproveita o mesmo listener.
+  if (!page.__x2MensagensDoX2) {
+    page.__x2MensagensDoX2 = [];
+    page.on('dialog', (d) => { page.__x2MensagensDoX2.push(`${d.type()}: ${String(d.message()).slice(0, 200)}`); d.dismiss().catch(() => {}); });
+  }
+  const mensagensDoX2 = page.__x2MensagensDoX2;
+  if (modoAutomatico && !page.__x2SessaoIniciada) {
     // ⚠️ Confirmado ao vivo 2026-08-06 (testando esta função direto pelo
     // terminal): dar goto() direto pra HOME_URL — mesmo já logado — dispara
     // a MESMA trava de "acesso direto não permitido" que já bloqueava
@@ -200,6 +227,8 @@ async function abrirRelatorioEstoque(page, { modoAutomatico } = {}) {
     await page.waitForTimeout(1000);
     await tentarLoginAutomaticoSeNecessario(page);
     await page.waitForTimeout(1000);
+    // Reabrir o relatório (próxima empresa) não pode limpar a sessão de novo.
+    page.__x2SessaoIniciada = true;
   }
 
   // Não navega mais pra lugar nenhum além disso — a partir daqui a página
@@ -246,7 +275,11 @@ async function abrirRelatorioEstoque(page, { modoAutomatico } = {}) {
   await linkLogistica().click({ timeout: 10000 });
   await page.waitForTimeout(500);
 
-  await page.locator(`a[href*="${ESTOQUE_HREF_MARK}"]`).first().click({ timeout: 10000 });
+  if (multiempresas) {
+    await page.getByRole('link', { name: TEXTO_LINK_MULTIEMPRESAS }).first().click({ timeout: 10000 });
+  } else {
+    await page.locator(`a[href*="${ESTOQUE_HREF_MARK}"]`).first().click({ timeout: 10000 });
+  }
   await page.waitForTimeout(1200);
 }
 
@@ -443,8 +476,14 @@ function contarLinhasTabelaEstoque(page) {
   return page.evaluate((id) => {
     const frame = document.querySelector('iframe[name="principal"]');
     if (!frame || !frame.contentDocument) return -1;
-    const tabela = frame.contentDocument.getElementById(id);
-    return tabela ? tabela.rows.length : -1;
+    const doc = frame.contentDocument;
+    let tabela = doc.getElementById(id);
+    // A tela Multiempresas pode usar outro id: cai na maior tabela do frame.
+    if (!tabela) {
+      tabela = Array.from(doc.querySelectorAll('table')).sort((a, b) => b.rows.length - a.rows.length)[0];
+      if (!tabela || tabela.rows.length < 2) return -1;
+    }
+    return tabela.rows.length;
   }, TABELA_ESTOQUE_ID);
 }
 
@@ -494,13 +533,83 @@ function nomeArquivoTimestamp() {
   return `estoque-${agora.getFullYear()}-${pad(agora.getMonth() + 1)}-${pad(agora.getDate())}_${pad(agora.getHours())}-${pad(agora.getMinutes())}.csv`;
 }
 
+// Seleciona a empresa no select "Empresa" da tela Multiempresas e confere,
+// lendo de volta, que a opção ficou mesmo selecionada (senão exportaria os
+// dados da empresa errada e gravaria no lugar errado).
+async function selecionarEmpresa(page, empresa) {
+  const { resultado } = await comRetry(
+    () => avaliarEmQualquerFrame(page, () => {
+      const norm = (t) => String(t || '').normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '').toUpperCase();
+      const sel = Array.from(document.querySelectorAll('select')).find((el) => {
+        const textos = Array.from(el.options).map((o) => norm(o.textContent));
+        return textos.some((t) => t.includes('(DIST)')) && textos.some((t) => t.includes('(EC)'));
+      });
+      if (!sel) return null;
+      sel.setAttribute('data-x2-empresa', '1');
+      return Array.from(sel.options).map((o) => ({ value: o.value, text: o.textContent.trim() }));
+    }),
+    (r) => r && r.resultado,
+    { tentativas: 6, esperaMs: 1200 }
+  );
+  if (!resultado) throw new Error(`Não achei o select "Empresa" (com opções (DIST) e (EC)) na tela Multiempresas. Página: ${page.url()}.`);
+  const valor = escolherOpcaoEmpresa(resultado, empresa);
+  if (valor === null) throw new Error(`Não consegui identificar a empresa ${empresa} no select (opções vistas: ${resultado.map((o) => o.text).join(' | ')}).`);
+  const campo = page.frameLocator('iframe[name="principal"]').locator('select[data-x2-empresa="1"]');
+  await campo.selectOption(valor, { timeout: 10000 });
+  const lido = await campo.evaluate((el) => el.options[el.selectedIndex] && el.options[el.selectedIndex].value, null, { timeout: 5000 });
+  if (String(lido) !== String(valor)) throw new Error(`Empresa ${empresa} não ficou selecionada (esperado value=${valor}, lido=${lido}).`);
+}
+
 // Fluxo completo: abre a tela, ajusta filtros, pesquisa, exporta CSV e
 // salva em ESTOQUE_DIR. Retorna o caminho do arquivo salvo.
-async function exportarEstoque(context, { estoqueOpcao = 'Com e sem estoque', modoAutomatico } = {}) {
+async function exportarEstoque(context, { estoqueOpcao = 'Com e sem estoque', modoAutomatico, multiempresas = false } = {}) {
   const page = context.pages()[0] || (await context.newPage());
 
-  await abrirRelatorioEstoque(page, { modoAutomatico });
+  if (multiempresas && estoqueOpcao === 'Com e sem estoque') {
+    try {
+      return await exportarMultiempresas(context, page, { estoqueOpcao, modoAutomatico });
+    } catch (e) {
+      // Não deixa o estoque da Matriz parar por causa da tela nova (nunca
+      // validada ao vivo antes desta mudança): cai no relatório de sempre.
+      console.log(`(Multiempresas falhou: ${e.message} — voltando ao Relatório de Estoque simples, só Matriz.)`);
+    }
+  }
 
+  await abrirRelatorioEstoque(page, { modoAutomatico });
+  const r = await baixarCsvDoRelatorio(context, page, { estoqueOpcao });
+  let importacao = { estado: 'nao_aplicavel', motivo: 'export filtrado não substitui o estoque completo no banco' };
+  if (estoqueOpcao === 'Com e sem estoque') importacao = await _dispararImportacaoNoDocker(r.destino);
+  else console.log('(filtered export saved for reference; database import skipped to avoid replacing full inventory with a subset)');
+
+  return { arquivo: r.destino, nomeArquivo: r.nomeArquivo, importacao };
+}
+
+// Roda o Relatório de Estoque Multiempresas uma vez por empresa. A tela é
+// reaberta pelo menu a cada empresa (a tabela do X2 começa vazia, então
+// aguardarTabelaEstavel não confunde com o resultado da empresa anterior) e
+// cada CSV é validado e importado com --empresa=<X> assim que baixa.
+async function exportarMultiempresas(context, page, { estoqueOpcao, modoAutomatico }) {
+  const resultados = [];
+  let hashAnterior = null;
+  for (const empresa of EMPRESAS_MULTIEMPRESAS) {
+    console.log(`=== Multiempresas: ${empresa} ===`);
+    await abrirRelatorioEstoque(page, { modoAutomatico, multiempresas: true });
+    await selecionarEmpresa(page, empresa);
+    const r = await baixarCsvDoRelatorio(context, page, { estoqueOpcao, empresa });
+    const hash = crypto.createHash('sha256').update(fs.readFileSync(r.destino)).digest('hex');
+    if (hash === hashAnterior) {
+      throw new Error(`O CSV de ${empresa} veio idêntico ao da empresa anterior — a troca de empresa provavelmente não valeu. Nada de ${empresa} foi importado.`);
+    }
+    hashAnterior = hash;
+    const importacao = await _dispararImportacaoNoDocker(r.destino, empresa);
+    resultados.push({ empresa, arquivo: r.destino, nomeArquivo: r.nomeArquivo, importacao });
+  }
+  const ultimo = resultados[resultados.length - 1];
+  return { arquivo: ultimo.arquivo, nomeArquivo: ultimo.nomeArquivo, importacao: { estado: resultados.every((x) => x.importacao.estado === 'importado' || x.importacao.estado === 'concluida') ? 'importado' : 'parcial', empresas: resultados.map((x) => ({ empresa: x.empresa, estado: x.importacao.estado })) }, empresas: resultados };
+}
+
+// Do filtro até o CSV validado e publicado em ESTOQUE_DIR (com .meta.json).
+async function baixarCsvDoRelatorio(context, page, { estoqueOpcao, empresa } = {}) {
   console.log('Ajustando filtro "Estoque"...');
   await configurarFiltros(page, { estoqueOpcao });
 
@@ -514,12 +623,13 @@ async function exportarEstoque(context, { estoqueOpcao = 'Com e sem estoque', mo
   const linhasEsperadas = await aguardarTabelaEstavel(page);
 
   console.log('Clicando em "Exportar em CSV" e aguardando o download...');
-  const nomeArquivo = nomeArquivoExecucao(nomeArquivoTimestamp());
+  const nomeArquivo = nomeArquivoExecucao(empresa ? nomeArquivoTimestamp().replace(/\.csv$/, `-${empresa.toLowerCase()}.csv`) : nomeArquivoTimestamp());
   const stagingDir = path.join(ESTOQUE_DIR, '.staging');
   const rejeitadosDir = path.join(ESTOQUE_DIR, 'rejeitados');
   fs.mkdirSync(stagingDir, { recursive: true });
   const temporario = path.join(stagingDir, nomeArquivo);
-  const destino = path.join(ESTOQUE_DIR, nomeArquivo);
+  const destino = path.join(pastaDaEmpresa(empresa), nomeArquivo);
+  fs.mkdirSync(path.dirname(destino), { recursive: true });
 
   // ⚠️ BUG REAL corrigido 2026-10-23 (reproduzido ao vivo disparando a rotina): a espera
   // do download era fixa em 90s enquanto o clique podia levar até 180s (3 tentativas de
@@ -560,13 +670,9 @@ async function exportarEstoque(context, { estoqueOpcao = 'Com e sem estoque', mo
   // O identificador aleatório por execução evita colisões entre processos.
   // O rename publica o snapshot somente após a validação.
   fs.renameSync(temporario, destino);
-  fs.writeFileSync(`${destino}.meta.json`, JSON.stringify({ estoqueOpcao, completo: estoqueOpcao === 'Com e sem estoque', validado: true, linhasCsv: verificacao.linhasCsv, linhasTabela: verificacao.linhasTabela, capturadoEm: new Date().toISOString() }, null, 2));
+  fs.writeFileSync(`${destino}.meta.json`, JSON.stringify({ estoqueOpcao, empresa: empresa || null, completo: estoqueOpcao === 'Com e sem estoque', validado: true, linhasCsv: verificacao.linhasCsv, linhasTabela: verificacao.linhasTabela, capturadoEm: new Date().toISOString() }, null, 2));
   console.log(`(conferência ok: ${verificacao.linhasCsv} produtos no CSV; a tela do X2 mostrava ${verificacao.linhasTabela} linhas)`);
-  let importacao = { estado: 'nao_aplicavel', motivo: 'export filtrado não substitui o estoque completo no banco' };
-  if (estoqueOpcao === 'Com e sem estoque') importacao = await _dispararImportacaoNoDocker(destino);
-  else console.log('(filtered export saved for reference; database import skipped to avoid replacing full inventory with a subset)');
-
-  return { arquivo: destino, nomeArquivo, importacao };
+  return { destino, nomeArquivo };
 }
 
 // Copia o CSV pra dentro do repo (src/data/estoque-latest.csv — mesma pasta
@@ -668,11 +774,11 @@ async function executarComLockComEspera(caminhoLock, operacao, {
   }
 }
 
-async function _dispararImportacaoNoDocker(caminhoCsvOrigem) {
+async function _dispararImportacaoNoDocker(caminhoCsvOrigem, empresa) {
   fs.mkdirSync(ESTOQUE_DIR, { recursive: true });
   let estado;
   const resultado = await executarComLockComEspera(CSV_IMPORT_LOCK, async () => {
-    estado = await _copiarEImportarNoDocker(caminhoCsvOrigem);
+    estado = await _copiarEImportarNoDocker(caminhoCsvOrigem, empresa);
   });
   if (!resultado.acquired) {
     console.log('(importação pendente: lock continuou ocupado após 2 minutos; CSV e sidecar foram preservados, rode novamente para tentar importar)');
@@ -681,18 +787,19 @@ async function _dispararImportacaoNoDocker(caminhoCsvOrigem) {
   return { estado: estado || 'concluida' };
 }
 
-async function _copiarEImportarNoDocker(caminhoCsvOrigem) {
+async function _copiarEImportarNoDocker(caminhoCsvOrigem, empresa) {
   let origemMs;
   try { origemMs = Date.parse(JSON.parse(fs.readFileSync(`${caminhoCsvOrigem}.meta.json`, 'utf8')).capturadoEm); } catch {
     console.log('(importação recusada: sidecar de captura ausente ou inválido)');
     return 'falha_metadados';
   }
-  const maisRecenteMs = fs.readdirSync(ESTOQUE_DIR)
+  const pasta = pastaDaEmpresa(empresa);
+  const maisRecenteMs = fs.readdirSync(pasta)
     .filter((nome) => nome.endsWith('.csv'))
     .reduce((maior, nome) => {
       try {
-        const meta = JSON.parse(fs.readFileSync(path.join(ESTOQUE_DIR, `${nome}.meta.json`), 'utf8'));
-        if (meta.validado === true && meta.completo === true && meta.estoqueOpcao === 'Com e sem estoque') {
+        const meta = JSON.parse(fs.readFileSync(path.join(pasta, `${nome}.meta.json`), 'utf8'));
+        if (meta.validado === true && meta.completo === true && meta.estoqueOpcao === 'Com e sem estoque' && (meta.empresa || null) === (empresa || null)) {
           return Math.max(maior, Date.parse(meta.capturadoEm) || 0);
         }
       } catch { /* legado sem proveniência não altera a ordem de importação */ }
@@ -715,7 +822,7 @@ async function _copiarEImportarNoDocker(caminhoCsvOrigem) {
   return new Promise((resolve) => {
     execFile(
       'docker',
-      ['exec', DOCKER_CONTAINER, 'npm', 'run', 'importar-estoque', '--', CSV_HANDOFF_CONTAINER],
+      ['exec', DOCKER_CONTAINER, 'npm', 'run', 'importar-estoque', '--', CSV_HANDOFF_CONTAINER, ...(empresa ? [`--empresa=${empresa}`] : [])],
       { timeout: 60000 },
       async (err, stdout, stderr) => {
         if (err) {
@@ -726,7 +833,7 @@ async function _copiarEImportarNoDocker(caminhoCsvOrigem) {
             `(import pro banco não rodou: ${err.message} — o CSV foi baixado normalmente, só o "estoque ao vivo" do ` +
             `Catálogo que não atualizou. Confira se o Docker/container "${DOCKER_CONTAINER}" está rodando e a migration ` +
             '024 foi aplicada — pode rodar à mão depois com: docker exec ' + DOCKER_CONTAINER +
-            ' npm run importar-estoque -- ' + CSV_HANDOFF_CONTAINER + ')'
+            ' npm run importar-estoque -- ' + CSV_HANDOFF_CONTAINER + (empresa ? ` --empresa=${empresa}` : '') + ')'
           );
           resolve('falha_importacao');
         } else {
@@ -775,7 +882,7 @@ async function _forcarReloadCacheEstoque() {
   }
 }
 
-async function rodar({ channel, estoqueOpcao, confirmar, modoAutomatico } = {}) {
+async function rodar({ channel, estoqueOpcao, confirmar, modoAutomatico, multiempresas = true } = {}) {
   const context = await abrirNavegador(channel);
   try {
     if (!modoAutomatico) {
@@ -790,7 +897,7 @@ async function rodar({ channel, estoqueOpcao, confirmar, modoAutomatico } = {}) 
         await ask('Pressione Enter DEPOIS de estar logado no X2... ');
       }
     }
-    return await exportarEstoque(context, { estoqueOpcao, modoAutomatico });
+    return await exportarEstoque(context, { estoqueOpcao, modoAutomatico, multiempresas });
   } finally {
     await context.close().catch(() => {});
   }
@@ -837,6 +944,8 @@ module.exports = {
   ESTOQUE_DIR,
   OPCOES_ESTOQUE_VALIDAS,
   nomeArquivoTimestamp,
+  escolherOpcaoEmpresa,
+  pastaDaEmpresa,
   validarCompletudeCsv,
   nomeArquivoExecucao,
   executarComLockArquivo,

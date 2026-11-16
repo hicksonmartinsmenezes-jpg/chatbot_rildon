@@ -15,6 +15,8 @@
  *
  * Uso:
  *   node scripts/importar-estoque.js src/data/estoque-latest.csv
+ *   node scripts/importar-estoque.js src/data/estoque-dist.csv --empresa=DIST
+ *     (CSV do Relatório de Estoque Multiempresas; empresa = MATRIZ | DIST | EC)
  */
 'use strict';
 
@@ -25,13 +27,16 @@ const pool = require('../src/database/postgres');
 const { importarCsv } = require('../src/services/estoque.service');
 
 async function main() {
-  const caminho = process.argv[2];
+  const args = process.argv.slice(2);
+  const caminho = args.find((a) => !a.startsWith('--'));
+  const argEmpresa = args.find((a) => a.startsWith('--empresa='));
   if (!caminho) {
-    console.log('Uso: node scripts/importar-estoque.js <caminho-do-csv>');
+    console.log('Uso: node scripts/importar-estoque.js <caminho-do-csv> [--empresa=MATRIZ|DIST|EC]');
     process.exit(1);
   }
-  const resultado = await importarCsv(path.resolve(caminho));
-  console.log(`OK: ${resultado.total} produtos importados de ${resultado.arquivo}.`);
+  const empresa = argEmpresa ? argEmpresa.slice('--empresa='.length) : undefined;
+  const resultado = await importarCsv(path.resolve(caminho), { empresa });
+  console.log(`OK: ${resultado.total} produtos importados de ${resultado.arquivo}${resultado.empresa ? ` (empresa ${resultado.empresa})` : ''}.`);
 }
 
 main()

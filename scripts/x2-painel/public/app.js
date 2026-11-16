@@ -554,7 +554,14 @@
     const statusEl = el('status-execucao');
     clearTimeout(statusTimeoutId);
 
-    if (payload.erro) {
+    if (payload.erro && rodando) {
+      // Issue #85: cancelamento (ou timeout) pedido, mas a tarefa ainda está
+      // terminando o item atual. Antes isso aparecia como "Erro" final com o
+      // log ainda andando, e ninguém sabia se estava rodando ou não.
+      const motivo = payload.erro === 'timeout' ? 'tempo máximo atingido' : payload.erro;
+      statusEl.innerHTML = `<span class="status-dot"></span> Cancelando — aguardando o item atual terminar (${escapeHtml(motivo)})`;
+      statusEl.className = 'status-line rodando';
+    } else if (payload.erro) {
       statusEl.innerHTML = `<span class="status-dot"></span> Erro: ${escapeHtml(payload.erro)}`;
       statusEl.className = 'status-line erro';
     } else if (rodando) {

@@ -147,9 +147,28 @@ async function tentarLoginAutomaticoSeNecessario(page) {
   await tentarLoginAutomatico(page);
 }
 
+// Monta a mensagem final quando o menu "Logística" não aparece. Quando o X2
+// mostrou o aviso "Você está usando a sua senha inicial", ele é o suspeito
+// número 1 (9 falhas seguidas em 14-16/11/2026, todas com esse aviso e a tela
+// presa no login) — a mensagem antiga ("sessão provavelmente expirada") mandava
+// procurar no lugar errado.
+function mensagemFalhaMenuLogistica({ estado, diag, mensagensDoX2 }) {
+  const avisoSenhaInicial = (mensagensDoX2 || []).some((m) => /senha inicial/i.test(String(m)));
+  const base = `Menu "Logística" não apareceu após 3 tentativas (${estado}${diag})`;
+  if (avisoSenhaInicial) {
+    return `${base}. O X2 mostrou o aviso "Você está usando a sua senha inicial" e o login automático não passou da tela de login — troque a senha do usuário X2_USUARIO no próprio X2, atualize X2_SENHA no .env e reinicie o painel.`;
+  }
+  return `${base}. Sessão do X2 provavelmente expirada ou layout mudou — abra o X2 no painel, faça login e rode de novo.`;
+}
+
 // Navega até a tela "Relatório de Estoque" clicando pelo menu de verdade
 // (nunca por URL direta — ver aviso no topo do arquivo).
 async function abrirRelatorioEstoque(page, { modoAutomatico } = {}) {
+  // Registrado ANTES do primeiro login: o aviso "senha inicial" aparece
+  // justamente nele, e sem listener o Playwright descarta o diálogo sem deixar
+  // rastro. Guarda também o tipo (alert/confirm) pra diagnóstico.
+  const mensagensDoX2 = [];
+  page.on('dialog', (d) => { mensagensDoX2.push(`${d.type()}: ${String(d.message()).slice(0, 200)}`); d.dismiss().catch(() => {}); });
   if (modoAutomatico) {
     // ⚠️ Confirmado ao vivo 2026-08-06 (testando esta função direto pelo
     // terminal): dar goto() direto pra HOME_URL — mesmo já logado — dispara
@@ -202,9 +221,7 @@ async function abrirRelatorioEstoque(page, { modoAutomatico } = {}) {
   // tela de login, e a causa ficava escondida — o erro do login automático era
   // engolido pelo .catch(() => {}) e alert()s do X2 (ex.: "usuário já logado")
   // eram descartados sem registro. Agora guarda os dois pro erro final.
-  const mensagensDoX2 = [];
   const errosDeLogin = [];
-  page.on('dialog', (d) => { mensagensDoX2.push(String(d.message()).slice(0, 200)); d.dismiss().catch(() => {}); });
   let logisticaOk = false;
   for (let tentativa = 0; tentativa < 3 && !logisticaOk; tentativa++) {
     if (await linkLogistica().isVisible().catch(() => false)) { logisticaOk = true; break; }
@@ -224,7 +241,7 @@ async function abrirRelatorioEstoque(page, { modoAutomatico } = {}) {
     const estado = `url=${page.url()} | links=${await page.locator('a').count().catch(() => '?')} | senha=${await page.locator('input[type="password"]').count().catch(() => '?')}`;
     const textoTela = await page.evaluate(() => (document.body && document.body.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 300)).catch(() => '');
     const diag = ` | loginErro=${JSON.stringify(errosDeLogin.slice(-2))} | alertasX2=${JSON.stringify(mensagensDoX2.slice(-3))} | tela="${textoTela}"`;
-    throw new Error(`Menu "Logística" não apareceu após 3 tentativas (${estado}${diag}). Sessão do X2 provavelmente expirada ou layout mudou — abra o X2 no painel, faça login e rode de novo.`);
+    throw new Error(mensagemFalhaMenuLogistica({ estado, diag, mensagensDoX2 }));
   }
   await linkLogistica().click({ timeout: 10000 });
   await page.waitForTimeout(500);
@@ -813,6 +830,7 @@ if (require.main === module) {
 
 module.exports = {
   WORK_DIR,
+  mensagemFalhaMenuLogistica,
   TIMEOUT_CLIQUE_CSV_MS,
   TENTATIVAS_CLIQUE_CSV,
   TIMEOUT_DOWNLOAD_MS,

@@ -187,11 +187,68 @@ async function _upsertLote(client, registros) {
   await client.query(sql, valores);
 }
 
+// Empresas/unidades do X2 ("Relatório de Estoque Multiempresas"). MATRIZ é a
+// "RILDON ELETROPECAS LTDA"; DIST e EC têm o sufixo (DIST)/(EC) no X2.
+const EMPRESAS = ['MATRIZ', 'DIST', 'EC'];
+const NOMES_EMPRESA = { MATRIZ: 'Matriz', DIST: 'Distribuidora', EC: 'Ecommerce' };
+
+function normalizarEmpresa(valor) {
+  const v = String(valor || '').trim().toUpperCase();
+  return EMPRESAS.includes(v) ? v : null;
+}
+
+// Mesma regra de sempre (auditoria 2026-09-30): código que some do CSV mantinha
+// a última quantidade para sempre. Zera a quantidade de quem não veio neste CSV
+// (o upsert carimba NOW(); NOW() é fixo na transação). Trava: só se o CSV cobrir
+// >= 80% dos produtos já cadastrados, pra um export parcial não zerar tudo.
+async function _zerarAusentes(client, tabela, filtroEmpresa, qtdRegistros, rotulo) {
+  const where = filtroEmpresa ? 'empresa = $1 AND ' : '';
+  const params = filtroEmpresa ? [filtroEmpresa] : [];
+  const { rows: [cont] } = await client.query(`SELECT COUNT(*)::int AS n FROM ${tabela} WHERE ${where}atualizado_em < NOW()`, params);
+  const { rows: [tot] } = await client.query(`SELECT COUNT(*)::int AS n FROM ${tabela}${filtroEmpresa ? ' WHERE empresa = $1' : ''}`, params);
+  if (tot.n > 0 && qtdRegistros >= tot.n * 0.8 && cont.n > 0) {
+    const r = await client.query(`UPDATE ${tabela} SET qtd_estoque = 0 WHERE ${where}atualizado_em < NOW() AND qtd_estoque <> 0`, params);
+    if (r.rowCount) logger.info(`[estoque.service] ${rotulo}: ${r.rowCount} produto(s) ausentes do CSV tiveram a quantidade zerada`);
+  } else if (cont.n > 0) {
+    logger.warn(`[estoque.service] ${rotulo}: CSV cobre só ${qtdRegistros} de ${tot.n} produtos — quantidades de ausentes NÃO foram zeradas (export parcial?)`);
+  }
+}
+
+async function _upsertLoteUnidade(client, registros, empresa) {
+  if (!registros.length) return;
+  const valores = [];
+  const placeholders = registros.map((r, i) => {
+    const base = i * 5;
+    valores.push(r.codigo, empresa, r.qtdEstoque, r.precoVendaVarejo, r.precoVendaAtacado);
+    return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, NOW())`;
+  });
+  await client.query(`
+    INSERT INTO estoque_produtos_unidade (codigo, empresa, qtd_estoque, preco_venda_varejo, preco_venda_atacado, atualizado_em)
+    VALUES ${placeholders.join(', ')}
+    ON CONFLICT (codigo, empresa) DO UPDATE SET
+      qtd_estoque = EXCLUDED.qtd_estoque,
+      preco_venda_varejo = EXCLUDED.preco_venda_varejo,
+      preco_venda_atacado = EXCLUDED.preco_venda_atacado,
+      atualizado_em = EXCLUDED.atualizado_em
+  `, valores);
+}
+
 /**
- * Lê o CSV do caminho informado, parseia e faz upsert em estoque_produtos.
- * Roda em lotes dentro de uma transação. Retorna { total, arquivo }.
+ * Lê o CSV do caminho informado, parseia e faz upsert.
+ *  - sem `empresa`: comportamento de sempre — só estoque_produtos (relatório
+ *    simples, Matriz).
+ *  - com `empresa` (MATRIZ | DIST | EC, CSV do Relatório de Estoque
+ *    Multiempresas): grava em estoque_produtos_unidade; a MATRIZ continua
+ *    alimentando também estoque_produtos (descrição, custo, criado_em usados por
+ *    Lançamentos). O CSV precisa ser "Com e sem estoque" — a trava de 80% só
+ *    zera ausentes quando o arquivo cobre quase todos os produtos.
+ * Roda em lotes dentro de uma transação. Retorna { total, arquivo, empresa }.
  */
-async function importarCsv(caminhoArquivo) {
+async function importarCsv(caminhoArquivo, { empresa } = {}) {
+  const empresaNorm = empresa === undefined || empresa === null || empresa === '' ? null : normalizarEmpresa(empresa);
+  if (empresa && !empresaNorm) {
+    throw new Error(`Empresa inválida "${empresa}" — use ${EMPRESAS.join(', ')}.`);
+  }
   const conteudo = fs.readFileSync(caminhoArquivo, 'utf8');
   const registros = parseCsvEstoque(conteudo);
   if (!registros.length) {
@@ -201,21 +258,17 @@ async function importarCsv(caminhoArquivo) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    for (let i = 0; i < registros.length; i += TAMANHO_LOTE) {
-      await _upsertLote(client, registros.slice(i, i + TAMANHO_LOTE));
+    if (!empresaNorm || empresaNorm === 'MATRIZ') {
+      for (let i = 0; i < registros.length; i += TAMANHO_LOTE) {
+        await _upsertLote(client, registros.slice(i, i + TAMANHO_LOTE));
+      }
+      await _zerarAusentes(client, 'estoque_produtos', null, registros.length, 'estoque_produtos');
     }
-    // Auditoria 2026-09-30: código que some do CSV mantinha a última
-    // quantidade para sempre. Zera a quantidade de quem não veio neste CSV
-    // (o upsert acima carimba NOW() nos que vieram; NOW() é fixo na transação).
-    // Trava: só se o CSV cobrir >= 80% dos produtos já cadastrados, pra um
-    // export parcial ("Apenas sem estoque", falha no relatório) não zerar tudo.
-    const { rows: [cont] } = await client.query('SELECT COUNT(*)::int AS n FROM estoque_produtos WHERE atualizado_em < NOW()');
-    const { rows: [tot] } = await client.query('SELECT COUNT(*)::int AS n FROM estoque_produtos');
-    if (tot.n > 0 && registros.length >= tot.n * 0.8 && cont.n > 0) {
-      const r = await client.query('UPDATE estoque_produtos SET qtd_estoque = 0 WHERE atualizado_em < NOW() AND qtd_estoque <> 0');
-      if (r.rowCount) logger.info(`[estoque.service] ${r.rowCount} produto(s) ausentes do CSV tiveram a quantidade zerada`);
-    } else if (cont.n > 0) {
-      logger.warn(`[estoque.service] CSV cobre só ${registros.length} de ${tot.n} produtos — quantidades de ausentes NÃO foram zeradas (export parcial?)`);
+    if (empresaNorm) {
+      for (let i = 0; i < registros.length; i += TAMANHO_LOTE) {
+        await _upsertLoteUnidade(client, registros.slice(i, i + TAMANHO_LOTE), empresaNorm);
+      }
+      await _zerarAusentes(client, 'estoque_produtos_unidade', empresaNorm, registros.length, `unidade ${empresaNorm}`);
     }
     await client.query('COMMIT');
   } catch (err) {
@@ -225,13 +278,17 @@ async function importarCsv(caminhoArquivo) {
     client.release();
   }
 
-  logger.info(`[estoque.service] importados ${registros.length} produtos de ${caminhoArquivo}`);
-  return { total: registros.length, arquivo: caminhoArquivo };
+  logger.info(`[estoque.service] importados ${registros.length} produtos de ${caminhoArquivo}${empresaNorm ? ` (empresa ${empresaNorm})` : ''}`);
+  return { total: registros.length, arquivo: caminhoArquivo, empresa: empresaNorm };
 }
 
 // ─── Cache em memória (lido pelo catalogo-x2.service.js) ───────────────────
 
-let mapaEstoque = new Map(); // codigoNormalizado -> { qtdEstoque, unidade, custoMedio, precoVendaVarejo, precoVendaAtacado, atualizadoEm }
+// codigoNormalizado -> { qtdEstoque, unidade, custoMedio, precoVendaVarejo, precoVendaAtacado,
+//   atualizadoEm, qtdTotal, unidades }. `qtdEstoque` e os preços continuam sendo os da
+//   Matriz (relatório simples); `qtdTotal` soma as unidades quando há dado por unidade
+//   (senão é igual a qtdEstoque) e `unidades` é null sem dado por unidade.
+let mapaEstoque = new Map();
 let carregadoEm = null;
 
 async function carregarEstoque() {
@@ -252,6 +309,7 @@ async function carregarEstoque() {
         atualizadoEm: r.atualizado_em,
       });
     }
+    await _anexarUnidades(novoMapa);
     mapaEstoque = novoMapa;
     carregadoEm = new Date();
     logger.info(`[estoque.service] cache de estoque carregado: ${mapaEstoque.size} produtos.`);
@@ -261,6 +319,54 @@ async function carregarEstoque() {
     // do Catálogo continua funcionando normalmente, só sem o badge de estoque.
     logger.warn(`[estoque.service] falha ao carregar cache de estoque: ${err.message}`);
   }
+}
+
+// Soma e monta o detalhe por unidade a partir das linhas de estoque_produtos_unidade.
+// Função pura (testável sem banco). Mutação do mapa: acrescenta qtdTotal/unidades em
+// toda entrada e cria entrada para código que só existe numa unidade.
+function combinarUnidades(mapa, linhasUnidade) {
+  const porCodigo = new Map();
+  for (const r of linhasUnidade) {
+    const empresa = normalizarEmpresa(r.empresa);
+    if (!empresa) continue;
+    const codigo = _normalizarCodigo(r.codigo);
+    if (!porCodigo.has(codigo)) porCodigo.set(codigo, {});
+    porCodigo.get(codigo)[empresa] = {
+      qtd: Number(r.qtd_estoque) || 0,
+      precoVarejo: r.preco_venda_varejo !== null && r.preco_venda_varejo !== undefined ? Number(r.preco_venda_varejo) : null,
+      precoAtacado: r.preco_venda_atacado !== null && r.preco_venda_atacado !== undefined ? Number(r.preco_venda_atacado) : null,
+    };
+  }
+  for (const [codigo, porEmpresa] of porCodigo) {
+    let entrada = mapa.get(codigo);
+    if (!entrada) {
+      const m = porEmpresa.MATRIZ;
+      entrada = {
+        descricao: null, qtdEstoque: m ? m.qtd : 0, unidade: null, custoMedio: null,
+        precoVendaVarejo: m ? m.precoVarejo : null, precoVendaAtacado: m ? m.precoAtacado : null, atualizadoEm: null,
+      };
+      mapa.set(codigo, entrada);
+    }
+    entrada.unidades = EMPRESAS.filter((e) => porEmpresa[e]).map((e) => ({ empresa: e, nome: NOMES_EMPRESA[e], ...porEmpresa[e] }));
+    entrada.qtdTotal = entrada.unidades.reduce((soma, u) => soma + u.qtd, 0);
+  }
+  for (const entrada of mapa.values()) {
+    if (entrada.qtdTotal === undefined) { entrada.qtdTotal = entrada.qtdEstoque; entrada.unidades = null; }
+  }
+  return mapa;
+}
+
+async function _anexarUnidades(mapa) {
+  let linhas = [];
+  try {
+    ({ rows: linhas } = await pool.query(
+      'SELECT codigo, empresa, qtd_estoque, preco_venda_varejo, preco_venda_atacado FROM estoque_produtos_unidade'
+    ));
+  } catch (err) {
+    // Migration 005 ainda não aplicada: segue só com o estoque da Matriz (comportamento antigo).
+    logger.warn(`[estoque.service] estoque por unidade indisponível (${err.message}) — usando só a Matriz.`);
+  }
+  combinarUnidades(mapa, linhas);
 }
 
 /** Leitura síncrona do cache — nunca bloqueia uma busca do Catálogo. */
@@ -273,6 +379,9 @@ function statusCache() {
 }
 
 module.exports = {
+  EMPRESAS,
+  normalizarEmpresa,
+  combinarUnidades,
   parseCsvEstoque,
   importarCsv,
   carregarEstoque,

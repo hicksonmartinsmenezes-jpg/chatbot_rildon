@@ -136,7 +136,22 @@ function _escaparNomeParaQuery(nome) {
   return String(nome).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
 
-let _driveClientCache = null;
+// Issue #85: o cliente ficava em cache para sempre, então um token renovado
+// por x2-drive-oauth-setup.js só valia depois de reiniciar o painel (visto ao
+// vivo em 11/11/2026: `invalid_grant` repetido com o token novo já em disco).
+// Agora o cache vale só enquanto o arquivo de token for o mesmo (mtime +
+// tamanho) e é descartado quando o Google responde `invalid_grant`.
+let _driveClientCache = null; // { drive, assinatura }
+
+function _assinaturaToken(tokenPath) {
+  try {
+    const st = fs.statSync(tokenPath);
+    return `${st.mtimeMs}:${st.size}`;
+  } catch {
+    return null;
+  }
+}
+
 // TROCADO DE CONTA DE SERVIÇO PRA OAUTH (2026-09-16, completo em 2026-09-22):
 // conta de serviço falha com "Service Accounts do not have storage quota" —
 // não tem cota própria em pasta de Gmail pessoal, só funciona com Drive
@@ -145,7 +160,8 @@ let _driveClientCache = null;
 // GOOGLE_DRIVE_OAUTH_TOKEN_PATH — este módulo só lê o arquivo e deixa a lib
 // googleapis renovar o access_token sozinha quando expira.
 async function _clienteDrive(clientId, clientSecret, tokenPath) {
-  if (_driveClientCache) return _driveClientCache;
+  const assinatura = _assinaturaToken(tokenPath);
+  if (_driveClientCache && _driveClientCache.assinatura === assinatura) return _driveClientCache.drive;
   // googleapis só é exigido aqui dentro (require tardio) — assim, se a
   // dependência ainda não foi instalada (`npm install` pendente) mas as
   // variáveis de ambiente também não estão configuradas, o guard em
@@ -155,8 +171,28 @@ async function _clienteDrive(clientId, clientSecret, tokenPath) {
   const tokens = JSON.parse(fs.readFileSync(tokenPath, 'utf8'));
   const oAuth2Client = new google.auth.OAuth2(clientId, clientSecret, 'urn:ietf:wg:oauth:2.0:oob');
   oAuth2Client.setCredentials(tokens);
-  _driveClientCache = google.drive({ version: 'v3', auth: oAuth2Client });
-  return _driveClientCache;
+  const drive = google.drive({ version: 'v3', auth: oAuth2Client });
+  _driveClientCache = { drive, assinatura };
+  return drive;
+}
+
+// `invalid_grant` = o refresh_token foi revogado ou expirou. Nenhum envio
+// seguinte vai funcionar com ele, então quem chama interrompe o lote em vez
+// de gerar dezenas de PDFs que não têm como subir.
+const MSG_TOKEN_INVALIDO = 'token do Google Drive expirado ou revogado (invalid_grant) — rode "node scripts/x2-drive-oauth-setup.js" e envie de novo';
+
+function _ehTokenInvalido(erro) {
+  return /invalid_grant/i.test(String((erro && erro.message) || erro || ''));
+}
+
+// Espera interrompível (Issue #85): a pausa entre catálogos e a espera do bot
+// ficavam em `setTimeout` cego, então "Cancelar" só valia depois deles.
+async function _pausar(ms, deveParar) {
+  const fim = Date.now() + ms;
+  while (Date.now() < fim) {
+    if (deveParar && deveParar()) return;
+    await new Promise((r) => setTimeout(r, Math.min(500, Math.max(0, fim - Date.now()))));
+  }
 }
 
 // ─── Sobe (ou substitui, se já existir) "<fabricante>.pdf" na pasta única
@@ -221,8 +257,8 @@ function _configDriveOuMotivo() {
 // ─── Ponto de entrada — chamado pelo encadeamento automático pós-Lançamentos
 // em server.js, com os MESMOS códigos que o Cadastro Lançamentos e o Fotos
 // Lançamentos acabaram de processar.
-async function rodarUploadDrive(codigos) {
-  const resultado = { fabricantes: [], enviados: [], erros: [], semFabricante: [] };
+async function rodarUploadDrive(codigos, { deveParar } = {}) {
+  const resultado = { fabricantes: [], enviados: [], erros: [], semFabricante: [], cancelado: false };
   if (!codigos || !codigos.length) return resultado;
 
   const config = _configDriveOuMotivo();
@@ -243,21 +279,31 @@ async function rodarUploadDrive(codigos) {
   }
   console.log(`[x2-drive] gerando e subindo PDF de ${fabricantes.length} fabricante(s) ao Drive: ${fabricantes.join(', ')}`);
 
-  const drive = await _clienteDrive(config.clientId, config.clientSecret, path.resolve(config.tokenPath));
-
   // Auditoria 2026-09-30: fabricante que tem catálogo "- Mecânica" tem o
   // "<fabricante>.pdf" do Drive no estilo Mecânica (reenvio manual de
   // 22/09). Antes o envio automático mandava o estilo elétrica por cima.
   const mecanica = await _fabricantesComVersaoMecanica({ baseUrl: BASE_URL, apiToken: config.apiToken });
 
   for (const fabricante of fabricantes) {
+    if (deveParar && deveParar()) {
+      resultado.cancelado = true;
+      console.log(`[x2-drive] ⏹ cancelado — parando antes de "${fabricante}" (${resultado.enviados.length} de ${fabricantes.length} enviado(s)).`);
+      break;
+    }
     try {
+      const drive = await _clienteDrive(config.clientId, config.clientSecret, path.resolve(config.tokenPath));
       const valorPdf = mecanica.has(fabricante) ? `${fabricante}::mecanica` : fabricante;
       const bufferPdf = await _baixarPdfFabricante(valorPdf, { baseUrl: BASE_URL, apiToken: config.apiToken, fresco: true });
       const envio = await _enviarPdfParaDrive(drive, config.pastaId, fabricante, bufferPdf);
       resultado.enviados.push(envio);
       console.log(`[x2-drive] ${fabricante}.pdf — ${envio.acao} no Drive.`);
     } catch (e) {
+      if (_ehTokenInvalido(e)) {
+        _driveClientCache = null;
+        resultado.erros.push({ fabricante, erro: MSG_TOKEN_INVALIDO });
+        console.error(`[x2-drive] ${MSG_TOKEN_INVALIDO}. Envio interrompido em "${fabricante}".`);
+        break;
+      }
       resultado.erros.push({ fabricante, erro: e.message });
       console.error(`[x2-drive] falha ao subir PDF de "${fabricante}":`, e.message);
     }
@@ -342,8 +388,8 @@ async function _fabricantesComVersaoMecanica({ baseUrl, apiToken }) {
 // pós-Lançamentos só cobria fabricantes com código novo, então preço, foto
 // e ficha alterados em produto antigo nunca chegavam ao PDF do Drive.
 // `exceto` = fabricantes que acabaram de ser enviados nesta rodada.
-async function rodarUploadTodosFabricantes({ exceto = [], so = null, limite = 0, pausaSegundos = 20, dryRun = false } = {}) {
-  const resultado = { fabricantes: [], enviados: [], erros: [] };
+async function rodarUploadTodosFabricantes({ exceto = [], so = null, limite = 0, pausaSegundos = 20, dryRun = false, deveParar } = {}) {
+  const resultado = { fabricantes: [], enviados: [], erros: [], cancelado: false };
   const config = _configDriveOuMotivo();
   if (!config.ok) {
     console.log(`(${config.motivo} Reenvio completo ao Drive não rodou.)`);
@@ -367,7 +413,12 @@ async function rodarUploadTodosFabricantes({ exceto = [], so = null, limite = 0,
   });
   // Filtros para rodar em lotes (evita sobrecarregar o bot): `so` = lista de
   // nomes (sem acento/maiúsculas não importam), `limite` = máximo por execução.
-  let alvoFinal = alvo;
+  // BUG REAL (Issue #85): `alvoFinal` era o MESMO array que `alvo`. Sem `so`
+  // nem `limite` (rotina semanal "todos" e CLI --todos), a linha
+  // `alvo.length = 0; alvo.push(...alvoFinal)` logo abaixo esvaziava a lista
+  // e o reenvio completo terminava com 0 catálogos e "sucesso" — o
+  // falso-sucesso de 27/10/2026. A cópia garante que a lista sobrevive.
+  let alvoFinal = alvo.slice();
   if (so && so.length) {
     const alvos = new Set(so.map((n) => String(n).trim().toUpperCase()));
     alvoFinal = alvoFinal.filter((o) => alvos.has(String(o.value).split('::')[0].toUpperCase()));
@@ -384,18 +435,27 @@ async function rodarUploadTodosFabricantes({ exceto = [], so = null, limite = 0,
     return resultado;
   }
   console.log(`[x2-drive] reenvio completo: ${alvo.length} catálogo(s) ao Drive (1 por vez, pausa de ${pausaSegundos}s entre eles).`);
-  const drive = await _clienteDrive(config.clientId, config.clientSecret, path.resolve(config.tokenPath));
+  const parar = () => !!(deveParar && deveParar());
+  const marcarCancelado = (nome) => {
+    resultado.cancelado = true;
+    console.log(`[x2-drive] ⏹ cancelado — parando antes de "${nome}" (${resultado.enviados.length} de ${alvo.length} enviado(s)).`);
+  };
   for (const opcao of alvo) {
     const nome = String(opcao.value).split('::')[0];
+    // Issue #85: sem esta checagem, "Cancelar" e o timeout do painel só
+    // mudavam o texto da tela — o lote seguia até o último fabricante.
+    if (parar()) { marcarCancelado(nome); break; }
     // Só gera o próximo PDF se o bot estiver respondendo rápido (protege o
     // painel de atendimento — gerar PDF pesa muito no mesmo processo).
-    const ok = await _aguardarBotSaudavel(BASE_URL, config.apiToken);
+    const ok = await _aguardarBotSaudavel(BASE_URL, config.apiToken, deveParar);
+    if (parar()) { marcarCancelado(nome); break; }
     if (!ok) {
       resultado.erros.push({ fabricante: nome, erro: 'bot lento/indisponível — reenvio interrompido para proteger o painel' });
       console.error('[x2-drive] bot não ficou saudável a tempo — parando aqui. Rode de novo mais tarde (com --so ou --limite).');
       break;
     }
     try {
+      const drive = await _clienteDrive(config.clientId, config.clientSecret, path.resolve(config.tokenPath));
       // Reenvio completo manual/agendado precisa refletir o catálogo atual.
       // Sem `fresco`, o endpoint pode devolver o PDF semanal em cache, que
       // ainda não inclui produtos DNI recém reconhecidos pelo parser.
@@ -404,24 +464,31 @@ async function rodarUploadTodosFabricantes({ exceto = [], so = null, limite = 0,
       resultado.enviados.push(envio);
       console.log(`[x2-drive] ${nome}.pdf — ${envio.acao} no Drive.`);
     } catch (e) {
+      if (_ehTokenInvalido(e)) {
+        _driveClientCache = null;
+        resultado.erros.push({ fabricante: nome, erro: MSG_TOKEN_INVALIDO });
+        console.error(`[x2-drive] ${MSG_TOKEN_INVALIDO}. Envio interrompido em "${nome}".`);
+        break;
+      }
       resultado.erros.push({ fabricante: nome, erro: e.message });
       console.error(`[x2-drive] falha ao subir PDF de "${nome}":`, e.message);
     }
-    if (pausaSegundos > 0) await new Promise((r) => setTimeout(r, pausaSegundos * 1000));
+    if (pausaSegundos > 0) await _pausar(pausaSegundos * 1000, deveParar);
   }
   return resultado;
 }
 
 // Ping leve no bot: precisa responder em até 3 s. Tenta até 10x, esperando 30 s entre elas.
-async function _aguardarBotSaudavel(baseUrl, apiToken) {
+async function _aguardarBotSaudavel(baseUrl, apiToken, deveParar) {
   for (let i = 0; i < 10; i++) {
+    if (deveParar && deveParar()) return false;
     const t0 = Date.now();
     try {
       const r = await fetch(`${baseUrl}/api/catalogo/fabricantes-completo`, { headers: { Authorization: `Bearer ${apiToken}` }, signal: AbortSignal.timeout(3000) });
       if (r.ok && Date.now() - t0 < 3000) return true;
     } catch { /* lento ou fora do ar */ }
     console.log('[x2-drive] bot ocupado — aguardando 30 s antes de continuar...');
-    await new Promise((res) => setTimeout(res, 30000));
+    await _pausar(30000, deveParar);
   }
   return false;
 }

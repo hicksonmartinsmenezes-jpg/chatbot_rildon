@@ -279,6 +279,17 @@ function confirmarFactory() {
 // ativo ate a Promise original encerrar, mesmo que isso exija intervencao
 // externa se o navegador tiver travado de forma irrecuperavel.
 const TIMEOUT_MAXIMO_MS = 20 * 60 * 1000; // 20 minutos — generoso (rodar todas as seções de fotos pode demorar), mas finito.
+// Issue #85: o envio ao Drive em lote não cabe em 20 min (106 catálogos, PDF
+// gerado na hora, pausa entre eles e espera do bot saudável — visto ao vivo
+// em 13/11/2026: só 6 tinham subido quando o teto disparou). Como esse laço
+// agora obedece ao cancelamento, um teto longo aqui não prende o painel.
+const TIMEOUT_POR_TIPO_MS = {
+  'drive-enviar': 6 * 60 * 60 * 1000,
+  'drive-enviar-semana': 2 * 60 * 60 * 1000,
+};
+function timeoutDaAcao(tipo) {
+  return TIMEOUT_POR_TIPO_MS[tipo] || TIMEOUT_MAXIMO_MS;
+}
 
 function cancelarExecucaoAtual(motivo) {
   if (!execucao || !execucao.rodando) return false;
@@ -556,7 +567,13 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
           so: opcoes.todos ? null : fabricantes,
           pausaSegundos: opcoes.dryRun ? 0 : (opcoes.todos ? 20 : 5),
           dryRun: !!opcoes.dryRun,
+          deveParar,
         });
+        // Issue #85: lista de alvo vazia não pode passar como sucesso (foi o
+        // falso-sucesso de 0 catálogos em 27/10/2026).
+        if (!resultado.fabricantes.length && !resultado.erros.length) {
+          throw new Error('Nenhum catálogo encontrado para enviar — nada foi ao Drive. Confira a lista de fabricantes do Catálogo Completo.');
+        }
         if (!opcoes.dryRun) {
           console.log(`\nResumo: ${resultado.enviados.length} enviado(s), ${resultado.erros.length} com erro.`);
           for (const e of resultado.erros) console.log(`  ✗ ${e.fabricante || '(config)'}: ${e.erro}`);
@@ -575,7 +592,7 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
         const codigosSemana = (captura.produtos || []).map((p) => p.codigo).filter(Boolean);
         if (!codigosSemana.length) throw new Error('A última captura de lançamentos não tem produtos.');
         console.log(`Reenviando ao Drive os fabricantes dos ${codigosSemana.length} produto(s) da última captura de lançamentos...`);
-        const resultadoSemana = await driveLancamentos.rodarUploadDrive(codigosSemana);
+        const resultadoSemana = await driveLancamentos.rodarUploadDrive(codigosSemana, { deveParar });
         console.log(`\nResumo: ${resultadoSemana.enviados.length} enviado(s), ${resultadoSemana.erros.length} com erro, ${resultadoSemana.fabricantes.length} fabricante(s) identificado(s).`);
         if (resultadoSemana.semFabricante.length) {
           console.log(`${resultadoSemana.semFabricante.length} código(s) sem fabricante identificado: ${resultadoSemana.semFabricante.slice(0, 10).join(', ')}`);
@@ -625,11 +642,12 @@ async function rodarAcao(tipo, opcoes, { origemRotina, rotulo } = {}) {
       }
     })();
 
+    const timeoutMs = timeoutDaAcao(tipo);
     await aguardarTarefaComTimeout(tarefa, {
-      timeoutMs: TIMEOUT_MAXIMO_MS,
+      timeoutMs,
       aoTimeout: () => cancelarExecucaoAtual('timeout'),
       criarErroTimeout: () => new Error(
-        `Passou de ${Math.round(TIMEOUT_MAXIMO_MS / 60000)} minutos sem terminar; cancelamento solicitado. O lock permanece ate a tarefa Playwright encerrar.`,
+        `Passou de ${Math.round(timeoutMs / 60000)} minutos sem terminar; cancelamento solicitado. O lock permanece ate a tarefa em andamento encerrar.`,
       ),
     });
     if (execucaoLocal.cancelado) throw new Error(execucaoLocal.erro || 'Execucao cancelada.');

@@ -477,13 +477,15 @@ function contarLinhasTabelaEstoque(page) {
     const frame = document.querySelector('iframe[name="principal"]');
     if (!frame || !frame.contentDocument) return -1;
     const doc = frame.contentDocument;
-    let tabela = doc.getElementById(id);
-    // A tela Multiempresas pode usar outro id: cai na maior tabela do frame.
-    if (!tabela) {
-      tabela = Array.from(doc.querySelectorAll('table')).sort((a, b) => b.rows.length - a.rows.length)[0];
-      if (!tabela || tabela.rows.length < 2) return -1;
-    }
-    return tabela.rows.length;
+    const tabela = doc.getElementById(id);
+    if (tabela) return tabela.rows.length;
+    // Relatório Multiempresas (2026-11-16): a tabela não tem o id de cima. Ao vivo, o
+    // "maior table do frame" era a tabela de critérios (12 linhas) e a espera
+    // encerrava antes dos dados chegarem — o CSV saía vazio e o download nunca vinha.
+    // Conta as LINHAS DE DADOS (tr com 10+ células; as do formulário têm bem menos),
+    // + 1 do cabeçalho, pra manter o mesmo contrato da contagem acima.
+    const dados = Array.from(doc.querySelectorAll('tr')).filter((tr) => tr.cells.length >= 10).length;
+    return dados > 1 ? dados : -1;
   }, TABELA_ESTOQUE_ID);
 }
 
@@ -620,7 +622,8 @@ async function baixarCsvDoRelatorio(context, page, { estoqueOpcao, empresa } = {
   // do tempo fixo antigo — ver comentário completo em aguardarTabelaEstavel
   // (causa raiz da falha intermitente de export incompleto, 2026-08-10).
   console.log('Aguardando a tabela de resultados carregar por completo...');
-  const linhasEsperadas = await aguardarTabelaEstavel(page);
+  // Multiempresas enche a tabela mais devagar (~17 mil linhas por empresa).
+  const linhasEsperadas = await aguardarTabelaEstavel(page, empresa ? { timeoutMs: 180000, estabilidadeMs: 5000 } : undefined);
 
   console.log('Clicando em "Exportar em CSV" e aguardando o download...');
   const nomeArquivo = nomeArquivoExecucao(empresa ? nomeArquivoTimestamp().replace(/\.csv$/, `-${empresa.toLowerCase()}.csv`) : nomeArquivoTimestamp());

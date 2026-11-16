@@ -73,6 +73,25 @@ terminal dele. Todo PR deve deixar explícito no "Próximos passos":
   testes passaram".
 - Só então marcar a tarefa/Issue como pronta para review/merge.
 
+## Estoque por unidade e repositório irmão (a partir de 2026-11)
+
+- O catálogo de produtos vive em outro repositório,
+  `hicksonmartinsmenezes-jpg/catalogo-rildon` (extraído deste em 2026-11-03).
+  `estoque.service.js`, `scripts/importar-estoque.js`, `postgres.js`,
+  `logger.js` e `espelho.service.js` são **duplicados** nos dois — corrigiu
+  um, confira o outro.
+- Regra de negócio (2026-08-11): onde o X2 tem Unidade/Empresa, vale
+  considerar as 3 (Matriz, Distribuidora `DIST`, Ecommerce `EC`).
+  `scripts/x2-estoque-export.js` roda o "Relatório de Estoque Multiempresas"
+  1× por empresa (cai no relatório simples da Matriz se falhar) e importa
+  com `importar-estoque -- <csv> --empresa=<X>`; migration `029`
+  (`estoque_produtos_unidade`).
+- CSVs de DIST/EC ficam em `estoque/multiempresas/`: outras telas tratam o
+  CSV mais recente de `estoque/` como o da Matriz.
+- Login do X2: o aviso "Você está usando a sua senha inicial…" bloqueia o
+  login automático (9 falhas seguidas) — trocar a senha do usuário de
+  integração e atualizar `X2_SENHA` no `.env`.
+
 ## Esteira de qualidade obrigatória antes de merge na main (a partir de 2026-08-17)
 
 Decisão do usuário (2026-08-17, Issue #6): nenhum código entra na `main`

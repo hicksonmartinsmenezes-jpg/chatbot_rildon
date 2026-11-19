@@ -900,6 +900,8 @@ async function rodarMuitasSecoes(slugs, { limit, channel, retrySemFoto, reinicia
 // mesma rota usada por x2-catalogo-sync.js, recarrega produtos E fotos numa
 // chamada só, então não tem problema chamar dos dois lugares.
 async function _forcarReloadCatalogo() {
+  // Issue #101: leva os JSONs/zips alterados ao catálogo da VPS (best-effort, nunca lança) antes do reload local.
+  await require('./x2-catalogo-vps').enviarCatalogoParaVps();
   const apiToken = process.env.API_TOKEN;
   if (!apiToken || apiToken === 'troque_por_um_token_com_64_caracteres_ou_mais') {
     console.log('(API_TOKEN não configurado no .env — não deu pra recarregar o catálogo do painel de atendimento na hora; precisa reiniciar o bot Rildon pra essas fotos aparecerem na busca.)');

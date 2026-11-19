@@ -26,6 +26,7 @@
     "x2-fotos": "node scripts/x2-fotos-scraper.js",
     "x2-fotos-menu": "node scripts/x2-fotos-menu.js",
     "x2-catalogo-sync": "node scripts/x2-catalogo-sync.js",
+    "catalogo-enviar-vps": "node scripts/x2-catalogo-vps.js",
     "x2-painel": "node scripts/x2-painel/server.js",
     "importar-estoque": "node scripts/importar-estoque.js",
     "importar-localizacao": "node scripts/importar-localizacao.js",

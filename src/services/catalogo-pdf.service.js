@@ -1031,7 +1031,7 @@ function _desenharLogoCabecalhoMecanica(doc, fabricante) {
       altura = alturaMax;
       largura = altura * logo.ratio;
     }
-    doc.image(logo.img, (w - largura) / 2, (MECANICA_HEADER_HEIGHT - altura) / 2, { width: largura, height: altura });
+    doc.image(_arte(doc, logo.img), (w - largura) / 2, (MECANICA_HEADER_HEIGHT - altura) / 2, { width: largura, height: altura });
   } else {
     // Fallback: nome do fabricante em texto (sem logo cadastrada ainda —
     // ver MECANICA_LOGOS_FABRICANTE acima).
@@ -1127,6 +1127,44 @@ const ROWS_POR_PAGINA_COMPLETO_ELETRICA = 4;
 const CEDER_A_CADA_N_BLOCOS = 1;
 function _cederEventLoop() {
   return new Promise((resolve) => setImmediate(resolve));
+}
+
+// catalogo-rildon#63 (varredura 2026-11-23): o pdfkit só reaproveita uma imagem quando
+// ela é passada como CAMINHO — o cache _imageRegistry dele é consultado apenas
+// `if (typeof src === "string")` (ver node_modules/pdfkit/js/pdfkit.js, image()
+// e openImage()). Nossas artes são Buffer, lido uma vez no topo deste módulo,
+// então `doc.image(CABECALHO_IMG, ...)` decodificava o PNG do zero (JS puro,
+// byte a byte, separando o canal alfa) e gravava OUTRA cópia inteira da imagem
+// dentro do PDF em TODA página.
+//
+// Medido nesta máquina, mesmo documento, só trocando o Buffer por um objeto
+// reaproveitado: 5 páginas 3,83 MB/2.305 ms -> 0,77 MB/473 ms; 20 páginas
+// 15,31 MB/8.833 ms -> 0,77 MB/471 ms (~0,6 MB e ~0,4 s por página só de arte
+// repetida). Num catálogo de 100 páginas a diferença é ~76 MB contra ~0,8 MB.
+//
+// Este helper abre a arte UMA vez por documento e devolve sempre o mesmo
+// objeto: o pdfkit embute na primeira vez e só referencia depois
+// (`if (!image.obj) image.embed(this)`), desenhando exatamente os mesmos bytes
+// — o PDF sai visualmente idêntico. O cache vive no próprio doc, então morre
+// com ele (não acumula entre gerações). A chave é a identidade do Buffer, que
+// é estável porque as artes são constantes do módulo (e a logo promocional é
+// lida uma vez pelo controller e reusada em todas as páginas).
+//
+// Só serve para arte repetida. Fotos de produto continuam em doc.image(buffer)
+// direto: cada uma é desenhada uma única vez, e guardá-las aqui só gastaria
+// memória.
+function _arte(doc, buffer) {
+  let cache = doc._arteRildon;
+  if (!cache) {
+    cache = new Map();
+    doc._arteRildon = cache;
+  }
+  let imagem = cache.get(buffer);
+  if (!imagem) {
+    imagem = doc.openImage(buffer);
+    cache.set(buffer, imagem);
+  }
+  return imagem;
 }
 
 // 2026-08-28: pedido do usuário — mostrando um catálogo de referência
@@ -2407,7 +2445,7 @@ function _desenharCabecalho(doc, tituloBusca, estilo = "eletrica", fabricante = 
     // a imagem começa um pouco antes de x=0 e termina um pouco depois de
     // x=w, de propósito, pra empurrar a margem branca real do arquivo pra
     // fora da página nos dois lados.
-    doc.image(CABECALHO_IMG, CABECALHO_IMG_X_DESENHO, -CABECALHO_SANGRIA_TOPO, { width: CABECALHO_IMG_LARGURA_DESENHO, height: CABECALHO_IMG_ALTURA_REAL });
+    doc.image(_arte(doc, CABECALHO_IMG), CABECALHO_IMG_X_DESENHO, -CABECALHO_SANGRIA_TOPO, { width: CABECALHO_IMG_LARGURA_DESENHO, height: CABECALHO_IMG_ALTURA_REAL });
   }
 
   // Pedido do usuário (2026-07-30): removido "RILDON PEÇAS" / "Catálogo
@@ -2481,9 +2519,9 @@ function _desenharRodape(doc, numeroPagina, estilo = "eletrica") {
     const logoAreaY = rodapeTop + 10;
     const logoAltura = MECANICA_RODAPE_ALTURA - 20;
     const larguraRildon = logoAltura * MECANICA_RODAPE_LOGO_RILDON_RATIO;
-    doc.image(MECANICA_RODAPE_LOGO_RILDON_IMG, PAGE_MARGIN, logoAreaY, { width: larguraRildon, height: logoAltura });
+    doc.image(_arte(doc, MECANICA_RODAPE_LOGO_RILDON_IMG), PAGE_MARGIN, logoAreaY, { width: larguraRildon, height: logoAltura });
     const larguraOmre = logoAltura * MECANICA_RODAPE_LOGO_OMRE_RATIO;
-    doc.image(MECANICA_RODAPE_LOGO_OMRE_IMG, w - PAGE_MARGIN - larguraOmre, logoAreaY, { width: larguraOmre, height: logoAltura });
+    doc.image(_arte(doc, MECANICA_RODAPE_LOGO_OMRE_IMG), w - PAGE_MARGIN - larguraOmre, logoAreaY, { width: larguraOmre, height: logoAltura });
 
     doc.fillColor(MECANICA_LINHA_FINA_COR).font(RODAPE_NUMERO_FONTE).fontSize(12)
       .text(String(numeroPagina), w - PAGE_MARGIN - 40, h - 22, { width: 40, align: "right", lineBreak: false });
@@ -2494,7 +2532,12 @@ function _desenharRodape(doc, numeroPagina, estilo = "eletrica") {
   // Imagem real da logo Rildon cobrindo a largura inteira da página, sem
   // distorcer (altura já calculada na proporção exata do arquivo — ver
   // RODAPE_IMG_RATIO).
-  doc.image(process.env.EXP_PROMO === "1" ? path.join(__dirname, "../assets/catalogo-rodape-azul-teste.png") : RODAPE_IMG, 0, h - FOOTER_HEIGHT, { width: w, height: FOOTER_HEIGHT });
+  // O caminho do experimento fica como string de propósito: o pdfkit já tem
+  // cache próprio para caminho (ver _arte acima).
+  const arteRodape = process.env.EXP_PROMO === "1"
+    ? path.join(__dirname, "../assets/catalogo-rodape-azul-teste.png")
+    : _arte(doc, RODAPE_IMG);
+  doc.image(arteRodape, 0, h - FOOTER_HEIGHT, { width: w, height: FOOTER_HEIGHT });
 
   // Nº de página em preto, maior, centralizado dentro do triângulo branco da
   // arte (pedido do usuário, 2026-07-28) — coordenadas medidas na imagem
@@ -2535,7 +2578,7 @@ function _desenharCabecalhoPromo(doc, titulo, modo, logo = null, tituloFixo = fa
   const img = ehFabricante ? PROMO_CABECALHO_FABRICANTE_IMG : PROMO_CABECALHO_LINHA_IMG;
   const ratio = ehFabricante ? PROMO_CABECALHO_FABRICANTE_RATIO : PROMO_CABECALHO_LINHA_RATIO;
   const h = w / ratio;
-  doc.image(img, 0, 0, { width: w, height: h });
+  doc.image(_arte(doc, img), 0, 0, { width: w, height: h });
 
   // Título fixo: centraliza na parte azul-escura da arte (acima da faixa
   // branca, y ≈ 0.08–0.60 da altura) em vez da área toda (que desce até a faixa).
@@ -2578,7 +2621,7 @@ function _desenharCabecalhoPromo(doc, titulo, modo, logo = null, tituloFixo = fa
     const by = h * PROMO_LOGO_AREA.yFrac0;
     const bw = w * (PROMO_LOGO_AREA.xFrac1 - PROMO_LOGO_AREA.xFrac0);
     const bh = h * (PROMO_LOGO_AREA.yFrac1 - PROMO_LOGO_AREA.yFrac0);
-    doc.image(logo, bx, by, { fit: [bw, bh], align: "center", valign: "center" });
+    doc.image(_arte(doc, logo), bx, by, { fit: [bw, bh], align: "center", valign: "center" });
   }
 
   doc.fillColor("#111827").font("Helvetica");
@@ -2592,7 +2635,7 @@ function _desenharRodapePromo(doc, numeroPagina, modo) {
   const ratio = ehFabricante ? PROMO_RODAPE_FABRICANTE_RATIO : PROMO_RODAPE_LINHA_RATIO;
   const h = w / ratio;
   const topo = hPagina - h;
-  doc.image(img, 0, topo, { width: w, height: h });
+  doc.image(_arte(doc, img), 0, topo, { width: w, height: h });
 
   const area = ehFabricante ? PROMO_PAGINA_AREA.fabricante : PROMO_PAGINA_AREA.linha;
   const fonteNumero = 11;
@@ -3667,7 +3710,7 @@ function _desenharCabecalhoIndice(doc, estilo = "eletrica", fabricante = "") {
     // de bleed horizontal (ver CABECALHO_ESCALA_BLEED), sem corte — só o
     // texto abaixo dela muda ("ÍNDICE" em vez do nome da busca, ver mais
     // abaixo).
-    doc.image(CABECALHO_IMG, CABECALHO_IMG_X_DESENHO, -CABECALHO_SANGRIA_TOPO, { width: CABECALHO_IMG_LARGURA_DESENHO, height: CABECALHO_IMG_ALTURA_REAL });
+    doc.image(_arte(doc, CABECALHO_IMG), CABECALHO_IMG_X_DESENHO, -CABECALHO_SANGRIA_TOPO, { width: CABECALHO_IMG_LARGURA_DESENHO, height: CABECALHO_IMG_ALTURA_REAL });
   }
 
   const tituloTexto = "ÍNDICE";
@@ -4340,7 +4383,7 @@ async function gerarPdfCatalogoPromocional(produtos, precosPorCodigo, destino, m
 function _interno() {
   return {
     _geometriaGrid, _desenharCardCatalogoCompleto, AREA_TOPO_Y, GAP, _desenharCardVidro, _desenharCardVazio,
-    obterFoto, _agruparPorLinha, _cederEventLoop, _desenharCabecalho, _desenharRodape,
+    obterFoto, _agruparPorLinha, _cederEventLoop, _arte, _desenharCabecalho, _desenharRodape,
     _desenharCabecalhoIndice, _desenharLinhaIndice, _desenharFotoAjustada, _truncarParaAltura,
     TITULO_FONTE, TITULO_FONTE_ARQUIVO, RODAPE_NUMERO_FONTE, RODAPE_NUMERO_FONTE_ARQUIVO,
     A4_LARGURA, A4_ALTURA, PAGE_MARGIN, FOOTER_HEIGHT,

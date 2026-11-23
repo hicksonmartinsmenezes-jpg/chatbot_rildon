@@ -147,7 +147,9 @@ async function gerarPdfCatalogoArielo(produtos, fabricante, destino, helpers) {
   let pagina = 0;
   const desenharLogo = () => {
     const w = 100;
-    doc.image(LOGO_ARIELO, 54, 27, { width: w, height: w / LOGO_RATIO });
+    // H._arte: embute a logo uma vez por documento em vez de uma por página
+    // (ver o comentário de _arte em catalogo-pdf.service.js).
+    doc.image(H._arte(doc, LOGO_ARIELO), 54, 27, { width: w, height: w / LOGO_RATIO });
   };
 
   for (let p = 0; p < paginasIndice; p += 1) {

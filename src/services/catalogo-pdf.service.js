@@ -125,9 +125,11 @@ try {
 // próprio arquivo — qualquer preenchimento automático de fundo branco
 // precisa proteger essa área pra não apagar a logo por engano.
 const RODAPE_IMG = fs.readFileSync(path.join(__dirname, "../assets/catalogo-rodape.png"));
-// Proporção exata do arquivo acima (1372×156 px) — ver comentário no topo
-// do arquivo sobre por que isso precisa bater com a imagem de verdade.
-const RODAPE_IMG_RATIO = 1372 / 156;
+// Proporção exata do arquivo acima (686×78 px — reduzido de 1372×156 na
+// catalogo-rildon#67, resize exato de 50%, razão idêntica) — ver comentário
+// no topo do arquivo sobre por que isso precisa bater com a imagem de
+// verdade.
+const RODAPE_IMG_RATIO = 686 / 78;
 
 // 2026-08-31 (Catálogo Promocional, pedido do usuário: "poderá ser por linha
 // ou por fabricante, padronize esses cabeçalhos e rodapés para o catalogo
@@ -385,11 +387,22 @@ const GAP = 10;
 // e o X de desenho correspondente (negativo — a imagem começa um pouco
 // antes da borda esquerda da página, de propósito, é o bleed).
 const CABECALHO_IMG_LARGURA_BASE = 595.28 * CABECALHO_ESCALA_BLEED;
-const CABECALHO_PX_L = 5752, CABECALHO_PX_A = 1168, CABECALHO_TINTA_ESQ_PX = 46;
+// catalogo-rildon#67 (2026-11-24): catalogo-cabecalho.png reduzido de
+// 5752x1168 pra 1438x292 (fator exato 4 — só os catálogos Completo/Expresso
+// usam essa arte, e o usuário confirmou que esses ficam só na tela, nunca
+// impressos; o Promocional, que é o único impresso, usa outro arquivo e já
+// tinha dimensão correta). As constantes abaixo foram medidas pixel a pixel
+// NA IMAGEM ANTIGA (5752px de largura) e precisam do mesmo fator /4 — exceto
+// o "2.12", que é uma razão entre duas grandezas já na mesma escala de
+// pixel (CABECALHO_TINTA_DIR_PX e CABECALHO_LINHA_CORTE_PX), então não muda
+// com o fator de escala. Validado por raster comparável (pdftoppm 100/300
+// DPI) antes/depois do resize — ver PR da catalogo-rildon#67 e o espelho
+// aqui.
+const CABECALHO_PX_L = 1438, CABECALHO_PX_A = 292, CABECALHO_TINTA_ESQ_PX = 11.5;
 const CABECALHO_ALTURA_BASE = CABECALHO_IMG_LARGURA_BASE / CABECALHO_IMG_RATIO;
-// fim (px) da tinta na linha de corte da sangria: ~5699 - 2.12/linha (medido)
+// fim (px) da tinta na linha de corte da sangria: ~1424.75 - 2.12/linha (medido na imagem antiga, /4)
 const CABECALHO_LINHA_CORTE_PX = CABECALHO_SANGRIA_TOPO * CABECALHO_PX_A / CABECALHO_ALTURA_BASE;
-const CABECALHO_TINTA_DIR_PX = CABECALHO_SANGRIA_TOPO > 0 ? 5720 - 2.12 * CABECALHO_LINHA_CORTE_PX : 5699;
+const CABECALHO_TINTA_DIR_PX = CABECALHO_SANGRIA_TOPO > 0 ? 1430 - 2.12 * CABECALHO_LINHA_CORTE_PX : 1424.75;
 const CABECALHO_ESTICAR_X = (595.28 * 1.003 * CABECALHO_PX_L / (CABECALHO_TINTA_DIR_PX - CABECALHO_TINTA_ESQ_PX)) / CABECALHO_IMG_LARGURA_BASE;
 const CABECALHO_IMG_LARGURA_DESENHO = CABECALHO_IMG_LARGURA_BASE * (CABECALHO_SANGRIA_TOPO > 0 ? CABECALHO_ESTICAR_X : 1);
 const CABECALHO_IMG_X_DESENHO = -(CABECALHO_TINTA_ESQ_PX / CABECALHO_PX_L) * CABECALHO_IMG_LARGURA_DESENHO;

@@ -43,13 +43,26 @@ na `main` para tarefas que passaram por esse fluxo. A descrição do PR
    ficou de fora do escopo de propósito, e o que precisa ser feito a seguir
    (inclusive passos de deploy do usuário — ver seção abaixo).
 
-### 3. Deploy continua manual pelo usuário — documente o que é preciso no PR
+### 3. Deploy — o agente pode fazer, depois da esteira (decisão de 2026-11-25)
 
-Este projeto roda em Docker local (`chatbot_rildon_app` +
-`chatbot_rildon_postgres`, ver `docker-compose.yml`, volume `.:/app` —
-código já reflete ao vivo, sem rebuild de imagem). O agente nunca reinicia
-o container nem roda migration no banco real — só o usuário faz isso, no
-terminal dele. Todo PR deve deixar explícito no "Próximos passos":
+Decisão do usuário (2026-11-25), igual à já tomada no `catalogo-rildon`
+(2026-11-24): o agente **pode** reiniciar o container e rodar migration no
+banco real, para dar mais velocidade ao ciclo — não precisa mais esperar o
+usuário fazer manualmente. Este projeto roda em Docker local
+(`chatbot_rildon_app` + `chatbot_rildon_postgres`, ver `docker-compose.yml`,
+volume `.:/app` — código já reflete ao vivo, sem rebuild de imagem) **no
+servidor da loja**: o agente só deploya quando tem acesso a essa máquina
+(ex: pelo acesso remoto/dispositivo vinculado); sem acesso, deixa os passos
+no PR para o usuário. Ainda assim:
+
+- só depois que o PR estiver com CI verde e mergeado na `main` — isso não é
+  licença para pular a esteira de qualidade;
+- migration continua precisando ser idempotente e sequencial;
+- se o deploy falhar ou o container não subir saudável, o agente para,
+  reporta o que rodou e o erro exato, e não tenta reverter sozinho no banco
+  real sem o usuário saber;
+- todo PR continua deixando explícito no "Próximos passos" o que foi (ou
+  precisa ser) executado:
 
 - **Mudança só de frontend** (`frontend/js`, `frontend/css`,
   `frontend/index.html`): rodar `npm run build:frontend` e, se o container
@@ -61,6 +74,9 @@ terminal dele. Todo PR deve deixar explícito no "Próximos passos":
   do Docker (ver memória `bot Rildon: Postgres duplicado na porta 5432`).
 - **Mudança só de backend sem migration**: `docker restart
   chatbot_rildon_app` costuma bastar (volume ao vivo).
+- **Mudança no painel X2** (`scripts/x2-painel`, `scripts/x2-*.js`): reiniciar
+  o "Painel X2" na loja (`Stop-Process` nos PIDs do `x2-painel` +
+  `Start-ScheduledTask -TaskName "Painel X2"`).
 
 ### 4. Antes de considerar a tarefa concluída
 
